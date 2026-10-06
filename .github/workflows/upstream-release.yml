@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
     paths:
+      - 'README.md'
+      - 'README.en.md'
+      - 'RESEARCH.md'
+      - 'COMPATIBILITY.md'
+      - 'AUTOMATION.md'
       - 'automation/**'
       - '.github/scripts/upstream_release.py'
       - '.github/scripts/refresh_overlay.py'
