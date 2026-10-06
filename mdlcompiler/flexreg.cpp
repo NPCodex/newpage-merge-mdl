@@ -646,8 +646,31 @@ bool AddBodyFlexData(cm::CompileInput& in, source::Source* src, int imodel, std:
         cm::FlexKey fk;
         fk.source = src;
         fk.animationname = key.name;
+        fk.sourceMorphIndex = key.morphIndex;
         fk.imodel = imodel;
         fk.target1 = key.target1;
+        // QC VTA keys sharing a descriptor use neighboring declarations for
+        // their ramp endpoints. Preserve declaration order even at equal or
+        // descending positions (verified against StudioMDL-CE output).
+        if (key.morphIndex >= 0) {
+            const source::SrcFlexKey* previous = nullptr;
+            const source::SrcFlexKey* next = nullptr;
+            for (const source::SrcFlexKey& other : src->flexkeys) {
+                if (&other == &key || other.morphIndex < 0 ||
+                    _stricmp(other.name.c_str(), key.name.c_str()) != 0)
+                    continue;
+                if (&other < &key) {
+                    previous = &other;
+                } else if (!next) {
+                    next = &other;
+                }
+            }
+            if (previous) fk.target0 = previous->target1;
+            if (next) {
+                fk.target2 = fk.target1;
+                fk.target3 = next->target1;
+            }
+        }
         if (key.stereo) {
             int descL = AddFlexdesc(in, key.name + "L", err);
             int descR = AddFlexdesc(in, key.name + "R", err);

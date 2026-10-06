@@ -93,7 +93,7 @@ index 56dc20d..ecfcc05 100644
  target_compile_definitions(mdlcompiler PRIVATE PULSEMODEL_VERSION="${TOOL_VERSION}")
  
 diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
-index 7f2e1d3..0a57de8 100644
+index 7f2e1d3..423c583 100644
 --- a/mdlcompiler/compile.cpp
 +++ b/mdlcompiler/compile.cpp
 @@ -390,6 +390,9 @@ bool BoneIsAlwaysCollapse(const Ctx& ctx, const char* pname) {
@@ -163,7 +163,39 @@ index 7f2e1d3..0a57de8 100644
                      }
                  }
                  break;
-@@ -10646,6 +10680,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -9009,6 +9043,13 @@ struct FlexSortEntry {
+     int sourceOrder;
+ };
+ 
++src::SrcMorphAnim* FlexSourceMorph(const FlexKey& key) {
++    if (key.source && key.sourceMorphIndex >= 0 &&
++        key.sourceMorphIndex < static_cast<int>(key.source->morphs.size()))
++        return &key.source->morphs[key.sourceMorphIndex];
++    return FindSourceMorph(key.source, key.animationname.c_str());
++}
++
+ int FlexKeysSortFunc(const void* pv1, const void* pv2) {
+     const FlexSortEntry* k1 = static_cast<const FlexSortEntry*>(pv1);
+     const FlexSortEntry* k2 = static_cast<const FlexSortEntry*>(pv2);
+@@ -9050,7 +9091,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+         FlexKey* pFlexKey = sorted[i].key;
+         src::Source* pVSource = pFlexKey->source;
+         src::SrcMorphAnim* pVSourceAnim =
+-            FindSourceMorph(pVSource, pFlexKey->animationname.c_str());
++            FlexSourceMorph(*pFlexKey);
+         if (!pVSourceAnim)
+             continue;
+ 
+@@ -9087,7 +9128,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+     std::vector<uint8_t> pDoesMove(nMaxModelVerts, 0);
+ 
+     for (FlexKey& key : m.flexkeys) {
+-        src::SrcMorphAnim* pVSourceAnim = FindSourceMorph(key.source, key.animationname.c_str());
++        src::SrcMorphAnim* pVSourceAnim = FlexSourceMorph(key);
+         if (!pVSourceAnim)
+             continue;
+         auto it = morphMaps.find(pVSourceAnim);
+@@ -10646,6 +10687,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  cmd.forceRot = ic.forceRot;
                  break;
              case InCmd::RefMotion:
@@ -171,7 +203,7 @@ index 7f2e1d3..0a57de8 100644
              case InCmd::AppendAnim:
              case InCmd::WorldspaceBlend:
              case InCmd::MatchBlend:
-@@ -10657,7 +10692,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10657,7 +10699,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                      "\" in " + a.name;
                      return false;
                  }
@@ -185,7 +217,7 @@ index 7f2e1d3..0a57de8 100644
                             : (ic.kind == InCmd::Match)      ? AnimCmd::Match
                             : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
                             : (ic.kind == InCmd::WorldspaceBlend)
-@@ -10665,6 +10706,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10665,6 +10713,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
                                                             : AnimCmd::AppendAnim;
                  cmd.matchPre = ic.matchPre;
@@ -195,7 +227,7 @@ index 7f2e1d3..0a57de8 100644
                  cmd.worldLoops = ic.worldLoops;
                  cmd.motiontype = ic.motiontype;
 diff --git a/mdlcompiler/compile.h b/mdlcompiler/compile.h
-index f10a9fa..93a5339 100644
+index f10a9fa..25c4184 100644
 --- a/mdlcompiler/compile.h
 +++ b/mdlcompiler/compile.h
 @@ -460,7 +460,7 @@ struct AnimBoneTransform {
@@ -207,7 +239,15 @@ index f10a9fa..93a5339 100644
                  Motion, RefMotion, CopyPose, TransformBone, NumFrames,
                  IkFixup, LocalHierarchy, Derivative, NoAnim, LinearDelta,
                  Compress, CounterRotate, ForceBonePosRot, MatchPosition } kind = Weights;
-@@ -1195,6 +1195,8 @@ struct CompileInput {
+@@ -699,6 +699,7 @@ struct FlexRule {
+ struct FlexKey {
+     source::Source* source = nullptr;
+     std::string animationname; // delta state (morph) name
++    int sourceMorphIndex = -1; // VTA keys may share a name but refer to different frames
+     int imodel = 0;            // flattened model index (blanks included)
+     int flexdesc = 0;
+     int flexpair = 0; // stereo: flexdesc = "<name>L", flexpair = "<name>R"
+@@ -1195,6 +1196,8 @@ struct CompileInput {
      std::vector<BoneMarkup> bonemarkups;
      // $alwayscollapse: force-collapse these bones. $donotcollapse wins.
      std::vector<std::string> alwaysCollapse;
@@ -216,7 +256,7 @@ index f10a9fa..93a5339 100644
      std::vector<std::string> limitRotationBones;
      // $renamebone <from> <to>, script order. Applied to the final bone table at
      // the very end of the compile, so every other command still names the
-@@ -1400,7 +1402,7 @@ struct CompileInput {
+@@ -1400,7 +1403,7 @@ struct CompileInput {
          // Weights/Subtract carry names, resolved in the compile stage.
          struct InCmd {
              enum Kind { Weights, Subtract, Reverse, FixupLoop, Angle, Align, Match,
@@ -225,6 +265,42 @@ index f10a9fa..93a5339 100644
                  Motion, RefMotion, CopyPose, TransformBone, NumFrames,
                  IkFixup, LocalHierarchy, Derivative, NoAnim, LinearDelta,
                  Compress, CounterRotate, ForceBonePosRot, MatchPosition } kind = Weights;
+diff --git a/mdlcompiler/flexreg.cpp b/mdlcompiler/flexreg.cpp
+index fe77451..b6bbc72 100644
+--- a/mdlcompiler/flexreg.cpp
++++ b/mdlcompiler/flexreg.cpp
+@@ -646,8 +646,31 @@ bool AddBodyFlexData(cm::CompileInput& in, source::Source* src, int imodel, std:
+         cm::FlexKey fk;
+         fk.source = src;
+         fk.animationname = key.name;
++        fk.sourceMorphIndex = key.morphIndex;
+         fk.imodel = imodel;
+         fk.target1 = key.target1;
++        // QC VTA keys sharing a descriptor use neighboring declarations for
++        // their ramp endpoints. Preserve declaration order even at equal or
++        // descending positions (verified against StudioMDL-CE output).
++        if (key.morphIndex >= 0) {
++            const source::SrcFlexKey* previous = nullptr;
++            const source::SrcFlexKey* next = nullptr;
++            for (const source::SrcFlexKey& other : src->flexkeys) {
++                if (&other == &key || other.morphIndex < 0 ||
++                    _stricmp(other.name.c_str(), key.name.c_str()) != 0)
++                    continue;
++                if (&other < &key) {
++                    previous = &other;
++                } else if (!next) {
++                    next = &other;
++                }
++            }
++            if (previous) fk.target0 = previous->target1;
++            if (next) {
++                fk.target2 = fk.target1;
++                fk.target3 = next->target1;
++            }
++        }
+         if (key.stereo) {
+             int descL = AddFlexdesc(in, key.name + "L", err);
+             int descR = AddFlexdesc(in, key.name + "R", err);
 diff --git a/mdlcompiler/main.cpp b/mdlcompiler/main.cpp
 index 710c49b..d18cd06 100644
 --- a/mdlcompiler/main.cpp
@@ -550,6 +626,43 @@ index db90844..9d6f39d 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
+diff --git a/mdlcompiler/smdloader.cpp b/mdlcompiler/smdloader.cpp
+index 149ae76..b4a5cb5 100644
+--- a/mdlcompiler/smdloader.cpp
++++ b/mdlcompiler/smdloader.cpp
+@@ -962,6 +962,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
+     const int count = static_cast<int>(morph.vanims.size());
+     SrcFlexKey key;
+     key.name = morph.name;
++    key.morphIndex = static_cast<int>(out.morphs.size());
+     key.target1 = position;
+     out.flexkeys.push_back(std::move(key));
+     out.morphs.push_back(std::move(morph));
+@@ -996,12 +997,6 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
+                          opt.name.c_str(), opt.frame, path.c_str());
+             continue;
+         }
+-        for (const SrcMorphAnim& m : out.morphs)
+-            if (_stricmp(m.name.c_str(), opt.name.c_str()) == 0) {
+-                if (err) *err = "duplicate morph \"" + opt.name + "\"";
+-                return false;
+-            }
+-
+         const int deltas = ImportFrame(bind, *frame, opt.name, opt.position, opt.decay, out);
+         std::printf("    flex %-32s frame %-4d %6d deltas  position %.3f decay %.3f\n",
+                     opt.name.c_str(), opt.frame, deltas, opt.position, opt.decay);
+diff --git a/mdlcompiler/source.h b/mdlcompiler/source.h
+index f4fbad9..ce8523e 100644
+--- a/mdlcompiler/source.h
++++ b/mdlcompiler/source.h
+@@ -94,6 +94,7 @@ struct SrcMorphAnim {
+ 
+ struct SrcFlexKey {
+     std::string name;     // delta state name
++    int morphIndex = -1;  // VTA: frame identity, independent of the shared flex name
+     bool stereo = false;  // flexpair split signal
+     float target1 = 1.0f;
+ };
 diff --git a/mdlcompiler/version.rc.in b/mdlcompiler/version.rc.in
 index 59b9b29..cd79989 100644
 --- a/mdlcompiler/version.rc.in

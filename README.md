@@ -13,6 +13,7 @@
 - `$setvariable`、包含文件和动画模型前缀、`$PUSHDInclude`、按骨骼前缀折叠。
 - `-cullanims`、`-MostlyOpaque`，重复变量定义警告。
 - 自行实现的动画 `copy`、`match pos/rot`、嵌套 `if / else if / else`。
+- VTA 同名 `flex` / `flexpair` 多帧：保留独立顶点数据和 StudioMDL 兼容权重区间。
 - 带终端颜色的启动横幅；重定向日志保持纯文本。
 
 完整合并尚未完成，语法和差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。不能保证与 StudioMDL-CE / StudioMDL++ 的全部行为一致。

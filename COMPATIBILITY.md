@@ -110,3 +110,12 @@ options without loading unused sources or applying unused animation commands.
 position weights independently. `match` applies the correction only to bones
 enabled by the relevant weight channel. Channel selectors follow the reference
 name and can be combined. Existing bare `match reference` keeps its old behavior.
+
+## Repeated VTA flex names
+
+Multiple QC `flex` or `flexpair` declarations may share a name while reading
+different VTA frames. Each key retains its own frame's vertex deltas; keys share
+the flex descriptor (or stereo descriptor pair). Ramp endpoints follow adjacent
+same-name declarations in source order, including equal and descending positions.
+This behavior was checked against StudioMDL-CE 0.3.0 output and is covered by
+binary-output regression tests. DMX named-morph lookup remains unchanged.

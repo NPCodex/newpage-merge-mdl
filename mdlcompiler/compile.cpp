@@ -9043,6 +9043,13 @@ struct FlexSortEntry {
     int sourceOrder;
 };
 
+src::SrcMorphAnim* FlexSourceMorph(const FlexKey& key) {
+    if (key.source && key.sourceMorphIndex >= 0 &&
+        key.sourceMorphIndex < static_cast<int>(key.source->morphs.size()))
+        return &key.source->morphs[key.sourceMorphIndex];
+    return FindSourceMorph(key.source, key.animationname.c_str());
+}
+
 int FlexKeysSortFunc(const void* pv1, const void* pv2) {
     const FlexSortEntry* k1 = static_cast<const FlexSortEntry*>(pv1);
     const FlexSortEntry* k2 = static_cast<const FlexSortEntry*>(pv2);
@@ -9084,7 +9091,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
         FlexKey* pFlexKey = sorted[i].key;
         src::Source* pVSource = pFlexKey->source;
         src::SrcMorphAnim* pVSourceAnim =
-            FindSourceMorph(pVSource, pFlexKey->animationname.c_str());
+            FlexSourceMorph(*pFlexKey);
         if (!pVSourceAnim)
             continue;
 
@@ -9121,7 +9128,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
     std::vector<uint8_t> pDoesMove(nMaxModelVerts, 0);
 
     for (FlexKey& key : m.flexkeys) {
-        src::SrcMorphAnim* pVSourceAnim = FindSourceMorph(key.source, key.animationname.c_str());
+        src::SrcMorphAnim* pVSourceAnim = FlexSourceMorph(key);
         if (!pVSourceAnim)
             continue;
         auto it = morphMaps.find(pVSourceAnim);

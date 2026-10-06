@@ -962,6 +962,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
     const int count = static_cast<int>(morph.vanims.size());
     SrcFlexKey key;
     key.name = morph.name;
+    key.morphIndex = static_cast<int>(out.morphs.size());
     key.target1 = position;
     out.flexkeys.push_back(std::move(key));
     out.morphs.push_back(std::move(morph));
@@ -996,12 +997,6 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                          opt.name.c_str(), opt.frame, path.c_str());
             continue;
         }
-        for (const SrcMorphAnim& m : out.morphs)
-            if (_stricmp(m.name.c_str(), opt.name.c_str()) == 0) {
-                if (err) *err = "duplicate morph \"" + opt.name + "\"";
-                return false;
-            }
-
         const int deltas = ImportFrame(bind, *frame, opt.name, opt.position, opt.decay, out);
         std::printf("    flex %-32s frame %-4d %6d deltas  position %.3f decay %.3f\n",
                     opt.name.c_str(), opt.frame, deltas, opt.position, opt.decay);

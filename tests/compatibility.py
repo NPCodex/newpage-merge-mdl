@@ -47,6 +47,62 @@ class Compatibility(unittest.TestCase):
     def mdl(self, name):
         return (self.root / "models" / (name + ".mdl")).read_bytes()
 
+    def vta_keys(self, options, stereo=False):
+        self.write('face.vta', 'version 1\nnodes\n0 "root" -1\nend\n'
+                   'skeleton\ntime 0\n0 0 0 0 0 0 0\ntime 1\n0 0 0 0 0 0 0\n'
+                   'time 2\n0 0 0 0 0 0 0\nend\nvertexanimation\n'
+                   'time 0\n0 0 0 0 0 0 1\n1 1 0 0 0 0 1\n2 0 1 0 0 0 1\n'
+                   'time 1\n0 0 0 0.25 0 0 1\n1 1 0 0.4 0 0 1\n'
+                   'time 2\n0 0 0 0.5 0 0 1\n1 1 0 0.8 0 0 1\nend\n')
+        rules = '%sharedL = strength\n%sharedR = strength' if stereo else '%shared = strength'
+        self.run_qc('$modelname face\n$model face "mesh.smd" {\n'
+                    'flexfile "face.vta" {\n' + options + '\n}\n'
+                    'flexcontroller test range 0 1 strength\n' + rules + '\n}\n')
+        data = self.mdl('face')
+        body = struct.unpack_from('<i', data, 236)[0]
+        model = body + struct.unpack_from('<i', data, body + 12)[0]
+        mesh = model + struct.unpack_from('<i', data, model + 76)[0]
+        count, index = struct.unpack_from('<2i', data, mesh + 16)
+        keys = []
+        for i in range(count):
+            offset = mesh + index + i * 60
+            desc = struct.unpack_from('<i', data, offset)[0]
+            targets = struct.unpack_from('<4f', data, offset + 4)
+            vertices, vanim = struct.unpack_from('<2i', data, offset + 20)
+            pair = struct.unpack_from('<i', data, offset + 28)[0]
+            heights = [struct.unpack_from('<e', data, offset + vanim + j * 16 + 8)[0]
+                       for j in range(vertices)]
+            sides = [data[offset + vanim + j * 16 + 3] for j in range(vertices)]
+            keys.append((desc, pair, targets, heights, sides))
+        return keys
+
+    def test_repeated_vta_name_preserves_distinct_frame_deltas_and_equal_position_order(self):
+        keys = self.vta_keys('flex "shared" frame 1\nflex "shared" frame 2')
+        self.assertEqual(len(keys), 2)
+        self.assertEqual(keys[0][0], keys[1][0])
+        self.assertEqual(keys[0][2], (0, 1, 1, 1))
+        self.assertEqual(keys[1][2], (1, 1, 10, 11))
+        self.assertAlmostEqual(max(keys[1][3]), 2 * max(keys[0][3]), places=3)
+
+    def test_repeated_stereo_vta_name_preserves_pair_balance_and_progressive_positions(self):
+        keys = self.vta_keys('flexpair "shared" 1 frame 1 position 0.5\n'
+                             'flexpair "shared" 1 frame 2 position 1', stereo=True)
+        self.assertEqual(len(keys), 2)
+        self.assertEqual(keys[0][:2], keys[1][:2])
+        self.assertNotEqual(keys[0][0], keys[0][1])
+        self.assertEqual(keys[0][2], (0, 0.5, 0.5, 1))
+        self.assertEqual(keys[1][2], (0.5, 1, 10, 11))
+        self.assertEqual(keys[0][4], keys[1][4])
+        self.assertGreater(len(set(keys[0][4])), 1)
+        self.assertAlmostEqual(max(keys[1][3]), 2 * max(keys[0][3]), places=3)
+
+    def test_repeated_vta_positions_keep_ce_declaration_order(self):
+        keys = self.vta_keys('flex "shared" frame 2 position 1\n'
+                             'flex "shared" frame 1 position 0.5')
+        self.assertEqual(keys[0][2], (0, 1, 1, 0.5))
+        self.assertEqual(keys[1][2], (1, 0.5, 10, 11))
+        self.assertAlmostEqual(max(keys[0][3]), 2 * max(keys[1][3]), places=3)
+
     def test_variable_assignment_and_replacement(self):
         self.run_qc('$setvariable name first\n$setvariable name replaced\n$modelname "$name$.mdl"\n')
         self.assertEqual(self.mdl("replaced")[:4], b"IDST")

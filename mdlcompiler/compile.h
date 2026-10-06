@@ -699,6 +699,7 @@ struct FlexRule {
 struct FlexKey {
     source::Source* source = nullptr;
     std::string animationname; // delta state (morph) name
+    int sourceMorphIndex = -1; // VTA keys may share a name but refer to different frames
     int imodel = 0;            // flattened model index (blanks included)
     int flexdesc = 0;
     int flexpair = 0; // stereo: flexdesc = "<name>L", flexpair = "<name>R"
