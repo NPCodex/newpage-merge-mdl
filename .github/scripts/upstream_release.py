@@ -121,8 +121,11 @@ def create_source(root, pulse_repo, revision, base, patch):
     # Partial clones cannot lazy-fetch unknown abbreviated object ids.
     run('git', 'checkout', '--detach', base, cwd=root)
     run('git', 'checkout', '--detach', revision, cwd=root)
-    run('git', 'apply', '--3way', '--index', Path(patch).resolve(), cwd=root)
-    run('git', 'diff', '--check', '--cached', cwd=root)
+    run('git', 'apply', '--3way', '--index', '--whitespace=nowarn', Path(patch).resolve(), cwd=root)
+    # Preserve upstream vendored source/license formatting. Whitespace checks
+    # still gate maintained compiler code; apply --3way --index rejects conflicts.
+    run('git', 'diff', '--check', '--cached', '--', '.',
+        ':(exclude)libs/assimp/**', ':(exclude)libs/cgltf/cgltf.h', cwd=root)
 
 
 def prepare(args):
@@ -196,6 +199,10 @@ def prepare(args):
         'StudioMDL-CE and StudioMDL++ were downloaded for version tracking only; '
         'their new closed-source functionality is not automatically integrated. '
         'Their binaries are not included in this release.\n\n'
+        'Includes independently implemented NekoMDL compatibility based on the supplied Chinese v2.3.0 changelog: '
+        'scene import, Neko model/driver syntax, jiggle options and QC extensions. '
+        'Neko binaries are not redistributed; reference updates are reviewed manually. '
+        'See both READMEs and COMPATIBILITY.md for remaining differences.\n\n'
         'Both platform builds and compatibility tests must pass before publication. '
         'The attached source archive is the actual merged build input; '
         'GitHub-generated source archives correspond to the controller commit.\n'

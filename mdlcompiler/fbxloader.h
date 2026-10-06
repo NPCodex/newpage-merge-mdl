@@ -6,7 +6,7 @@
 //
 // The whole surface: node hierarchy (skeleton, rest pose), polygon meshes
 // (triangulated, skinned, one UV set) and blend shapes (morphs). Markup and
-// animation stacks are not read - author those in .pulseqc.
+// animation stacks are sampled and selectable with blockname/Pick in QC.
 
 #ifndef PULSEMDL_FBXLOADER_H
 #define PULSEMDL_FBXLOADER_H
@@ -15,6 +15,7 @@
 
 #include "meshedit.h"
 #include "source.h"
+#include "sceneloader.h"
 
 namespace pulse::source {
 
@@ -28,7 +29,7 @@ namespace pulse::source {
 // materials (same rule as LoadDmxSource / LoadSmdSource).
 bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, float scale,
                    std::string* err, bool morphSource = false, MeshFilter* filter = nullptr,
-                   bool animOnly = false);
+                   bool animOnly = false,const SceneOptions* options=nullptr);
 
 } // namespace pulse::source
 

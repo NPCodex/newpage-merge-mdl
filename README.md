@@ -6,7 +6,7 @@
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
-基于 [PulseModel](https://github.com/ToppiOfficial/PulseModel) 的 Source 模型编译工具，加入 StudioMDL-CE / StudioMDL++ 兼容功能与自行实现的动画扩展。
+基于 [PulseModel](https://github.com/ToppiOfficial/PulseModel) 的 Source 模型编译工具，加入 StudioMDL-CE / StudioMDL++ / NekoMDL 兼容功能与自行实现的动画扩展。NekoMDL 对照依据为附带的中文版 v2.3.0 更新日志。
 
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
@@ -22,15 +22,25 @@
 - CE 面部扩展：控制器覆盖/重复、反向表情、`fscale`、零衰减和默认表情烘焙。
 - CE 眼球缩放、DMX 法线/皱纹计算、全局骨骼空间表情重映射。
 - bodygroup 面部块、独立材质重命名、单骨权重、可选骨骼折叠规则和输出限制。
+- glTF / GLB / VRM 快速导入，以及 Assimp 的 OBJ、DAE、PMX 等格式导入；保留原 FBX 导入器。
+- NekoMDL 的 `InNode`、`Pick`、`SampleRate`、`$FPS`、`$NekoModel`、`$NekoDriverBone` 和飘骨轴向命令。
+- `$PreRenameMaterial`、`$DiscardVertexAnimationNormals`、`$MaxVerts`、`$MaxBones`、`$FileBufferSize`；无花括号条件语句、`$UndefineVariable`、`$Msg` 和 `-Dname value`。
+- `-reloadhlmv`（Windows）和 `-playbeep`；`$NoFastGltf` 切换到 Assimp 后备导入。
 - 带终端颜色的启动横幅；重定向日志保持纯文本。
 
 完整合并尚未完成，语法和差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。不能保证与 StudioMDL-CE / StudioMDL++ 的全部行为一致。
+
+NekoMDL 附带的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证；用户的 Alyx QC 也保持可编译。自动测试使用自行编写的小模型，不将用户模型或 NekoMDL 二进制打包到仓库。
 
 ## 未完成与已知问题
 
 | 内容 | 当前状态与限制 |
 | --- | --- |
-| CE 旧版网格算法 | `$UseLegacyStripify`（NvTriStrip）和 `$UseLegacyClampMethod`（全局顶点裁剪）尚未实现；使用这些开关会明确报错。 |
+| NekoMDL 导入兼容 | 使用 cgltf 快速路径和 Assimp 6.0.4 后备路径，不使用闭源编译器源码。已验证基础场景变换、蒙皮、命名形态键、节点筛选和动画采样；尚未逐一认证所有 Assimp 格式、复杂 FBX/VRM rig 与游戏内表现。 |
+| glTF 动画与压缩 | 快速路径支持位移/旋转的 LINEAR、STEP、CUBICSPLINE，静态缩放烘焙进网格。动画缩放、形态键权重和网格切换会明确报错，需要先烘焙或改用 QC flex 控制器。Draco、meshopt 压缩与 GPU 实例扩展需要先展开源模型。Assimp 后备路径可能改变 STEP/CUBICSPLINE 插值，建议优先使用快速路径。 |
+| NekoMDL 算法与默认值 | `$MaxVerts` 控制每材质输出网格的分割上限，实际不超过 65536；不复现 Neko 的源文件预拆分/裁剪算法。`$FileBufferSize` 限制各输出文件字节数，不预分配固定内存。保留本项目动态缓冲区、骨骼折叠和序列排序默认值；需要保留加权骨骼时启用 `$CEBoneRules`。 |
+| NekoMDL 面部与驱动骨 | 基础双侧权重及飘骨旋转/约束已对照二进制输出；多 studio、眼睑和驱动骨有输出测试，但复杂 driver/procedural/IK 层级尚未做全面差分。 |
+| 旧版网格算法 | CE `$UseLegacyStripify`（NvTriStrip）、`$UseLegacyClampMethod`（全局顶点裁剪）和 Neko `-nvtristrip` 尚未实现；使用这些开关会明确报错。 |
 | `gameinfo.txt` AppID 挂载 | 尚未实现，不能依靠 AppID 自动找到其他游戏资源。 |
 | 完整语法与输出兼容 | 动画 `copy`、`match pos/rot` 和条件语句采用本项目定义的语义；尚未认证与 StudioMDL++ 完全一致。输出为 v49，不能与 CE/++ 的 v48 文件逐字节比较。 |
 | 复杂面部与 DMX | 已验证基础法线、皱纹、逆向表情和眼睑规则；复杂 corrective rig、硬边、自定义法线、控制器重映射及游戏内眼睑表现仍需更多验证。 |

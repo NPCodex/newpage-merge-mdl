@@ -58,6 +58,7 @@ struct FaceMarkup {
     // <type>_right/<type>_left desc pair. Mono (eyeball + basedesc) is one entry
     // per eye with its own lid desc and targets - what a v44-48 model has.
     struct Eyelid {
+        source::Source* owner=nullptr;
         bool upper = true;
         std::string delta[3];  // lowerer, neutral, raiser
         float target[3] = {0.0f, 0.0f, 0.0f}; // scaled by RegisterFaceMarkup

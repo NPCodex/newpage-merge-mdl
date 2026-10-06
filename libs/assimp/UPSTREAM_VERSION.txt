@@ -1,0 +1,2 @@
+v6.0.4
+https://codeload.github.com/assimp/assimp/zip/refs/tags/v6.0.4

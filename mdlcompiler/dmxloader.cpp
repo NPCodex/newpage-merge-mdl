@@ -2205,6 +2205,9 @@ void CaptureFlexRig(const dmx::Element* comboOp, const ComboTemp& combo, FlexRig
 int MaterialTable::LookupTexture(const char* name, bool relative) {
     // reference LookupTexture: names are stored extension-stripped (path kept).
     // Q_StripExtension: drop the extension, keep any directory.
+    std::string renamed=name;
+    for(const auto& entry:preRenames) if(_stricmp(renamed.c_str(),entry.first.c_str())==0) renamed=entry.second;
+    name=renamed.c_str();
     std::string noExt = name;
     {
         size_t dot = noExt.find_last_of('.');

@@ -1128,6 +1128,8 @@ bool ApplyDominations(cm::CompileInput& in, const ManualFlex& manual, std::strin
 
 } // namespace
 
+void GenerateSourceMorphBalance(source::Source& source,const std::string& name,float factor) { GenerateBalance(source,name,factor); }
+
 bool RegisterFlex(cm::CompileInput& in, const ManualFlex& manual, std::string* err,
                   const FaceMarkup* face) {
     ApplyDataModelFlex(in, manual.datamodel);

@@ -80,3 +80,32 @@ IgnoreEyelid differential tests retain the controller and `%upper` rule while
 binding the eye to `dummy_eyelid` with targets (-1,0,1), instead of the authored
 upper descriptor/targets. The regression fixture checks both rule preservation
 and the disabled eye binding.
+# NekoMDL reference notes (2026-10-06)
+
+Source of requirements: supplied Chinese `nekomdl/ChangeLog.txt` v2.3.0 and
+`example_qc/NewCommands.qci`; the English changelog was not used as authoritative.
+Reference executable SHA-256:
+`36b7eaad13af84a492733a09bfe56d11b1c3b7e1d8bfe0070b99188198f9aa77`.
+
+Isolated, self-authored QC probes established:
+
+- Jiggle local realignment 10/20/30 applied to a bone with source Euler
+  0.2/0.3/0.4 radians emits 0.53632557/0.49104747/1.04254591 radians.
+  This is local rotation composition, rather than Euler component addition.
+- Pitch [-10,30] and yaw [-20,40] degrees become [-30,10] and [-40,20]
+  under ReverseJiggleBoneRotation. Bind geometry/pose is otherwise unchanged.
+- A glTF stereo morph at X=-1,1,0 writes balance bytes 0,255,127.
+- The complete supplied survivor_teenangst example accepts missing named flex
+  data; this implementation preserves empty descriptors with warnings too.
+- Read-only disassembly around VA `0x1400a4c39..0x1400a4c99` identifies
+  FindWindowExA("mx_class", model title), fallback class search, and
+  PostMessageA(WM_COMMAND=0x111, wParam=0x3f9). A self-created hidden test window
+  confirmed this project's notification arrives as command 1017.
+
+The independent implementation uses official Assimp v6.0.4 and MIT cgltf pinned
+to `85cd62382dfea638278962690cf515023f33ed00`; vendored sources/licenses are
+included. It contains no decompiled Neko code and does not distribute or invoke
+the reference executable. Assimp's poly2tri header has one portability fix:
+an explicit iosfwd include. Remaining differences are listed in both READMEs
+and COMPATIBILITY.md, including dynamic buffers, mesh splitting, defaults,
+fallback interpolation and complex rig/engine verification.

@@ -96,7 +96,7 @@ bool RegisterEyelid(cm::CompileInput& in, const FaceMarkup::Eyelid& src, std::st
         int imodel = 0;
         for (const auto& part : in.bodyparts) {
             for (const auto& model : part.models) {
-                if (model.source && !lidSource[i]) {
+                if (model.source && (!src.owner || model.source==src.owner) && !lidSource[i]) {
                     for (const auto& mo : model.source->morphs)
                         if (_stricmp(mo.name.c_str(), deltaName[i].c_str()) == 0) {
                             lidSource[i] = model.source;
@@ -190,6 +190,7 @@ bool RegisterEyelid(cm::CompileInput& in, const FaceMarkup::Eyelid& src, std::st
     // bind onto the already-registered eyeballs (hence list order)
     bool rightOk = false, leftOk = mono;
     for (cm::Eyeball& eye : in.eyeballs) {
+        if(src.owner && eye.owner!=src.owner) continue;
         int side; // 0 = left, 1 = right
         if (mono) {
             if (_stricmp(src.eyeball.c_str(), eye.name.c_str()) != 0)

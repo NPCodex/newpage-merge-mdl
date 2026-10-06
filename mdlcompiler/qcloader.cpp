@@ -29,6 +29,7 @@
 #include "flexreg.h"
 #include "meshedit.h"
 #include "fbxloader.h"
+#include "sceneloader.h"
 #include "dependencies.h"
 #include "smdloader.h"
 
@@ -154,6 +155,33 @@ bool Tokenize(const std::string& s, const std::string& file,
         }
         out.push_back(std::move(t));
     }
+    // Neko also accepts line conditionals terminated by $endif. Normalize
+    // only those blocks; existing braced conditions retain their token stream.
+    std::vector<Token> normalized; std::vector<int> lineBlocks;
+    for(size_t k=0;k<out.size();++k) {
+        Token t=out[k]; std::string command=t.text;
+        std::transform(command.begin(),command.end(),command.begin(),[](unsigned char c){return char(std::tolower(c));});
+        const bool start=!t.quoted && (command=="$if" || command=="$ifdef" || command=="$ifndef");
+        const bool branch=!t.quoted && (command=="$elif" || command=="$eldef" || command=="$else");
+        if(start || branch) {
+            size_t end=k+1; while(end<out.size() && out[end].line==t.line) ++end;
+            bool braced=false; for(size_t i=k+1;i<end;++i) if(!out[i].quoted && out[i].text=="{") braced=true;
+            if(!braced && end<out.size() && !out[end].quoted && out[end].text=="{") braced=true;
+            if(!braced) {
+                if(branch && lineBlocks.empty()) { if(err) *err=file+"("+std::to_string(t.line)+"): conditional branch has no matching line $if"; return false; }
+                if(branch) normalized.push_back({"}",t.line,false}); else lineBlocks.push_back(t.line);
+                for(;k<end;++k) normalized.push_back(out[k]);
+                normalized.push_back({"{",t.line,false}); --k; continue;
+            }
+        }
+        if(!t.quoted && command=="$endif") {
+            if(lineBlocks.empty()) { if(err) *err=file+"("+std::to_string(t.line)+"): unmatched $endif"; return false; }
+            lineBlocks.pop_back(); normalized.push_back({"}",t.line,false}); continue;
+        }
+        normalized.push_back(t);
+    }
+    if(!lineBlocks.empty()) { if(err) *err=file+"("+std::to_string(lineBlocks.back())+"): missing $endif"; return false; }
+    out=std::move(normalized);
     return true;
 }
 
@@ -223,6 +251,8 @@ struct Ctx {
     bool scriptBreak = false; // $break, sticky through every $include parent
 
     float defaultFps = 30.0f;
+    source::SceneOptions sceneOptions;
+    bool discardVertexAnimationNormals=false;
     float defaultMotionRollback = 0.3f; // seed for a new anim's motionrollback
     float defaultFadeIn = 0.2f;
     float defaultFadeOut = 0.2f;
@@ -458,7 +488,7 @@ std::string WithDmxExtension(const std::string& s) {
 std::string WithSourceExtension(const Ctx& c, const std::string& s) {
     if (HasExtension(s))
         return s;
-    for (const char* ext : {".dmx", ".smd", ".fbx"})
+    for (const char* ext : {".dmx", ".smd", ".fbx", ".gltf", ".glb", ".vrm", ".obj", ".dae", ".pmx"})
         if (!FindSourceFile(c, s + ext, nullptr).empty())
             return s + ext;
     return s + ".dmx";
@@ -482,7 +512,12 @@ bool IsFbxPath(const std::string& s) {
 }
 
 // The edits one $rendermesh { } body asks for (meshedit.h).
+bool IsScenePath(const std::string& s) {
+    return !IsSmdPath(s) && !IsFbxPath(s) && Lower(pulse::FilePath(s).extension().string())!=".dmx";
+}
+
 struct MeshEdit {
+    source::SceneOptions sceneOptions;
     std::string name; // the $rendermesh alias, for the load print
     source::MeshFilter filter;
     source::SkinnedBoneCull boneCull = source::SkinnedBoneCull::None;
@@ -543,7 +578,8 @@ std::shared_ptr<pulse::dmx::Datamodel> LoadDmxCached(Ctx& c, const fs::path& ful
 
 source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                            bool morphSource = false, MeshEdit* edit = nullptr,
-                           source::LoadKind kind = source::LoadKind::Model) {
+                           source::LoadKind kind = source::LoadKind::Model,
+                           const source::SceneOptions* sceneOptions=nullptr) {
     const bool priv = edit != nullptr;
     const bool animOnly = kind == source::LoadKind::Animation;
     // a collision hull is never drawn, so keep its materials out of the model's
@@ -552,7 +588,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
     source::MaterialTable& mats =
         kind == source::LoadKind::Collision ? c.physMats : c.in.mats;
 
-    const std::string key = Lower(filename);
+    const source::SceneOptions& scene = sceneOptions ? *sceneOptions : (edit ? edit->sceneOptions : c.sceneOptions);
+    const std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate);
     if (!priv) {
         auto it = c.sourceCache.find(key);
         if (it != c.sourceCache.end() && it->second->kind >= kind)
@@ -584,6 +621,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
     // and the SMD path derives cdtextures from it
     src->filename = filename;
     src->kind = kind;
+    src->sceneOptions=scene;
 
     if (IsSmdPath(filename)) {
         std::printf("%s\n", head.c_str());
@@ -617,7 +655,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
             return nullptr;
         }
         if (!source::LoadFbxSource(full.string(), *src, mats, c.in.scale, &loadErr, morphSource,
-                                   edit ? &edit->filter : nullptr, animOnly)) {
+                                   edit ? &edit->filter : nullptr, animOnly,&scene)) {
             c.Fail(line, "cannot load \"" + full.string() + "\": " + loadErr);
             return nullptr;
         }
@@ -641,6 +679,13 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                     return nullptr;
                 }
         }
+    } else if (IsScenePath(filename)) {
+        std::printf("%s (Assimp scene)\n",head.c_str());
+        if (!source::LoadSceneSource(full.string(),*src,mats,c.in.scale,&loadErr,morphSource,
+                                    edit ? &edit->filter : nullptr,animOnly,scene)) {
+            c.Fail(line,"cannot load \""+full.string()+"\": "+loadErr); return nullptr;
+        }
+        if(edit && edit->filter.Unmatched()) { c.Fail(line,"unmatched scene mesh: "+*edit->filter.Unmatched()); return nullptr; }
     } else {
         auto dm = LoadDmxCached(c, full, &loadErr);
         if (!dm) {
@@ -748,7 +793,7 @@ bool CmdRenderMesh(Ctx& c, const Token& cmd) {
     if (c.rendermeshes.count(name))
         return c.Fail(cmd.line, "duplicate $rendermesh \"" + name + "\"");
 
-    MeshEdit edit;
+    MeshEdit edit; edit.sceneOptions=c.sceneOptions;
     edit.name = name;
     if (!c.Eof() && !c.Cur().quoted && c.Cur().text == "{") {
         ++c.pos;
@@ -1272,7 +1317,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
             if (!src && (ext == ".dmx" || ext == ".smd" || ext == ".fbx")) {
                 if (std::find(refNames.begin(), refNames.end(), r.text) != refNames.end())
                     return c.Fail(r.line, where + ": mesh \"" + r.text + "\" is listed twice");
-                MeshEdit edit;
+                MeshEdit edit; edit.sceneOptions=c.sceneOptions;
                 edit.name = r.text;
                 src = LoadSource(c, r.text, r.line, /*morphSource=*/true, &edit);
                 if (!src)
@@ -1749,9 +1794,10 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
 // (legacy noautodmxrules) - the morph deltas stay on the Source either way.
 // `file` must already be extension-resolved. null return = failure (reported).
 source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& file,
-                                 bool flip, float importScale, bool importFlexRig, const source::DmxProcessing* processing=nullptr) {
-    MeshEdit edit;
+                                 bool flip, float importScale, bool importFlexRig, const source::DmxProcessing* processing=nullptr, const source::SceneOptions* scene=nullptr) {
+    MeshEdit edit; edit.sceneOptions=c.sceneOptions;
     edit.name = file;
+    edit.sceneOptions=scene ? *scene : c.sceneOptions;
     edit.flipNormals = flip;
     if(processing) edit.ceProcessing=*processing;
     const float defaultScale = c.in.scale;
@@ -1762,7 +1808,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& 
         return nullptr;
     if (flip)
         source::FlipNormals(*src);
-    if (!IsSmdPath(file) && !IsFbxPath(file)) {
+    if (!IsSmdPath(file) && !IsFbxPath(file) && !IsScenePath(file)) {
         auto dm = LoadRigDmx(c, entry, file, "studio rig");
         if (!dm)
             return nullptr;
@@ -1864,6 +1910,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
     bool flip = false;
     float importScale = c.in.scale;
     bool bindOneBone=false;
+    source::SceneOptions scene=c.sceneOptions;
     source::DmxProcessing processing;
     processing.computeNormals=c.in.ce.computeNormals; processing.computeWrinkles=c.in.ce.computeWrinkles;
     std::vector<std::pair<std::string,std::string>> renameMaterials;
@@ -1881,6 +1928,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                 return false;
             if (!std::isfinite(importScale) || importScale <= 0.0f)
                 return c.Fail(option.line, where + ": scale must be finite and greater than 0");
+        } else if(o=="innode") {
+            if(!c.Want("a scene node",option,scene.node)) return false;
         } else if(o=="computedeltanormals" || o=="computenormalsandwrinkles") {
             processing.computeNormals=true; if(o=="computenormalsandwrinkles") processing.computeWrinkles=true;
         } else if(o=="computewrinkles") { processing.computeWrinkles=true; processing.ignoreWrinkles=false;
@@ -1932,7 +1981,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         }
     }
 
-    source::Source* src = LoadStudioSource(c, cmd, file, flip, importScale, importFlexRig,&processing);
+    source::Source* src = LoadStudioSource(c, cmd, file, flip, importScale, importFlexRig,&processing,&scene);
     if (!src)
         return false;
     if(!IsSmdPath(file)) for(auto& morph:src->morphs) for(auto& va:morph.vanims) {
@@ -2146,6 +2195,18 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         // flex/flexpair/defaultflex <name> [<split>] frame <N> [position f] [decay f]
         // Each names one VTA frame; a split routes to the stereo-split machinery.
         if (o == "flex" || o == "flexpair" || o == "defaultflex") {
+            if(flexfile.empty() && !IsSmdPath(file) && o!="defaultflex") {
+                std::string name; if(!c.Want("a morph name",t,name)) return false;
+                auto key=std::find_if(src->flexkeys.begin(),src->flexkeys.end(),[&](const source::SrcFlexKey& k){return _stricmp(k.name.c_str(),name.c_str())==0;});
+                if(key==src->flexkeys.end()) {
+                    std::fprintf(stderr,"warning: %s(%d): declared morph %s has no vertex data in %s\n",c.file.c_str(),t.line,name.c_str(),file.c_str());
+                    src->morphs.push_back({name,{}}); source::SrcFlexKey empty; empty.name=name;
+                    src->flexkeys.push_back(empty); key=src->flexkeys.end()-1;
+                }
+                if(o=="flexpair" && (IsScenePath(file)||IsFbxPath(file))) GenerateSourceMorphBalance(*src,name,1.0f);
+                key->stereo=o=="flexpair"; key->inverted=invertControllers || c.in.ce.inverseFlexes;
+                continue;
+            }
             if (flexfile.empty())
                 return c.Fail(t.line, where + ": " + o + " needs a `flexfile <file>` before it");
             source::VtaFlexOption fo;
@@ -2237,6 +2298,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                 return false;
             FaceMarkup::Entry e;
             e.kind = FaceMarkup::Kind::Eyelid;
+            e.eyelid.owner=src;
             const char dtc = type.empty() ? '?' : static_cast<char>(std::tolower(type[0]));
             if (dtc == 'u')      e.eyelid.upper = true;
             else if (dtc == 'l') e.eyelid.upper = false;
@@ -2255,6 +2317,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                     if (e.eyelid.delta[slot] == "-")
                         e.eyelid.delta[slot].clear();
                     e.eyelid.target[slot] *= c.in.scale;
+                    if(IsScenePath(file)||IsFbxPath(file)) GenerateSourceMorphBalance(*src,e.eyelid.delta[slot],1.0f);
                     haveSlot[slot] = true;
                 } else if (ko == "split") {
                     if (!c.WantFloat("a split distance", t, e.eyelid.split)) return false;
@@ -2702,7 +2765,21 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
     // blockname <name>: sample a specific clip out of a multi-clip source. The
     // reference also resets the frame range to that clip's, which the compile
     // stage does by clamping to whichever clip is picked.
-    if (_stricmp(o.c_str(), "blockname") == 0) {
+    if (_stricmp(o.c_str(), "innode")==0) {
+        return c.Want("a scene node",t,a.inputNode)?1:-1;
+    }
+    if (_stricmp(o.c_str(),"samplerate")==0) {
+        if(!c.WantFloat("a sample rate",t,a.sampleRate)) return -1;
+        if(!std::isfinite(a.sampleRate) || a.sampleRate<=0 || a.sampleRate>1000) { c.Fail(t.line,"SampleRate must be within (0,1000]"); return -1; }
+        return 1;
+    }
+    if (_stricmp(o.c_str(),"appendscale")==0) {
+        float scale=0; if(!c.WantFloat("a scale multiplier",t,scale)) return -1;
+        if(!std::isfinite(scale) || scale<=0) { c.Fail(t.line,"AppendScale must be finite and positive"); return -1; }
+        a.scale*=scale; return 1;
+    }
+    if(_stricmp(o.c_str(),"nobonerealign")==0) { a.noBoneRealign=true; return 1; }
+    if (_stricmp(o.c_str(), "blockname") == 0 || _stricmp(o.c_str(),"pick")==0) {
         if (!c.Want("a source clip name", t, a.blockname))
             return -1;
         return 1;
@@ -3320,19 +3397,68 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
     if (bindpose) {
         a.bindpose = true;
         a.endframe = 0; // one frame unless `numframes` says otherwise
-    } else {
-        a.source = LoadSource(c, WithSourceExtension(c, file), cmd.line, /*morphSource=*/false,
-                              /*edit=*/nullptr, source::LoadKind::Animation);
-        if (!a.source)
-            return false;
     }
-
-    if (!ParseAnimBody(c, cmd, name, a))
-        return false;
+    if (!ParseAnimBody(c, cmd, name, a)) return false;
+    if(!bindpose) {
+        source::SceneOptions scene=c.sceneOptions; scene.node=a.inputNode;
+        if(a.sampleRate>0) { scene.sampleRate=a.sampleRate; scene.explicitSampleRate=true; }
+        a.source=LoadSource(c,WithSourceExtension(c,file),cmd.line,false,nullptr,source::LoadKind::Animation,&scene);
+        if(!a.source) return false;
+    }
 
     c.namedAnims[name] = static_cast<int>(c.in.anims.size());
     c.in.anims.push_back(std::move(a));
     return true;
+}
+
+// Neko's shared-model block becomes one body part with private studio choices.
+// Mesh-local eye/lid declarations stay on their studio; shared flex markup is
+// applied to every choice, while controllers and expressions are declared once.
+bool CmdNekoModel(Ctx& c,const Token& cmd) {
+    std::string name; if(!c.Want("a body part name",cmd,name)) return false;
+    for(const auto& part:c.in.bodyparts) if(part.name==name) return c.Fail(cmd.line,"duplicate body part: "+name);
+    const Token* open=c.Next();
+    if(!open || open->quoted || open->text!="{") return c.Fail(cmd.line,"$NekoModel expects '{'");
+    struct Choice { std::vector<Token> header,face; };
+    std::vector<Choice> choices; std::vector<Token> sharedFlex,sharedRules;
+    for(;;) {
+        if(c.Eof()) return c.Fail(cmd.line,"$NekoModel: missing '}'");
+        Token t=*c.Next(); if(!t.quoted && t.text=="}") break;
+        std::string o=Lower(t.text);
+        std::vector<Token> line{t};
+        while(!c.Eof() && c.Cur().line==t.line && (c.Cur().quoted || c.Cur().text!="}")) line.push_back(*c.Next());
+        if(o=="studio") {
+            if(line.size()<2) return c.Fail(t.line,"studio requires a filename");
+            choices.push_back({std::vector<Token>(line.begin()+1,line.end()),{}}); continue;
+        }
+        if(choices.empty()) return c.Fail(t.line,"$NekoModel expects studio before face markup");
+        if(o=="flex" || o=="flexpair") { sharedFlex.insert(sharedFlex.end(),line.begin(),line.end()); continue; }
+        if(o=="eyelid") {
+            if(line.size()!=10) return c.Fail(t.line,"Neko eyelid requires type, three morph/target pairs and two eyes");
+            std::vector<Token> converted={{"dmxeyelid",t.line,false},line[1],{choices.back().header.front().text,t.line,true}};
+            for(int i=0;i<3;++i) { converted.push_back({i==0?"lowerer":i==1?"neutral":"raiser",t.line,false}); converted.push_back(line[2+i*2]); converted.push_back(line[3+i*2]); }
+            converted.push_back({"righteyeball",t.line,false}); converted.push_back(line[8]);
+            converted.push_back({"lefteyeball",t.line,false}); converted.push_back(line[9]); line=std::move(converted);
+        }
+        auto& dest=(o=="eyeball" || o=="eyelid" || o=="mouth")?choices.back().face:sharedRules;
+        dest.insert(dest.end(),line.begin(),line.end());
+    }
+    if(choices.empty()) return c.Fail(cmd.line,"$NekoModel has no studios");
+    cm::CompileInput::InBodyPart result; result.name=name;
+    for(size_t i=0;i<choices.size();++i) {
+        std::vector<Token> body={{name+"_studio_"+std::to_string(i),cmd.line,true}};
+        body.insert(body.end(),choices[i].header.begin(),choices[i].header.end());
+        body.push_back({"{",cmd.line,false}); body.push_back({"noautodmxrules",cmd.line,false});
+        body.insert(body.end(),choices[i].face.begin(),choices[i].face.end());
+        body.insert(body.end(),sharedFlex.begin(),sharedFlex.end());
+        if(i+1==choices.size()) body.insert(body.end(),sharedRules.begin(),sharedRules.end());
+        body.push_back({"}",cmd.line,false});
+        c.SpliceAt(c.pos,body);
+        if(!CmdModel(c,cmd)) return false;
+        auto part=std::move(c.in.bodyparts.back()); c.in.bodyparts.pop_back();
+        result.models.insert(result.models.end(),std::make_move_iterator(part.models.begin()),std::make_move_iterator(part.models.end()));
+    }
+    c.in.bodyparts.push_back(std::move(result)); return true;
 }
 
 bool CmdAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, false); }
@@ -4714,6 +4840,37 @@ bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
 // $modelbudget { bones <n> materials <n> } - set the compile ceilings for this
 // model. Braces are optional for a single field. The pulselimits.h value is the
 // cap; bones default to 255 and must be raised here to go past it.
+bool CmdJiggleBoneRealign(Ctx& c,const Token& cmd) {
+    pm::Vector3 angle;
+    if(!c.WantFloat("a pitch",cmd,angle.x)||!c.WantFloat("a yaw",cmd,angle.y)||!c.WantFloat("a roll",cmd,angle.z)) return false;
+    if(!std::isfinite(angle.x)||!std::isfinite(angle.y)||!std::isfinite(angle.z)) return c.Fail(cmd.line,"jiggle realignment angles must be finite");
+    c.in.jiggleRealign={angle.x*pm::kDeg2Rad,angle.y*pm::kDeg2Rad,angle.z*pm::kDeg2Rad}; c.in.jiggleRealignSet=true; return true;
+}
+bool CmdReverseJiggleBoneRotation(Ctx& c,const Token& cmd) {
+    while(!c.Eof() && c.Cur().line==cmd.line && !c.AtCommand()) {
+        Token t=*c.Next(); std::string axis=Lower(t.text);
+        if(axis=="pitch") c.in.reverseJigglePitch=true;
+        else if(axis=="yaw") c.in.reverseJiggleYaw=true;
+        else return c.Fail(t.line,"ReverseJiggleBoneRotation expects pitch or yaw");
+    }
+    return true;
+}
+
+bool CmdMaxVerts(Ctx& c,const Token& cmd) {
+    int limit=0; if(!c.WantInt("a vertex limit",cmd,limit)) return false;
+    if(limit<3) return c.Fail(cmd.line,"MaxVerts must be at least 3");
+    int clamp=limit;
+    if(!c.Eof() && c.Cur().line==cmd.line) { if(!c.WantInt("a vertex clamp",cmd,clamp)) return false; }
+    if(clamp<3 || clamp>limit) return c.Fail(cmd.line,"MaxVertexClamp must be 3..MaxVertexLimit");
+    c.in.maxMeshVerts=std::min(clamp,lim::kMaxMeshVerts); return true;
+}
+
+bool CmdMaxBones(Ctx& c,const Token& cmd) {
+    int count=0; if(!c.WantInt("an output bone limit",cmd,count)) return false;
+    if(count<1 || count>256) return c.Fail(cmd.line,"MaxBones must be 1..256 (VVD bone indices are bytes)");
+    c.in.budgetBones=count; return true;
+}
+
 bool CmdModelBudget(Ctx& c, const Token& cmd) {
     const bool braced = !c.Eof() && !c.Cur().quoted && c.Cur().text == "{";
     if (braced)
@@ -5009,6 +5166,12 @@ bool CmdUpAxis(Ctx& c, const Token& cmd) {
     if (!c.Want("an axis", cmd, axis))
         return false;
 
+    if(!c.Eof() && c.Cur().line==cmd.line && !c.Cur().quoted &&
+       (Lower(c.Cur().text)=="gltf" || Lower(c.Cur().text)=="assimp")) {
+        const std::string backend=Lower(c.Next()->text);
+        if(Lower(axis)!="z" && Lower(axis)!="y") return c.Fail(cmd.line,"scene UpAxis must be y or z");
+        if(backend=="gltf") c.sceneOptions.gltfZUp=Lower(axis)=="z"; else c.sceneOptions.zUp=Lower(axis)=="z"; return true;
+    }
     pm::RadianEuler r{0.0f, 0.0f, pm::kPiF / 2.0f};
     if (_stricmp(axis.c_str(), "x") == 0)
         r.y = pm::kPiF / 2.0f; // 90 about y moves x into z
@@ -5997,6 +6160,29 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
 // attachment name if one matches and otherwise a bone name. The inline form of
 // a VRD <aimconstraint>; the parent and the base position both come from the
 // skeleton, so neither is asked for.
+bool CmdNekoDriverBone(Ctx& c,const Token& cmd) {
+    std::string driver,pose;
+    if(!c.Want("a driver bone",cmd,driver) || !WantOpenBrace(c,cmd,"$NekoDriverBone")) return false;
+    std::vector<Token> triggers,helpers; bool closed=false;
+    while(!c.Eof()) {
+        Token t=*c.Next(); if(!t.quoted && t.text=="}") { closed=true; break; }
+        if(!t.quoted && Lower(t.text)=="pose") { if(!c.Want("a pose animation",t,pose)) return false; }
+        else if(!t.quoted && Lower(t.text)=="trigger") {
+            float tolerance=0; int frame=0;
+            if(!c.WantFloat("an influence angle",t,tolerance) || !c.WantInt("a frame",t,frame)) return false;
+            triggers.push_back({"posetrigger",t.line,false}); triggers.push_back({std::to_string(tolerance),t.line,false}); triggers.push_back({std::to_string(frame),t.line,false});
+        } else helpers.push_back(t);
+    }
+    if(!closed) return c.Fail(cmd.line,"NekoDriverBone is missing '}'");
+    if(pose.empty() || triggers.empty() || helpers.empty()) return c.Fail(cmd.line,"NekoDriverBone requires pose, triggers and helper bones");
+    for(const auto& helper:helpers) {
+        std::vector<Token> body={helper,{driver,cmd.line,true},{"absolute",cmd.line,false},{"poseanim",cmd.line,false},{pose,cmd.line,true},{"{",cmd.line,false}};
+        body.insert(body.end(),triggers.begin(),triggers.end()); body.push_back({"}",cmd.line,false});
+        c.SpliceAt(c.pos,body); if(!CmdDriverBone(c,cmd)) return false;
+    }
+    return true;
+}
+
 bool CmdDriverAimAt(Ctx& c, const Token& cmd) {
     cm::AimAtBone ab;
     ab.autobasepos = true;
@@ -7287,9 +7473,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
     float fps = 0.0f;
     if (!c.WantFloat("a frame rate", cmd, fps))
         return false;
-    if (fps <= 0.0f)
-        return c.Fail(cmd.line, "$defaultfps must be > 0");
+    if (!std::isfinite(fps) || fps <= 0.0f || fps>1000)
+        return c.Fail(cmd.line, "$defaultfps/$FPS must be finite and within (0,1000]");
     c.defaultFps = fps;
+    c.sceneOptions.sampleRate=fps;
+    c.sceneOptions.explicitSampleRate=true;
     return true;
 }
 
@@ -8246,8 +8434,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
     }
 
     std::string expectedText;
-    if (!c.Want("true or false", cmd, expectedText))
-        return false;
+    expectedText="true";
+    if(!c.Eof() && c.Cur().line==cmd.line && !c.AtCommand() && !c.Want("true or false",cmd,expectedText)) return false;
     bool expected = false;
     if (_stricmp(expectedText.c_str(), "true") == 0)
         expected = true;
@@ -8336,7 +8524,7 @@ bool SpliceInclude(Ctx& c) {
         const std::string& o = c.toks[p].text;
         if (_stricmp(o.c_str(), "localdir") == 0)
             localDir = true;
-        else if (_stricmp(o.c_str(), "optional") == 0)
+        else if ((_stricmp(o.c_str(), "optional") == 0 || _stricmp(o.c_str(),"iffileexists")==0))
             optional = true;
         else
             return c.Fail(c.toks[p].line, "$include: unknown parameter \"" + o +
@@ -8599,6 +8787,21 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
 }
 
 // Tools++ permits both first assignment and replacement. Launch -defvar stays pinned.
+bool CmdUndefineVariable(Ctx& c,const Token& cmd) {
+    std::string name; if(!c.Want("a variable name",cmd,name)) return false;
+    if(!PinnedByDefVar(c,cmd,name)) c.variables.erase(name);
+    return true;
+}
+
+bool CmdPreRenameMaterial(Ctx& c,const Token& cmd) {
+    std::string from,to; if(!c.Want("a material",cmd,from)||!c.Want("a replacement material",cmd,to)) return false;
+    c.in.mats.preRenames.emplace_back(from,to); c.physMats.preRenames.emplace_back(from,to); return true;
+}
+
+bool CmdNoFastGltf(Ctx& c,const Token&) { c.sceneOptions.noFastGltf=true; return true; }
+
+bool CmdDiscardVertexAnimationNormals(Ctx& c,const Token&) { c.discardVertexAnimationNormals=true; return true; }
+
 bool CmdSetVariable(Ctx& c, const Token& cmd) {
     std::string name, value;
     if (!c.Want("a name", cmd, name) || !c.Want("a value", cmd, value))
@@ -8967,9 +9170,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
             taken = true;
             chosen = std::move(body);
         }
-        if (c.Eof() || c.Cur().quoted || _stricmp(c.Cur().text.c_str(), "$elif") != 0)
+        if (c.Eof() || c.Cur().quoted || (_stricmp(c.Cur().text.c_str(), "$elif") != 0 && _stricmp(c.Cur().text.c_str(),"$eldef")!=0))
             break;
         clause = c.toks[c.pos++];
+        ifdef=Lower(clause.text)=="$eldef"; negate=false;
     }
     if (!c.Eof() && !c.Cur().quoted && _stricmp(c.Cur().text.c_str(), "$else") == 0) {
         const Token els = c.toks[c.pos++];
@@ -9129,12 +9333,13 @@ bool CmdCeOption(Ctx& c, const Token& cmd) {
         if(!std::isfinite(c.in.ce.eyeScale) || c.in.ce.eyeScale<=0) return c.Fail(cmd.line,"eyeballscale must be finite and positive");
         return true;
     }
-    if(name=="outputbuffersize" || name=="mdloutputbuffersize" || name=="anioutputbuffersize") {
+    if(name=="filebuffersize" || name=="outputbuffersize" || name=="mdloutputbuffersize" || name=="anioutputbuffersize") {
         float mb;
         if(!c.WantFloat("a positive buffer size in MB",cmd,mb)) return false;
         if(!std::isfinite(mb) || mb<=0 || mb>4096) return c.Fail(cmd.line,"buffer size must be greater than 0 and at most 4096 MB");
         size_t bytes=static_cast<size_t>(mb*1024.0*1024.0);
         if(bytes==0) return c.Fail(cmd.line,"buffer size must be at least one byte");
+        if(name=="filebuffersize") { c.in.ce.fileLimit=bytes; return true; }
         if(name!="anioutputbuffersize") c.in.ce.mdlLimit=bytes;
         if(name!="mdloutputbuffersize") c.in.ce.aniLimit=bytes;
         return true;
@@ -9153,6 +9358,11 @@ constexpr Command kCommands[] = {
     {"$assert", CmdAssert},
     {"$qcassert", CmdQcAssert},
     {"$print", CmdPrint},
+    {"$msg", CmdPrint},
+    {"$undefinevariable", CmdUndefineVariable},
+    {"$prerenamematerial", CmdPreRenameMaterial},
+    {"$discardvertexanimationnormals", CmdDiscardVertexAnimationNormals},
+    {"$nofastgltf", CmdNoFastGltf},
     {"$definevariable", CmdDefineVariable},
     {"$redefinevariable", CmdRedefineVariable},
     {"$setvariable", CmdSetVariable},
@@ -9165,6 +9375,7 @@ constexpr Command kCommands[] = {
     {"$ifdef", CmdIfdef},
     {"$ifndef", CmdIfndef},
     {"$elif", CmdElifOutside},
+    {"$eldef", CmdElifOutside},
     {"$else", CmdElifOutside},
     {"$switch", CmdSwitch},
     {"$case", CmdCaseOutside},
@@ -9180,6 +9391,7 @@ constexpr Command kCommands[] = {
     {"$body", CmdLegacyBody},
     {"$bodygroup", CmdLegacyBody},
     {"$model", CmdModel},
+    {"$nekomodel", CmdNekoModel},
     {"$modelgrouppreset", CmdModelGroupPreset},
     {"$bodygrouppreset", CmdModelGroupPreset},
     {"$datamodeljoints", CmdDataModelJoints},
@@ -9198,6 +9410,7 @@ constexpr Command kCommands[] = {
     {"$includemodel", CmdIncludeModel},
     {"$cmdlist", CmdCmdList},
     {"$defaultfps", CmdDefaultFps},
+    {"$fps", CmdDefaultFps},
     {"$motionrollback", CmdMotionRollback},
     {"$nosequence", CmdNoSequence},
     {"$defaultfadein", CmdDefaultFadeIn},
@@ -9220,6 +9433,10 @@ constexpr Command kCommands[] = {
     {"$vtxformat", CmdVtxFormat},
     {"$nodx80", CmdNoDx80},
     {"$modelbudget", CmdModelBudget},
+    {"$maxbones", CmdMaxBones},
+    {"$maxverts", CmdMaxVerts},
+    {"$jigglebonerealign", CmdJiggleBoneRealign},
+    {"$reversejigglebonerotation", CmdReverseJiggleBoneRotation},
     {"$setbindpose", CmdSetBindPose},
     {"$setflex", CmdSetFlex},
     {"$renderpass", CmdRenderPass},
@@ -9245,6 +9462,7 @@ constexpr Command kCommands[] = {
     {"$eyeballscale", CmdCeOption},
     {"$outdir", CmdCeOption},
     {"$outputbuffersize", CmdCeOption},
+    {"$filebuffersize", CmdCeOption},
     {"$mdloutputbuffersize", CmdCeOption},
     {"$anioutputbuffersize", CmdCeOption},
     {"$pushdprocedural", CmdCeOption},
@@ -9297,6 +9515,7 @@ constexpr Command kCommands[] = {
     {"$jigglebone", CmdJiggleBone},
     {"$culljigglebones", CmdCullJiggleBones},
     {"$driverbone", CmdDriverBone},
+    {"$nekodriverbone", CmdNekoDriverBone},
     {"$driveraimat", CmdDriverAimAt},
     {"$proceduralbones", CmdProceduralBones},
     {"$realignbones", CmdRealignBones},
@@ -9494,6 +9713,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
     out.upAxisY = source::DmxUpAxisY();
 
     // $renamemorph: before anything below resolves a morph by name
+    for(auto& animation:c.in.anims) if(animation.source && (IsScenePath(animation.source->filename) || IsFbxPath(animation.source->filename)) && (animation.sampleRate>0 || !animation.inputNode.empty())) {
+        source::SceneOptions scene=animation.source->sceneOptions; scene.node=animation.inputNode; if(animation.sampleRate>0) { scene.sampleRate=animation.sampleRate; scene.explicitSampleRate=true; }
+        const std::string file=animation.source->filename;
+        animation.source=LoadSource(c,file,1,false,nullptr,source::LoadKind::Animation,&scene);
+        if(!animation.source) return false;
+    }
+    if(c.discardVertexAnimationNormals) for(auto& src:c.in.sources) for(auto& morph:src->morphs) for(auto& va:morph.vanims) va.normal={};
     if (!ApplyMorphRenames(c))
         return false;
 

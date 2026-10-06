@@ -24,6 +24,7 @@
 namespace pulse::loader {
 
 struct FaceMarkup;
+void GenerateSourceMorphBalance(source::Source& source,const std::string& name,float factor);
 
 // The script-authored flex block. Both front ends fill this and hand it to
 // RegisterFlex(); nothing in here is format-specific.

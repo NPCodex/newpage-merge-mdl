@@ -3033,6 +3033,10 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
         if(err) *err="CE output buffer limit exceeded; increase MDLOutputBufferSize/ANIOutputBufferSize";
         return false; // validate before creating or overwriting any output
     }
+    if(m.fileLimit && (mdlBuf.size()>m.fileLimit || vvdBuf.size()>m.fileLimit || vtxBuf.size()>m.fileLimit ||
+                       vtxBuf80.size()>m.fileLimit || phyBuf.size()>m.fileLimit || (blockBuf && blockBuf->pos>m.fileLimit))) {
+        if(err) *err="FileBufferSize output limit exceeded; increase $FileBufferSize (MB)"; return false;
+    }
     // save. Reference hardcodes a "models/" root in the disk path (not in the
     // header name), so $modelname stays prefix-free and the .mdl bytes match.
     std::filesystem::path base =

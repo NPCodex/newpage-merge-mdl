@@ -163,3 +163,42 @@ and max into the min slot (max remains 1). This implementation honors the comman
 guide's min/max semantics instead of reproducing that bug. Non-stereo balance
 bytes and v48/v49 model headers also differ. These differences do not constitute
 whole-file equivalence. See [BINARY_ANALYSIS.md](BINARY_ANALYSIS.md).
+
+## NekoMDL v2.3.0 compatibility
+
+The supplied **Chinese** ChangeLog.txt is the feature checklist. The executable
+is a behavioral reference, not bundled or called by this compiler.
+
+| Entry | Implemented behavior |
+| --- | --- |
+| glTF / GLB / VRM | cgltf fast parser, scene transforms, skins, named morph targets, optional UVs/morph normals; missing base normals are generated. Assimp 6.0.4 imports additional supported scene formats. Existing ufbx FBX import remains. |
+| `$NoFastGltf` | Uses Assimp instead of cgltf for subsequent glTF references. Parsed scene geometry is shared between private InNode loads. |
+| `studio file InNode name` | Selects meshes on that scene node and descendants; a missing node is an error. Supported by body/model/bodygroup and NekoModel; available for FBX too. |
+| `$FPS N`, `Pick name`, `SampleRate N` | FPS sets subsequent default animation playback and scene sampling. Pick aliases blockname. SampleRate changes import sampling, independently of playback FPS. Default clip is the first non-BindPose animation. Rates must be finite, positive and at most 1000. FBX keeps its original scene rate unless FPS/SampleRate explicitly overrides it. |
+| `$UpAxis y\|z gltf`, `$UpAxis y\|z assimp` | Independent scene import axes, default Y-up. A bare UpAxis retains existing model-wide behavior. ufbx FBX retains its native coordinate conversion. |
+| `$NekoModel name { ... }` | One bodygroup with private studio choices. Each studio's eyes/lids stay scoped; shared named flex/flexpair declarations apply to all choices and controllers/rules are registered once. Use separate lines for studio and face declarations. Neko eyelid syntax takes three morph/target pairs followed by right and left eye names. |
+| Named `flex`, `flexpair` | Uses the source morph name. Stereo glTF/FBX morphs receive smooth balance over the default one-unit X band. Missing morph data creates an empty descriptor with a warning, matching the reference's permissive declarations. Existing SMD/VTA frame syntax remains unchanged. |
+| `$NekoDriverBone driver { pose file; trigger angle frame; helpers... }` | Samples every helper from the pose animation and emits quaternion procedural triggers. Trigger/helper declarations use separate lines. |
+| `$JiggleBoneRealign p y r` | Applies a local XYZ rotation in degrees to jiggle bone bind axes, compensating geometry/animations through srcRealign. |
+| `$ReverseJiggleBoneRotation [pitch] [yaw]` | Reverses each selected constraint range to [-max,-min], independently of declaration order. |
+| `NoBoneRealign`, `AppendScale N` | Opts one animation out of source realignment; multiplies its existing scale. |
+| `$PreRenameMaterial old new` | Renames material lookup inputs for subsequent source loads, before global material registration. Existing per-model RenameMat stays private. |
+| `$DiscardVertexAnimationNormals` | Zeros imported morph/VTA normal deltas, preserving base mesh normals and position deltas. |
+| `$MaxVerts limit [clamp]` | Splits per-material output meshes without dropping triangles; limit/clamp must be at least 3, clamp cannot exceed limit, and effective mesh cap is at most 65536. This differs from Neko source pre-splitting. |
+| `$MaxBones N`, `-maxbones N` | Changes final post-collapse budget; 1..256 because VVD bone indices are bytes. Existing default remains 255. |
+| `$FileBufferSize MB` | Caps every serialized MDL/VVD/VTX/PHY/ANI file before overwriting any output. Buffers remain dynamically sized; no fixed 8 MB default. |
+| `$UndefineVariable`, `$Msg`, `-Dname value` | Removes an unlocked variable, prints text, or pins a command-line variable. Pinned variables survive undefine/redefine attempts. |
+| Line `$if/$ifdef/$elif/$eldef/$else/$endif` | Normalizes line blocks to the existing conditional evaluator; nesting and skipped invalid branches are supported. Existing braced syntax remains available. |
+| `$Include file iffileexists`, `$QCAssert ...` | Optional include alias; a QCAssert without explicit true/false defaults to true. |
+| `-checksequenceorder` | Enables existing-model ordering; already the project's default. `-noremap` selects QC order. |
+| `-playbeep`, `-reloadhlmv` | Completion/error tone; Windows HLMV notification using mx_class / WM_COMMAND 1017, sent only after successful file output. |
+
+Static node scale is baked into geometry. Animated scene scale cannot be encoded
+as MDL bone TRS and fails explicitly; bake it into vertex animation first.
+
+Unimplemented or unverified: NvTriStrip (`-nvtristrip` fails), full source clamp
+algorithm parity, all scene formats/complex rigs, animated morph weights/mesh
+swaps, compressed/instanced glTF, and engine integration. Assimp fallback can
+lose glTF STEP/CUBICSPLINE interpolation semantics. No claim of whole-file or
+performance equality is made. PulseModel updates retain these maintained source
+changes through the overlay; Neko reference updates are reviewed manually.

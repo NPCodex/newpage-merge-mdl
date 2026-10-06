@@ -922,6 +922,8 @@ void MapJiggleBones(Ctx& ctx) {
             continue;
         }
         ctx.out->bones[jbs[i].bone].flags |= BONE_ALWAYS_PROCEDURAL;
+        if(ctx.in->reverseJigglePitch) { float old=jbs[i].minPitch; jbs[i].minPitch=-jbs[i].maxPitch; jbs[i].maxPitch=-old; }
+        if(ctx.in->reverseJiggleYaw) { float old=jbs[i].minYaw; jbs[i].minYaw=-jbs[i].maxYaw; jbs[i].maxYaw=-old; }
 
         std::printf("Marking bone \"%s\" procedural: jiggle\n", jbs[i].bonename.c_str());
     }
@@ -2100,6 +2102,10 @@ bool PushAnimSrcRealignOverride(Ctx& ctx, const Anim& panim, std::vector<SrcReal
     BoneEditState& st = ctx.boneEdits;
     saved.clear();
 
+    if(panim.noBoneRealign) {
+        for(size_t b=0;b<m.bones.size();++b) { saved.push_back({int(b),m.bones[b].srcRealign}); pm::AngleMatrix(RadianEuler{},m.bones[b].srcRealign); }
+        return !saved.empty();
+    }
     if (st.applied.empty())
         return false;
     if (!panim.ignoreTransformPosition && !panim.ignoreTransformAngles &&
@@ -2248,6 +2254,13 @@ bool RealignBones(Ctx& ctx, std::string* err) {
 
                 MatrixSetColumn(v3, 3, boneToPose[k]);
             }
+        }
+    }
+
+    if(ctx.in->jiggleRealignSet) {
+        matrix3x4 rotation; pm::AngleMatrix(ctx.in->jiggleRealign,rotation);
+        for(const JiggleBone& jiggle:m.jigglebones) { int b=m.FindBone(jiggle.bonename.c_str());
+            if(b>=0) boneToPose[b]=pm::ConcatTransforms(boneToPose[b],rotation);
         }
     }
 
@@ -3551,8 +3564,7 @@ struct MeshBucket {
 // land on both sides of a cut is duplicated into both; those few duplicates are
 // the entire cost of the split.
 std::vector<MeshBucket> PartitionMesh(int numvertices,
-                                      const std::vector<std::vector<src::SrcFace>>& lodFaces) {
-    const int cap = lim::kMaxMeshVerts;
+                                      const std::vector<std::vector<src::SrcFace>>& lodFaces,int cap) {
     std::vector<MeshBucket> buckets;
 
     auto addBucket = [&]() {
@@ -3720,13 +3732,13 @@ void BuildOutputMeshes(Ctx& ctx) {
                 model.outMeshes.push_back(std::move(om));
             };
 
-            if (range.numvertices <= lim::kMaxMeshVerts) {
+            if (range.numvertices <= ctx.in->maxMeshVerts) {
                 emit(range.numvertices, nullptr, std::move(lodFaces));
                 continue;
             }
 
             split = true;
-            std::vector<MeshBucket> buckets = PartitionMesh(range.numvertices, lodFaces);
+            std::vector<MeshBucket> buckets = PartitionMesh(range.numvertices, lodFaces,ctx.in->maxMeshVerts);
             for (MeshBucket& bucket : buckets)
                 emit(static_cast<int>(bucket.verts.size()), bucket.verts.data(),
                      std::move(bucket.lodFaces));
@@ -3745,7 +3757,7 @@ void BuildOutputMeshes(Ctx& ctx) {
             }
             std::printf("Splitting material \"%s\": %d vertices exceeds the %d a mesh can "
                         "index, using %d meshes (%s), %d vertices duplicated\n",
-                        matName.c_str(), range.numvertices, lim::kMaxMeshVerts,
+                        matName.c_str(), range.numvertices, ctx.in->maxMeshVerts,
                         static_cast<int>(buckets.size()), pieces.c_str(),
                         total - range.numvertices);
         }
@@ -9858,6 +9870,7 @@ static std::string AnimSignature(const Anim& a) {
     SigVal(s, a.looprestartpercent);
     SigVal(s, a.isBindPose);
     SigVal(s, a.noAutoIK);
+    SigVal(s,a.noBoneRealign);
     SigVal(s, a.ignoreTransformAngles);
     SigVal(s, a.ignoreTransformPosition);
     SigVal(s, a.motionrollback);
@@ -10394,7 +10407,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     out.zeroFramesHighres = input.zeroFramesHighres;
     out.minZeroFramePosDelta = input.minZeroFramePosDelta;
     out.boneSaveFrames = input.boneSaveFrames;
-    out.mdlLimit=input.ce.mdlLimit; out.aniLimit=input.ce.aniLimit;
+    out.mdlLimit=input.ce.mdlLimit; out.aniLimit=input.ce.aniLimit; out.fileLimit=input.ce.fileLimit;
     out.bbox[0] = input.bbox[0];
     out.bbox[1] = input.bbox[1];
     out.bboxset = input.bboxSet;
@@ -10534,6 +10547,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         a.fudgeloop = ia.fudgeloop;
         a.noAutoIK = ia.noAutoIK;
         a.nocull = ia.nocull;
+        a.noBoneRealign=ia.noBoneRealign;
         a.ignoreTransformAngles = ia.ignoreTransformAngles;
         a.ignoreTransformPosition = ia.ignoreTransformPosition;
         a.motiontype = ia.motiontype;

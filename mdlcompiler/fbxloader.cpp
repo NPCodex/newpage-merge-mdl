@@ -130,8 +130,8 @@ void BuildSkeleton(const ufbx_scene* scene, float scale, Source& out,
 // scene's own frame rate. $animation/$sequence pick one with blockname; the
 // default is the first non-BindPose clip.
 bool LoadAnimStacks(const ufbx_scene* scene, float scale, Source& out, std::string* err,
-                    const std::unordered_map<uint32_t, int>& nodeToBone) {
-    double fps = scene->settings.frames_per_second;
+                    const std::unordered_map<uint32_t, int>& nodeToBone,float requestedRate) {
+    double fps = requestedRate>0 ? requestedRate : scene->settings.frames_per_second;
     if (fps <= 0.0)
         fps = 30.0;
 
@@ -303,7 +303,7 @@ void LoadMorphs(const std::vector<const ufbx_node*>& meshes, const std::vector<i
 } // namespace
 
 bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, float scale,
-                   std::string* err, bool morphSource, MeshFilter* filter, bool animOnly) {
+                   std::string* err, bool morphSource, MeshFilter* filter, bool animOnly,const SceneOptions* options) {
     ufbx_load_opts opts = {};
     // Source is right-handed Z-up; ADJUST_TRANSFORMS bakes the conversion into
     // each node so it survives dropping the root node.
@@ -342,7 +342,7 @@ bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, fl
 
     // Load takes for every kind, not just animOnly: the source cache treats a
     // higher LoadKind as a superset, so a mesh load must carry the anims too.
-    if (!LoadAnimStacks(scene, scale, out, err, nodeToBone)) {
+    if (!LoadAnimStacks(scene, scale, out, err, nodeToBone,options && options->explicitSampleRate?options->sampleRate:0)) {
         ufbx_free_scene(scene);
         return false;
     }
@@ -352,6 +352,11 @@ bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, fl
         return true;
     }
 
+    const ufbx_node* selected=nullptr;
+    if(options && !options->node.empty()) {
+        for(size_t n=0;n<scene->nodes.count;++n) { const auto node=scene->nodes.data[n]; if(std::string(node->name.data,node->name.length)==options->node) selected=node; }
+        if(!selected) { if(err) *err="InNode not found: "+options->node; ufbx_free_scene(scene); return false; }
+    }
     std::vector<TriInput> tris;
     std::vector<uint32_t> triIndices;
     // every mesh's logical vertices laid end to end, so one id space covers the
@@ -365,6 +370,7 @@ bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, fl
         const ufbx_mesh* mesh = node->mesh;
         if (!mesh)
             continue;
+        if(selected) { bool keep=false; for(auto parent=node;parent;parent=parent->parent) if(parent==selected) keep=true; if(!keep) continue; }
         // a rejected mesh skips its geometry only - the node is already a bone
         if (filter && !filter->Keep(std::string(mesh->name.data, mesh->name.length),
                                     std::string(node->name.data, node->name.length)))

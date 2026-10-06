@@ -568,6 +568,7 @@ struct Anim {
     bool nocull = false;      // `nocull`: exempt from $animationcullmethod
     // `ignoretransformbone <angles|position>`: convert this clip with that
     // category of $transformbone bind-pose edits rolled back
+    bool noBoneRealign=false;
     bool ignoreTransformAngles = false;
     bool ignoreTransformPosition = false;
     // motion extraction output (piecewisemove); motionrollback is how far back
@@ -996,7 +997,7 @@ struct BoneSaveFrame {
 };
 
 struct CompiledModel {
-    size_t mdlLimit=0,aniLimit=0;
+    size_t mdlLimit=0,aniLimit=0,fileLimit=0;
     std::string outname; // e.g. "testmodel/testcube" (no extension)
     bool forceWriteVertexData = false; // $forcewritevertexdata - save the empty .vvd/.vtx when there is no geometry
     int gflags = 0;
@@ -1121,7 +1122,7 @@ struct CompileInput {
         bool computeNormals=false, computeWrinkles=false, remapFlexGlobal=false;
         bool boneRules=false;
         std::string launchPrelude;
-        size_t mdlLimit=0,aniLimit=0; // bytes; zero keeps dynamic-buffer behavior
+        size_t mdlLimit=0,aniLimit=0,fileLimit=0; // bytes; zero keeps dynamic-buffer behavior
         float eyeScale=0.0f;
         std::string outputDirectory;
     } ce;
@@ -1169,6 +1170,9 @@ struct CompileInput {
     // $modelbudget: per-model ceilings, capped at the pulselimits.h values (a
     // budget above those is rejected at parse time). Bones default to 255 - the
     // last bone a uint8 weight/RLE index can reach - not the 1024 hard cap.
+    RadianEuler jiggleRealign;
+    bool jiggleRealignSet=false,reverseJigglePitch=false,reverseJiggleYaw=false;
+    int maxMeshVerts=lim::kMaxMeshVerts;
     int budgetBones = 255;
     int budgetMaterials = lim::kMaxSkins;
 
@@ -1472,6 +1476,8 @@ struct CompileInput {
         // `blockname <name>`: which clip inside the source to sample. "" picks
         // the first non-BindPose clip, the way an untagged animation does.
         std::string blockname;
+        std::string inputNode;
+        float sampleRate=0;
         // per-animation transform, overriding the model-wide one. Consumed by
         // ConvertAnimation exactly like the model defaults are.
         Vector3 adjust;               // `origin x y z`
@@ -1489,6 +1495,7 @@ struct CompileInput {
         std::vector<InIkRule> ikrules;
         bool nocull = false;   // `nocull`: exempt from $animationcullmethod
         // `ignoretransformbone <angles|position>`, see Anim
+        bool noBoneRealign=false;
         bool ignoreTransformAngles = false;
         bool ignoreTransformPosition = false;
         int motiontype = 0;    // motion controls (LX/LY/LZ/LXR/.../LM/LQ)

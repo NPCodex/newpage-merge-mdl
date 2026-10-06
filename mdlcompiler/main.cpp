@@ -26,6 +26,9 @@
 #include "writer.h"
 #include "branding.h"
 #include "sequence_remap.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -62,6 +65,11 @@ static int Usage() {
     std::printf("                0 = legacy (TF2/L4D2/GMod/HL2), 1 = full (SFM/CS:GO/ASW)\n");
     std::printf("  -nodx80       skip the DirectX 8 .dx80.vtx output (also $nodx80).\n");
     std::printf("  -noremap      use script sequence order instead of preserving existing .mdl order\n");
+    std::printf("  -checksequenceorder preserve existing sequence order (default)\n");
+    std::printf("  -maxbones N  set final output bone limit (1..256)\n");
+    std::printf("  -Dname value pin a QC variable (NekoMDL syntax)\n");
+    std::printf("  -playbeep    play a completion/error tone\n");
+    std::printf("  -reloadhlmv  refresh the matching HLMV window after writing (Windows)\n");
     std::printf("                dx80 is only written when the vtx format is 0\n");
     std::printf("  -includesearchdir <dir>\n");
     std::printf("                extra fallback dir for $include, searched after any\n");
@@ -225,6 +233,7 @@ static int RunCompile(int argc, char** argv) {
     bool dumpDependencies = false;
     bool cullAnims = false;
     bool mostlyOpaque = false;
+    bool reloadHlmv=false;
     std::string cePrelude;
     std::vector<std::string> collapsePrefixes;
     pulse::loader::ScriptVars defvars;
@@ -245,7 +254,7 @@ static int RunCompile(int argc, char** argv) {
         }
         int ceValues=ceName=="includeprefix" ? 2 :
             (ceName=="includeanimprefix" || ceName=="eyeballscale" || ceName=="outdir" ||
-             ceName=="outputbuffersize" || ceName=="mdloutputbuffersize" || ceName=="anioutputbuffersize" ? 1 : 0);
+             ceName=="maxbones" || ceName=="outputbuffersize" || ceName=="mdloutputbuffersize" || ceName=="anioutputbuffersize" ? 1 : 0);
         if(ceValues) {
             if(i+ceValues>=argc) return Fail("bad option",option+" needs "+std::to_string(ceValues)+" argument(s)");
             cePrelude+="$"+ceName;
@@ -266,6 +275,11 @@ static int RunCompile(int argc, char** argv) {
             if (i + 1 >= argc)
                 return Fail("bad option", "-modelname needs a model path");
             modelname = argv[++i];
+        } else if (argv[i][0]=='-' && argv[i][1]=='D' && argv[i][2]) {
+            if(i+1>=argc) return Fail("bad option","-Dname needs a value");
+            std::string name=argv[i]+2; defvars.emplace_back(name,argv[++i]);
+        } else if (std::strcmp(argv[i], "-checksequenceorder")==0) {
+            noRemap=false;
         } else if (std::strcmp(argv[i], "-defvar") == 0) {
             // a .pulseqc $definevariable, set from the launch line and pinned
             if (i + 2 >= argc)
@@ -301,6 +315,12 @@ static int RunCompile(int argc, char** argv) {
             }
         } else if (std::strcmp(argv[i], "-cullanims") == 0) {
             cullAnims = true;
+        } else if (std::strcmp(argv[i],"-nvtristrip")==0) {
+            return Fail("unsupported option","Neko NvTriStrip mode is not implemented; use the default meshoptimizer backend");
+        } else if (std::strcmp(argv[i],"-reloadhlmv")==0) {
+            reloadHlmv=true;
+        } else if (std::strcmp(argv[i],"-playbeep")==0) {
+            // Completion tone is emitted by main(), including compile failures.
         } else if (std::strcmp(argv[i], "-noremap") == 0) {
             noRemap = true;
         } else if (std::strcmp(argv[i], "-MostlyOpaque") == 0 ||
@@ -448,6 +468,18 @@ static int RunCompile(int argc, char** argv) {
         pulse::dependencies::Print();
     auto tWrite = Clock::now();
     g_stage = "done";
+    if(reloadHlmv && !verify) {
+#ifdef _WIN32
+        std::string title="models\\"+model.outname+".mdl";
+        std::replace(title.begin(),title.end(),'/','\\');
+        HWND viewer=FindWindowExA(nullptr,nullptr,"mx_class",title.c_str());
+        if(!viewer) viewer=FindWindowExA(nullptr,nullptr,"mx_class",nullptr);
+        if(viewer && PostMessageA(viewer,WM_COMMAND,1017,0)) std::printf("Notified HLMV to reload\n");
+        else std::printf("HLMV not found or reload notification failed.\n");
+#else
+        std::printf("HLMV reload is available on Windows only.\n");
+#endif
+    }
 
     // lodFlag is a bit per LOD. The pool is shared, so a decimated LOD adds no
     // verts to it - only a replacemodel LOD does. Per-LOD = verts it draws.
@@ -503,6 +535,14 @@ int main(int argc, char** argv) {
         rc = Fail("internal error", e.what());
     } catch (...) {
         rc = Fail("internal error", "unknown C++ exception");
+    }
+    for(int i=1;i<argc;++i) if(std::strcmp(argv[i],"-playbeep")==0) {
+#ifdef _WIN32
+        Beep(rc==0?880:220,150);
+#else
+        if(isatty(fileno(stdout))) std::fputc('\a',stdout);
+#endif
+        break;
     }
     pulse::fatal::PauseIfAsked();
     return rc;

@@ -48,6 +48,20 @@ add_library(pulse_ufbx STATIC
 )
 target_include_directories(pulse_ufbx PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/ufbx)
 
+# Assimp 6.0.4: scene formats used by the NekoMDL compatibility importer.
+# Build entirely from vendored sources; no downloads during a user/CI build.
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_DRACO OFF CACHE BOOL "" FORCE)
+set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF)
+add_subdirectory(assimp EXCLUDE_FROM_ALL)
+add_library(pulse_cgltf STATIC cgltf/cgltf_impl.c)
+target_include_directories(pulse_cgltf PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/cgltf)
+
 # DMX reader (clean-room port of Datamodel.NET's format logic).
 add_library(pulse_dmx STATIC
     dmx/dmx.cpp

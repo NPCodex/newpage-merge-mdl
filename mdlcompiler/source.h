@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include "math/math.h"
 #include "pulselimits.h"
@@ -25,6 +26,15 @@ struct SrcBoneWeight {
     int numbones = 0;
     int bone[pulse::limits::kMaxSrcBoneWeights] = {};
     float weight[pulse::limits::kMaxSrcBoneWeights] = {};
+};
+
+struct SceneOptions {
+    std::string node;
+    float sampleRate = 30;
+    bool zUp = false;
+    bool noFastGltf = false;
+    bool explicitSampleRate=false;
+    bool gltfZUp=false;
 };
 
 // One unified vertex, single UV channel.
@@ -174,6 +184,7 @@ struct MaterialTable {
         bool relative = true;
     };
     std::vector<Texture> textures;
+    std::vector<std::pair<std::string,std::string>> preRenames;
     std::vector<int> materialToTexture;
 
     // Find-or-add; a query matches an entry of the other `relative` class only
@@ -197,6 +208,7 @@ enum class LoadKind {
 
 struct Source {
     std::string filename;
+    SceneOptions sceneOptions;
     LoadKind kind = LoadKind::Model; // set by the front end, the only thing
                                      // that knows the reference's role
 

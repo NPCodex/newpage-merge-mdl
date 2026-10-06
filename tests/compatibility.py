@@ -9,11 +9,202 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from scene_fixtures import scene_bytes,skinned_scene_bytes
 
 COMPILER = str(Path(sys.argv.pop(1)).resolve())
 
 
 class Compatibility(unittest.TestCase):
+    def scene_qc(self,text,*args,success=True):
+        qc=self.write('scene.qc',text)
+        result=subprocess.run([COMPILER,str(qc),'-game',str(self.root),*args],capture_output=True,text=True,errors='replace')
+        self.assertEqual(result.returncode==0,success,result.stdout+result.stderr)
+        return result.stdout+result.stderr
+
+    def scene_fixture(self,kind='gltf',**options):
+        path=self.root/('scene.'+kind); path.write_bytes(scene_bytes(kind,**options)); return path
+
+    def first_mesh_flex(self,name):
+        data=self.mdl(name); body=struct.unpack_from('<i',data,236)[0]
+        model=body+struct.unpack_from('<i',data,body+12)[0]
+        mesh=model+struct.unpack_from('<i',data,model+76)[0]
+        count,index=struct.unpack_from('<2i',data,mesh+16)
+        self.assertGreater(count,0); key=mesh+index
+        vertices,vanim=struct.unpack_from('<2i',data,key+20)
+        return data,[key+vanim+i*16 for i in range(vertices)]
+
+    def test_neko_fast_and_assimp_gltf_node_selection_and_missing_uv_normals(self):
+        self.scene_fixture(normals=False)
+        for backend in ('','$NoFastGltf\n'):
+            self.scene_qc('$modelname scene\n'+backend+'$body mesh "scene.gltf" InNode MeshA\n$sequence idle scene.gltf\n')
+            vvd=(self.root/'models/scene.vvd').read_bytes()
+            count=struct.unpack_from('<i',vvd,16)[0]; start=struct.unpack_from('<i',vvd,56)[0]
+            self.assertEqual(count,3)
+            positions=[struct.unpack_from('<3f',vvd,start+i*48+16) for i in range(count)]
+            # Bind-space geometry bakes the scene transform and Y-to-Z conversion.
+            self.assertAlmostEqual(max(p[0] for p in positions),3,places=4)
+            self.assertAlmostEqual(max(p[2] for p in positions),1,places=4)
+        output=self.scene_qc('$modelname invalid\n$body mesh scene.gltf InNode missing\n',success=False)
+        self.assertIn('InNode not found',output)
+
+    def test_neko_gltf_uv_matches_reference_on_both_backends(self):
+        self.scene_fixture(uv=True)
+        for backend in ('', '$NoFastGltf\n'):
+            self.scene_qc('$modelname scene\n'+backend+'$body mesh scene.gltf InNode MeshA\n')
+            data=(self.root/'models/scene.vvd').read_bytes()
+            count=struct.unpack_from('<i',data,16)[0]; start=struct.unpack_from('<i',data,56)[0]
+            actual=sorted(tuple(round(x,4) for x in struct.unpack_from('<2f',data,start+i*48+40)) for i in range(count))
+            self.assertEqual(actual,[(.1,.2),(.4,.9),(.7,.3)])
+
+    def test_neko_glb_vrm_and_scoped_up_axis(self):
+        for kind in ('glb','vrm'):
+            self.scene_fixture(kind)
+            self.scene_qc(f'$modelname {kind}\n$UpAxis z gltf\n$body mesh scene.{kind} InNode MeshA\n')
+            self.assertTrue(self.mdl(kind).startswith(b'IDST'))
+
+    def test_neko_sample_rate_pick_and_cubic_animation(self):
+        self.scene_fixture(interpolation='CUBICSPLINE')
+        self.scene_qc('$modelname sampled\n$animationcullmethod none\n$FPS 4\n'
+                      '$body mesh scene.gltf InNode MeshA\n'
+                      '$animation movement scene.gltf Pick Move SampleRate 8\n$sequence idle movement\n')
+        data=self.mdl('sampled'); count,offset=struct.unpack_from('<2i',data,180)
+        self.assertEqual(count,1)
+        self.assertEqual(struct.unpack_from('<i',data,offset+16)[0],9)
+        self.assertAlmostEqual(struct.unpack_from('<f',data,offset+8)[0],4)
+        output=self.scene_qc('$modelname bad\n$body m scene.gltf\n$animation a scene.gltf SampleRate 0\n',success=False)
+        self.assertIn('SampleRate',output)
+
+    def test_neko_multi_studio_model_flexes_and_discard_delta_normals(self):
+        self.scene_fixture()
+        qc='$modelname face\n$NekoModel face {\nstudio scene.gltf InNode MeshA\nstudio scene.gltf InNode MeshB\nflex Smile\nflexcontroller test strength\n%Smile = strength\n}\n'
+        self.scene_qc(qc)
+        data,vertices=self.first_mesh_flex('face'); self.assertEqual(len(vertices),3)
+        self.assertTrue(any(any(struct.unpack_from('<3e',data,v+10)) for v in vertices))
+        body=struct.unpack_from('<i',data,236)[0]; self.assertEqual(struct.unpack_from('<i',data,body+4)[0],2)
+        self.scene_qc('$DiscardVertexAnimationNormals\n'+qc)
+        data,vertices=self.first_mesh_flex('face')
+        self.assertTrue(all(struct.unpack_from('<3e',data,v+10)==(0,0,0) for v in vertices))
+
+    def test_neko_pre_rename_material_and_obj_import(self):
+        self.write('triangle.obj','mtllib triangle.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl Original\nf 1 2 3\n')
+        self.write('triangle.mtl','newmtl Original\nKd 1 1 1\n')
+        self.scene_qc('$modelname obj\n$PreRenameMaterial Original Renamed\n$UpAxis z assimp\n$body m triangle.obj\n')
+        data=self.mdl('obj'); count,index=struct.unpack_from('<2i',data,204)
+        self.assertEqual(count,1); name=index+struct.unpack_from('<i',data,index)[0]
+        self.assertEqual(data[name:data.index(b'\0',name)],b'Renamed')
+
+    def test_neko_line_conditions_cli_define_and_optional_include(self):
+        output=self.run_qc('$modelname vars\n$DefineVariable x 0\n$if x == 1\n$unknown_loser\n'
+                           '$elif x == 0\n$ifdef absent\n$unknown_nested\n$eldef name\n$Msg $name$\n$endif\n'
+                           '$else\n$unknown_else\n$endif\n$UndefineVariable x\n'
+                           '$Include missing.qci iffileexists\n$QCAssert boneexists root mesh.smd\n', '-Dname','selected')
+        self.assertIn('selected',output); self.assertIn('[Success]',output)
+        self.assertIn('missing $endif',self.run_qc('$if 1\n$Msg bad\n',success=False))
+
+    def test_neko_jiggle_realign_and_reverse_matches_reference_values(self):
+        self.write('jiggle.smd','version 1\nnodes\n0 "root" -1\n1 "jiggle" 0\nend\nskeleton\ntime 0\n'
+                   '0 0 0 0 0 0 0\n1 0 0 1 .2 .3 .4\nend\ntriangles\nmat\n'
+                   '1 0 0 1 0 0 1 0 0\n1 1 0 1 0 0 1 1 0\n1 0 1 1 0 0 1 0 1\nend\n')
+        self.scene_qc('$modelname jiggle\n$body m jiggle.smd\n$JiggleBoneRealign 10 20 30\n'
+                      '$ReverseJiggleBoneRotation pitch yaw\n$jigglebone jiggle { is_flexible { '
+                      'pitch_constraint -10 30 yaw_constraint -20 40 } }\n')
+        data=self.mdl('jiggle'); bones,index=struct.unpack_from('<2i',data,156)
+        bone=index+(bones-1)*216
+        for actual,expected in zip(struct.unpack_from('<3f',data,bone+60),(.53632557,.49104747,1.04254591)):
+            self.assertAlmostEqual(actual,expected,places=5)
+        proc=bone+struct.unpack_from('<i',data,bone+168)[0]
+        values=struct.unpack_from('<8f',data,proc+40)
+        for actual,expected in zip((values[0],values[1],values[4],values[5]),(-.69813168,.34906584,-.52359879,.17453292)):
+            self.assertAlmostEqual(actual,expected,places=5)
+
+    def test_neko_budget_validation(self):
+        self.assertIn('MaxBones',self.run_qc('$MaxBones 257\n',success=False))
+        self.assertIn('MaxVerts',self.run_qc('$MaxVerts 2\n',success=False))
+        self.assertIn('MaxVertexClamp',self.run_qc('$MaxVerts 10 11\n',success=False))
+        self.assertIn('buffer size',self.run_qc('$FileBufferSize 0\n',success=False))
+
+    def test_neko_stereo_balance_matches_reference(self):
+        import json
+        path=self.scene_fixture(); doc=json.loads(path.read_text()); doc['nodes'][1]['translation']=[0,0,0]
+        path.write_text(json.dumps(doc))
+        self.scene_qc('$modelname stereo\n$NekoModel face {\nstudio scene.gltf InNode MeshA\n'
+                      'flexpair Smile\nflexcontroller test L R\n%SmileL = L\n%SmileR = R\n}\n')
+        data,vertices=self.first_mesh_flex('stereo')
+        self.assertEqual(sorted(data[v+3] for v in vertices),[0,127,255])
+
+    def test_neko_file_budget_validates_all_files_before_overwrite(self):
+        self.run_qc('$modelname limited\n')
+        original=self.mdl('limited')
+        output=self.run_qc('$modelname limited\n$FileBufferSize .0001\n',success=False)
+        self.assertIn('FileBufferSize output limit exceeded',output)
+        self.assertEqual(self.mdl('limited'),original)
+
+    def test_neko_driver_bone_samples_all_helpers(self):
+        self.write('pose.smd','version 1\nnodes\n0 "root" -1\n1 "unused_child" 0\nend\nskeleton\n'
+                   'time 0\n0 0 0 0 0 0 0\n1 0 0 1 0 0 0\ntime 1\n0 0 0 0 0 0 .5\n1 .25 0 1 0 .25 0\nend\n')
+        self.run_qc('$modelname driver\n$NekoDriverBone root {\npose pose.smd\ntrigger 90 0\ntrigger 90 1\nunused_child\n}\n')
+        data=self.mdl('driver'); count,index=struct.unpack_from('<2i',data,156)
+        procedural=[index+b*216 for b in range(count) if struct.unpack_from('<i',data,index+b*216+164)[0]==2]
+        self.assertEqual(len(procedural),1)
+        proc=procedural[0]+struct.unpack_from('<i',data,procedural[0]+168)[0]
+        self.assertEqual(struct.unpack_from('<i',data,proc+4)[0],2)
+
+    def test_neko_append_scale_multiplies_existing_scale(self):
+        self.animation_fixture()
+        self.run_qc('$modelname scaled\n$animationcullmethod none\n$animation base moving.smd\n'
+                    '$animation bigger moving.smd scale 2 AppendScale 1.5\n$sequence idle bigger\n')
+        original=self.animation_poses('scaled','base'); scaled=self.animation_poses('scaled','bigger')
+        for a,b in zip(original,scaled):
+            # RLE/half-position compression quantizes each clip independently.
+            for i in range(3): self.assertAlmostEqual(b[i],3*a[i],delta=.02)
+
+    def test_neko_no_bone_realign_is_scoped_to_one_animation(self):
+        self.animation_fixture()
+        self.run_qc('$modelname plain\n$animation raw moving.smd\n$sequence idle raw\n')
+        plain=self.animation_poses('plain','raw')
+        self.run_qc('$modelname realigned\n$animationcullmethod none\n'
+                    '$definebone root "" 0 0 0 30 0 0 0 0 0 20 10 5\n'
+                    '$animation aligned moving.smd\n$animation raw moving.smd NoBoneRealign\n$sequence idle raw\n')
+        raw=self.animation_poses('realigned','raw'); aligned=self.animation_poses('realigned','aligned')
+        for a,b in zip(plain,raw):
+            for x,y in zip(a,b): self.assertAlmostEqual(x,y,places=3)
+        self.assertNotEqual(raw,aligned)
+
+    def test_neko_small_mesh_limit_splits_without_dropping_geometry(self):
+        self.scene_fixture()
+        self.scene_qc('$modelname split\n$MaxVerts 3\n$body m scene.gltf\n')
+        data=self.mdl('split'); body=struct.unpack_from('<i',data,236)[0]
+        model=body+struct.unpack_from('<i',data,body+12)[0]
+        self.assertEqual(struct.unpack_from('<i',data,model+72)[0],2)
+        vvd=(self.root/'models/split.vvd').read_bytes()
+        self.assertEqual(struct.unpack_from('<i',vvd,16)[0],6)
+
+    def test_neko_gltf_skin_uses_inverse_bind_without_mesh_node_transform(self):
+        (self.root/'skin.gltf').write_bytes(skinned_scene_bytes())
+        for backend in ('','$NoFastGltf\n'):
+            self.scene_qc('$modelname skin\n$CEBoneRules\n'+backend+'$body m skin.gltf InNode MeshA\n')
+            vvd=(self.root/'models/skin.vvd').read_bytes(); start=struct.unpack_from('<i',vvd,56)[0]
+            xs=[struct.unpack_from('<f',vvd,start+i*48+16)[0] for i in range(3)]
+            self.assertEqual(sorted(round(x,4) for x in xs),[-1,0,1])
+            data=self.mdl('skin'); count,index=struct.unpack_from('<2i',data,156); joints=[]
+            for b in range(count):
+                bone=index+b*216; name=bone+struct.unpack_from('<i',data,bone)[0]
+                if data[name:data.index(b'\0',name)]==b'Joint': joints.append(struct.unpack_from('<3f',data,bone+32))
+            self.assertEqual(joints,[(5,0,0)])
+
+    def test_neko_animated_scale_fails_instead_of_silently_losing_deformation(self):
+        import base64,json
+        path=self.scene_fixture(); doc=json.loads(path.read_text())
+        doc['animations'][0]['channels'][0]['target']['path']='scale'
+        accessor=doc['accessors'][doc['animations'][0]['samplers'][0]['output']]
+        offset=doc['bufferViews'][accessor['bufferView']]['byteOffset']
+        blob=bytearray(base64.b64decode(doc['buffers'][0]['uri'].split(',')[1]))
+        struct.pack_into('<6f',blob,offset,1,1,1,2,2,2)
+        doc['buffers'][0]['uri']='data:application/octet-stream;base64,'+base64.b64encode(blob).decode()
+        path.write_text(json.dumps(doc))
+        output=self.scene_qc('$modelname bad_scale\n$body m scene.gltf\n',success=False)
+        self.assertIn('animated scene scaling must be baked',output)
+
     def test_branding_and_clean_captured_output(self):
         output = self.run_qc('$modelname branding\n', '-verify')
         self.assertIn('NewPageMergeMDL | Model Compiler', output)
@@ -275,7 +466,8 @@ class Compatibility(unittest.TestCase):
                                  '-smdanimation', '-outdir', str(self.root / 'decompiled')],
                                 capture_output=True, text=True, errors='replace')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        files = list((self.root / 'decompiled').rglob(name+'.smd'))
+        files = [p for p in (self.root / 'decompiled').rglob(name+'.smd')
+                 if any(parent.name==model for parent in p.parents)]
         self.assertEqual(len(files), 1, str(list((self.root / 'decompiled').rglob('*.smd'))))
         frames = []
         in_skeleton = False
