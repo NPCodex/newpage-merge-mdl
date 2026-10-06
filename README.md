@@ -1,4 +1,8 @@
-# NewPageMergeMDL
+# NewPageMergeMDL v1.1
+
+[English](README.en.md) | 简体中文
+
+项目版本：**v1.1**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -21,6 +25,25 @@
 - 带终端颜色的启动横幅；重定向日志保持纯文本。
 
 完整合并尚未完成，语法和差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。不能保证与 StudioMDL-CE / StudioMDL++ 的全部行为一致。
+
+## 未完成与已知问题
+
+| 内容 | 当前状态与限制 |
+| --- | --- |
+| CE 旧版网格算法 | `$UseLegacyStripify`（NvTriStrip）和 `$UseLegacyClampMethod`（全局顶点裁剪）尚未实现；使用这些开关会明确报错。 |
+| `gameinfo.txt` AppID 挂载 | 尚未实现，不能依靠 AppID 自动找到其他游戏资源。 |
+| 完整语法与输出兼容 | 动画 `copy`、`match pos/rot` 和条件语句采用本项目定义的语义；尚未认证与 StudioMDL++ 完全一致。输出为 v49，不能与 CE/++ 的 v48 文件逐字节比较。 |
+| 复杂面部与 DMX | 已验证基础法线、皱纹、逆向表情和眼睑规则；复杂 corrective rig、硬边、自定义法线、控制器重映射及游戏内眼睑表现仍需更多验证。 |
+| 材质重命名 | 同一模型中把多个材质合并到同一个目标名称会报错，尚不支持合并材质网格范围。 |
+| `NoAutoDMXRules` | 保留 PulseModel 的单源规则禁用语义，与 CE 在多模型场景下禁用先前自动规则的行为不同；`NoAutoDMXRulesLegacy` 会清除先前自动控制器和规则。 |
+| `addcontrollerbyflex` | 按文档正确处理 min/max；不复现 CE 二进制把两者写入 min 字段的缺陷。 |
+| 骨骼、碰撞与大模型 | CE 折叠规则通过 `$CEBoneRules` 显式启用；单骨权重选项属于实验功能。复杂 procedural/IK/LOD、碰撞物理及极大模型还没有全面差分和压力测试。引擎支持范围仍受模型格式字段限制。 |
+| 诊断与性能 | 边界框和 cmdlist 诊断尚未完成全部兼容验证；没有进行各编译器之间的系统性能对比。 |
+| 游戏加载与 UTC 动画 | 编译成功不代表已在游戏内验证；`gmtime` 的 UTC 同步需要目标模组支持。 |
+| 自动更新 | 自动合并 PulseModel 源码；发生补丁冲突或测试失败时停止发布。CE/++ 仅跟踪参考版本，新闭源功能仍需手动分析和实现。 |
+| 其他 Tools++ 工具 | VBSP、VVIS、VRAD、BSPZIP 属于地图工具，不在本模型编译器的合并范围内。 |
+
+完整语法、限制与有意保留的差异见 [COMPATIBILITY.md](COMPATIBILITY.md)，二进制调查记录见 [BINARY_ANALYSIS.md](BINARY_ANALYSIS.md)。
 
 ## 编译源码
 
@@ -59,7 +82,7 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 
 56 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 12 项自动发布测试。
 
-CE 的旧版 NvTriStrip 和全局顶点裁剪算法尚未实现，相关开关会明确报错。复杂 DMX、眼睑和游戏内渲染仍需更多验证。
+已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。这项验证不包含游戏内加载或渲染。
 
 ## 来源与许可
 

@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
-# No project-wide version: each tool sets TOOL_VERSION in its own CMakeLists,
-# feeding both its -version printout and its Win32 version resource.
+# Distributed tools share the NewPageMergeMDL project version.
+# Upstream TOOL_VERSION declarations remain as merge context only.
 # C is enabled only for the vendored ufbx single-file reader; all of our own
 # code is C++.
-project(NewPageMergeMDL LANGUAGES CXX C)
+project(NewPageMergeMDL VERSION 1.1 LANGUAGES CXX C)
 
 # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
 # with byte-identical output, but made an incremental build 4x slower. Left off;

@@ -15,7 +15,7 @@ set_target_properties(importqc PROPERTIES
 # Each tool owns its own version; there is no project-wide one.
 set(TOOL_VERSION 0.1.2)
 string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
-target_compile_definitions(importqc PRIVATE PULSEMODEL_VERSION="${TOOL_VERSION}")
+target_compile_definitions(importqc PRIVATE PULSEMODEL_VERSION="${PROJECT_VERSION}")
 
 # Explorer's Details tab (file description, product name/version, copyright).
 if(WIN32)

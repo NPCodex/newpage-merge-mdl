@@ -132,6 +132,7 @@ def prepare(args):
         ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     state = {
         'schema': 1,
+        'project_version': config.get('project_version', '1.1'),
         'controller_sha': controller,
         'overlay_sha256': sha256(overlay),
         'configuration_sha256': sha256(ROOT / 'automation/upstreams.json'),
@@ -143,7 +144,7 @@ def prepare(args):
         }
     }
     state['fingerprint'] = fingerprint(state)
-    tag = 'newpage-auto-' + state['fingerprint'][:20]
+    tag = 'v' + state['project_version'] + '-auto-' + state['fingerprint'][:20]
     previous = published_manifest(os.environ.get('GITHUB_REPOSITORY'))
     if previous and previous.get('fingerprint') == state['fingerprint'] and not args.force:
         emit(changed=False, tag=tag)
@@ -182,12 +183,12 @@ def prepare(args):
                 raise ValueError('Controller target escapes candidate')
             shutil.rmtree(target)
         shutil.copytree(ROOT / name, candidate / name, dirs_exist_ok=True)
-    for name in ('README.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', '.gitignore'):
+    for name in ('README.md', 'README.en.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', '.gitignore'):
         shutil.copy2(ROOT / name, candidate / name)
     state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     (work / 'upstream-manifest.json').write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
     notes = (
-        '# NewPageMergeMDL automatic build\n\n'
+        f"# NewPageMergeMDL v{state['project_version']} automatic build\n\n"
         f"PulseModel source: `{state['pulsemodel']['sha']}`\n\n"
         f"StudioMDL-CE reference: `{ce['sha']}`\n\n"
         'Tools++ reference assets: ' + ', '.join(a['name'] for a in state['studiomdl_plusplus']['assets']) + '\n\n'
@@ -222,7 +223,7 @@ def package(args):
         for path in sorted(dist.rglob('*')):
             if path.is_file():
                 archive.write(path, Path('NewPageMergeMDL') / path.relative_to(dist))
-        for name in ('LICENSE', 'README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md'):
+        for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md'):
             archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         # Preserve bundled third-party license notices.

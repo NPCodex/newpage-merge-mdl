@@ -13,7 +13,7 @@ set_target_properties(vmd2valvebiped PROPERTIES
                       RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${SUBTOOLS_DIR}")
 set(TOOL_VERSION 0.2.0)
 string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
-target_compile_definitions(vmd2valvebiped PRIVATE PULSEMODEL_VERSION="${TOOL_VERSION}")
+target_compile_definitions(vmd2valvebiped PRIVATE PULSEMODEL_VERSION="${PROJECT_VERSION}")
 
 if(WIN32)
     configure_file(version.rc.in "${CMAKE_CURRENT_BINARY_DIR}/version.rc" @ONLY)

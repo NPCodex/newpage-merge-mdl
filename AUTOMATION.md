@@ -61,3 +61,10 @@ python .github/scripts/upstream_release.py --help
 
 首次线上运行前，本地已验证辅助脚本及兼容补丁应用流程。线上 Windows/MSVC 和 Linux
 构建及 Release 权限，以 GitHub Actions 实际运行结果为准。
+
+## 项目版本与双语文档
+
+当前项目版本为 **v1.1**，程序和 Windows 文件版本统一采用该版本，独立于 PulseModel 上游版本号。
+`CMakeLists.txt` 的项目版本与 `automation/upstreams.json` 的 `project_version` 应同步维护。
+自动发布标签采用 `v1.1-auto-<指纹>`，同一项目版本下仍保留每次构建的独立资产。
+中文 `README.md` 与英文 `README.en.md` 都会包含在合并源码和二进制发布包中。

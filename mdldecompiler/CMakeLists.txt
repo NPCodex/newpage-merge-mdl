@@ -6,7 +6,7 @@ target_include_directories(mdldecompiler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 set(TOOL_VERSION 0.18.1)
 set_target_properties(mdldecompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL-Decompiler")
 string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
-target_compile_definitions(mdldecompiler PRIVATE PULSEMODEL_VERSION="${TOOL_VERSION}")
+target_compile_definitions(mdldecompiler PRIVATE PULSEMODEL_VERSION="${PROJECT_VERSION}")
 
 # Explorer's Details tab (file description, product name/version, copyright).
 if(WIN32)

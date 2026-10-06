@@ -78,7 +78,7 @@ class AutomationTests(unittest.TestCase):
                 sync.prepare(argparse.Namespace(work=root / 'work', force=False))
                 download.assert_not_called()
                 merge.assert_not_called()
-                emit.assert_called_once_with(changed=False, tag='newpage-auto-unchanged')
+                emit.assert_called_once_with(changed=False, tag='v1.1-auto-unchanged')
                 self.assertFalse((root / 'work').exists())
                 commits.assert_called_once_with('p/p')
                 api.assert_not_called()
@@ -113,7 +113,7 @@ class AutomationTests(unittest.TestCase):
             dist.mkdir(); source.mkdir()
             for name in ('NewPageMergeMDL.exe', 'NewPageMergeMDL-Decompiler.exe'):
                 (dist / name).write_bytes(b'binary')
-            for name in ('LICENSE', 'README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md'):
+            for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md'):
                 (source / name).write_text(name)
             (source / 'libs/vendor').mkdir(parents=True)
             (source / 'libs/vendor/LICENSE').write_text('vendor notice')
@@ -124,6 +124,7 @@ class AutomationTests(unittest.TestCase):
             with zipfile.ZipFile(root / 'out.zip') as archive:
                 self.assertIn('NewPageMergeMDL/upstream-manifest.json', archive.namelist())
                 self.assertIn('NewPageMergeMDL/BINARY_ANALYSIS.md', archive.namelist())
+                self.assertIn('NewPageMergeMDL/README.en.md', archive.namelist())
                 self.assertIn('NewPageMergeMDL/libs/vendor/LICENSE', archive.namelist())
                 self.assertFalse(any('StudioMDL-CE' in name for name in archive.namelist()))
 
