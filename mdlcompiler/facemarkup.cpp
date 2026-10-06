@@ -36,6 +36,8 @@ bool RegisterEyeball(cm::CompileInput& in, const FaceMarkup::Eyeball& src, std::
     }
     cm::Eyeball eye;
     eye.name = src.name;
+    eye.owner=src.owner; eye.scaleOverride=src.scale;
+    eye.fixedRadius=src.fixedRadius; eye.fixedIris=src.fixedIris;
     eye.bonename = src.bonename;
     eye.material = src.material;
     eye.org = src.origin;
@@ -248,6 +250,7 @@ bool RegisterFaceMarkup(cm::CompileInput& in, const FaceMarkup& markup, std::str
                     return false;
                 break;
             case FaceMarkup::Kind::Eyelid:
+                if (in.ce.ignoreEyelid) break;
                 if (!RegisterEyelid(in, e.eyelid, err))
                     return false;
                 break;

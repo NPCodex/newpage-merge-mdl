@@ -59,6 +59,9 @@ struct Attachment {
 // numbers; the compile stage derives radius/zoffset/iris_scale and transforms
 // org/up/forward into bone space.
 struct Eyeball {
+    source::Source* owner = nullptr;
+    float scaleOverride = 0.0f;
+    bool fixedRadius = false, fixedIris = false;
     std::string name;
     std::string bonename;
     int bone = -1;
@@ -993,6 +996,7 @@ struct BoneSaveFrame {
 };
 
 struct CompiledModel {
+    size_t mdlLimit=0,aniLimit=0;
     std::string outname; // e.g. "testmodel/testcube" (no extension)
     bool forceWriteVertexData = false; // $forcewritevertexdata - save the empty .vvd/.vtx when there is no geometry
     int gflags = 0;
@@ -1108,6 +1112,19 @@ enum class Archetype {
 // Script-level inputs the compile stage needs (filled by the .pulsemdl loader).
 struct CompileInput {
     std::string outname;
+    // CE switches are opt-in, preserving existing PulseModel defaults.
+    struct CeOptions {
+        bool overrideControllers=false, duplicateControllers=false, inverseFlexes=false;
+        bool zeroDecay=false, defaq=false, ignoreDmxDefaq=false, ignoreDefaultFlex=false;
+        bool ignoreEyelid=false, ignoreEyeScale=false, ignoreIrisScale=false;
+        bool collisionOneBone=false, allowCollapseVertex=false, hboxIgnoreChild=false;
+        bool computeNormals=false, computeWrinkles=false, remapFlexGlobal=false;
+        bool boneRules=false;
+        std::string launchPrelude;
+        size_t mdlLimit=0,aniLimit=0; // bytes; zero keeps dynamic-buffer behavior
+        float eyeScale=0.0f;
+        std::string outputDirectory;
+    } ce;
     Archetype archetype = Archetype::General;
     bool autoCenter = false; // $autocenter
     bool forceWriteVertexData = false; // $forcewritevertexdata

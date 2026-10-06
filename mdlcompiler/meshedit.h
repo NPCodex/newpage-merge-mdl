@@ -126,6 +126,8 @@ bool ScaleBone(Source& src, const std::string& bone, const Vector3& scale);
 
 // Reverse normals, morph normal deltas and triangle winding.
 void FlipNormals(Source& src);
+// Smooth base and delta normals from mesh topology, including stationary vertices.
+void ComputeMorphNormals(Source& src);
 
 // meshoptimizer decimation to `factor` (0,1] of each mesh's index count.
 // dst may alias src - faces are rebuilt only after every mesh is simplified.

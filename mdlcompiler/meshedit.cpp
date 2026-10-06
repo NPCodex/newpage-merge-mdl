@@ -49,6 +49,61 @@ int MeshFilter::Tag(const std::string& meshName, const std::string& dagName) {
     return find(tags) | (find(inflateTags) << 8);
 }
 
+void ComputeMorphNormals(Source& src) {
+    using Position=std::tuple<float,float,float>;
+    std::map<Position,int> groups;
+    std::vector<int> group(src.vertex.size());
+    for(size_t i=0;i<src.vertex.size();++i) {
+        const auto p=src.vertex[i].position;
+        auto inserted=groups.emplace(Position{p.x,p.y,p.z},static_cast<int>(groups.size()));
+        group[i]=inserted.first->second;
+    }
+    auto normals=[&](const std::vector<pm::Vector3>& positions) {
+        std::vector<pm::Vector3> sums(groups.size());
+        for(int material:src.meshindex) {
+            const auto& mesh=src.mesh[material];
+            for(int j=0;j<mesh.numfaces;++j) {
+                const auto& face=src.face[mesh.faceoffset+j];
+                int ids[3]={mesh.vertexoffset+static_cast<int>(face.a),mesh.vertexoffset+static_cast<int>(face.b),mesh.vertexoffset+static_cast<int>(face.c)};
+                auto a=positions[ids[0]],b=positions[ids[1]],c=positions[ids[2]];
+                pm::Vector3 u{b.x-a.x,b.y-a.y,b.z-a.z},v{c.x-a.x,c.y-a.y,c.z-a.z};
+                pm::Vector3 n{u.y*v.z-u.z*v.y,u.z*v.x-u.x*v.z,u.x*v.y-u.y*v.x};
+                const auto reference=src.vertex[ids[0]].normal;
+                if(n.x*reference.x+n.y*reference.y+n.z*reference.z<0) n={-n.x,-n.y,-n.z};
+                for(int id:ids) { auto& sum=sums[group[id]];sum={sum.x+n.x,sum.y+n.y,sum.z+n.z}; }
+            }
+        }
+        std::vector<pm::Vector3> result(src.vertex.size());
+        for(size_t i=0;i<result.size();++i) {
+            result[i]=sums[group[i]];
+            if(pm::VectorNormalize(result[i])==0) result[i]=src.vertex[i].normal;
+        }
+        return result;
+    };
+    std::vector<pm::Vector3> positions;
+    for(const auto& v:src.vertex) positions.push_back(v.position);
+    const auto base=normals(positions);
+    for(auto& morph:src.morphs) {
+        auto posed=positions;
+        std::map<int,SrcVertAnim> values;
+        for(const auto& va:morph.vanims) {
+            values[va.vertex]=va;
+            auto& p=posed[va.vertex];p={p.x+va.pos.x,p.y+va.pos.y,p.z+va.pos.z};
+        }
+        const auto target=normals(posed);
+        for(size_t i=0;i<target.size();++i) {
+            pm::Vector3 delta{target[i].x-base[i].x,target[i].y-base[i].y,target[i].z-base[i].z};
+            if(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z<0.000001f && !values.count(static_cast<int>(i))) continue;
+            auto found=values.find(static_cast<int>(i));
+            if(found==values.end()) { SrcVertAnim va{};va.vertex=static_cast<int>(i);va.speed=1;va.side=1;values[va.vertex]=va; }
+            values[static_cast<int>(i)].normal=delta;
+        }
+        morph.vanims.clear();for(const auto& value:values) morph.vanims.push_back(value.second);
+    }
+    for(size_t i=0;i<src.vertex.size();++i) src.vertex[i].normal=base[i];
+    CalcModelTangentSpaces(src);
+}
+
 void ApplyWrinkleScales(Source& src, std::vector<WrinkleScaleOption>& opts) {
     for (WrinkleScaleOption& w : opts) {
         SrcMorphAnim* morph = nullptr;

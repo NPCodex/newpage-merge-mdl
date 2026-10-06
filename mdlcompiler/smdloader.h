@@ -50,6 +50,9 @@ struct VtaFlexOption {
     int frame = 0;         // `time N` in the vertexanimation block; 0 is the basis
     float position = 1.0f; // s_flexkey_t.target1
     float decay = 1.0f;    // per-vertex morph speed falloff; 0 = flat 1.0
+    float strength = 1.0f;
+    bool inverted = false;
+    bool defaultPose = false;
 };
 
 // Import the named .vta frames onto an already-loaded SMD render mesh as delta

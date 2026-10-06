@@ -488,6 +488,7 @@ struct UniqueVert { // reference VertIndices_t (single UV channel)
 };
 
 struct FlexTemp {
+    bool forceWrinkles=false, ignoreWrinkles=false;
     bool enabled = false; // rendermesh load - flex data is parsed at all
     std::vector<DeltaTempState> deltaStates;
     std::vector<float> balance; // FIELD_BALANCE data, 1.0f default per mesh
@@ -1315,11 +1316,11 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
                 }
             }
             const std::vector<float>* aw = PickFloatArray(delta, "wrinkle$0", "wrinkle");
-            if (aw) {
+            if (aw && (!flex->forceWrinkles || !ws)) {
                 dWrinkle = *aw;
                 if (auto wi = PickIntArray(delta, "wrinkle$0Indices", "wrinkleIndices"))
                     dWrinkleIdx = *wi;
-            } else if (ws) {
+            } else if (ws && !flex->ignoreWrinkles) {
                 GenerateWrinkleDelta(dPos, dPosIdx, ws->scale, posInverse,
                                      texcoordIndices ? *texcoordIndices : std::vector<int32_t>{},
                                      nTexcoordDataCount, dWrinkle, dWrinkleIdx);
@@ -2264,7 +2265,7 @@ void ResetDmxUpAxis() { s_bUpAxisY = false; s_bUpAxisChecked = false; }
 
 bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, float scale,
                    std::string* err, bool morphSource, MeshFilter* filter, bool animOnly,
-                   bool physicsShapes) {
+                   bool physicsShapes, const DmxProcessing* processing) {
     const dmx::Element* root = dm.root;
     if (!root) {
         if (err) *err = "DMX has no root element";
@@ -2300,6 +2301,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
     ComboTemp comboTemp;
     if (morphSource && !animOnly) {
         flexTemp.enabled = true;
+        flexTemp.forceWrinkles=processing && processing->computeWrinkles;
+        flexTemp.ignoreWrinkles=processing && processing->ignoreWrinkles;
         // controls first - GenerateWrinkleDeltas runs before the meshes load
         if (const dmx::Element* comboOp = root->GetElement("combinationOperator"))
             ParseComboControls(comboOp, comboTemp, flexTemp);
@@ -2330,6 +2333,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
     // operator the ComboTemp is empty, so every key is mono.
     if (flexTemp.enabled)
         AddFlexKeys(comboTemp, flexTemp, out);
+
+    if(processing && processing->computeNormals && !out.vertex.empty()) ComputeMorphNormals(out);
 
     // animations
     if (const dmx::Element* animationList = root->GetElement("animationList"))

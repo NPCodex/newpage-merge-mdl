@@ -113,7 +113,7 @@ class AutomationTests(unittest.TestCase):
             dist.mkdir(); source.mkdir()
             for name in ('NewPageMergeMDL.exe', 'NewPageMergeMDL-Decompiler.exe'):
                 (dist / name).write_bytes(b'binary')
-            for name in ('LICENSE', 'README.md', 'COMPATIBILITY.md', 'AUTOMATION.md'):
+            for name in ('LICENSE', 'README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md'):
                 (source / name).write_text(name)
             (source / 'libs/vendor').mkdir(parents=True)
             (source / 'libs/vendor/LICENSE').write_text('vendor notice')
@@ -123,6 +123,7 @@ class AutomationTests(unittest.TestCase):
                                             platform='win64', manifest=root / 'manifest.json'))
             with zipfile.ZipFile(root / 'out.zip') as archive:
                 self.assertIn('NewPageMergeMDL/upstream-manifest.json', archive.namelist())
+                self.assertIn('NewPageMergeMDL/BINARY_ANALYSIS.md', archive.namelist())
                 self.assertIn('NewPageMergeMDL/libs/vendor/LICENSE', archive.namelist())
                 self.assertFalse(any('StudioMDL-CE' in name for name in archive.namelist()))
 

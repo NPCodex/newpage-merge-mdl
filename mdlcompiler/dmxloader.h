@@ -27,10 +27,12 @@ namespace pulse::source {
 // never reach `mats`, no morphs).
 // `physicsShapes` = $datamodelphysics: read the DmePhysicsShape dags instead of
 // the DmeMesh ones, each connected piece pinned to its most-weighted bone.
+struct DmxProcessing { bool computeNormals=false, computeWrinkles=false, ignoreWrinkles=false; };
+
 bool LoadDmxSource(const pulse::dmx::Datamodel& dm, Source& out,
                    MaterialTable& mats, float scale, std::string* err,
                    bool morphSource = false, MeshFilter* filter = nullptr,
-                   bool animOnly = false, bool physicsShapes = false);
+                   bool animOnly = false, bool physicsShapes = false, const DmxProcessing* processing = nullptr);
 
 // $datamodelflexes: pull just the combination-operator rig out of a DMX (no
 // skeleton/mesh/morphs). A file with no combination operator yields an empty

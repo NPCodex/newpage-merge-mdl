@@ -998,6 +998,12 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
             continue;
         }
         const int deltas = ImportFrame(bind, *frame, opt.name, opt.position, opt.decay, out);
+        out.flexkeys.back().inverted = opt.inverted;
+        out.flexkeys.back().defaultPose = opt.defaultPose;
+        for (auto& va : out.morphs.back().vanims) {
+            va.pos.x *= opt.strength; va.pos.y *= opt.strength; va.pos.z *= opt.strength;
+            va.normal.x *= opt.strength; va.normal.y *= opt.strength; va.normal.z *= opt.strength;
+        }
         std::printf("    flex %-32s frame %-4d %6d deltas  position %.3f decay %.3f\n",
                     opt.name.c_str(), opt.frame, deltas, opt.position, opt.decay);
     }

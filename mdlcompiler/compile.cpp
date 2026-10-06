@@ -1,6 +1,7 @@
 // compile.cpp - the SimplifyModel pipeline. See compile.h.
 
 #include "strcompat.h"
+#include "pathcompat.h"
 
 #include "compile.h"
 #include "perf.h"
@@ -385,7 +386,7 @@ bool BoneIsDoNotCollapse(const Ctx& ctx, const char* pname) {
 // $alwayscollapse names this bone and $donotcollapse does not, which wins
 // (reference BoneIsAlwaysCollapse). Overrules bone_cull_type 2 (none).
 bool BoneIsAlwaysCollapse(const Ctx& ctx, const char* pname) {
-    if (BoneIsDoNotCollapse(ctx, pname))
+    if (!ctx.in->ce.boneRules && BoneIsDoNotCollapse(ctx, pname))
         return false;
     for (const std::string& n : ctx.in->alwaysCollapse)
         if (_stricmp(n.c_str(), pname) == 0)
@@ -1667,11 +1668,10 @@ void CollapseBones(Ctx& ctx) {
     do {
         collapsedAny = false;
         for (int k = 0; k < static_cast<int>(m.bones.size()); k++) {
-            if (m.bones[k].bDontCollapse)
-                continue;
-
-            // $alwayscollapse overrules every keep below (reference BoneIsAlwaysCollapse)
             const bool always = BoneIsAlwaysCollapse(ctx, m.bones[k].name.c_str());
+            if (m.bones[k].bDontCollapse && !(ctx.in->ce.boneRules && always)) continue;
+            if(ctx.in->ce.boneRules && !ctx.in->ce.allowCollapseVertex && !always &&
+                (m.bones[k].flags & BONE_USED_BY_VERTEX_MASK)) continue;
 
             // "none" keeps every bone the script authored. Non-skeletal bones
             // (mesh dags, defaultRoot) are exempt - exporter noise, not part of
@@ -1681,7 +1681,7 @@ void CollapseBones(Ctx& ctx) {
 
             // "leaf only" never reparents: an unreferenced bone that still has
             // children stays where it is.
-            if (cull == BoneCullType::LeafOnly && BoneHasChildren(m, k))
+            if (cull == BoneCullType::LeafOnly && BoneHasChildren(m, k) && !(ctx.in->ce.boneRules && always))
                 continue;
 
             // BoneShouldCollapse. $donotcollapse is checked first so it wins
@@ -2321,7 +2321,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
         size_t matches = 0;
         for (size_t mi = 0; mi < m.models.size() && texture >= 0; ++mi) {
             source::Source* ps = m.models[mi].source;
-            if (!ps) continue;
+            if (!ps || (authored.owner && authored.owner != ps)) continue;
             for (int i = 0; i < ps->nummeshes; ++i) {
                 if (ps->meshindex[i] != texture)
                     continue;
@@ -2361,7 +2361,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
             return false;
         }
 
-        const float scale = ctx.in->scale;
+        const float scale = eye.scaleOverride > 0.0f ? eye.scaleOverride : ctx.in->scale;
         Vector3 tmp = {eye.org.x * scale, eye.org.y * scale, eye.org.z * scale};
 
         // `center`: sit on the bbox center of the verts wearing the eyeball's
@@ -2387,9 +2387,9 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
             }
         }
 
-        eye.radius *= scale;                                    // already halved by the loader
+        eye.radius *= eye.fixedRadius ? 1.0f : scale;                                    // already halved by the loader
         eye.zoffset = std::tan(eye.zoffset * pm::kDeg2Rad);      // authored in degrees
-        eye.iris_scale = eye.iris_scale != 0.0f ? 1.0f / (eye.iris_scale * scale) : 0.0f;
+        eye.iris_scale = eye.iris_scale != 0.0f ? 1.0f / (eye.iris_scale * (eye.fixedIris ? 1.0f : scale)) : 0.0f;
 
         ctx.eyeAbsZSum += std::fabs(tmp.z);
         ctx.eyeAbsZCount++;
@@ -2659,6 +2659,31 @@ void RemapVertices(Ctx& ctx) {
             pm::VectorNormalize(ndest);
             dstVertex.normal = ndest;
         }
+        if(ctx.in->ce.remapFlexGlobal && _stricmp(pulse::FilePath(pSource->filename).extension().string().c_str(), ".dmx")==0) {
+            for(auto& morph:pSource->morphs) for(auto& va:morph.vanims) {
+                if(va.vertex<0 || va.vertex>=static_cast<int>(pSource->vertex.size())) continue;
+                const auto& base=pSource->vertex[va.vertex];
+                Vector3 posed{base.position.x+va.pos.x,base.position.y+va.pos.y,base.position.z+va.pos.z};
+                Vector3 posedNormal{base.normal.x+va.normal.x,base.normal.y+va.normal.y,base.normal.z+va.normal.z};
+                Vector3 position{},normal{};
+                for(int n=0;n<base.boneweight.numbones;++n) {
+                    const int q=base.boneweight.bone[n];
+                    if(q<0 || q>=pSource->numbones) continue;
+                    const int k=pSource->boneLocalToGlobal[q];
+                    if(k<0 || k>=static_cast<int>(m.bones.size())) {position=posed;normal=posedNormal;break;}
+                    const float w=base.boneweight.weight[n];
+                    auto p=pm::VectorTransform(pm::VectorITransform(posed,destBoneToWorld[k]),m.bones[k].boneToPose);
+                    auto v=pm::VectorRotate(pm::VectorIRotate(posedNormal,destBoneToWorld[k]),m.bones[k].boneToPose);
+                    position={position.x+w*p.x,position.y+w*p.y,position.z+w*p.z};
+                    normal={normal.x+w*v.x,normal.y+w*v.y,normal.z+w*v.z};
+                }
+                pm::VectorNormalize(normal);
+                const auto& global=pSource->globalVertices[va.vertex];
+                va.pos={position.x-global.position.x,position.y-global.position.y,position.z-global.position.z};
+                va.normal={normal.x-global.normal.x,normal.y-global.normal.y,normal.z-global.normal.z};
+            }
+        }
+
     }
 }
 
@@ -7471,8 +7496,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
         }
     }
 
-    // add in children
-    for (size_t k = 0; k < m.bones.size(); k++) {
+    // CE can exclude child origins from autogenerated hitboxes.
+    for (size_t k = 0; !ctx.in->ce.hboxIgnoreChild && k < m.bones.size(); k++) {
         int j = m.bones[k].parent;
         if (j != -1) {
             const Vector3& p = m.bones[k].pos;
@@ -9329,7 +9354,7 @@ void CullDuplicateFlex(Ctx& ctx) {
     std::vector<FlexController> kept;
     for (size_t c = 0; c < m.flexcontrollers.size(); ++c) {
         int survivor = -1;
-        for (size_t k = 0; k < kept.size(); ++k) {
+        for (size_t k = 0; !ctx.in->ce.duplicateControllers && k < kept.size(); ++k) {
             if (_stricmp(kept[k].name.c_str(), m.flexcontrollers[c].name.c_str()) == 0) {
                 survivor = static_cast<int>(k);
                 break;
@@ -9437,7 +9462,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
     std::vector<FlexKey> kept;
     kept.reserve(m.flexkeys.size());
     for (FlexKey& key : m.flexkeys) {
-        const bool live =
+        const bool live = (ctx.in->ce.ignoreDefaultFlex && key.animationname=="default") ||
             (key.flexdesc >= 0 && key.flexdesc < static_cast<int>(usedDesc.size()) &&
              usedDesc[key.flexdesc]) ||
             (key.flexpair > 0 && key.flexpair < static_cast<int>(usedDesc.size()) &&
@@ -10312,6 +10337,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     out.zeroFramesHighres = input.zeroFramesHighres;
     out.minZeroFramePosDelta = input.minZeroFramePosDelta;
     out.boneSaveFrames = input.boneSaveFrames;
+    out.mdlLimit=input.ce.mdlLimit; out.aniLimit=input.ce.aniLimit;
     out.bbox[0] = input.bbox[0];
     out.bbox[1] = input.bbox[1];
     out.bboxset = input.bboxSet;

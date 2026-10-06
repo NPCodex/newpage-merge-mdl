@@ -29,6 +29,9 @@ struct FaceMarkup {
     // <irismaterial> <pupilscale>`; the iris material is dropped (the reference
     // parses and discards it).
     struct Eyeball {
+        source::Source* owner = nullptr;
+        float scale = 0.0f; // 0 uses the normal model scale
+        bool fixedRadius = false, fixedIris = false;
         std::string name;
         std::string bonename; // the HEAD bone, not a dedicated eye bone
         std::string material; // matched by basename against the body's meshes

@@ -95,6 +95,8 @@ struct SrcMorphAnim {
 struct SrcFlexKey {
     std::string name;     // delta state name
     int morphIndex = -1;  // VTA: frame identity, independent of the shared flex name
+    bool defaultPose = false;
+    bool inverted = false; // CE: create an inverted copy and matching rule
     bool stereo = false;  // flexpair split signal
     float target1 = 1.0f;
 };

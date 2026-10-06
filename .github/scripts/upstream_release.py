@@ -179,7 +179,7 @@ def prepare(args):
                 raise ValueError('Controller target escapes candidate')
             shutil.rmtree(target)
         shutil.copytree(ROOT / name, candidate / name, dirs_exist_ok=True)
-    for name in ('README.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'AUTOMATION.md', '.gitignore'):
+    for name in ('README.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', '.gitignore'):
         shutil.copy2(ROOT / name, candidate / name)
     state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     (work / 'upstream-manifest.json').write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
@@ -219,7 +219,7 @@ def package(args):
         for path in sorted(dist.rglob('*')):
             if path.is_file():
                 archive.write(path, Path('NewPageMergeMDL') / path.relative_to(dist))
-        for name in ('LICENSE', 'README.md', 'COMPATIBILITY.md', 'AUTOMATION.md'):
+        for name in ('LICENSE', 'README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md'):
             archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         # Preserve bundled third-party license notices.

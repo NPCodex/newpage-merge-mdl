@@ -20,6 +20,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <map>
 #include <cstdlib>
 #include <cstring>
 
@@ -853,7 +854,13 @@ bool RegisterManualLists(cm::CompileInput& in, const ManualFlex& manual, std::st
     for (const ManualFlex::Controller& mc : manual.controllers) {
         // QC Option_Flexcontroller reuses an existing name with a warning and
         // does NOT update it
-        if (FindFlexControllerByName(in, mc.name.c_str()) >= 0) {
+        const int existing = FindFlexControllerByName(in, mc.name.c_str());
+        if (existing >= 0 && !in.ce.duplicateControllers) {
+            if (in.ce.overrideControllers) {
+                auto& fc = in.flexcontrollers[existing];
+                fc.type=mc.group; fc.min=mc.min; fc.max=mc.max;
+                continue;
+            }
             std::fprintf(stderr,
                          "warning: morph controller '%s' already defined, reusing existing "
                          "entry\n", mc.name.c_str());
@@ -1184,7 +1191,65 @@ bool RegisterFlex(cm::CompileInput& in, const ManualFlex& manual, std::string* e
             return false;
     }
 
-    return ApplyDominations(in, manual, err);
+    if (!ApplyDominations(in, manual, err)) return false;
+    const size_t originalCount = in.flexkeys.size();
+    std::map<int,int> inverseDescs;
+    for (size_t i=0; i<originalCount; ++i) {
+        const auto original = in.flexkeys[i];
+        if (!original.source) continue;
+        const auto* src = original.source;
+        bool invert = in.ce.inverseFlexes;
+        for (const auto& sk : src->flexkeys)
+            if (sk.morphIndex == original.sourceMorphIndex && sk.inverted) invert = true;
+        if (!invert || original.animationname == "default") continue;
+        auto key = original;
+        auto& writable = *original.source;
+        int morph = original.sourceMorphIndex;
+        if (morph < 0) for (size_t j=0; j<writable.morphs.size(); ++j)
+            if (writable.morphs[j].name == original.animationname) { morph=static_cast<int>(j); break; }
+        if (morph < 0 || morph >= static_cast<int>(writable.morphs.size())) continue;
+        auto inverse = writable.morphs[morph];
+        inverse.name = original.animationname + "_Inv";
+        for (auto& va : inverse.vanims) {
+            va.pos.x=-va.pos.x; va.pos.y=-va.pos.y; va.pos.z=-va.pos.z;
+            va.normal.x=-va.normal.x; va.normal.y=-va.normal.y; va.normal.z=-va.normal.z;
+            va.wrinkle=-va.wrinkle;
+        }
+        key.sourceMorphIndex=static_cast<int>(writable.morphs.size());
+        key.animationname=inverse.name;
+        writable.morphs.push_back(std::move(inverse));
+        auto inverseDesc = [&](int d, bool stereo) {
+            auto found=inverseDescs.find(d); if(found!=inverseDescs.end()) return found->second;
+            std::string name=in.flexdescs[d].name;
+            if(stereo && !name.empty()) name.insert(name.size()-1,"_Inv"); else name+="_Inv";
+            int result=AddFlexdesc(in,name,err); inverseDescs[d]=result; return result;
+        };
+        key.flexdesc=inverseDesc(original.flexdesc,original.flexpair!=0);
+        if(original.flexpair) key.flexpair=inverseDesc(original.flexpair,true);
+        if(key.flexdesc<0 || key.flexpair<0) return false;
+        if(in.flexkeys.size() >= static_cast<size_t>(lim::kMaxFlexKeys)) {
+            if(err) *err="too many inverse flex keys"; return false;
+        }
+        in.flexkeys.push_back(std::move(key));
+    }
+    const size_t ruleCount=in.flexrules.size();
+    for(size_t i=0; i<ruleCount; ++i) {
+        const auto original=in.flexrules[i];
+        auto found=inverseDescs.find(original.flex); if(found==inverseDescs.end()) continue;
+        if(original.ops.size()+2 > static_cast<size_t>(lim::kMaxFlexOps)) {
+            if(err) *err="inverted flex rule too complicated"; return false;
+        }
+        auto inverse=original; inverse.flex=found->second;
+        cm::FlexOp constant{}; constant.op=kOpConst; constant.d.value=-1.0f;
+        cm::FlexOp multiply{}; multiply.op=kOpMul;
+        inverse.ops.push_back(constant); inverse.ops.push_back(multiply);
+        for(const auto& op : original.ops) if(op.op==kOpFetch1 && op.d.index>=0 &&
+                    op.d.index<static_cast<int>(in.flexcontrollers.size())) {
+            in.flexcontrollers[op.d.index].min=-1.0f; in.flexcontrollers[op.d.index].max=1.0f;
+        }
+        in.flexrules.push_back(std::move(inverse));
+    }
+    return true;
 }
 
 } // namespace pulse::loader

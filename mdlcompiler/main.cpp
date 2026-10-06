@@ -4,6 +4,8 @@
 //   mdlcompiler <file.pulseqc> [-game <dir>] [-pause]
 
 #include <cctype>
+#include <algorithm>
+#include <filesystem>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -44,7 +46,16 @@ static int Usage() {
     std::printf("usage: NewPageMergeMDL <file.qc|file.pulseqc> [-game <dir>]\n");
     std::printf("\n");
     std::printf("  -game <dir>   mod dir to install into; output goes to\n");
-    std::printf("                <dir>\\models\\<modelname>.mdl (-outdir is a synonym)\n");
+    std::printf("                <dir>\\models\\<modelname>.mdl (defaults to the QC directory)\n");
+    std::printf("  -OutDir <dir> CE output root, relative to the QC directory; takes precedence over -game\n");
+    std::printf("  -IncludePrefix <include> <prefix> / -IncludeAnimPrefix <prefix>\n");
+    std::printf("  -OverrideFlexControllers / -AllowDuplicationFlexControllers / -AddInvStudioFlexes\n");
+    std::printf("  -ZeroFlexDecay / -DefaqScale / -IgnoreDMXDefaq / -IgnoreDefaultFlexKey\n");
+    std::printf("  -EyeballScale <scale> / -IgnoreEyeballScaling / -IgnoreEyeballIrisScale / -IgnoreEyelid\n");
+    std::printf("  -ComputeDeltaNormals / -ComputeWrinkles / -ComputeNormalsAndWrinkles\n");
+    std::printf("  -RemapFlexToGlobal / -CollisionBindToOneBone / -AllowCollapseVertexBone / -HBoxIgnoreChild\n");
+    std::printf("  -OutputBufferSize <MB> / -MDLOutputBufferSize <MB> / -ANIOutputBufferSize <MB>\n");
+    std::printf("                CE switches also accept $commands in QC; see COMPATIBILITY.md\n");
     std::printf("  -modelname <path>   overrides $modelname\n");
     std::printf("  -vtxformat <0|1>\n");
     std::printf("                .vtx layout, overriding the script's $vtxformat.\n");
@@ -214,10 +225,37 @@ static int RunCompile(int argc, char** argv) {
     bool dumpDependencies = false;
     bool cullAnims = false;
     bool mostlyOpaque = false;
+    std::string cePrelude;
     std::vector<std::string> collapsePrefixes;
     pulse::loader::ScriptVars defvars;
     pulse::loader::SearchDirs includeDirs, fileDirs;
     for (int i = 1; i < argc; ++i) {
+        std::string option=argv[i];
+        for(char& ch:option) ch=static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        const std::vector<std::string> ceFlags={"overrideflexcontrollers","allowduplicationflexcontrollers",
+            "addinvstudioflexes","zeroflexdecay","defaqscale","ignoredmxdefaq","ignoreeyelid",
+            "ignoreeyeballscaling","ignoreeyeballirisscale","ignoredefaultflexkey","collisionbindtoonebone",
+            "allowcollapsevertexbone","hboxignorechild","computewrinkles","computedeltanormals",
+            "computenormalsandwrinkles","remapflextoglobal","mostlyopaque","cebonerules",
+            "uselegacyclampmethod","uselegacystripify"};
+        std::string ceName=option.size()>1 && option[0]=='-' ? option.substr(1) : "";
+        if(std::find(ceFlags.begin(),ceFlags.end(),ceName)!=ceFlags.end()) {
+            if(ceName=="mostlyopaque") mostlyOpaque=true;
+            cePrelude+="$"+ceName+"\n"; continue;
+        }
+        int ceValues=ceName=="includeprefix" ? 2 :
+            (ceName=="includeanimprefix" || ceName=="eyeballscale" || ceName=="outdir" ||
+             ceName=="outputbuffersize" || ceName=="mdloutputbuffersize" || ceName=="anioutputbuffersize" ? 1 : 0);
+        if(ceValues) {
+            if(i+ceValues>=argc) return Fail("bad option",option+" needs "+std::to_string(ceValues)+" argument(s)");
+            cePrelude+="$"+ceName;
+            for(int j=0;j<ceValues;++j) {
+                std::string value=argv[++i];
+                if(value.find_first_of("\"\r\n")!=std::string::npos) return Fail("bad option",option+" contains invalid characters");
+                cePrelude+=" \""+value+"\"";
+            }
+            cePrelude+="\n"; continue;
+        }
         // -game is studiomdl's name for it: the mod dir the model installs
         // into. The writer already roots output at <dir>/models, so it is the
         // same value as -outdir.
@@ -328,12 +366,19 @@ static int RunCompile(int argc, char** argv) {
     pulse::compile::CompileInput input;
     // pre-seeded so a script without $modelname still loads under -modelname
     input.outname = modelname;
+    input.ce.launchPrelude=cePrelude;
     input.stripLods = stripLods;
     g_stage = "script load";
     const std::string stdinText = scriptFromStdin ? ReadStdin() : std::string();
     if (!pulse::loader::LoadQcScript(script, input, &err, defvars, includeDirs, fileDirs,
                                      scriptFromStdin ? &stdinText : nullptr))
         return Fail("script error", err);
+    // CE resolves OutDir relative to the root QC and defaults to its directory.
+    const auto scriptDirectory=std::filesystem::absolute(pulse::FilePath(script)).parent_path();
+    if(!input.ce.outputDirectory.empty()) {
+        auto selected=pulse::FilePath(input.ce.outputDirectory);
+        outdir=(selected.is_absolute() ? selected : scriptDirectory/selected).lexically_normal().string();
+    } else if(outdir.empty()) outdir=scriptDirectory.string();
     auto tLoad = Clock::now();
     if (cullAnims)
         input.animCullMethod = pulse::compile::AnimCullMethod::Aggressive;

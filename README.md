@@ -15,6 +15,9 @@
 - 自行实现的动画 `copy`、`match pos/rot`、嵌套 `if / else if / else`。
 - VTA 同名 `flex` / `flexpair` 多帧：保留独立顶点数据和 StudioMDL 兼容权重区间。
 - `$sequence gmtime`，默认保留已有模型的序列顺序，`-noremap` 使用 QC 顺序。
+- CE 面部扩展：控制器覆盖/重复、反向表情、`fscale`、零衰减和默认表情烘焙。
+- CE 眼球缩放、DMX 法线/皱纹计算、全局骨骼空间表情重映射。
+- bodygroup 面部块、独立材质重命名、单骨权重、可选骨骼折叠规则和输出限制。
 - 带终端颜色的启动横幅；重定向日志保持纯文本。
 
 完整合并尚未完成，语法和差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。不能保证与 StudioMDL-CE / StudioMDL++ 的全部行为一致。
@@ -54,7 +57,9 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-测试创建临时 SMD/QC，检查实际 MDL 文件，并反编译动画验证位移、旋转和分支行为。
+55 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 12 项自动发布测试。
+
+CE 的旧版 NvTriStrip 和全局顶点裁剪算法尚未实现，相关开关会明确报错。复杂 DMX、眼睑和游戏内渲染仍需更多验证。
 
 ## 来源与许可
 

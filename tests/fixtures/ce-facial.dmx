@@ -1,0 +1,250 @@
+<!-- dmx encoding keyvalues2 1 format model 15 -->
+
+"DmElement"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-000000000001"
+	"name" "string" "mesh"
+	"model" "element" "a100bebc-a100-bebc-00be-000000000002"
+	"skeleton" "element" "a100bebc-a100-bebc-00be-000000000002"
+	"combinationOperator" "element" "a100bebc-a100-bebc-00be-00000000000f"
+}
+
+"DmeModel"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-000000000002"
+	"name" "string" "mesh"
+	"upAxis" "string" "Z"
+	"transform" "element" "a100bebc-a100-bebc-00be-000000000003"
+	"children" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-000000000004",
+		"element" "a100bebc-a100-bebc-00be-000000000007"
+	]
+	"jointTransforms" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-000000000005",
+		"element" "a100bebc-a100-bebc-00be-000000000008"
+	]
+	"jointList" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-000000000004",
+		"element" "a100bebc-a100-bebc-00be-000000000007"
+	]
+	"baseStates" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-000000000006"
+	]
+}
+
+"DmeTransform"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-000000000003"
+	"name" "string" "mesh"
+	"position" "vector3" "0 0 0"
+	"orientation" "quaternion" "0 0 0 1"
+}
+
+"DmeTransformList"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-000000000006"
+	"name" "string" "bind"
+	"transforms" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-000000000005",
+		"element" "a100bebc-a100-bebc-00be-000000000008"
+	]
+}
+
+"DmeDag"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-000000000004"
+	"name" "string" "root"
+	"transform" "element" "a100bebc-a100-bebc-00be-000000000005"
+	"children" "element_array"
+	[
+	]
+}
+
+"DmeTransform"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-000000000005"
+	"name" "string" "root"
+	"position" "vector3" "0 0 0"
+	"orientation" "quaternion" "0 0 0 1"
+}
+
+"DmeDag"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-000000000007"
+	"name" "string" "mesh"
+	"transform" "element" "a100bebc-a100-bebc-00be-000000000008"
+	"shape" "element" "a100bebc-a100-bebc-00be-000000000009"
+}
+
+"DmeTransform"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-000000000008"
+	"name" "string" "mesh"
+	"position" "vector3" "0 0 0"
+	"orientation" "quaternion" "0 0 0 1"
+}
+
+"DmeMesh"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-000000000009"
+	"name" "string" "mesh"
+	"deltaStateWeights" "vector2_array" [ "0 0" ]
+	"currentState" "element" "a100bebc-a100-bebc-00be-00000000000a"
+	"baseStates" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-00000000000a"
+	]
+	"faceSets" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-00000000000b"
+	]
+	"deltaStates" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-00000000000d"
+	]
+}
+
+"DmeVertexData"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-00000000000a"
+	"name" "string" "bind"
+	"vertexFormat" "string_array"
+	[
+		"positions",
+		"normals",
+		"textureCoordinates",
+		"jointWeights",
+		"jointIndices"
+	]
+	"jointCount" "int" "1"
+	"flipVCoordinates" "bool" "1"
+	"positions" "vector3_array"
+	[
+		"0 0 0",
+		"1 0 0",
+		"0 1 0"
+	]
+	"positionsIndices" "int_array"
+	[
+		"0",
+		"1",
+		"2"
+	]
+	"normals" "vector3_array"
+	[
+		"0 0 1",
+		"0 0 1",
+		"0 0 1"
+	]
+	"normalsIndices" "int_array"
+	[
+		"0",
+		"1",
+		"2"
+	]
+	"textureCoordinates" "vector2_array"
+	[
+		"0 0",
+		"1 0",
+		"0 1"
+	]
+	"textureCoordinatesIndices" "int_array"
+	[
+		"0",
+		"1",
+		"2"
+	]
+	"jointWeights" "float_array"
+	[
+		"1",
+		"1",
+		"1"
+	]
+	"jointIndices" "int_array"
+	[
+		"0",
+		"0",
+		"0"
+	]
+}
+
+"DmeFaceSet"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-00000000000b"
+	"name" "string" "material"
+	"material" "element" "a100bebc-a100-bebc-00be-00000000000c"
+	"faces" "int_array"
+	[
+		"0",
+		"1",
+		"2",
+		"-1"
+	]
+}
+
+"DmeMaterial"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-00000000000c"
+	"name" "string" "material"
+	"mtlName" "string" "material"
+}
+
+"DmeVertexDeltaData"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-00000000000d"
+	"name" "string" "smile"
+	"vertexFormat" "string_array"
+	[
+		"positions",
+		"normals"
+	]
+	"positions" "vector3_array"
+	[
+		"0 0 0.25"
+	]
+	"positionsIndices" "int_array"
+	[
+		"0"
+	]
+	"normals" "vector3_array"
+	[
+		"0 0 0"
+	]
+	"normalsIndices" "int_array"
+	[
+		"0"
+	]
+}
+
+"DmeCombinationOperator"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-00000000000f"
+	"name" "string" "mesh"
+	"controls" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-00000000000e"
+	]
+	"targets" "element_array"
+	[
+		"element" "a100bebc-a100-bebc-00be-000000000009"
+	]
+}
+
+"DmeCombinationInputControl"
+{
+	"id" "elementid" "a100bebc-a100-bebc-00be-00000000000e"
+	"name" "string" "smile"
+	"rawControlNames" "string_array"
+	[
+		"smile"
+	]
+	"wrinkleScales" "float_array" [ "2" ]
+	"stereo" "bool" "0"
+	"eyelid" "bool" "0"
+}
+

@@ -219,6 +219,7 @@ struct Ctx {
     std::map<std::string, std::string> includePrefixes;
     std::string includeAnimPrefix;
     bool pushdInclude = false;
+    bool pushdProcedural = false;
     bool scriptBreak = false; // $break, sticky through every $include parent
 
     float defaultFps = 30.0f;
@@ -488,6 +489,7 @@ struct MeshEdit {
     source::WeldMode weld = source::WeldMode::None;
     bool weldSharp = false;      // $weld sharp - keep authored split normals
     float weldSharpAngle = 0.0f; // optional tolerance in degrees; 0 = exact normal match
+    source::DmxProcessing ceProcessing;
     bool noMorph = false;
     // $inflate <amount> [material|mesh <name>...] in script order; tag 0 = no mesh scope
     struct Inflate {
@@ -649,7 +651,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                     dm->encoding.c_str(), dm->encoding_version);
         PULSE_PERF("load", "dmx -> source");
         if (!source::LoadDmxSource(*dm, *src, mats, c.in.scale, &loadErr, morphSource,
-                                   edit ? &edit->filter : nullptr, animOnly)) {
+                                   edit ? &edit->filter : nullptr, animOnly, false, edit ? &edit->ceProcessing : nullptr)) {
             c.Fail(line, "cannot parse \"" + full.string() + "\": " + loadErr);
             return nullptr;
         }
@@ -694,6 +696,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
         source::CullUnskinnedBones(*src, edit->boneCull);
     }
 
+    if(kind==source::LoadKind::Collision && c.in.ce.collisionOneBone)
+        for(auto& v:src->vertex) { v.boneweight.numbones=1; v.boneweight.weight[0]=1.0f; }
     c.in.sources.push_back(std::move(src));
     source::Source* loaded = c.in.sources.back().get();
     if (!priv) {
@@ -1540,7 +1544,7 @@ bool CmdDataModelJoints(Ctx& c, const Token& cmd) {
         return false;
 
     bool jiggle = false, procedural = false, hitboxes = false, attachments = false;
-    while (!c.AtCommand() && !(!c.Cur().quoted && c.Cur().text == "{")) {
+    while (!c.AtCommand() && !(!c.Cur().quoted && (c.Cur().text == "{" || c.Cur().text == "}"))) {
         const Token t = c.toks[c.pos++];
         const std::string o = Lower(t.text);
         if (o == "jigglebones")
@@ -1745,10 +1749,11 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
 // (legacy noautodmxrules) - the morph deltas stay on the Source either way.
 // `file` must already be extension-resolved. null return = failure (reported).
 source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& file,
-                                 bool flip, float importScale, bool importFlexRig) {
+                                 bool flip, float importScale, bool importFlexRig, const source::DmxProcessing* processing=nullptr) {
     MeshEdit edit;
     edit.name = file;
     edit.flipNormals = flip;
+    if(processing) edit.ceProcessing=*processing;
     const float defaultScale = c.in.scale;
     c.in.scale = importScale;
     source::Source* src = LoadSource(c, file, entry.line, /*morphSource=*/true, &edit);
@@ -1775,6 +1780,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& 
 }
 
 // $body and $bodygroup load private, file-only choices with automatic DMX rig imports.
+bool CmdModel(Ctx& c, const Token& cmd);
 bool CmdLegacyBody(Ctx& c, const Token& cmd) {
     cm::CompileInput::InBodyPart part;
     if (!c.Want("a name", cmd, part.name))
@@ -1785,37 +1791,16 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
             return c.Fail(cmd.line, where + " already exists");
 
     auto studio = [&](const Token& entry, bool inlineBody) -> bool {
-        if (c.AtCommand() || (!c.Cur().quoted &&
-            (c.Cur().text == "{" || c.Cur().text == "}")))
-            return c.Fail(entry.line, where + ": studio expects a source filename");
-        std::string file;
-        if (!c.Want("a source filename", entry, file))
-            return false;
-        file = WithSourceExtension(c, file);
-        bool flip = false;
-        float importScale = c.in.scale;
-        while (inlineBody && !c.AtCommand() && (c.Cur().quoted || c.Cur().text != "}")) {
-            const Token option = *c.Next();
-            const std::string o = Lower(option.text);
-            if (!option.quoted && o == "reverse") {
-                flip = true;
-            } else if (!option.quoted && o == "scale") {
-                if (!c.WantFloat("an import scale", option, importScale))
-                    return false;
-                if (!std::isfinite(importScale) || importScale <= 0.0f)
-                    return c.Fail(option.line, where + ": scale must be finite and greater than 0");
-            } else {
-                return c.Fail(option.line, where + ": expected reverse or scale <value>; "
-                                                   "use $rendermesh and $modelgroup for mesh edits");
-            }
-        }
-        source::Source* src =
-            LoadStudioSource(c, entry, file, flip, importScale, /*importFlexRig=*/true);
-        if (!src)
-            return false;
-        cm::CompileInput::InModel model;
-        model.name = inlineBody ? part.name : cm::ChoiceName({file});
-        model.source = src;
+        if(c.Eof() || c.AtCommand()) return c.Fail(entry.line,where+": missing studio filename");
+        const Token commandCopy=entry;
+        Token synthetic=commandCopy;
+        synthetic.text="__ce_private_"+part.name+"_"+std::to_string(part.models.size());
+        synthetic.quoted=true;
+        c.SpliceAt(c.pos,{synthetic});
+        if(!CmdModel(c,commandCopy)) return false;
+        auto imported=std::move(c.in.bodyparts.back()); c.in.bodyparts.pop_back();
+        auto model=std::move(imported.models.front());
+        model.name=inlineBody ? part.name : cm::ChoiceName({model.source->filename});
         part.models.push_back(std::move(model));
         return true;
     };
@@ -1878,7 +1863,13 @@ bool CmdModel(Ctx& c, const Token& cmd) {
     // inline studio flags up to the '{' or the next command
     bool flip = false;
     float importScale = c.in.scale;
-    while (!c.AtCommand() && !(!c.Cur().quoted && c.Cur().text == "{")) {
+    bool bindOneBone=false;
+    source::DmxProcessing processing;
+    processing.computeNormals=c.in.ce.computeNormals; processing.computeWrinkles=c.in.ce.computeWrinkles;
+    std::vector<std::pair<std::string,std::string>> renameMaterials;
+    std::string materialPrefix;
+    while (!c.AtCommand() && !(!c.Cur().quoted && (c.Cur().text == "{" || c.Cur().text == "}" ||
+           Lower(c.Cur().text)=="studio" || Lower(c.Cur().text)=="blank"))) {
         const Token option = *c.Next();
         const std::string o = Lower(option.text);
         if (option.quoted) {
@@ -1890,6 +1881,19 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                 return false;
             if (!std::isfinite(importScale) || importScale <= 0.0f)
                 return c.Fail(option.line, where + ": scale must be finite and greater than 0");
+        } else if(o=="computedeltanormals" || o=="computenormalsandwrinkles") {
+            processing.computeNormals=true; if(o=="computenormalsandwrinkles") processing.computeWrinkles=true;
+        } else if(o=="computewrinkles") { processing.computeWrinkles=true; processing.ignoreWrinkles=false;
+        } else if(o=="ignorecomputedeltanormals" || o=="ignorecomputenormalsandwrinkles") {
+            processing.computeNormals=false; if(o=="ignorecomputenormalsandwrinkles") { processing.computeWrinkles=false; processing.ignoreWrinkles=true; }
+        } else if(o=="ignorecomputewrinkles") { processing.computeWrinkles=false; processing.ignoreWrinkles=true;
+        } else if(o=="bindtoonebone") { bindOneBone=true;
+        } else if(o=="renamemat") {
+            std::string from,to;
+            if(!c.Want("a material",option,from) || !c.Want("a new material",option,to)) return false;
+            renameMaterials.emplace_back(from,to);
+        } else if(o=="renamematbyprefix") {
+            if(!c.Want("a material prefix",option,materialPrefix)) return false;
         } else if (o == "subd") {
             // no quad subdivision in this compiler (matches importqc); accepted
         } else if (o == "faces") {
@@ -1921,16 +1925,44 @@ bool CmdModel(Ctx& c, const Token& cmd) {
             } else if (t.text == "}") {
                 if (--depth == 0)
                     break;
-            } else if (Lower(t.text) == "noautodmxrules") {
+            } else if (Lower(t.text) == "noautodmxrules" || Lower(t.text)=="noautodmxruleslegacy") {
                 importFlexRig = false;
                 break;
             }
         }
     }
 
-    source::Source* src = LoadStudioSource(c, cmd, file, flip, importScale, importFlexRig);
+    source::Source* src = LoadStudioSource(c, cmd, file, flip, importScale, importFlexRig,&processing);
     if (!src)
         return false;
+    if(!IsSmdPath(file)) for(auto& morph:src->morphs) for(auto& va:morph.vanims) {
+        if(c.in.ce.zeroDecay) va.speed=1;
+        if(c.in.ce.defaq && !c.in.ce.ignoreDmxDefaq) { va.pos.x*=10;va.pos.y*=10;va.pos.z*=10;va.normal.x*=10;va.normal.y*=10;va.normal.z*=10; }
+    }
+    if(bindOneBone) for(auto& v:src->vertex) { v.boneweight.numbones=1; v.boneweight.weight[0]=1.0f; }
+    std::map<int,int> materialRemap;
+    const auto oldMeshes=src->mesh;
+    for(int material:src->meshindex) {
+        if(material<0 || material>=static_cast<int>(c.in.mats.materialToTexture.size())) continue;
+        const auto oldTexture=c.in.mats.textures[c.in.mats.materialToTexture[material]];
+        std::string name=oldTexture.name;
+        for(const auto& rename:renameMaterials)
+            if(_stricmp(name.c_str(),rename.first.c_str())==0 ||
+               _stricmp(StripExtension(pulse::FilePath(name).filename().string()).c_str(),
+                         StripExtension(pulse::FilePath(rename.first).filename().string()).c_str())==0) name=rename.second;
+        if(!materialPrefix.empty()) name=materialPrefix+name;
+        materialRemap[material]=name==oldTexture.name ? material :
+            c.in.mats.UseTextureAsMaterial(c.in.mats.LookupTexture(name.c_str(),oldTexture.relative));
+    }
+    std::set<int> editedMaterialIds;
+    for(const auto& entry:materialRemap) if(!editedMaterialIds.insert(entry.second).second)
+        return c.Fail(cmd.line,"material rename merges mesh ranges; use distinct target materials");
+    for(int& material:src->meshindex) {
+        const int old=material; material=materialRemap[old];
+        if(material>=static_cast<int>(src->mesh.size())) src->mesh.resize(material+1);
+        src->mesh[material]=oldMeshes[old];
+    }
+    for(auto& v:src->vertex) v.material=materialRemap[v.material];
     cm::CompileInput::InModel model;
     model.name = part.name;
     model.source = src;
@@ -1946,6 +1978,9 @@ bool CmdModel(Ctx& c, const Token& cmd) {
     std::map<std::string, std::vector<source::VtaFlexOption>> vtaByFile; // file -> shapes
     std::string vcaFile, vcaName;
     int vtaLine = 0, vcaLine = 0;
+    bool invertControllers=false;
+    bool autoControllers=false;
+    std::string autoType; float autoMin=0,autoMax=1;
 
     auto atEnd = [&] { return c.Eof() || (!c.Cur().quoted && c.Cur().text == "}"); };
     auto sameLine = [&](int line) { return !atEnd() && c.Cur().line == line; };
@@ -1954,7 +1989,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         return lo == "eyeball" || lo == "eyelid" || lo == "dmxeyelid" || lo == "flexfile" ||
                lo == "flex" || lo == "flexpair" || lo == "defaultflex" || lo == "vcafile" ||
                lo == "localvar" || lo == "mouth" || lo == "flexcontroller" ||
-               lo == "noautodmxrules" || lo == "attachment" || lo == "spherenormals";
+               lo == "noautodmxrules" || lo == "noautodmxruleslegacy" || lo == "invertcontrollers" ||
+               lo == "addcontrollerbyflex" || lo == "attachment" || lo == "spherenormals";
     };
     // A `%name =` at the cursor starts a NEW rule; a bare `%name` is a fetch
     // operand, so a rule expression reads across lines until the next statement.
@@ -2013,6 +2049,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         if (o == "eyeball") {
             FaceMarkup::Entry e;
             e.kind = FaceMarkup::Kind::Eyeball;
+            e.eyeball.owner=src;
+            if(c.in.ce.eyeScale>0 || c.in.ce.ignoreEyeScale || c.in.ce.ignoreIrisScale) {
+                e.eyeball.scale=c.in.ce.ignoreEyeScale ? 1.0f : (c.in.ce.eyeScale>0 ? c.in.ce.eyeScale : c.in.scale);
+                e.eyeball.fixedRadius=true;
+            }
+            e.eyeball.fixedIris=c.in.ce.ignoreIrisScale;
             std::string iris;
             if (!c.Want("an eyeball name", t, e.eyeball.name) ||
                 !c.Want("a bone name", t, e.eyeball.bonename) ||
@@ -2085,6 +2127,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
             continue;
         }
 
+        if(o=="invertcontrollers") { invertControllers=!invertControllers; continue; }
+        if(o=="addcontrollerbyflex") {
+            autoControllers=!autoControllers;
+            if(!autoControllers) continue;
+            if(!c.Want("a controller type",t,autoType) || !c.WantFloat("a minimum",t,autoMin) ||
+               !c.WantFloat("a maximum",t,autoMax)) return false;
+            continue;
+        }
         // flexfile <file> - the VTA the following flex/flexpair/defaultflex read
         if (o == "flexfile") {
             if (!c.Want("a .vta filename", t, flexfile))
@@ -2099,6 +2149,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
             if (flexfile.empty())
                 return c.Fail(t.line, where + ": " + o + " needs a `flexfile <file>` before it");
             source::VtaFlexOption fo;
+            fo.inverted=invertControllers || c.in.ce.inverseFlexes;
+            fo.strength=c.in.ce.defaq ? 10.0f : 1.0f;
             float split = 0.0f;
             bool hasSplit = false;
             if (o == "defaultflex") {
@@ -2127,6 +2179,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                     ++c.pos;
                     if (!c.WantFloat("a decay", t, fo.decay))
                         return false;
+                } else if(k=="fscale") {
+                    ++c.pos;
+                    if(!c.WantFloat("a flex scale",t,fo.strength)) return false;
+                    if(!std::isfinite(fo.strength)) return c.Fail(t.line,"fscale must be finite");
                 } else if (k == "split") {
                     ++c.pos;
                     if (!c.WantFloat("a split", t, split))
@@ -2139,6 +2195,15 @@ bool CmdModel(Ctx& c, const Token& cmd) {
             if (!sawFrame)
                 return c.Fail(t.line, where + ": " + o + " \"" + fo.name +
                                           "\" needs a frame <N> - a .vta names nothing");
+            if(c.in.ce.zeroDecay) fo.decay=0.0f;
+            if(autoControllers && o!="defaultflex") {
+                if(hasSplit && split!=0) {
+                    c.manual.controllers.push_back({"right_"+fo.name,autoType,autoMin,autoMax});
+                    c.manual.controllers.push_back({"left_"+fo.name,autoType,autoMin,autoMax});
+                } else c.manual.controllers.push_back({fo.name,autoType,autoMin,autoMax});
+            }
+            fo.defaultPose=o=="defaultflex";
+            if(fo.defaultPose) { fo.strength=1.0f; fo.inverted=false; }
             if (fo.frame == 0)
                 continue; // frame 0 is the VTA basis (the rest pose), not a delta
             if (hasSplit && split != 0.0f)
@@ -2281,6 +2346,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
             continue;
         }
 
+        if (o == "noautodmxruleslegacy") {
+            c.manual.datamodel={}; c.manual.controllers.clear();
+            for(auto& owned:c.in.sources) {
+                owned->combinationControls.clear(); owned->controllerRemaps.clear();
+                owned->combinationRules.clear(); owned->dmeFlexRules.clear(); owned->hasDmeFlexRules=false;
+            }
+            continue;
+        }
         if (o == "noautodmxrules")
             continue; // handled by the pre-scan above
         if (o == "attachment")
@@ -2312,6 +2385,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         std::string err;
         if (!source::LoadVtaMorphs(full.string(), *src, importScale, kv.second, &err))
             return c.Fail(vtaLine, "cannot load \"" + full.string() + "\": " + err);
+    }
+    if(!c.in.ce.ignoreDefaultFlex) {
+        std::vector<pm::Vector3> offsets(src->vertex.size()),normalOffsets(src->vertex.size());
+        bool hasDefault=false;
+        for(const auto& key:src->flexkeys) if(key.defaultPose && key.morphIndex>=0) {
+            hasDefault=true;
+            for(const auto& va:src->morphs[key.morphIndex].vanims) {
+                offsets[va.vertex]=va.pos; normalOffsets[va.vertex]=va.normal;
+            }
+        }
+        if(hasDefault) {
+            for(size_t i=0;i<src->vertex.size();++i) {
+                auto& v=src->vertex[i]; auto p=offsets[i],n=normalOffsets[i];
+                v.position={v.position.x+p.x,v.position.y+p.y,v.position.z+p.z};
+                v.normal={v.normal.x+n.x,v.normal.y+n.y,v.normal.z+n.z}; pm::VectorNormalize(v.normal);
+            }
+            for(auto& morph:src->morphs) {
+                std::map<int,source::SrcVertAnim> deltas;
+                for(const auto& va:morph.vanims) deltas[va.vertex]=va;
+                for(size_t i=0;i<offsets.size();++i) {
+                    const auto p=offsets[i],n=normalOffsets[i];
+                    if(p.x==0 && p.y==0 && p.z==0 && n.x==0 && n.y==0 && n.z==0) continue;
+                    auto found=deltas.find(static_cast<int>(i));
+                    if(found==deltas.end()) { source::SrcVertAnim va{};va.vertex=static_cast<int>(i);va.speed=1;va.side=1;deltas[va.vertex]=va; }
+                    auto& va=deltas[static_cast<int>(i)];
+                    va.pos={va.pos.x-p.x,va.pos.y-p.y,va.pos.z-p.z};
+                    va.normal={va.normal.x-n.x,va.normal.y-n.y,va.normal.z-n.z};
+                }
+                morph.vanims.clear();for(auto& item:deltas) morph.vanims.push_back(item.second);
+            }
+            source::CalcModelTangentSpaces(*src);
+            src->flexkeys.erase(std::remove_if(src->flexkeys.begin(),src->flexkeys.end(),
+                [](const source::SrcFlexKey& key){return key.defaultPose;}),src->flexkeys.end());
+        }
     }
     if (!vcaFile.empty()) {
         std::vector<fs::path> tried;
@@ -5940,7 +6047,10 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
                                 filename + "\"");
 
     std::vector<fs::path> tried;
+    const auto savedSourceDirs=c.sourceDirStack;
+    if(!c.pushdProcedural) c.sourceDirStack={c.scriptDir};
     const fs::path full = FindSourceFile(c, filename, &tried);
+    c.sourceDirStack=savedSourceDirs;
     if (full.empty())
         return c.Fail(cmd.line, "cannot find \"" + filename + "\" - looked in:" +
                                 LookedIn(tried));
@@ -8988,6 +9098,49 @@ struct Command {
     bool (*fn)(Ctx&, const Token&);
 };
 
+bool CmdCeOption(Ctx& c, const Token& cmd) {
+    const std::string name=Lower(cmd.text.substr(1));
+    if(name=="overrideflexcontrollers") { c.in.ce.overrideControllers=!c.in.ce.overrideControllers; return true; }
+    if(name=="allowduplicationflexcontrollers") { c.in.ce.duplicateControllers=!c.in.ce.duplicateControllers; return true; }
+    if(name=="addinvstudioflexes") { c.in.ce.inverseFlexes=!c.in.ce.inverseFlexes; return true; }
+    if(name=="zeroflexdecay") { c.in.ce.zeroDecay=!c.in.ce.zeroDecay; return true; }
+    if(name=="defaqscale") { c.in.ce.defaq=!c.in.ce.defaq; return true; }
+    if(name=="ignoredmxdefaq") { c.in.ce.ignoreDmxDefaq=!c.in.ce.ignoreDmxDefaq; return true; }
+    if(name=="ignoredefaultflexkey") { c.in.ce.ignoreDefaultFlex=!c.in.ce.ignoreDefaultFlex; return true; }
+    if(name=="ignoreeyelid") { c.in.ce.ignoreEyelid=!c.in.ce.ignoreEyelid; return true; }
+    if(name=="ignoreeyeballscaling") { c.in.ce.ignoreEyeScale=!c.in.ce.ignoreEyeScale; return true; }
+    if(name=="ignoreeyeballirisscale") { c.in.ce.ignoreIrisScale=!c.in.ce.ignoreIrisScale; return true; }
+    if(name=="collisionbindtoonebone") { c.in.ce.collisionOneBone=!c.in.ce.collisionOneBone; return true; }
+    if(name=="allowcollapsevertexbone") { c.in.ce.allowCollapseVertex=!c.in.ce.allowCollapseVertex; c.in.ce.boneRules=true; c.in.boneCullType=cm::BoneCullType::Aggressive; return true; }
+    if(name=="hboxignorechild") { c.in.ce.hboxIgnoreChild=!c.in.ce.hboxIgnoreChild; return true; }
+    if(name=="remapflextoglobal") { c.in.ce.remapFlexGlobal=!c.in.ce.remapFlexGlobal; return true; }
+    if(name=="cebonerules") { c.in.ce.boneRules=true; return true; }
+    if(name=="uselegacyclampmethod" || name=="uselegacystripify")
+        return c.Fail(cmd.line,name+": legacy CE algorithm is not implemented; current compiler uses mesh splitting and meshoptimizer");
+    if(name=="eyeballscale") {
+        if(!c.WantFloat("a positive eye scale",cmd,c.in.ce.eyeScale)) return false;
+        if(!std::isfinite(c.in.ce.eyeScale) || c.in.ce.eyeScale<=0) return c.Fail(cmd.line,"eyeballscale must be finite and positive");
+        return true;
+    }
+    if(name=="outputbuffersize" || name=="mdloutputbuffersize" || name=="anioutputbuffersize") {
+        float mb;
+        if(!c.WantFloat("a positive buffer size in MB",cmd,mb)) return false;
+        if(!std::isfinite(mb) || mb<=0 || mb>4096) return c.Fail(cmd.line,"buffer size must be greater than 0 and at most 4096 MB");
+        size_t bytes=static_cast<size_t>(mb*1024.0*1024.0);
+        if(bytes==0) return c.Fail(cmd.line,"buffer size must be at least one byte");
+        if(name!="anioutputbuffersize") c.in.ce.mdlLimit=bytes;
+        if(name!="mdloutputbuffersize") c.in.ce.aniLimit=bytes;
+        return true;
+    }
+    if(name=="outdir") return c.Want("an output directory",cmd,c.in.ce.outputDirectory);
+    if(name=="pushdprocedural") { int value; if(!c.WantInt("0 or 1",cmd,value)) return false;
+        if(value!=0 && value!=1) return c.Fail(cmd.line,"PUSHDProcedural expects 0 or 1");
+        c.pushdProcedural=value!=0; return true; }
+    if(name=="computewrinkles" || name=="computenormalsandwrinkles") c.in.ce.computeWrinkles=!c.in.ce.computeWrinkles;
+    if(name=="computedeltanormals" || name=="computenormalsandwrinkles") c.in.ce.computeNormals=!c.in.ce.computeNormals;
+    return true;
+}
+
 constexpr Command kCommands[] = {
     {"$break", CmdBreak},
     {"$assert", CmdAssert},
@@ -9065,6 +9218,33 @@ constexpr Command kCommands[] = {
     {"$renderpass", CmdRenderPass},
     {"$opaque", CmdOpaque},
     {"$mostlyopaque", CmdMostlyOpaque},
+    {"$overrideflexcontrollers", CmdCeOption},
+    {"$allowduplicationflexcontrollers", CmdCeOption},
+    {"$addinvstudioflexes", CmdCeOption},
+    {"$zeroflexdecay", CmdCeOption},
+    {"$defaqscale", CmdCeOption},
+    {"$ignoredmxdefaq", CmdCeOption},
+    {"$ignoredefaultflexkey", CmdCeOption},
+    {"$ignoreeyelid", CmdCeOption},
+    {"$ignoreeyeballscaling", CmdCeOption},
+    {"$ignoreeyeballirisscale", CmdCeOption},
+    {"$collisionbindtoonebone", CmdCeOption},
+    {"$allowcollapsevertexbone", CmdCeOption},
+    {"$hboxignorechild", CmdCeOption},
+    {"$remapflextoglobal", CmdCeOption},
+    {"$uselegacyclampmethod", CmdCeOption},
+    {"$uselegacystripify", CmdCeOption},
+    {"$cebonerules", CmdCeOption},
+    {"$eyeballscale", CmdCeOption},
+    {"$outdir", CmdCeOption},
+    {"$outputbuffersize", CmdCeOption},
+    {"$mdloutputbuffersize", CmdCeOption},
+    {"$anioutputbuffersize", CmdCeOption},
+    {"$pushdprocedural", CmdCeOption},
+    {"$computewrinkles", CmdCeOption},
+    {"$computedeltanormals", CmdCeOption},
+    {"$computenormalsandwrinkles", CmdCeOption},
+
     {"$surfaceprop", CmdSurfaceProp},
     {"$contents", CmdContents},
     {"$jointcontents", CmdJointContents},
@@ -9273,9 +9453,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
     seedDirs(includeDirs, c.launchIncludeDirs);
     seedDirs(fileDirs, c.launchSearchDirs);
 
+    std::vector<Token> launchTokens;
+    if(!out.ce.launchPrelude.empty() && !Tokenize(out.ce.launchPrelude,"command line",launchTokens,err)) return false;
     if (!Tokenize(text, c.file, c.toks, err))
         return false;
 
+    c.SpliceAt(0,launchTokens);
     // the root of the $include cycle check
     std::error_code ec;
     const fs::path canon = fs::weakly_canonical(path, ec);
