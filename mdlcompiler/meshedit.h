@@ -1,0 +1,173 @@
+// meshedit.h - PulseMDL
+//
+// The `$rendermesh <name> <file> { ... }` edit options: what a modelling tool
+// would have done to the file before exporting it, done at load time instead.
+//
+// Both are scoped to ONE $rendermesh. A $rendermesh with a body loads its own
+// private Source, so an edit never reaches another reference to the same file -
+// the compile is unaffected outside this render mesh.
+
+#ifndef PULSEMDL_MESHEDIT_H
+#define PULSEMDL_MESHEDIT_H
+
+#include <string>
+#include <vector>
+
+#include "source.h"
+
+namespace pulse::source {
+
+// $exceptionlist <exclusive|inclusive> { <name> ... } - a DmeMesh name filter
+// applied as the DMX loads, so an excluded mesh contributes no geometry, no
+// materials and no delta shapes. `inclusive` (the default) keeps only what is
+// listed; `exclusive` drops it. Names are case-insensitive and match the
+// DmeMesh's own name or its dag's.
+struct MeshFilter {
+    struct Entry {
+        std::string name;
+        bool matched = false; // a name that matches nothing is a hard error
+    };
+    std::vector<Entry> names;
+    bool exclusive = false;
+    // $removemeshword: drop every face whose material name contains one of these
+    // (case-insensitive substring). Repeatable and independent of $exceptionlist.
+    std::vector<std::string> removeWords;
+    // $removemesh: drop every face whose material name equals one of these
+    // (case-insensitive, path and extension ignored). Unmatched is a hard error.
+    struct RemoveEntry {
+        std::string name;
+        mutable bool matched = false;
+    };
+    std::vector<RemoveEntry> removeNames;
+    // $cullvertex: drop every face touching a vertex whose weight in the named
+    // stream (e.g. cullvertex$0, case-insensitive) is above threshold. A mesh without it is skipped.
+    struct CullEntry {
+        std::string group;
+        float threshold = 0.0f;
+        bool matched = false;
+    };
+    std::vector<CullEntry> cullGroups;
+
+    bool empty() const { return names.empty(); } // $exceptionlist only
+
+    // Filter one mesh dag, recording which entries hit.
+    bool Keep(const std::string& meshName, const std::string& dagName);
+
+    // First entry that never matched a mesh, or null.
+    const std::string* Unmatched() const;
+
+    // True if the material is named by $removemesh or contains a $removemeshword keyword.
+    bool MaterialRemoved(const std::string& materialName) const;
+
+    // $decimatemesh: mesh names -> face tag (1-based per command, 0 = untagged).
+    struct TagEntry {
+        std::string name;
+        int tag = 0;
+        bool matched = false;
+    };
+    std::vector<TagEntry> tags;
+    std::vector<TagEntry> inflateTags; // $inflate mesh: same shape, packed into the high byte
+    int Tag(const std::string& meshName, const std::string& dagName);
+
+    // $toonoutline: DMX float vertex stream read into SrcVertex::outline (case-insensitive)
+    std::string outlineStream;
+    bool outlineStreamFound = false;
+};
+
+// $wrinklescale <morph> <scale> - what dmxedit's SetWrinkleScale would have
+// baked into the DMX, minus the controller argument: wrinkle bakes per morph,
+// so the combination control a scale hangs off never reaches the output.
+struct WrinkleScaleOption {
+    std::string shape;
+    float scale = 0.0f;
+    int line = 0;
+    bool matched = false; // a name no source has is a hard error
+};
+
+// Bake wrinkle onto every matching morph, per vertex: |posDelta| * scale /
+// maxDeflection (reference GenerateWrinkleDelta). Runs after every source is
+// loaded, so it overwrites whatever the file itself carried or generated.
+void ApplyWrinkleScales(Source& src, std::vector<WrinkleScaleOption>& opts);
+
+// $skinnedbonecull <aggressive|tree> - drop every bone no vertex of this source
+// weights, on top of (and before) the compile stage's own collapse pass. Tree
+// keeps the parent chain of a skinned bone, so the hierarchy above it survives;
+// Aggressive keeps only the skinned bones themselves and folds each dropped
+// parent's transform into what is left below it.
+enum class SkinnedBoneCull { None, Tree, Aggressive };
+
+void CullUnskinnedBones(Source& src, SkinnedBoneCull mode);
+
+// $weld [seams] [sharp [deg]] - merge vertices that share an exact position,
+// within one material and with identical bone weights. Normals are averaged,
+// so hard-edge splits collapse.
+
+// `seams` also merges across differing UVs, which fuses texture seams -
+// without it a UV split still keeps its own vertex.
+enum class WeldMode { None, KeepSeams, All };
+
+// sharp keeps hard edges: vertices at one position whose normals differ stay
+// separate instead of averaging into one smooth normal. sharpAngle > 0 is a
+// tolerance in degrees, so near-equal normals still merge.
+void WeldVertices(Source& src, WeldMode mode, bool sharp = false,
+                  float sharpAngle = 0.0f);
+
+// Offset vertices and morph targets along their unit normals, in model units.
+// `meshTag` > 0 limits it to faces with that $inflate mesh group, `materials` to
+// vertices of those materials (path and extension ignored); neither = all.
+// False if the selection matched no vertex.
+bool InflateVertices(Source& src, float amount, int meshTag = 0,
+                     const std::vector<std::string>& materials = {},
+                     const MaterialTable* mats = nullptr);
+
+// $scalebone: scale a bone's subtree in its bind-space axes, deforming skinned
+// vertices by their subtree weight and moving descendant bone origins. False if no such bone.
+bool ScaleBone(Source& src, const std::string& bone, const Vector3& scale);
+
+// Reverse normals, morph normal deltas and triangle winding.
+void FlipNormals(Source& src);
+
+// meshoptimizer decimation to `factor` (0,1] of each mesh's index count.
+// dst may alias src - faces are rebuilt only after every mesh is simplified.
+// The vertex pool is untouched, so the result stays rigged. `skipMaterial`, if
+// given, is indexed by material ID and keeps those meshes at full detail.
+// Faces simplify per Source::faceTag group; `onlyTag` >= 0 limits it to that group.
+// `rigAware` adds skin centroids as an attribute so bone boundaries resist collapse.
+void SimplifyFaces(Source& dst, const Source& src, float factor, bool lockBorder,
+                   const std::vector<bool>* skipMaterial = nullptr, int onlyTag = -1,
+                   bool rigAware = false);
+
+// Drop disconnected face islands smaller than limit on every axis.
+void RemoveSmallMeshes(Source& src, float limit);
+
+// Fuse several loaded render meshes into ONE drawable Source - what exporting
+// them together out of a single scene would have produced. Bones unify by name
+// (the first part that names a bone sets its bind pose), vertices and faces are
+// concatenated and re-grouped by material, and delta shapes sharing a name fuse
+// into one morph so a flex authored on both halves drives both.
+//
+// Each part keeps the tangents it was loaded with: they were computed against
+// its own faces, and being drawn beside another mesh does not change them.
+//
+// Two parts rigged against DIFFERENT bind transforms for the same bone name
+// cannot both be right - vertices are baked into bind space at load - so the
+// first one wins and the other deforms. Merge meshes off one rig.
+bool MergeSources(const std::vector<Source*>& parts, Source& out, std::string* err);
+
+// $toonoutline: append an inverse hull pushed out by thickness * SrcVertex::outline.
+// A face with a corner weight outside [minWeight, maxWeight] gets no hull. An
+// unencoded weight is 0, or 1 with forceUse. perMaterial names each hull
+// material <source material>_<material>.
+struct ToonOutlineOption {
+    float thickness = 0.0f, minWeight = 0.1f, maxWeight = 1.0f;
+    float thicknessClamp = 0.0f; // Blender solidify Clamp factor, 0 = off
+    bool weld = true, perMaterial = false, forceUse = false;
+    std::string material = "toonoutline", cdmaterial;
+    int line = 0;
+};
+
+bool AddToonOutline(Source& src, MaterialTable& mats, const ToonOutlineOption& o, std::string* err);
+
+} // namespace pulse::source
+
+#endif // PULSEMDL_MESHEDIT_H

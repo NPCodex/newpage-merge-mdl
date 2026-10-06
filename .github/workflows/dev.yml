@@ -1,0 +1,47 @@
+name: Dev build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      # a Linux failure must not cancel win64
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            plat: win64
+            ext: .exe
+          - os: ubuntu-latest
+            plat: linux64
+            ext: ""
+    runs-on: ${{ matrix.os }}
+    # linux64 is best-effort
+    continue-on-error: ${{ matrix.plat == 'linux64' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure
+        # no -G: use whatever toolchain the runner image ships
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DPULSE_BUILD_MESHTOOL=OFF -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Stage
+        shell: bash
+        run: |
+          # both tools ship in one NewPageMergeMDL/ folder, subtools under it
+          mkdir -p NewPageMergeMDL
+          cp "dist/NewPageMergeMDL${{ matrix.ext }}" "dist/NewPageMergeMDL-Decompiler${{ matrix.ext }}" \
+             LICENSE NewPageMergeMDL/
+          cp -r dist/subtools NewPageMergeMDL/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: newpage-merge-mdl-${{ matrix.plat }}
+          path: NewPageMergeMDL/

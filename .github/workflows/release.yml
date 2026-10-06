@@ -1,0 +1,94 @@
+name: Release
+
+# Manual only. Creates one DRAFT release containing every tool.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.rel.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Choose release revision tag
+        id: rel
+        shell: bash
+        run: |
+          version=$(sed -n 's/^set(TOOL_VERSION \([0-9.]*\)).*/\1/p' mdlcompiler/CMakeLists.txt)
+          test -n "$version"
+          tag=$(git tag --list "v$version-r*" --sort=-v:refname | head -n 1)
+          [ -n "$tag" ] && revision=$((${tag##*-r} + 1)) || revision=1
+          echo "tag=v$version-r$revision" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            plat: win64
+            ext: .exe
+          - os: ubuntu-latest
+            plat: linux64
+            ext: ""
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.plat == 'linux64' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure
+        # no -G: use whatever toolchain the runner image ships
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DPULSE_BUILD_MESHTOOL=OFF -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Package
+        shell: bash
+        run: |
+          # both tools ship in one NewPageMergeMDL/ folder inside the archive, with
+          # the subtools in their own folder under it
+          mkdir -p NewPageMergeMDL
+          cp "dist/NewPageMergeMDL${{ matrix.ext }}" "dist/NewPageMergeMDL-Decompiler${{ matrix.ext }}" \
+             LICENSE NewPageMergeMDL/
+          cp -r dist/subtools NewPageMergeMDL/
+          7z a -tzip "newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip" NewPageMergeMDL/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.plat }}
+          path: newpage-merge-mdl-*.zip
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Build notes
+        shell: bash
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          [ -n "$prev" ] && range="$prev..HEAD" || range="HEAD"
+          git log --reverse --pretty=format:%x00%B "$range" | python3 .github/scripts/release-notes.py > notes.txt
+          cat notes.txt
+
+      - name: Create draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ needs.prepare.outputs.tag }}" newpage-merge-mdl-*.zip --target "${{ github.sha }}" --title "${{ needs.prepare.outputs.tag }}" --notes-file notes.txt --draft

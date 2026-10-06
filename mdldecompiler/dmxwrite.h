@@ -1,0 +1,94 @@
+// dmxwrite.h - rebuilds the render meshes the .mdl/.vvd/.vtx were compiled from.
+
+#ifndef MDLDECOMPILER_DMXWRITE_H
+#define MDLDECOMPILER_DMXWRITE_H
+
+#include <string>
+#include <vector>
+
+#include "flexrig.h"
+#include "mdlfile.h"
+
+namespace mdldecompiler {
+
+// -dmxencoding ("binary" | "keyvalues2") and -dmxmodel (the `format model`
+// version). Returns an error message when either is not one we write, else
+// nullptr. Defaults are binary + model 15, which is binary encoding version 4;
+// model 1 is binary encoding version 2, model 18 version 5, model 22 (modeldoc)
+// version 9.
+const char* SetDmxOutput(const std::string& encoding, int formatModel);
+int DmxModelVersion();
+
+// One LOD of the model, as the .vtx describes it. Index 0 is the root LOD that
+// no $lod block writes; a negative switch point is the $shadowlod.
+struct LodInfo {
+    float switchPoint = 0.0f;
+    // any strip group in the LOD is flexed -> $lod facial, else nofacial
+    bool usesFacial = false;
+    // old material -> replacement, both bare names ($lod replacematerial)
+    std::vector<std::pair<std::string, std::string>> materialReplacements;
+};
+
+// One <name>.dmx in `dir`/meshes per non-blank model, named by the $rendermesh
+// alias WriteBodyParts handed out - names[bodypart][model], "" for a blank body.
+// Lower LODs land beside it as <name>_lod<n>.dmx. `mdlPath` locates the sibling
+// .vvd/.vtx. Returns one entry per LOD (empty when the meshes could not be
+// read); never fails the decompile - the .pulseqc stands on its own.
+std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
+                                       const std::string& dir,
+                                       const std::vector<std::vector<std::string>>& names,
+                                       const FlexRig& rig);
+
+// One bone's parent-relative pose in one frame, as animwrite.cpp decodes it.
+struct AnimPose {
+    pm::Vector3 pos{};
+    pm::RadianEuler rot{};
+};
+
+// One flex controller's raw value per frame in min..max. Written as SFM keys it: a
+// DmeGlobalFlexControllerOperator's flexWeight, normalised to 0..1.
+struct FlexTrack {
+    std::string name;
+    float min = 0.0f, max = 1.0f;
+    std::vector<float> values;
+};
+
+// `path`: the skeleton plus one DmeChannelsClip holding `frames` at `fps`. The
+// joints are written at frame 0, the way an SMD's skeleton block doubles as its
+// bind pose, and every bone gets a channel so no bone falls back on that pose.
+bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string& clipName, int fps,
+                       const std::vector<std::vector<AnimPose>>& frames,
+                       const std::vector<FlexTrack>* flex = nullptr);
+
+// `path`: a `format pulsecamera 1` file (binary 5 or keyvalues2) - a DmeCamera whose
+// transform and verticalFieldOfView (degrees) one DmeChannelsClip keys per frame.
+bool WriteCameraDmx(const std::string& path, const std::string& clipName, int fps,
+                    const std::vector<AnimPose>& poses, const std::vector<float>& fov);
+
+struct PhysicsMeshInfo {
+    bool written = false;
+    // some body carries more than one hull, so the reimport needs `concave`
+    bool concave = false;
+};
+
+// `dir`/meshes/<name>.dmx: every convex hull in the sibling .phy, back in model
+// space and rigged to the bone it drives, so a perjoint reimport rebuilds the
+// same bodies. Never fails the decompile - the .pulseqc stands on its own.
+PhysicsMeshInfo WritePhysicsMesh(const Mdl& m, const std::string& mdlPath,
+                                 const std::string& dir, const std::string& name);
+
+struct JointsInfo {
+    bool jiggle = false, procedural = false, hitboxes = false; // categories in the file
+    bool written = false;
+    int namedHitboxes = 0; // hitbox names the DMX cannot carry
+};
+
+// -datamodeljoints: `dir`/meshes/<name>.dmx holding the jigglebones, procedural
+// bones (`bones` = general archetype) and authored hitboxes as DME markup for
+// $datamodeljoints. Nothing to write -> every category false, no file.
+JointsInfo WriteJointsDmx(const Mdl& m, const std::string& dir, const std::string& name,
+                          bool bones);
+
+} // namespace mdldecompiler
+
+#endif // MDLDECOMPILER_DMXWRITE_H

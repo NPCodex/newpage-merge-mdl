@@ -1,0 +1,236 @@
+"""Black-box regression tests. Usage: python tests/compatibility.py <mdlcompiler>.
+
+Tests inspect emitted MDL headers instead of merely checking command registration.
+All fixtures and outputs are isolated in a temporary directory.
+"""
+from pathlib import Path
+import struct
+import subprocess
+import sys
+import tempfile
+import unittest
+
+COMPILER = str(Path(sys.argv.pop(1)).resolve())
+
+
+class Compatibility(unittest.TestCase):
+    def test_branding_and_clean_captured_output(self):
+        output = self.run_qc('$modelname branding\n', '-verify')
+        self.assertIn('NewPageMergeMDL | Model Compiler', output)
+        self.assertIn('[ SOURCE MODEL FORGE ]', output)
+        self.assertNotIn('\x1b[', output)
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.write("mesh.smd", 'version 1\nnodes\n0 "root" -1\n1 "unused_child" 0\nend\n'
+                   'skeleton\ntime 0\n0 0 0 0 0 0 0\n1 0 0 1 0 0 0\nend\n'
+                   'triangles\nmaterial\n0 0 0 0 0 0 1 0 0\n'
+                   '0 1 0 0 0 0 1 1 0\n0 0 1 0 0 0 1 0 1\nend\n')
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def write(self, name, text):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def run_qc(self, text, *args, success=True):
+        qc = self.write("test.qc", text + '\n$body mesh "mesh.smd"\n')
+        result = subprocess.run([COMPILER, str(qc), "-game", str(self.root), *args],
+                                capture_output=True, text=True, errors="replace")
+        self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
+        return result.stdout + result.stderr
+
+    def mdl(self, name):
+        return (self.root / "models" / (name + ".mdl")).read_bytes()
+
+    def test_variable_assignment_and_replacement(self):
+        self.run_qc('$setvariable name first\n$setvariable name replaced\n$modelname "$name$.mdl"\n')
+        self.assertEqual(self.mdl("replaced")[:4], b"IDST")
+
+    def test_launch_variable_stays_pinned(self):
+        self.run_qc('$setvariable name ignored\n$modelname "$name$.mdl"\n',
+                    "-defvar", "name", "pinned")
+        self.mdl("pinned")
+
+    def test_duplicate_define_warns_and_preserves_first_value(self):
+        text = self.run_qc('$definevariable name first\n$definevariable name second\n'
+                           '$modelname "$name$.mdl"\n')
+        self.assertIn("WARNING:", text)
+        self.mdl("first")
+
+    def test_prefixed_include_in_subdirectory(self):
+        self.write("inc/pre_child.qci", '$setvariable name included\n')
+        self.run_qc('$IncludePrefix "inc/child.qci" "pre_"\n'
+                    '$include "inc/child.qci"\n$modelname "$name$.mdl"\n')
+        self.mdl("included")
+
+    def test_pushd_include_and_nested_include(self):
+        self.write("other/child.qci", '$include "nested.qci"\n')
+        self.write("other/nested.qci", '$setvariable name nested\n')
+        self.write("child.qci", '$setvariable name wrong\n')
+        self.run_qc('$PUSHDInclude 1\n$pushd "other"\n$include "child.qci"\n'
+                    '$popd\n$modelname "$name$.mdl"\n')
+        self.mdl("nested")
+
+    def test_include_animation_prefix(self):
+        self.run_qc('$modelname include_test\n$IncludeAnimPrefix "pre_"\n'
+                    '$includemodel "folder/anim.mdl"\n')
+        data = self.mdl("include_test")
+        self.assertIn(b"models/folder/pre_anim.mdl\x00", data)
+        self.assertEqual(struct.unpack_from("<i", data, 336)[0], 1)
+
+    def test_mostlyopaque_launch_overrides_qc(self):
+        self.run_qc('$modelname opaque\n$opaque\n', "-MostlyOpaque")
+        flags = struct.unpack_from("<i", self.mdl("opaque"), 152)[0]
+        self.assertTrue(flags & 8)
+        self.assertFalse(flags & 4)
+
+    def test_invalid_pushd_value(self):
+        text = self.run_qc('$modelname bad\n$PUSHDInclude 2\n', success=False)
+        self.assertIn("expected 0 or 1", text)
+
+    def test_empty_collapse_prefix_is_rejected(self):
+        text = self.run_qc('$modelname bad\n$AlwaysCollapseByPrefix ""\n', success=False)
+        self.assertIn("empty prefix", text)
+
+    def test_missing_launch_prefix_is_rejected(self):
+        text = self.run_qc('$modelname bad\n', "-AlwaysCollapseByPrefix", success=False)
+        self.assertIn("needs a non-empty prefix", text)
+
+    def test_collapse_prefix_changes_output_skeleton(self):
+        qc = '$modelname bones\n$bonecullmethod none\n'
+        self.run_qc(qc)
+        before = struct.unpack_from("<i", self.mdl("bones"), 156)[0]
+        self.run_qc(qc, "-AlwaysCollapseByPrefix", "UNUSED_")
+        after = struct.unpack_from("<i", self.mdl("bones"), 156)[0]
+        self.assertEqual(before, 2)
+        self.assertEqual(after, 1)
+        self.run_qc(qc + '$AlwaysCollapseByPrefix unused_\n')
+        self.assertEqual(struct.unpack_from("<i", self.mdl("bones"), 156)[0], after)
+
+    def test_animation_culling_launch_override_and_nocull(self):
+        qc = ('$modelname anims\n$animationcullmethod none\n'
+              '$animation used "mesh.smd" fps 30\n'
+              '$animation unused "mesh.smd" fps 12\n$sequence idle used\n')
+        self.run_qc(qc)
+        self.assertEqual(struct.unpack_from("<i", self.mdl("anims"), 180)[0], 2)
+        self.run_qc(qc, "-cullanims")
+        self.assertEqual(struct.unpack_from("<i", self.mdl("anims"), 180)[0], 1)
+        self.run_qc(qc.replace('fps 12', 'fps 12 nocull'), "-cullanims")
+        self.assertEqual(struct.unpack_from("<i", self.mdl("anims"), 180)[0], 2)
+
+    def test_macro_defaults_and_variable_fallback(self):
+        self.run_qc('$definevariable dir macro\n$definemacro emit name=default\n'
+                    '$modelname "$dir$/$name$.mdl"\n$endmacro\n$emit\n')
+        self.mdl("macro/default")
+
+    def test_circular_prefixed_include_is_rejected(self):
+        self.write("pre_loop.qci", '$include "loop.qci"\n')
+        text = self.run_qc('$modelname bad\n$IncludePrefix loop.qci pre_\n'
+                           '$include loop.qci\n', success=False)
+        self.assertIn("circular include", text)
+
+    def animation_fixture(self):
+        self.write("moving.smd", 'version 1\nnodes\n0 "root" -1\nend\n'
+                   'skeleton\ntime 0\n0 10 0 0 0 0 0.5\n'
+                   'time 1\n0 20 0 0 0 0 1.0\nend\n')
+
+    def animation_poses(self, model, name):
+        compiler_path = Path(COMPILER)
+        decompiler = str(compiler_path.with_name("NewPageMergeMDL-Decompiler" + compiler_path.suffix))
+        result = subprocess.run([decompiler, str(self.root / 'models' / (model+'.mdl')),
+                                 '-smdanimation', '-outdir', str(self.root / 'decompiled')],
+                                capture_output=True, text=True, errors='replace')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        files = list((self.root / 'decompiled').rglob(name+'.smd'))
+        self.assertEqual(len(files), 1, str(list((self.root / 'decompiled').rglob('*.smd'))))
+        frames = []
+        in_skeleton = False
+        for line in files[0].read_text().splitlines():
+            if line.strip() == 'skeleton': in_skeleton = True
+            elif line.strip() == 'end': in_skeleton = False
+            elif in_skeleton:
+                values = line.split()
+                if len(values) == 7 and values[0] == '0':
+                    frames.append(tuple(float(v) for v in values[1:]))
+        return frames
+
+    def test_animation_conditions_select_only_one_branch(self):
+        self.animation_fixture()
+        self.run_qc('$modelname conditions\n$setvariable mode 2\n'
+                    '$animation clip "moving.smd" {\n'
+                    'if mode == 1 { unknown_unselected_option }\n'
+                    'else if mode == 2 { if 1 { numframes 4 } }\n'
+                    'else { unknown_unselected_option }\n}\n$sequence idle clip\n')
+        self.assertEqual(len(self.animation_poses('conditions', 'clip')), 4)
+
+    def test_animation_copy_copies_motion_and_holds_last_frame(self):
+        self.animation_fixture()
+        self.run_qc('$modelname copying\n$animationcullmethod none\n'
+                    '$animation source "moving.smd"\n'
+                    '$animation dest "mesh.smd" { numframes 4 copy source }\n'
+                    '$sequence idle dest\n')
+        src = self.animation_poses('copying', 'source')
+        dst = self.animation_poses('copying', 'dest')
+        self.assertEqual(len(dst), 4)
+        for actual, expected in zip(dst, [src[0], src[1], src[1], src[1]]):
+            for a, b in zip(actual, expected): self.assertAlmostEqual(a, b, places=3)
+
+    def test_copy_self_reference_rejected(self):
+        text = self.run_qc('$modelname bad\n$animation clip "mesh.smd" copy clip\n'
+                           '$sequence idle clip\n', success=False)
+        self.assertIn('requires an earlier animation', text)
+
+    def test_animation_match_position_preserves_rotation(self):
+        self.animation_fixture()
+        self.run_qc('$modelname matching\n$animationcullmethod none\n'
+                    '$animation source "moving.smd"\n'
+                    '$animation dest "mesh.smd" match source pos\n'
+                    '$sequence idle dest\n')
+        src = self.animation_poses('matching', 'source')[0]
+        dst = self.animation_poses('matching', 'dest')[0]
+        # The two clips may choose different MDL quantization scales.
+        for a, b in zip(src[:3], dst[:3]): self.assertAlmostEqual(a, b, delta=0.01)
+        self.assertGreater(abs(src[5]-dst[5]), 0.1)
+
+    def test_match_rotation_and_default_agree(self):
+        self.animation_fixture()
+        self.run_qc('$modelname rotations\n$animationcullmethod none\n'
+                    '$animation source "moving.smd"\n'
+                    '$animation explicit "mesh.smd" match source rot\n'
+                    '$animation implicit "mesh.smd" match source\n'
+                    '$sequence idle explicit\n')
+        explicit = self.animation_poses('rotations', 'explicit')[0]
+        implicit = self.animation_poses('rotations', 'implicit')[0]
+        source = self.animation_poses('rotations', 'source')[0]
+        for a, b in zip(explicit, implicit): self.assertAlmostEqual(a, b, delta=0.01)
+        for a, b in zip(explicit[3:], source[3:]): self.assertAlmostEqual(a, b, delta=0.01)
+        self.assertGreater(abs(explicit[0]-source[0]), 1.0)
+
+    def test_copy_position_does_not_copy_rotation(self):
+        self.animation_fixture()
+        self.run_qc('$modelname channels\n$animationcullmethod none\n'
+                    '$animation source "moving.smd"\n'
+                    '$animation dest "mesh.smd" copy source pos\n$sequence idle dest\n')
+        src = self.animation_poses('channels', 'source')[0]
+        dst = self.animation_poses('channels', 'dest')[0]
+        for a, b in zip(src[:3], dst[:3]): self.assertAlmostEqual(a, b, delta=0.01)
+        self.assertGreater(abs(src[5]-dst[5]), 0.1)
+
+    def test_animation_condition_missing_brace_is_error(self):
+        text = self.run_qc('$modelname bad\n$animation clip "mesh.smd" { if 1 fps 12 }\n'
+                           '$sequence idle clip\n', success=False)
+        self.assertIn('missing', text)
+
+    def test_animation_else_without_if_is_error(self):
+        text = self.run_qc('$modelname bad\n$animation clip "mesh.smd" { else { fps 12 } }\n'
+                           '$sequence idle clip\n', success=False)
+        self.assertIn('else without', text)
+
+
+if __name__ == "__main__":
+    unittest.main()
