@@ -306,7 +306,7 @@ index 710c49b..d18cd06 100644
          input.forceWriteVertexData = true;
      if (stripLods)
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index db90844..a3a1e4b 100644
+index db90844..9d6f39d 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
 @@ -215,6 +215,9 @@ struct Ctx {
@@ -319,7 +319,16 @@ index db90844..a3a1e4b 100644
      bool scriptBreak = false; // $break, sticky through every $include parent
  
      float defaultFps = 30.0f;
-@@ -2744,13 +2747,53 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2358,6 +2361,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
+ //    1 - consumed as an option
+ //    0 - not an animation option (caller treats it as a filename / seq ref)
+ //   -1 - error, c.err set (includes a known-but-unsupported option)
++bool AnimationIf(Ctx& c, const Token& cmd);
++
+ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+     if (t.quoted)
+         return 0; // a quoted token is always a filename
+@@ -2744,13 +2749,52 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
              return 1;
          }
      }
@@ -327,7 +336,6 @@ index db90844..a3a1e4b 100644
 +    // Self-authored extensions: compile-time braced animation conditionals.
 +    // Defined beside the shared script condition evaluator below.
 +    if (!t.quoted && _stricmp(o.c_str(), "if") == 0) {
-+        extern bool AnimationIf(Ctx&, const Token&);
 +        return AnimationIf(c, t) ? 1 : -1;
 +    }
 +    if (!t.quoted && (_stricmp(o.c_str(), "else") == 0)) {
@@ -374,7 +382,7 @@ index db90844..a3a1e4b 100644
          a.cmds.push_back(std::move(cmd));
          return 1;
      }
-@@ -3225,6 +3268,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
+@@ -3225,6 +3269,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
      std::string name;
      if (!c.Want("a compiled .mdl path", cmd, name))
          return false;
@@ -385,7 +393,7 @@ index db90844..a3a1e4b 100644
      // must name a .mdl - a source .dmx/.smd or a bare name would compile fine
      // and leave a reference the engine silently fails to resolve
      if (name.size() < 4 || _stricmp(name.c_str() + name.size() - 4, ".mdl") != 0)
-@@ -5391,6 +5438,16 @@ bool CmdAlwaysCollapse(Ctx& c, const Token& cmd) {
+@@ -5391,6 +5439,16 @@ bool CmdAlwaysCollapse(Ctx& c, const Token& cmd) {
      return true;
  }
  
@@ -402,7 +410,7 @@ index db90844..a3a1e4b 100644
  // $hierarchy <child> <parent> (Cmd_ForcedHierarchy, "$heirarchy" is stock's own
  // misspelling and works too): reparent a bone. Applied once the global bone
  // table exists, so it can join two source skeletons that were exported apart.
-@@ -8146,7 +8203,12 @@ bool SpliceInclude(Ctx& c) {
+@@ -8146,7 +8204,12 @@ bool SpliceInclude(Ctx& c) {
      Token pathTok = c.toks[p++];
      if (!pathTok.expanded && !ExpandVars(c, pathTok))
          return false;
@@ -416,7 +424,7 @@ index db90844..a3a1e4b 100644
  
      bool localDir = false, optional = false;
      while (p < c.toks.size() && !c.toks[p].quoted && c.toks[p].line == cmd.line &&
-@@ -8170,7 +8232,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8170,7 +8233,7 @@ bool SpliceInclude(Ctx& c) {
      if (relPath.is_absolute()) {
          tries.push_back(relPath);
      } else {
@@ -425,7 +433,7 @@ index db90844..a3a1e4b 100644
          // stock resolves every $include against the root script's dir, so a
          // nested one often carries the whole path down from there
          if (c.curDir != c.scriptDir)
-@@ -8390,9 +8452,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
+@@ -8390,9 +8453,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
          return false;
      if (PinnedByDefVar(c, cmd, name))
          return true;
@@ -441,7 +449,7 @@ index db90844..a3a1e4b 100644
      c.variables[name] = value;
      return true;
  }
-@@ -8413,6 +8478,38 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
+@@ -8413,6 +8479,38 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
      return true;
  }
  
@@ -480,7 +488,7 @@ index db90844..a3a1e4b 100644
  bool IsCommandName(const std::string& name); // the kCommands lookup, below
  
  // $definemacro <name> [<param>[=<default>] ...] <body> $endmacro.
-@@ -8767,6 +8864,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8767,6 +8865,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
  }
  
  bool CmdIf(Ctx& c, const Token& cmd) { return IfChain(c, cmd, false); }
@@ -523,7 +531,7 @@ index db90844..a3a1e4b 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,6 +8992,10 @@ constexpr Command kCommands[] = {
+@@ -8859,6 +8993,10 @@ constexpr Command kCommands[] = {
      {"$print", CmdPrint},
      {"$definevariable", CmdDefineVariable},
      {"$redefinevariable", CmdRedefineVariable},
@@ -534,7 +542,7 @@ index db90844..a3a1e4b 100644
      {"$definemacro", CmdDefineMacro},
      {"$endmacro", CmdEndMacroOutside},
      {"$if", CmdIf},
-@@ -8981,6 +9118,7 @@ constexpr Command kCommands[] = {
+@@ -8981,6 +9119,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},

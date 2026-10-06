@@ -2361,6 +2361,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
 //    1 - consumed as an option
 //    0 - not an animation option (caller treats it as a filename / seq ref)
 //   -1 - error, c.err set (includes a known-but-unsupported option)
+bool AnimationIf(Ctx& c, const Token& cmd);
+
 int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
     if (t.quoted)
         return 0; // a quoted token is always a filename
@@ -2750,7 +2752,6 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
     // Self-authored extensions: compile-time braced animation conditionals.
     // Defined beside the shared script condition evaluator below.
     if (!t.quoted && _stricmp(o.c_str(), "if") == 0) {
-        extern bool AnimationIf(Ctx&, const Token&);
         return AnimationIf(c, t) ? 1 : -1;
     }
     if (!t.quoted && (_stricmp(o.c_str(), "else") == 0)) {
