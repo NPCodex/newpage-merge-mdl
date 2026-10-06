@@ -46,7 +46,8 @@ def main():
             raise ValueError('Empty overlay; refusing to overwrite maintained patch')
         destination = ROOT / 'automation/compatibility.patch'
         if args.check:
-            if not destination.exists() or destination.read_bytes() != patch:
+            # A Windows checkout can convert this text patch to CRLF.
+            if not destination.exists() or destination.read_bytes().replace(b'\r\n', b'\n') != patch:
                 raise ValueError('Stale compatibility.patch: run refresh_overlay.py and commit the result')
             print('Compatibility overlay matches maintained source.')
         else:
