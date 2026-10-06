@@ -78,7 +78,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 56 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 74 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -202,3 +202,27 @@ swaps, compressed/instanced glTF, and engine integration. Assimp fallback can
 lose glTF STEP/CUBICSPLINE interpolation semantics. No claim of whole-file or
 performance equality is made. PulseModel updates retain these maintained source
 changes through the overlay; Neko reference updates are reviewed manually.
+
+## CS:GO reference investigation
+
+The user-specified `perilouswithadollarsign/cstrike15_src` repository contains a
+historical StudioMDL implementation. This investigation inspected its
+`studiomdl.cpp`, `simplify.cpp`, `optimize.cpp`, `tristrip.cpp` and `studiomdl.h`.
+Reference files remain outside this project's source and release archives.
+
+- The historical source splits whole source models across material boundaries;
+  its accounting conservatively reserves a face's vertices before deduplication.
+  Current per-material output splitting is a different algorithm. This does not
+  establish that CE's `$UseLegacyClampMethod` is identical to this version.
+- NvTriStrip is a separate dependency referenced by `optimize.cpp`; `tristrip.cpp`
+  alone does not provide that backend. Legacy stripification remains unfinished.
+- Cmdlist overflow guards protect fixed arrays in that source. This project's
+  dynamic vectors do not need the same numeric cap; imposing it would reject
+  otherwise valid scripts rather than improve safety.
+- Bounds comparison exposed this project's 9999-unit accumulation sentinel.
+  A regression reproduces truncated sequence bounds for a root translated
+  outside the coordinate interval. The fix accumulates using full float range
+  and clamps both endpoints, with positive and negative output tests. It is
+  intentionally more robust than reproducing historical clipping defects.
+
+No performance improvement is claimed from this bounds correctness fix.

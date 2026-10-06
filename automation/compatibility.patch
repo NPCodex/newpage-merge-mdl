@@ -593658,7 +593658,7 @@ index fcff31d..c831856 100644
 +
 +set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")
 diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
-index bdb0c90..134b388 100644
+index bdb0c90..79029b1 100644
 --- a/mdlcompiler/compile.cpp
 +++ b/mdlcompiler/compile.cpp
 @@ -1,6 +1,7 @@
@@ -593908,7 +593908,39 @@ index bdb0c90..134b388 100644
          int j = m.bones[k].parent;
          if (j != -1) {
              const Vector3& p = m.bones[k].pos;
-@@ -9066,6 +9137,13 @@ struct FlexSortEntry {
+@@ -8737,8 +8808,8 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+     // Cost is frames x vertices, so animations run in parallel; min/max is
+     // order-independent, so the boxes match a serial run bit for bit.
+     auto calcAnim = [&](Anim& panim) {
+-        Vector3 bmin{9999.0f, 9999.0f, 9999.0f};
+-        Vector3 bmax{-9999.0f, -9999.0f, -9999.0f};
++        Vector3 bmin{FLT_MAX, FLT_MAX, FLT_MAX};
++        Vector3 bmax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
+ 
+         std::vector<matrix3x4> bonetransform;
+         std::vector<matrix3x4> posetransform(m.bones.size());
+@@ -8803,14 +8874,16 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+                          "max (%g, %g, %g) exceeds coordinate range [%g, %g]; clamping\n",
+                          panim.name.c_str(), bmin.x, bmin.y, bmin.z,
+                          bmax.x, bmax.y, bmax.z, -kMaxCoord, kMaxCoord);
+-            bmin = VecMax(bmin, Vector3{-kMaxCoord, -kMaxCoord, -kMaxCoord});
+-            bmax = VecMin(bmax, Vector3{kMaxCoord, kMaxCoord, kMaxCoord});
++            bmin = VecMin(VecMax(bmin, Vector3{-kMaxCoord, -kMaxCoord, -kMaxCoord}),
++                          Vector3{kMaxCoord, kMaxCoord, kMaxCoord});
++            bmax = VecMax(VecMin(bmax, Vector3{kMaxCoord, kMaxCoord, kMaxCoord}),
++                          Vector3{-kMaxCoord, -kMaxCoord, -kMaxCoord});
+         }
+     }
+ 
+     for (Sequence& seq : m.sequences) {
+-        Vector3 bmin{9999.0f, 9999.0f, 9999.0f};
+-        Vector3 bmax{-9999.0f, -9999.0f, -9999.0f};
++        Vector3 bmin{FLT_MAX, FLT_MAX, FLT_MAX};
++        Vector3 bmax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
+         for (int a : seq.animIndices) {
+             if (a < 0) continue;
+             bmin = VecMin(m.anims[a].bmin, bmin);
+@@ -9066,6 +9139,13 @@ struct FlexSortEntry {
      int sourceOrder;
  };
  
@@ -593922,7 +593954,7 @@ index bdb0c90..134b388 100644
  int FlexKeysSortFunc(const void* pv1, const void* pv2) {
      const FlexSortEntry* k1 = static_cast<const FlexSortEntry*>(pv1);
      const FlexSortEntry* k2 = static_cast<const FlexSortEntry*>(pv2);
-@@ -9107,7 +9185,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9107,7 +9187,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
          FlexKey* pFlexKey = sorted[i].key;
          src::Source* pVSource = pFlexKey->source;
          src::SrcMorphAnim* pVSourceAnim =
@@ -593931,7 +593963,7 @@ index bdb0c90..134b388 100644
          if (!pVSourceAnim)
              continue;
  
-@@ -9144,7 +9222,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9144,7 +9224,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
      std::vector<uint8_t> pDoesMove(nMaxModelVerts, 0);
  
      for (FlexKey& key : m.flexkeys) {
@@ -593940,7 +593972,7 @@ index bdb0c90..134b388 100644
          if (!pVSourceAnim)
              continue;
          auto it = morphMaps.find(pVSourceAnim);
-@@ -9345,7 +9423,7 @@ void CullDuplicateFlex(Ctx& ctx) {
+@@ -9345,7 +9425,7 @@ void CullDuplicateFlex(Ctx& ctx) {
      std::vector<FlexController> kept;
      for (size_t c = 0; c < m.flexcontrollers.size(); ++c) {
          int survivor = -1;
@@ -593949,7 +593981,7 @@ index bdb0c90..134b388 100644
              if (_stricmp(kept[k].name.c_str(), m.flexcontrollers[c].name.c_str()) == 0) {
                  survivor = static_cast<int>(k);
                  break;
-@@ -9453,7 +9531,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
+@@ -9453,7 +9533,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
      std::vector<FlexKey> kept;
      kept.reserve(m.flexkeys.size());
      for (FlexKey& key : m.flexkeys) {
@@ -593958,7 +593990,7 @@ index bdb0c90..134b388 100644
              (key.flexdesc >= 0 && key.flexdesc < static_cast<int>(usedDesc.size()) &&
               usedDesc[key.flexdesc]) ||
              (key.flexpair > 0 && key.flexpair < static_cast<int>(usedDesc.size()) &&
-@@ -9792,6 +9870,7 @@ static std::string AnimSignature(const Anim& a) {
+@@ -9792,6 +9872,7 @@ static std::string AnimSignature(const Anim& a) {
      SigVal(s, a.looprestartpercent);
      SigVal(s, a.isBindPose);
      SigVal(s, a.noAutoIK);
@@ -593966,7 +593998,7 @@ index bdb0c90..134b388 100644
      SigVal(s, a.ignoreTransformAngles);
      SigVal(s, a.ignoreTransformPosition);
      SigVal(s, a.motionrollback);
-@@ -10328,6 +10407,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10328,6 +10409,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      out.zeroFramesHighres = input.zeroFramesHighres;
      out.minZeroFramePosDelta = input.minZeroFramePosDelta;
      out.boneSaveFrames = input.boneSaveFrames;
@@ -593974,7 +594006,7 @@ index bdb0c90..134b388 100644
      out.bbox[0] = input.bbox[0];
      out.bbox[1] = input.bbox[1];
      out.bboxset = input.bboxSet;
-@@ -10467,6 +10547,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10467,6 +10549,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          a.fudgeloop = ia.fudgeloop;
          a.noAutoIK = ia.noAutoIK;
          a.nocull = ia.nocull;
@@ -593982,7 +594014,7 @@ index bdb0c90..134b388 100644
          a.ignoreTransformAngles = ia.ignoreTransformAngles;
          a.ignoreTransformPosition = ia.ignoreTransformPosition;
          a.motiontype = ia.motiontype;
-@@ -10703,6 +10784,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10703,6 +10786,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  cmd.forceRot = ic.forceRot;
                  break;
              case InCmd::RefMotion:
@@ -593990,7 +594022,7 @@ index bdb0c90..134b388 100644
              case InCmd::AppendAnim:
              case InCmd::WorldspaceBlend:
              case InCmd::MatchBlend:
-@@ -10714,7 +10796,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10714,7 +10798,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                      "\" in " + a.name;
                      return false;
                  }
@@ -594004,7 +594036,7 @@ index bdb0c90..134b388 100644
                             : (ic.kind == InCmd::Match)      ? AnimCmd::Match
                             : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
                             : (ic.kind == InCmd::WorldspaceBlend)
-@@ -10722,6 +10810,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10722,6 +10812,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
                                                             : AnimCmd::AppendAnim;
                  cmd.matchPre = ic.matchPre;

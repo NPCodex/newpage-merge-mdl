@@ -8808,8 +8808,8 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
     // Cost is frames x vertices, so animations run in parallel; min/max is
     // order-independent, so the boxes match a serial run bit for bit.
     auto calcAnim = [&](Anim& panim) {
-        Vector3 bmin{9999.0f, 9999.0f, 9999.0f};
-        Vector3 bmax{-9999.0f, -9999.0f, -9999.0f};
+        Vector3 bmin{FLT_MAX, FLT_MAX, FLT_MAX};
+        Vector3 bmax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
         std::vector<matrix3x4> bonetransform;
         std::vector<matrix3x4> posetransform(m.bones.size());
@@ -8874,14 +8874,16 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                          "max (%g, %g, %g) exceeds coordinate range [%g, %g]; clamping\n",
                          panim.name.c_str(), bmin.x, bmin.y, bmin.z,
                          bmax.x, bmax.y, bmax.z, -kMaxCoord, kMaxCoord);
-            bmin = VecMax(bmin, Vector3{-kMaxCoord, -kMaxCoord, -kMaxCoord});
-            bmax = VecMin(bmax, Vector3{kMaxCoord, kMaxCoord, kMaxCoord});
+            bmin = VecMin(VecMax(bmin, Vector3{-kMaxCoord, -kMaxCoord, -kMaxCoord}),
+                          Vector3{kMaxCoord, kMaxCoord, kMaxCoord});
+            bmax = VecMax(VecMin(bmax, Vector3{kMaxCoord, kMaxCoord, kMaxCoord}),
+                          Vector3{-kMaxCoord, -kMaxCoord, -kMaxCoord});
         }
     }
 
     for (Sequence& seq : m.sequences) {
-        Vector3 bmin{9999.0f, 9999.0f, 9999.0f};
-        Vector3 bmax{-9999.0f, -9999.0f, -9999.0f};
+        Vector3 bmin{FLT_MAX, FLT_MAX, FLT_MAX};
+        Vector3 bmax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
         for (int a : seq.animIndices) {
             if (a < 0) continue;
             bmin = VecMin(m.anims[a].bmin, bmin);

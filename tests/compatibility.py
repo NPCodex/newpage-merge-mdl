@@ -249,6 +249,18 @@ class Compatibility(unittest.TestCase):
             result.append((name, struct.unpack_from('<i', data, offset + 12)[0], offset))
         return result
 
+    def test_animation_bounds_outside_coordinate_range_remain_ordered(self):
+        for x in (20000, -20000):
+            self.write('outside.smd', 'version 1\nnodes\n0 "root" -1\nend\nskeleton\ntime 0\n0 '+str(x)+' 0 0 0 0 0\nend\n')
+            output=self.run_qc('$modelname bounds\n$animationcullmethod none\n$sequence idle outside.smd\n')
+            self.assertIn('exceeds coordinate range',output)
+            data=self.mdl('bounds'); offset=self.sequences('bounds')[0][2]
+            low=struct.unpack_from('<3f',data,offset+32); high=struct.unpack_from('<3f',data,offset+44)
+            for a,b in zip(low,high): self.assertLessEqual(a,b)
+            limit=16384 if x>0 else -16384
+            self.assertAlmostEqual(low[1],limit)
+            self.assertAlmostEqual(high[1],limit)
+
     def test_gmtime_exact_flags_and_decompile_round_trip(self):
         self.run_qc('$modelname utc\n$sequence idle mesh.smd gmtime loop\n')
         self.assertEqual(self.sequences('utc')[0][1] & 0x100101, 0x100101)
