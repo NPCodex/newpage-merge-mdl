@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..c269c32 100644
+index fed7eaf..21efc8b 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..c269c32 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.0 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.1 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -34,7 +34,7 @@ index fed7eaf..c269c32 100644
  
  # Layout (kept shallow):
 diff --git a/libs/CMakeLists.txt b/libs/CMakeLists.txt
-index 43b2a1d..df79450 100644
+index 43b2a1d..3db0214 100644
 --- a/libs/CMakeLists.txt
 +++ b/libs/CMakeLists.txt
 @@ -48,6 +48,20 @@ add_library(pulse_ufbx STATIC
@@ -58,6 +58,14 @@ index 43b2a1d..df79450 100644
  # DMX reader (clean-room port of Datamodel.NET's format logic).
  add_library(pulse_dmx STATIC
      dmx/dmx.cpp
+@@ -63,3 +77,7 @@ add_library(pulse_drlibs STATIC
+     drlibs/drlibs_impl.c
+ )
+ target_include_directories(pulse_drlibs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/drlibs)
++
++# Optional legacy triangle-list cache optimizer.
++add_library(pulse_nvtristrip STATIC nvtristrip/NvTriStrip.cpp nvtristrip/NvTriStripObjects.cpp )
++target_include_directories(pulse_nvtristrip PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/nvtristrip)
 diff --git a/libs/assimp/Build.md b/libs/assimp/Build.md
 new file mode 100644
 index 0000000..7baca6d
@@ -593626,8 +593634,2689 @@ index b75eb2c..ccfdc54 100644
  inline constexpr int32_t STUDIO_LOCAL = 0x0200;
  inline constexpr int32_t STUDIO_HIDDEN = 0x0400;
  inline constexpr int32_t STUDIO_OVERRIDE = 0x0800;
+diff --git a/libs/nvtristrip/NvTriStrip.cpp b/libs/nvtristrip/NvTriStrip.cpp
+new file mode 100644
+index 0000000..fe4c781
+--- /dev/null
++++ b/libs/nvtristrip/NvTriStrip.cpp
+@@ -0,0 +1,315 @@
++
++#pragma warning( disable : 4786 4018 4530 )
++
++#include "NvTriStripObjects.h"
++#include "NvTriStrip.h"
++#include <assert.h>
++
++static inline unsigned short AsUShort( int nValue )
++{
++	assert( nValue >= 0 && nValue <= 65535 );
++	return (unsigned short)( nValue );
++}
++
++static inline unsigned short AsUShort( unsigned int nValue )
++{
++	assert( nValue <= 65535 );
++	return (unsigned short)( nValue );
++}
++
++////////////////////////////////////////////////////////////////////////////////////////
++//private data
++static unsigned int cacheSize    = CACHESIZE_GEFORCE1_2;
++static bool bStitchStrips        = true;
++static unsigned int minStripSize = 0;
++static bool bListsOnly           = false;
++
++////////////////////////////////////////////////////////////////////////////////////////
++// SetListsOnly()
++//
++// If set to true, will return an optimized list, with no strips at all.
++//
++// Default value: false
++//
++void SetListsOnly(const bool _bListsOnly)
++{
++	bListsOnly = _bListsOnly;
++}
++
++////////////////////////////////////////////////////////////////////////////////////////
++// SetCacheSize()
++//
++// Sets the cache size which the stripfier uses to optimize the data.
++// Controls the length of the generated individual strips.
++// This is the "actual" cache size, so 24 for GeForce3 and 16 for GeForce1/2
++// You may want to play around with this number to tweak performance.
++//
++// Default value: 16
++//
++void SetCacheSize(const unsigned int _cacheSize)
++{
++	cacheSize = _cacheSize;
++}
++
++
++////////////////////////////////////////////////////////////////////////////////////////
++// SetStitchStrips()
++//
++// bool to indicate whether to stitch together strips into one huge strip or not.
++// If set to true, you'll get back one huge strip stitched together using degenerate
++//  triangles.
++// If set to false, you'll get back a large number of separate strips.
++//
++// Default value: true
++//
++void SetStitchStrips(const bool _bStitchStrips)
++{
++	bStitchStrips = _bStitchStrips;
++}
++
++
++////////////////////////////////////////////////////////////////////////////////////////
++// SetMinStripSize()
++//
++// Sets the minimum acceptable size for a strip, in triangles.
++// All strips generated which are shorter than this will be thrown into one big, separate list.
++//
++// Default value: 0
++//
++void SetMinStripSize(const unsigned int _minStripSize)
++{
++	minStripSize = _minStripSize;
++}
++
++////////////////////////////////////////////////////////////////////////////////////////
++// GenerateStrips()
++//
++// in_indices: input index list, the indices you would use to render
++// in_numIndices: number of entries in in_indices
++// primGroups: array of optimized/stripified PrimitiveGroups
++// numGroups: number of groups returned
++//
++// Be sure to call delete[] on the returned primGroups to avoid leaking mem
++//
++void GenerateStrips(const unsigned short* in_indices, const unsigned int in_numIndices,
++					PrimitiveGroup** primGroups, unsigned short* numGroups)
++{
++	//put data in format that the stripifier likes
++	WordVec tempIndices;
++	tempIndices.resize(in_numIndices);
++	unsigned short maxIndex = 0;
++	for(int i = 0; i < in_numIndices; i++)
++	{
++		tempIndices[i] = in_indices[i];
++		if(in_indices[i] > maxIndex)
++			maxIndex = in_indices[i];
++	}
++	NvStripInfoVec tempStrips;
++	NvFaceInfoVec tempFaces;
++
++	NvStripifier stripifier;
++
++	//do actual stripification
++	stripifier.Stripify(tempIndices, cacheSize, minStripSize, maxIndex, tempStrips, tempFaces);
++
++	//stitch strips together
++	IntVec stripIndices;
++	unsigned int numSeparateStrips = 0;
++
++	if(bListsOnly)
++	{
++		//if we're outputting only lists, we're done
++		*numGroups = 1;
++		(*primGroups) = new PrimitiveGroup[*numGroups];
++		PrimitiveGroup* primGroupArray = *primGroups;
++
++		//count the total number of indices
++		unsigned int numIndices = 0;
++		for(int i = 0; i < tempStrips.size(); i++)
++		{
++			numIndices += (unsigned int)( tempStrips[i]->m_faces.size() * 3 );
++		}
++
++		//add in the list
++		numIndices += (unsigned int)( tempFaces.size() * 3 );
++
++		primGroupArray[0].type       = PT_LIST;
++		primGroupArray[0].numIndices = numIndices;
++		primGroupArray[0].indices    = new unsigned short[numIndices];
++
++		//do strips
++		unsigned int indexCtr = 0;
++		for(int i = 0; i < tempStrips.size(); i++)
++		{
++			for(int j = 0; j < tempStrips[i]->m_faces.size(); j++)
++			{
++				//degenerates are of no use with lists
++				if(!NvStripifier::IsDegenerate(tempStrips[i]->m_faces[j]))
++				{
++					primGroupArray[0].indices[indexCtr++] = AsUShort( tempStrips[i]->m_faces[j]->m_v0 );
++					primGroupArray[0].indices[indexCtr++] = AsUShort( tempStrips[i]->m_faces[j]->m_v1 );
++					primGroupArray[0].indices[indexCtr++] = AsUShort( tempStrips[i]->m_faces[j]->m_v2 );
++				}
++				else
++				{
++					//we've removed a tri, reduce the number of indices
++					primGroupArray[0].numIndices -= 3;
++				}
++			}
++		}
++
++		//do lists
++		for(int i = 0; i < tempFaces.size(); i++)
++		{
++			primGroupArray[0].indices[indexCtr++] = AsUShort( tempFaces[i]->m_v0 );
++			primGroupArray[0].indices[indexCtr++] = AsUShort( tempFaces[i]->m_v1 );
++			primGroupArray[0].indices[indexCtr++] = AsUShort( tempFaces[i]->m_v2 );
++		}
++	}
++	else
++	{
++		stripifier.CreateStrips(tempStrips, stripIndices, bStitchStrips, numSeparateStrips);
++
++		//if we're stitching strips together, we better get back only one strip from CreateStrips()
++		assert( (bStitchStrips && (numSeparateStrips == 1)) || !bStitchStrips);
++
++		//convert to output format
++		*numGroups = AsUShort( numSeparateStrips ); //for the strips
++		if(tempFaces.size() != 0)
++			(*numGroups)++;  //we've got a list as well, increment
++		(*primGroups) = new PrimitiveGroup[*numGroups];
++
++		PrimitiveGroup* primGroupArray = *primGroups;
++
++		//first, the strips
++		int startingLoc = 0;
++		for(int stripCtr = 0; stripCtr < numSeparateStrips; stripCtr++)
++		{
++			int stripLength = 0;
++
++			if(!bStitchStrips)
++			{
++				//if we've got multiple strips, we need to figure out the correct length
++				int i = startingLoc;
++				for(i; i < stripIndices.size(); i++)
++				{
++					if(stripIndices[i] == -1)
++						break;
++				}
++
++				stripLength = i - startingLoc;
++			}
++			else
++			{
++				stripLength = (int)( stripIndices.size() );
++			}
++
++			primGroupArray[stripCtr].type       = PT_STRIP;
++			primGroupArray[stripCtr].indices    = new unsigned short[stripLength];
++			primGroupArray[stripCtr].numIndices = stripLength;
++
++			int indexCtr = 0;
++			for(int i = startingLoc; i < stripLength + startingLoc; i++)
++				primGroupArray[stripCtr].indices[indexCtr++] = AsUShort( stripIndices[i] );
++
++			//we add 1 to account for the -1 separating strips
++			//this doesn't break the stitched case since we'll exit the loop
++			startingLoc += stripLength + 1;
++		}
++
++		//next, the list
++		if(tempFaces.size() != 0)
++		{
++			int faceGroupLoc = (*numGroups) - 1;    //the face group is the last one
++			primGroupArray[faceGroupLoc].type       = PT_LIST;
++			primGroupArray[faceGroupLoc].indices    = new unsigned short[tempFaces.size() * 3];
++			primGroupArray[faceGroupLoc].numIndices = (unsigned int)( tempFaces.size() * 3 );
++			int indexCtr = 0;
++			for(int i = 0; i < tempFaces.size(); i++)
++			{
++				primGroupArray[faceGroupLoc].indices[indexCtr++] = AsUShort( tempFaces[i]->m_v0 );
++				primGroupArray[faceGroupLoc].indices[indexCtr++] = AsUShort( tempFaces[i]->m_v1 );
++				primGroupArray[faceGroupLoc].indices[indexCtr++] = AsUShort( tempFaces[i]->m_v2 );
++			}
++		}
++	}
++
++	//clean up everything
++
++	//delete strips
++	for(int i = 0; i < tempStrips.size(); i++)
++	{
++		for(int j = 0; j < tempStrips[i]->m_faces.size(); j++)
++		{
++			delete tempStrips[i]->m_faces[j];
++			tempStrips[i]->m_faces[j] = NULL;
++		}
++		delete tempStrips[i];
++		tempStrips[i] = NULL;
++	}
++
++	//delete faces
++	for(int i = 0; i < tempFaces.size(); i++)
++	{
++		delete tempFaces[i];
++		tempFaces[i] = NULL;
++	}
++}
++
++
++////////////////////////////////////////////////////////////////////////////////////////
++// RemapIndices()
++//
++// Function to remap your indices to improve spatial locality in your vertex buffer.
++//
++// in_primGroups: array of PrimitiveGroups you want remapped
++// numGroups: number of entries in in_primGroups
++// numVerts: number of vertices in your vertex buffer, also can be thought of as the range
++//  of acceptable values for indices in your primitive groups.
++// remappedGroups: array of remapped PrimitiveGroups
++//
++// Note that, according to the remapping handed back to you, you must reorder your
++//  vertex buffer.
++//
++void RemapIndices(const PrimitiveGroup* in_primGroups, const unsigned short numGroups,
++				  const unsigned short numVerts, PrimitiveGroup** remappedGroups)
++{
++	(*remappedGroups) = new PrimitiveGroup[numGroups];
++
++	//caches oldIndex --> newIndex conversion
++	int *indexCache;
++	indexCache = new int[numVerts];
++	memset(indexCache, -1, sizeof(int)*numVerts);
++
++	//loop over primitive groups
++	unsigned int indexCtr = 0;
++	for(int i = 0; i < numGroups; i++)
++	{
++		unsigned int numIndices = in_primGroups[i].numIndices;
++
++		//init remapped group
++		(*remappedGroups)[i].type       = in_primGroups[i].type;
++		(*remappedGroups)[i].numIndices = numIndices;
++		(*remappedGroups)[i].indices    = new unsigned short[numIndices];
++
++		for(int j = 0; j < numIndices; j++)
++		{
++			int cachedIndex = indexCache[in_primGroups[i].indices[j]];
++			if(cachedIndex == -1) //we haven't seen this index before
++			{
++				//point to "last" vertex in VB
++				(*remappedGroups)[i].indices[j] = AsUShort( indexCtr );
++
++				//add to index cache, increment
++				indexCache[in_primGroups[i].indices[j]] = indexCtr++;
++			}
++			else
++			{
++				//we've seen this index before
++				(*remappedGroups)[i].indices[j] = AsUShort( cachedIndex );
++			}
++		}
++	}
++
++	delete[] indexCache;
++}
+diff --git a/libs/nvtristrip/NvTriStrip.h b/libs/nvtristrip/NvTriStrip.h
+new file mode 100644
+index 0000000..50fa2b6
+--- /dev/null
++++ b/libs/nvtristrip/NvTriStrip.h
+@@ -0,0 +1,124 @@
++#ifndef NVTRISTRIP_H
++#define NVTRISTRIP_H
++
++#ifndef NULL
++#define NULL 0
++#endif
++
++// Linked explicitly through CMake.
++
++////////////////////////////////////////////////////////////////////////////////////////
++// Public interface for stripifier
++////////////////////////////////////////////////////////////////////////////////////////
++
++//GeForce1 and 2 cache size
++#define CACHESIZE_GEFORCE1_2 16
++
++//GeForce3 cache size
++#define CACHESIZE_GEFORCE3   24
++
++enum PrimType
++{
++	PT_LIST,
++	PT_STRIP,
++	PT_FAN
++};
++
++struct PrimitiveGroup
++{
++	PrimType type;
++	unsigned int numIndices;
++	unsigned short* indices;
++
++////////////////////////////////////////////////////////////////////////////////////////
++
++	PrimitiveGroup() : type(PT_STRIP), numIndices(0), indices(NULL) {}
++	~PrimitiveGroup()
++	{
++		if(indices)
++			delete[] indices;
++		indices = NULL;
++	}
++};
++
++////////////////////////////////////////////////////////////////////////////////////////
++// SetCacheSize()
++//
++// Sets the cache size which the stripfier uses to optimize the data.
++// Controls the length of the generated individual strips.
++// This is the "actual" cache size, so 24 for GeForce3 and 16 for GeForce1/2
++// You may want to play around with this number to tweak performance.
++//
++// Default value: 16
++//
++void SetCacheSize(const unsigned int cacheSize);
++
++
++////////////////////////////////////////////////////////////////////////////////////////
++// SetStitchStrips()
++//
++// bool to indicate whether to stitch together strips into one huge strip or not.
++// If set to true, you'll get back one huge strip stitched together using degenerate
++//  triangles.
++// If set to false, you'll get back a large number of separate strips.
++//
++// Default value: true
++//
++void SetStitchStrips(const bool bStitchStrips);
++
++
++////////////////////////////////////////////////////////////////////////////////////////
++// SetMinStripSize()
++//
++// Sets the minimum acceptable size for a strip, in triangles.
++// All strips generated which are shorter than this will be thrown into one big, separate list.
++//
++// Default value: 0
++//
++void SetMinStripSize(const unsigned int minSize);
++
++
++////////////////////////////////////////////////////////////////////////////////////////
++// SetListsOnly()
++//
++// If set to true, will return an optimized list, with no strips at all.
++//
++// Default value: false
++//
++void SetListsOnly(const bool bListsOnly);
++
++
++////////////////////////////////////////////////////////////////////////////////////////
++// GenerateStrips()
++//
++// in_indices: input index list, the indices you would use to render
++// in_numIndices: number of entries in in_indices
++// primGroups: array of optimized/stripified PrimitiveGroups
++// numGroups: number of groups returned
++//
++// Be sure to call delete[] on the returned primGroups to avoid leaking mem
++//
++void GenerateStrips(const unsigned short* in_indices, const unsigned int in_numIndices,
++					PrimitiveGroup** primGroups, unsigned short* numGroups);
++
++
++////////////////////////////////////////////////////////////////////////////////////////
++// RemapIndices()
++//
++// Function to remap your indices to improve spatial locality in your vertex buffer.
++//
++// in_primGroups: array of PrimitiveGroups you want remapped
++// numGroups: number of entries in in_primGroups
++// numVerts: number of vertices in your vertex buffer, also can be thought of as the range
++//  of acceptable values for indices in your primitive groups.
++// remappedGroups: array of remapped PrimitiveGroups
++//
++// Note that, according to the remapping handed back to you, you must reorder your
++//  vertex buffer.
++//
++// Credit goes to the MS Xbox crew for the idea for this interface.
++//
++void RemapIndices(const PrimitiveGroup* in_primGroups, const unsigned short numGroups,
++				  const unsigned short numVerts, PrimitiveGroup** remappedGroups);
++
++#endif
+diff --git a/libs/nvtristrip/NvTriStripObjects.cpp b/libs/nvtristrip/NvTriStripObjects.cpp
+new file mode 100644
+index 0000000..062c2ba
+--- /dev/null
++++ b/libs/nvtristrip/NvTriStripObjects.cpp
+@@ -0,0 +1,1741 @@
++
++#pragma warning( disable : 4786 4018 4530 )
++
++#include <assert.h>
++#include <set>
++#include "NvTriStripObjects.h"
++#include "VertexCache.h"
++#include <algorithm>
++
++#define CACHE_INEFFICIENCY 6
++
++NvStripifier::NvStripifier()
++{
++
++}
++
++NvStripifier::~NvStripifier()
++{
++
++}
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// FindEdgeInfo()
++//
++// find the edge info for these two indices
++//
++NvEdgeInfo * NvStripifier::FindEdgeInfo(NvEdgeInfoVec &edgeInfos, int v0, int v1){
++
++	// we can get to it through either array
++	// because the edge infos have a v0 and v1
++	// and there is no order except how it was
++	// first created.
++	NvEdgeInfo *infoIter = edgeInfos[v0];
++	while (infoIter != NULL){
++		if (infoIter->m_v0 == v0){
++			if (infoIter->m_v1 == v1)
++				return infoIter;
++			else
++				infoIter = infoIter->m_nextV0;
++		}
++		else {
++			assert(infoIter->m_v1 == v0);
++			if (infoIter->m_v0 == v1)
++				return infoIter;
++			else
++				infoIter = infoIter->m_nextV1;
++		}
++	}
++	return NULL;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// FindOtherFace
++//
++// find the other face sharing these vertices
++// exactly like the edge info above
++//
++NvFaceInfo * NvStripifier::FindOtherFace(NvEdgeInfoVec &edgeInfos, int v0, int v1, NvFaceInfo *faceInfo){
++	NvEdgeInfo *edgeInfo = FindEdgeInfo(edgeInfos, v0, v1);
++
++	if( (edgeInfo == NULL) && (v0 == v1))
++	{
++		//we've hit a degenerate
++		return NULL;
++	}
++
++	assert(edgeInfo != NULL);
++	return (edgeInfo->m_face0 == faceInfo ? edgeInfo->m_face1 : edgeInfo->m_face0);
++}
++
++
++bool NvStripifier::AlreadyExists(NvFaceInfo* faceInfo, NvFaceInfoVec& faceInfos)
++{
++	for(int i = 0; i < faceInfos.size(); ++i)
++	{
++		if( (faceInfos[i]->m_v0 == faceInfo->m_v0) &&
++			(faceInfos[i]->m_v1 == faceInfo->m_v1) &&
++			(faceInfos[i]->m_v2 == faceInfo->m_v2) )
++			return true;
++	}
++
++	return false;
++}
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// BuildStripifyInfo()
++//
++// Builds the list of all face and edge infos
++//
++void NvStripifier::BuildStripifyInfo(NvFaceInfoVec &faceInfos, NvEdgeInfoVec &edgeInfos,
++									 const unsigned short maxIndex)
++{
++	// reserve space for the face infos, but do not resize them.
++	int numIndices = indices.size();
++	faceInfos.reserve(numIndices / 3);
++
++	// we actually resize the edge infos, so we must initialize to NULL
++	edgeInfos.resize(maxIndex + 1);
++	for (int i = 0; i < maxIndex + 1; i++)
++		edgeInfos[i] = NULL;
++
++	// iterate through the triangles of the triangle list
++	int numTriangles = numIndices / 3;
++	int index        = 0;
++	bool bFaceUpdated[3];
++
++	for (int i = 0; i < numTriangles; i++)
++	{
++		bool bMightAlreadyExist = true;
++		bFaceUpdated[0] = false;
++		bFaceUpdated[1] = false;
++		bFaceUpdated[2] = false;
++
++		// grab the indices
++		int v0 = indices[index++];
++		int v1 = indices[index++];
++		int v2 = indices[index++];
++
++		//we disregard degenerates
++		if(IsDegenerate(v0, v1, v2))
++			continue;
++
++		// create the face info and add it to the list of faces, but only if this exact face doesn't already
++		//  exist in the list
++		NvFaceInfo *faceInfo = new NvFaceInfo(v0, v1, v2);
++
++		// grab the edge infos, creating them if they do not already exist
++		NvEdgeInfo *edgeInfo01 = FindEdgeInfo(edgeInfos, v0, v1);
++		if (edgeInfo01 == NULL)
++		{
++			//since one of it's edges isn't in the edge data structure, it can't already exist in the face structure
++			bMightAlreadyExist = false;
++
++			// create the info
++			edgeInfo01 = new NvEdgeInfo(v0, v1);
++
++			// update the linked list on both
++			edgeInfo01->m_nextV0 = edgeInfos[v0];
++			edgeInfo01->m_nextV1 = edgeInfos[v1];
++			edgeInfos[v0] = edgeInfo01;
++			edgeInfos[v1] = edgeInfo01;
++
++			// set face 0
++			edgeInfo01->m_face0 = faceInfo;
++		}
++		else
++		{
++			if (edgeInfo01->m_face1 != NULL)
++			{
++//				printf("BuildStripifyInfo: > 2 triangles on an edge... uncertain consequences\n");
++			}
++			else
++			{
++				edgeInfo01->m_face1 = faceInfo;
++				bFaceUpdated[0] = true;
++			}
++		}
++
++		// grab the edge infos, creating them if they do not already exist
++		NvEdgeInfo *edgeInfo12 = FindEdgeInfo(edgeInfos, v1, v2);
++		if (edgeInfo12 == NULL)
++		{
++			bMightAlreadyExist = false;
++
++			// create the info
++			edgeInfo12 = new NvEdgeInfo(v1, v2);
++
++			// update the linked list on both
++			edgeInfo12->m_nextV0 = edgeInfos[v1];
++			edgeInfo12->m_nextV1 = edgeInfos[v2];
++			edgeInfos[v1] = edgeInfo12;
++			edgeInfos[v2] = edgeInfo12;
++
++			// set face 0
++			edgeInfo12->m_face0 = faceInfo;
++		}
++		else
++		{
++			if (edgeInfo12->m_face1 != NULL)
++			{
++//				printf("BuildStripifyInfo: > 2 triangles on an edge... uncertain consequences\n");
++			}
++			else
++			{
++				edgeInfo12->m_face1 = faceInfo;
++				bFaceUpdated[1] = true;
++			}
++		}
++
++		// grab the edge infos, creating them if they do not already exist
++		NvEdgeInfo *edgeInfo20 = FindEdgeInfo(edgeInfos, v2, v0);
++		if (edgeInfo20 == NULL)
++		{
++			bMightAlreadyExist = false;
++
++			// create the info
++			edgeInfo20 = new NvEdgeInfo(v2, v0);
++
++			// update the linked list on both
++			edgeInfo20->m_nextV0 = edgeInfos[v2];
++			edgeInfo20->m_nextV1 = edgeInfos[v0];
++			edgeInfos[v2] = edgeInfo20;
++			edgeInfos[v0] = edgeInfo20;
++
++			// set face 0
++			edgeInfo20->m_face0 = faceInfo;
++		}
++		else
++		{
++			if (edgeInfo20->m_face1 != NULL)
++			{
++//				printf("BuildStripifyInfo: > 2 triangles on an edge... uncertain consequences\n");
++			}
++			else
++			{
++				edgeInfo20->m_face1 = faceInfo;
++				bFaceUpdated[2] = true;
++			}
++		}
++
++		if(bMightAlreadyExist)
++		{
++			if(!AlreadyExists(faceInfo, faceInfos))
++				faceInfos.push_back(faceInfo);
++			else
++			{
++				delete faceInfo;
++
++				//cleanup pointers that point to this deleted face
++				if(bFaceUpdated[0])
++					edgeInfo01->m_face1 = NULL;
++				if(bFaceUpdated[1])
++					edgeInfo12->m_face1 = NULL;
++				if(bFaceUpdated[2])
++					edgeInfo20->m_face1 = NULL;
++			}
++		}
++		else
++		{
++			faceInfos.push_back(faceInfo);
++		}
++
++	}
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// FindStartPoint()
++//
++// Finds a good starting point, namely one which has only one neighbor
++//
++int NvStripifier::FindStartPoint(NvFaceInfoVec &faceInfos, NvEdgeInfoVec &edgeInfos)
++{
++	int bestCtr = -1;
++	int bestIndex = -1;
++
++	for(int i = 0; i < faceInfos.size(); i++)
++	{
++		int ctr = 0;
++
++		if(FindOtherFace(edgeInfos, faceInfos[i]->m_v0, faceInfos[i]->m_v1, faceInfos[i]) == NULL)
++			ctr++;
++		if(FindOtherFace(edgeInfos, faceInfos[i]->m_v1, faceInfos[i]->m_v2, faceInfos[i]) == NULL)
++			ctr++;
++		if(FindOtherFace(edgeInfos, faceInfos[i]->m_v2, faceInfos[i]->m_v0, faceInfos[i]) == NULL)
++			ctr++;
++		if(ctr > bestCtr)
++		{
++			bestCtr = ctr;
++			bestIndex = i;
++			//return i;
++		}
++	}
++	//return -1;
++
++	if(bestCtr == 0)
++		return -1;
++	else
++		return bestIndex;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// FindGoodResetPoint()
++//
++// A good reset point is one near other commited areas so that
++// we know that when we've made the longest strips its because
++// we're stripifying in the same general orientation.
++//
++NvFaceInfo* NvStripifier::FindGoodResetPoint(NvFaceInfoVec &faceInfos, NvEdgeInfoVec &edgeInfos){
++	// we hop into different areas of the mesh to try to get
++	// other large open spans done.  Areas of small strips can
++	// just be left to triangle lists added at the end.
++	NvFaceInfo *result = NULL;
++
++	if(result == NULL)
++	{
++		int numFaces   = faceInfos.size();
++		int startPoint;
++		if(bFirstTimeResetPoint)
++		{
++			//first time, find a face with few neighbors (look for an edge of the mesh)
++			startPoint = FindStartPoint(faceInfos, edgeInfos);
++			bFirstTimeResetPoint = false;
++		}
++		else
++			startPoint = (int)(((float) numFaces - 1) * meshJump);
++
++		if(startPoint == -1)
++		{
++			startPoint = (int)(((float) numFaces - 1) * meshJump);
++
++			//meshJump += 0.1f;
++			//if (meshJump > 1.0f)
++			//	meshJump = .05f;
++		}
++
++		int i = startPoint;
++		do {
++
++			// if this guy isn't visited, try him
++			if (faceInfos[i]->m_stripId < 0){
++				result = faceInfos[i];
++				break;
++			}
++
++			// update the index and clamp to 0-(numFaces-1)
++			if (++i >= numFaces)
++				i = 0;
++
++		} while (i != startPoint);
++
++		// update the meshJump
++		meshJump += 0.1f;
++		if (meshJump > 1.0f)
++			meshJump = .05f;
++	}
++
++	// return the best face we found
++	return result;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// GetUniqueVertexInB()
++//
++// Returns the vertex unique to faceB
++//
++int NvStripifier::GetUniqueVertexInB(NvFaceInfo *faceA, NvFaceInfo *faceB){
++
++	int facev0 = faceB->m_v0;
++	if (facev0 != faceA->m_v0 &&
++		facev0 != faceA->m_v1 &&
++		facev0 != faceA->m_v2)
++		return facev0;
++
++	int facev1 = faceB->m_v1;
++	if (facev1 != faceA->m_v0 &&
++		facev1 != faceA->m_v1 &&
++		facev1 != faceA->m_v2)
++		return facev1;
++
++	int facev2 = faceB->m_v2;
++	if (facev2 != faceA->m_v0 &&
++		facev2 != faceA->m_v1 &&
++		facev2 != faceA->m_v2)
++		return facev2;
++
++	// nothing is different
++	return -1;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// GetSharedVertices()
++//
++// Returns the (at most) two vertices shared between the two faces
++//
++void NvStripifier::GetSharedVertices(NvFaceInfo *faceA, NvFaceInfo *faceB, int* vertex0, int* vertex1)
++{
++	*vertex0 = -1;
++	*vertex1 = -1;
++
++	int facev0 = faceB->m_v0;
++	if (facev0 == faceA->m_v0 ||
++		facev0 == faceA->m_v1 ||
++		facev0 == faceA->m_v2)
++	{
++		if(*vertex0 == -1)
++			*vertex0 = facev0;
++		else
++		{
++			*vertex1 = facev0;
++			return;
++		}
++	}
++
++	int facev1 = faceB->m_v1;
++	if (facev1 == faceA->m_v0 ||
++		facev1 == faceA->m_v1 ||
++		facev1 == faceA->m_v2)
++	{
++		if(*vertex0 == -1)
++			*vertex0 = facev1;
++		else
++		{
++			*vertex1 = facev1;
++			return;
++		}
++	}
++
++	int facev2 = faceB->m_v2;
++	if (facev2 == faceA->m_v0 ||
++		facev2 == faceA->m_v1 ||
++		facev2 == faceA->m_v2)
++	{
++		if(*vertex0 == -1)
++			*vertex0 = facev2;
++		else
++		{
++			*vertex1 = facev2;
++			return;
++		}
++	}
++
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// GetNextIndex()
++//
++// Returns vertex of the input face which is "next" in the input index list
++//
++inline int NvStripifier::GetNextIndex(const WordVec &indices, NvFaceInfo *face){
++
++	int numIndices = indices.size();
++	assert(numIndices >= 2);
++
++	int v0  = indices[numIndices-2];
++	int v1  = indices[numIndices-1];
++
++	int fv0 = face->m_v0;
++	int fv1 = face->m_v1;
++	int fv2 = face->m_v2;
++
++	if (fv0 != v0 && fv0 != v1){
++		if ((fv1 != v0 && fv1 != v1) || (fv2 != v0 && fv2 != v1)){
++			printf("GetNextIndex: Triangle doesn't have all of its vertices\n");
++			printf("GetNextIndex: Duplicate triangle probably got us derailed\n");
++		}
++		return fv0;
++	}
++	if (fv1 != v0 && fv1 != v1){
++		if ((fv0 != v0 && fv0 != v1) || (fv2 != v0 && fv2 != v1)){
++			printf("GetNextIndex: Triangle doesn't have all of its vertices\n");
++			printf("GetNextIndex: Duplicate triangle probably got us derailed\n");
++		}
++		return fv1;
++	}
++	if (fv2 != v0 && fv2 != v1){
++		if ((fv0 != v0 && fv0 != v1) || (fv1 != v0 && fv1 != v1)){
++			printf("GetNextIndex: Triangle doesn't have all of its vertices\n");
++			printf("GetNextIndex: Duplicate triangle probably got us derailed\n");
++		}
++		return fv2;
++	}
++
++	// shouldn't get here, but let's try and fail gracefully
++	if( (fv0 == fv1) || (fv0 == fv2) )
++		return fv0;
++	else if( (fv1 == fv0) || (fv1 == fv2) )
++		return fv1;
++	else if( (fv2 == fv0) || (fv2 == fv1) )
++		return fv2;
++	else
++		return -1;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// IsMarked()
++//
++// If either the faceInfo has a real strip index because it is
++// already assign to a committed strip OR it is assigned in an
++// experiment and the experiment index is the one we are building
++// for, then it is marked and unavailable
++inline bool NvStripInfo::IsMarked(NvFaceInfo *faceInfo){
++	return (faceInfo->m_stripId >= 0) || (IsExperiment() && faceInfo->m_experimentId == m_experimentId);
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// MarkTriangle()
++//
++// Marks the face with the current strip ID
++//
++inline void NvStripInfo::MarkTriangle(NvFaceInfo *faceInfo){
++	assert(!IsMarked(faceInfo));
++	if (IsExperiment()){
++		faceInfo->m_experimentId = m_experimentId;
++		faceInfo->m_testStripId  = m_stripId;
++    }
++	else{
++		assert(faceInfo->m_stripId == -1);
++		faceInfo->m_experimentId = -1;
++		faceInfo->m_stripId      = m_stripId;
++	}
++}
++
++
++bool NvStripInfo::Unique(NvFaceInfoVec& faceVec, NvFaceInfo* face)
++{
++	bool bv0, bv1, bv2; //bools to indicate whether a vertex is in the faceVec or not
++	bv0 = bv1 = bv2 = false;
++
++	for(int i = 0; i < faceVec.size(); i++)
++	{
++		if(!bv0)
++		{
++			if( (faceVec[i]->m_v0 == face->m_v0) ||
++				(faceVec[i]->m_v1 == face->m_v0) ||
++				(faceVec[i]->m_v2 == face->m_v0) )
++				bv0 = true;
++		}
++
++		if(!bv1)
++		{
++			if( (faceVec[i]->m_v0 == face->m_v1) ||
++				(faceVec[i]->m_v1 == face->m_v1) ||
++				(faceVec[i]->m_v2 == face->m_v1) )
++				bv1 = true;
++		}
++
++		if(!bv2)
++		{
++			if( (faceVec[i]->m_v0 == face->m_v2) ||
++				(faceVec[i]->m_v1 == face->m_v2) ||
++				(faceVec[i]->m_v2 == face->m_v2) )
++				bv2 = true;
++		}
++
++		//the face is not unique, all it's vertices exist in the face vector
++		if(bv0 && bv1 && bv2)
++			return false;
++	}
++
++	//if we get out here, it's unique
++	return true;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// Build()
++//
++// Builds a strip forward as far as we can go, then builds backwards, and joins the two lists
++//
++void NvStripInfo::Build(NvEdgeInfoVec &edgeInfos, NvFaceInfoVec &faceInfos)
++{
++	// used in building the strips forward and backward
++	WordVec scratchIndices;
++
++	// build forward... start with the initial face
++	NvFaceInfoVec forwardFaces, backwardFaces;
++	forwardFaces.push_back(m_startInfo.m_startFace);
++
++	MarkTriangle(m_startInfo.m_startFace);
++
++	int v0 = (m_startInfo.m_toV1 ? m_startInfo.m_startEdge->m_v0 : m_startInfo.m_startEdge->m_v1);
++	int v1 = (m_startInfo.m_toV1 ? m_startInfo.m_startEdge->m_v1 : m_startInfo.m_startEdge->m_v0);
++
++	// easiest way to get v2 is to use this function which requires the
++	// other indices to already be in the list.
++	scratchIndices.push_back(v0);
++	scratchIndices.push_back(v1);
++	int v2 = NvStripifier::GetNextIndex(scratchIndices, m_startInfo.m_startFace);
++	scratchIndices.push_back(v2);
++
++	//
++	// build the forward list
++	//
++	int nv0 = v1;
++	int nv1 = v2;
++
++	NvFaceInfo *nextFace = NvStripifier::FindOtherFace(edgeInfos, nv0, nv1, m_startInfo.m_startFace);
++	while (nextFace != NULL && !IsMarked(nextFace))
++	{
++		//check to see if this next face is going to cause us to die soon
++		int testnv0 = nv1;
++		int testnv1 = NvStripifier::GetNextIndex(scratchIndices, nextFace);
++
++		NvFaceInfo* nextNextFace = NvStripifier::FindOtherFace(edgeInfos, testnv0, testnv1, nextFace);
++
++		if( (nextNextFace == NULL) || (IsMarked(nextNextFace)) )
++		{
++			//uh, oh, we're following a dead end, try swapping
++			NvFaceInfo* testNextFace = NvStripifier::FindOtherFace(edgeInfos, nv0, testnv1, nextFace);
++
++			if( ((testNextFace != NULL) && !IsMarked(testNextFace)) )
++			{
++				//we only swap if it buys us something
++
++				//add a "fake" degenerate face
++				NvFaceInfo* tempFace = new NvFaceInfo(nv0, nv1, nv0);
++
++				forwardFaces.push_back(tempFace);
++				MarkTriangle(tempFace);
++
++				scratchIndices.push_back(nv0);
++				testnv0 = nv0;
++
++				++m_numDegenerates;
++			}
++
++		}
++
++		// add this to the strip
++		forwardFaces.push_back(nextFace);
++
++		MarkTriangle(nextFace);
++
++		// add the index
++		//nv0 = nv1;
++		//nv1 = NvStripifier::GetNextIndex(scratchIndices, nextFace);
++		scratchIndices.push_back(testnv1);
++
++		// and get the next face
++		nv0 = testnv0;
++		nv1 = testnv1;
++
++		nextFace = NvStripifier::FindOtherFace(edgeInfos, nv0, nv1, nextFace);
++
++	}
++
++	// tempAllFaces is going to be forwardFaces + backwardFaces
++	// it's used for Unique()
++	NvFaceInfoVec tempAllFaces;
++	for(int i = 0; i < forwardFaces.size(); i++)
++		tempAllFaces.push_back(forwardFaces[i]);
++
++	//
++	// reset the indices for building the strip backwards and do so
++	//
++	scratchIndices.resize(0);
++	scratchIndices.push_back(v2);
++	scratchIndices.push_back(v1);
++	scratchIndices.push_back(v0);
++	nv0 = v1;
++	nv1 = v0;
++	nextFace = NvStripifier::FindOtherFace(edgeInfos, nv0, nv1, m_startInfo.m_startFace);
++	while (nextFace != NULL && !IsMarked(nextFace))
++	{
++		//this tests to see if a face is "unique", meaning that its vertices aren't already in the list
++		// so, strips which "wrap-around" are not allowed
++		if(!Unique(tempAllFaces, nextFace))
++			break;
++
++		//check to see if this next face is going to cause us to die soon
++		int testnv0 = nv1;
++		int testnv1 = NvStripifier::GetNextIndex(scratchIndices, nextFace);
++
++		NvFaceInfo* nextNextFace = NvStripifier::FindOtherFace(edgeInfos, testnv0, testnv1, nextFace);
++
++		if( (nextNextFace == NULL) || (IsMarked(nextNextFace)) )
++		{
++			//uh, oh, we're following a dead end, try swapping
++			NvFaceInfo* testNextFace = NvStripifier::FindOtherFace(edgeInfos, nv0, testnv1, nextFace);
++			if( ((testNextFace != NULL) && !IsMarked(testNextFace)) )
++			{
++				//we only swap if it buys us something
++
++				//add a "fake" degenerate face
++				NvFaceInfo* tempFace = new NvFaceInfo(nv0, nv1, nv0);
++
++				backwardFaces.push_back(tempFace);
++				MarkTriangle(tempFace);
++				scratchIndices.push_back(nv0);
++				testnv0 = nv0;
++
++				++m_numDegenerates;
++			}
++
++		}
++
++		// add this to the strip
++		backwardFaces.push_back(nextFace);
++
++		//this is just so Unique() will work
++		tempAllFaces.push_back(nextFace);
++
++		MarkTriangle(nextFace);
++
++		// add the index
++		//nv0 = nv1;
++		//nv1 = NvStripifier::GetNextIndex(scratchIndices, nextFace);
++		scratchIndices.push_back(testnv1);
++
++		// and get the next face
++		nv0 = testnv0;
++		nv1 = testnv1;
++		nextFace = NvStripifier::FindOtherFace(edgeInfos, nv0, nv1, nextFace);
++	}
++
++	// Combine the forward and backwards stripification lists and put into our own face vector
++	Combine(forwardFaces, backwardFaces);
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// Combine()
++//
++// Combines the two input face vectors and puts the result into m_faces
++//
++void NvStripInfo::Combine(const NvFaceInfoVec &forward, const NvFaceInfoVec &backward){
++
++	// add backward faces
++	int numFaces = backward.size();
++	for (int i = numFaces - 1; i >= 0; i--)
++		m_faces.push_back(backward[i]);
++
++	// add forward faces
++	numFaces = forward.size();
++	for (int i = 0; i < numFaces; i++)
++		m_faces.push_back(forward[i]);
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// SharesEdge()
++//
++// Returns true if the input face and the current strip share an edge
++//
++bool NvStripInfo::SharesEdge(const NvFaceInfo* faceInfo, NvEdgeInfoVec &edgeInfos)
++{
++	//check v0->v1 edge
++	NvEdgeInfo* currEdge = NvStripifier::FindEdgeInfo(edgeInfos, faceInfo->m_v0, faceInfo->m_v1);
++
++	if(IsInStrip(currEdge->m_face0) || IsInStrip(currEdge->m_face1))
++		return true;
++
++	//check v1->v2 edge
++	currEdge = NvStripifier::FindEdgeInfo(edgeInfos, faceInfo->m_v1, faceInfo->m_v2);
++
++	if(IsInStrip(currEdge->m_face0) || IsInStrip(currEdge->m_face1))
++		return true;
++
++	//check v2->v0 edge
++	currEdge = NvStripifier::FindEdgeInfo(edgeInfos, faceInfo->m_v2, faceInfo->m_v0);
++
++	if(IsInStrip(currEdge->m_face0) || IsInStrip(currEdge->m_face1))
++		return true;
++
++	return false;
++
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// CommitStrips()
++//
++// "Commits" the input strips by setting their m_experimentId to -1 and adding to the allStrips
++//  vector
++//
++void NvStripifier::CommitStrips(NvStripInfoVec &allStrips, const NvStripInfoVec &strips)
++{
++	// Iterate through strips
++	int numStrips = strips.size();
++	for (int i = 0; i < numStrips; i++){
++
++		// Tell the strip that it is now real
++		NvStripInfo *strip = strips[i];
++		strip->m_experimentId = -1;
++
++		// add to the list of real strips
++		allStrips.push_back(strip);
++
++		// Iterate through the faces of the strip
++		// Tell the faces of the strip that they belong to a real strip now
++		const NvFaceInfoVec &faces = strips[i]->m_faces;
++		int numFaces = faces.size();
++
++		for (int j = 0; j < numFaces; j++)
++		{
++			strip->MarkTriangle(faces[j]);
++		}
++	}
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// FindTraversal()
++//
++// Finds the next face to start the next strip on.
++//
++bool NvStripifier::FindTraversal(NvFaceInfoVec &faceInfos,
++								 NvEdgeInfoVec    &edgeInfos,
++								 NvStripInfo      *strip,
++								 NvStripStartInfo &startInfo){
++
++	// if the strip was v0->v1 on the edge, then v1 will be a vertex in the next edge.
++	int v = (strip->m_startInfo.m_toV1 ? strip->m_startInfo.m_startEdge->m_v1 : strip->m_startInfo.m_startEdge->m_v0);
++
++	NvFaceInfo *untouchedFace = NULL;
++	NvEdgeInfo *edgeIter      = edgeInfos[v];
++	while (edgeIter != NULL){
++		NvFaceInfo *face0 = edgeIter->m_face0;
++		NvFaceInfo *face1 = edgeIter->m_face1;
++		if ((face0 != NULL && !strip->IsInStrip(face0)) && face1 != NULL && !strip->IsMarked(face1))
++		{
++			untouchedFace = face1;
++			break;
++		}
++		if ((face1 != NULL && !strip->IsInStrip(face1)) && face0 != NULL && !strip->IsMarked(face0)){
++			untouchedFace = face0;
++			break;
++		}
++
++		// find the next edgeIter
++		edgeIter = (edgeIter->m_v0 == v ? edgeIter->m_nextV0 : edgeIter->m_nextV1);
++	}
++
++	startInfo.m_startFace = untouchedFace;
++	startInfo.m_startEdge = edgeIter;
++	if (edgeIter != NULL)
++	{
++		if(strip->SharesEdge(startInfo.m_startFace, edgeInfos))
++			startInfo.m_toV1 = (edgeIter->m_v0 == v);  //note! used to be m_v1
++		else
++			startInfo.m_toV1 = (edgeIter->m_v1 == v);
++	}
++	return (startInfo.m_startFace != NULL);
++}
++
++
++////////////////////////////////////////////////////////////////////////////////////////
++// RemoveSmallStrips()
++//
++// allStrips is the whole strip vector...all small strips will be deleted from this list, to avoid leaking mem
++// allBigStrips is an out parameter which will contain all strips above minStripLength
++// faceList is an out parameter which will contain all faces which were removed from the striplist
++//
++void NvStripifier::RemoveSmallStrips(NvStripInfoVec& allStrips, NvStripInfoVec& allBigStrips, NvFaceInfoVec& faceList)
++{
++	faceList.clear();
++	allBigStrips.clear();  //make sure these are empty
++	NvFaceInfoVec tempFaceList;
++
++	for(int i = 0; i < allStrips.size(); i++)
++	{
++		if(allStrips[i]->m_faces.size() < minStripLength)
++		{
++			//strip is too small, add faces to faceList
++			for(int j = 0; j < allStrips[i]->m_faces.size(); j++)
++				tempFaceList.push_back(allStrips[i]->m_faces[j]);
++
++			//and free memory
++			delete allStrips[i];
++		}
++		else
++		{
++			allBigStrips.push_back(allStrips[i]);
++		}
++	}
++
++	bool *bVisitedList = new bool[tempFaceList.size()];
++	memset(bVisitedList, 0, tempFaceList.size()*sizeof(bool));
++
++	VertexCache* vcache = new VertexCache(cacheSize);
++
++	int bestNumHits = -1;
++	int numHits;
++	int bestIndex = 0;
++
++	while(1)
++	{
++		bestNumHits = -1;
++
++		//find best face to add next, given the current cache
++		for(int i = 0; i < tempFaceList.size(); i++)
++		{
++			if(bVisitedList[i])
++				continue;
++
++			numHits = CalcNumHitsFace(vcache, tempFaceList[i]);
++			if(numHits > bestNumHits)
++			{
++				bestNumHits = numHits;
++				bestIndex = i;
++			}
++		}
++
++		if(bestNumHits == -1.0f)
++			break;
++		bVisitedList[bestIndex] = true;
++		UpdateCacheFace(vcache, tempFaceList[bestIndex]);
++		faceList.push_back(tempFaceList[bestIndex]);
++	}
++
++	delete vcache;
++	delete[] bVisitedList;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// NextIsCW()
++//
++// Returns true if the next face should be ordered in CW fashion
++//
++bool NvStripifier::NextIsCW(const int numIndices)
++{
++	return ((numIndices % 2) == 0);
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// IsCW()
++//
++// Returns true if the face is ordered in CW fashion
++//
++bool NvStripifier::IsCW(NvFaceInfo *faceInfo, int v0, int v1)
++{
++	if (faceInfo->m_v0 == v0)
++		return (faceInfo->m_v1 == v1);
++
++	else if (faceInfo->m_v1 == v0)
++		return (faceInfo->m_v2 == v1);
++
++	else
++		return (faceInfo->m_v0 == v1);
++
++	// shouldn't get here
++	assert(0);
++	return false;
++}
++
++bool NvStripifier::FaceContainsIndex(const NvFaceInfo& face, const unsigned int index)
++{
++	return ( (face.m_v0 == (int)index) || (face.m_v1 == (int)index) || (face.m_v2 == (int)index) );
++}
++
++bool NvStripifier::IsMoneyFace(const NvFaceInfo& face)
++{
++	if(FaceContainsIndex(face, 800) &&
++	   FaceContainsIndex(face, 812) &&
++	   FaceContainsIndex(face, 731))
++	   return true;
++
++	return false;
++}
++
++////////////////////////////////////////////////////////////////////////////////////////
++// CreateStrips()
++//
++// Generates actual strips from the list-in-strip-order.
++//
++void NvStripifier::CreateStrips(const NvStripInfoVec& allStrips, IntVec& stripIndices,
++								const bool bStitchStrips, unsigned int& numSeparateStrips)
++{
++	assert(numSeparateStrips == 0);
++
++	NvFaceInfo tLastFace(0, 0, 0);
++	NvFaceInfo tPrevStripLastFace(0, 0, 0);
++	int nStripCount = allStrips.size();
++	assert(nStripCount > 0);
++
++	//we infer the cw/ccw ordering depending on the number of indices
++	//this is screwed up by the fact that we insert -1s to denote changing strips
++	//this is to account for that
++	int accountForNegatives = 0;
++
++	for (int i = 0; i < nStripCount; i++)
++	{
++		NvStripInfo *strip = allStrips[i];
++		int nStripFaceCount = strip->m_faces.size();
++		assert(nStripFaceCount > 0);
++
++		// Handle the first face in the strip
++		{
++			NvFaceInfo tFirstFace(strip->m_faces[0]->m_v0, strip->m_faces[0]->m_v1, strip->m_faces[0]->m_v2);
++
++			// If there is a second face, reorder vertices such that the
++			// unique vertex is first
++			if (nStripFaceCount > 1)
++			{
++				int nUnique = NvStripifier::GetUniqueVertexInB(strip->m_faces[1], &tFirstFace);
++				if (nUnique == tFirstFace.m_v1)
++				{
++					SWAP(tFirstFace.m_v0, tFirstFace.m_v1);
++				}
++				else if (nUnique == tFirstFace.m_v2)
++				{
++					SWAP(tFirstFace.m_v0, tFirstFace.m_v2);
++				}
++
++				// If there is a third face, reorder vertices such that the
++				// shared vertex is last
++				if (nStripFaceCount > 2)
++				{
++					if(IsDegenerate(strip->m_faces[1]))
++					{
++						int pivot = strip->m_faces[1]->m_v1;
++						if(tFirstFace.m_v1 == pivot)
++						{
++							SWAP(tFirstFace.m_v1, tFirstFace.m_v2);
++						}
++					}
++					else
++					{
++						int nShared0, nShared1;
++						GetSharedVertices(strip->m_faces[2], &tFirstFace, &nShared0, &nShared1);
++						if ( (nShared0 == tFirstFace.m_v1) && (nShared1 == -1) )
++						{
++							SWAP(tFirstFace.m_v1, tFirstFace.m_v2);
++						}
++					}
++				}
++			}
++
++			if( (i == 0) || !bStitchStrips)
++			{
++				if(!IsCW(strip->m_faces[0], tFirstFace.m_v0, tFirstFace.m_v1))
++					stripIndices.push_back(tFirstFace.m_v0);
++			}
++			else
++			{
++				// Double tap the first in the new strip
++				stripIndices.push_back(tFirstFace.m_v0);
++
++				// Check CW/CCW ordering
++				if (NextIsCW(stripIndices.size() - accountForNegatives) != IsCW(strip->m_faces[0], tFirstFace.m_v0, tFirstFace.m_v1))
++				{
++					stripIndices.push_back(tFirstFace.m_v0);
++				}
++			}
++
++			stripIndices.push_back(tFirstFace.m_v0);
++			stripIndices.push_back(tFirstFace.m_v1);
++			stripIndices.push_back(tFirstFace.m_v2);
++
++			// Update last face info
++			tLastFace = tFirstFace;
++		}
++
++		for (int j = 1; j < nStripFaceCount; j++)
++		{
++			int nUnique = GetUniqueVertexInB(&tLastFace, strip->m_faces[j]);
++			if (nUnique != -1)
++			{
++				stripIndices.push_back(nUnique);
++
++				// Update last face info
++				tLastFace.m_v0 = tLastFace.m_v1;
++				tLastFace.m_v1 = tLastFace.m_v2;
++				tLastFace.m_v2 = nUnique;
++			}
++			else
++			{
++				//we've hit a degenerate
++				stripIndices.push_back(strip->m_faces[j]->m_v2);
++				tLastFace.m_v0 = strip->m_faces[j]->m_v0;//tLastFace.m_v1;
++				tLastFace.m_v1 = strip->m_faces[j]->m_v1;//tLastFace.m_v2;
++				tLastFace.m_v2 = strip->m_faces[j]->m_v2;//tLastFace.m_v1;
++
++			}
++		}
++
++		// Double tap between strips.
++		if(bStitchStrips)
++		{
++			if(i != nStripCount - 1)
++				stripIndices.push_back(tLastFace.m_v2);
++		}
++		else
++		{
++			//-1 index indicates next strip
++			stripIndices.push_back(-1);
++			accountForNegatives++;
++			numSeparateStrips++;
++		}
++
++		// Update last face info
++		tLastFace.m_v0 = tLastFace.m_v1;
++		tLastFace.m_v1 = tLastFace.m_v2;
++		tLastFace.m_v2 = tLastFace.m_v2;
++	}
++
++	if(bStitchStrips)
++		numSeparateStrips = 1;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// Stripify()
++//
++//
++// in_indices are the input indices of the mesh to stripify
++// in_cacheSize is the target cache size
++//
++void NvStripifier::Stripify(const WordVec &in_indices, const int in_cacheSize,
++							const int in_minStripLength, const unsigned short maxIndex,
++							NvStripInfoVec &outStrips, NvFaceInfoVec& outFaceList)
++{
++	meshJump = 0.0f;
++	bFirstTimeResetPoint = true; //used in FindGoodResetPoint()
++
++	//the number of times to run the experiments
++	int numSamples = 10;
++
++	//the cache size, clamped to one
++	cacheSize = std::max(1, in_cacheSize - CACHE_INEFFICIENCY);
++
++	minStripLength = in_minStripLength;  //this is the strip size threshold below which we dump the strip into a list
++
++	indices = in_indices;
++
++	// build the stripification info
++	NvFaceInfoVec allFaceInfos;
++	NvEdgeInfoVec allEdgeInfos;
++
++	BuildStripifyInfo(allFaceInfos, allEdgeInfos, maxIndex);
++
++	NvStripInfoVec allStrips;
++
++	// stripify
++	FindAllStrips(allStrips, allFaceInfos, allEdgeInfos, numSamples);
++
++	//split up the strips into cache friendly pieces, optimize them, then dump these into outStrips
++	SplitUpStripsAndOptimize(allStrips, outStrips, allEdgeInfos, outFaceList);
++
++	//clean up
++	for(int i = 0; i < allStrips.size(); i++)
++	{
++		delete allStrips[i];
++	}
++
++	for (int i = 0; i < allEdgeInfos.size(); i++)
++	{
++		NvEdgeInfo *info = allEdgeInfos[i];
++		while (info != NULL)
++		{
++			NvEdgeInfo *next = (info->m_v0 == i ? info->m_nextV0 : info->m_nextV1);
++			info->Unref();
++			info = next;
++		}
++	}
++
++}
++
++
++bool NvStripifier::IsDegenerate(const NvFaceInfo* face)
++{
++	if(face->m_v0 == face->m_v1)
++		return true;
++	else if(face->m_v0 == face->m_v2)
++		return true;
++	else if(face->m_v1 == face->m_v2)
++		return true;
++	else
++		return false;
++}
++
++bool NvStripifier::IsDegenerate(const unsigned short v0, const unsigned short v1, const unsigned short v2)
++{
++	if(v0 == v1)
++		return true;
++	else if(v0 == v2)
++		return true;
++	else if(v1 == v2)
++		return true;
++	else
++		return false;
++}
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// SplitUpStripsAndOptimize()
++//
++// Splits the input vector of strips (allBigStrips) into smaller, cache friendly pieces, then
++//  reorders these pieces to maximize cache hits
++// The final strips are output through outStrips
++//
++void NvStripifier::SplitUpStripsAndOptimize(NvStripInfoVec &allStrips, NvStripInfoVec &outStrips,
++                                            NvEdgeInfoVec& edgeInfos, NvFaceInfoVec& outFaceList)
++{
++	int threshold = cacheSize;
++	NvStripInfoVec tempStrips;
++
++	//split up strips into threshold-sized pieces
++	for(int i = 0; i < allStrips.size(); i++)
++	{
++		NvStripInfo* currentStrip;
++		NvStripStartInfo startInfo(NULL, NULL, false);
++
++		int actualStripSize = 0;
++		for(int j = 0; j < allStrips[i]->m_faces.size(); ++j)
++		{
++			if( !IsDegenerate(allStrips[i]->m_faces[j]) )
++				actualStripSize++;
++		}
++
++		if(actualStripSize /*allStrips[i]->m_faces.size()*/ > threshold)
++		{
++
++			int numTimes    = actualStripSize /*allStrips[i]->m_faces.size()*/ / threshold;
++			int numLeftover = actualStripSize /*allStrips[i]->m_faces.size()*/ % threshold;
++
++			int degenerateCount = 0;
++			int j = 0;
++			for(j; j < numTimes; j++)
++			{
++				currentStrip = new NvStripInfo(startInfo, 0, -1);
++
++				int faceCtr = j*threshold + degenerateCount;
++				bool bFirstTime = true;
++				while(faceCtr < threshold+(j*threshold)+degenerateCount)
++				{
++					if(IsDegenerate(allStrips[i]->m_faces[faceCtr]))
++					{
++						degenerateCount++;
++
++						//last time or first time through, no need for a degenerate
++						if( (((faceCtr + 1) != threshold+(j*threshold)+degenerateCount) ||
++							 ((j == numTimes - 1) && (numLeftover < 4) && (numLeftover > 0))) &&
++							 !bFirstTime)
++						{
++							currentStrip->m_faces.push_back(allStrips[i]->m_faces[faceCtr++]);
++						}
++						else
++							++faceCtr;
++					}
++					else
++					{
++						currentStrip->m_faces.push_back(allStrips[i]->m_faces[faceCtr++]);
++						bFirstTime = false;
++					}
++				}
++				/*
++				for(int faceCtr = j*threshold; faceCtr < threshold+(j*threshold); faceCtr++)
++				{
++					currentStrip->m_faces.push_back(allStrips[i]->m_faces[faceCtr]);
++				}
++				*/
++				///*
++				if(j == numTimes - 1) //last time through
++				{
++					if( (numLeftover < 4) && (numLeftover > 0) ) //way too small
++					{
++						//just add to last strip
++						int ctr = 0;
++						while(ctr < numLeftover)
++						{
++							if(!IsDegenerate(allStrips[i]->m_faces[faceCtr]))
++							{
++								currentStrip->m_faces.push_back(allStrips[i]->m_faces[faceCtr++]);
++								++ctr;
++							}
++							else
++							{
++								currentStrip->m_faces.push_back(allStrips[i]->m_faces[faceCtr++]);
++								++degenerateCount;
++							}
++						}
++						numLeftover = 0;
++					}
++				}
++				//*/
++				tempStrips.push_back(currentStrip);
++			}
++
++			int leftOff = j * threshold + degenerateCount;
++
++			if(numLeftover != 0)
++			{
++				currentStrip = new NvStripInfo(startInfo, 0, -1);
++
++				int ctr = 0;
++				bool bFirstTime = true;
++				while(ctr < numLeftover)
++				{
++					if( !IsDegenerate(allStrips[i]->m_faces[leftOff]) )
++					{
++						ctr++;
++						bFirstTime = false;
++						currentStrip->m_faces.push_back(allStrips[i]->m_faces[leftOff++]);
++					}
++					else if(!bFirstTime)
++						currentStrip->m_faces.push_back(allStrips[i]->m_faces[leftOff++]);
++					else
++						leftOff++;
++				}
++				/*
++				for(int k = 0; k < numLeftover; k++)
++				{
++					currentStrip->m_faces.push_back(allStrips[i]->m_faces[leftOff++]);
++				}
++				*/
++
++				tempStrips.push_back(currentStrip);
++			}
++		}
++		else
++		{
++			//we're not just doing a tempStrips.push_back(allBigStrips[i]) because
++			// this way we can delete allBigStrips later to free the memory
++			currentStrip = new NvStripInfo(startInfo, 0, -1);
++
++			for(int j = 0; j < allStrips[i]->m_faces.size(); j++)
++				currentStrip->m_faces.push_back(allStrips[i]->m_faces[j]);
++
++			tempStrips.push_back(currentStrip);
++		}
++	}
++
++	//add small strips to face list
++	NvStripInfoVec tempStrips2;
++	RemoveSmallStrips(tempStrips, tempStrips2, outFaceList);
++
++	outStrips.clear();
++	//screw optimization for now
++//	for(i = 0; i < tempStrips.size(); ++i)
++//    outStrips.push_back(tempStrips[i]);
++
++	if(tempStrips2.size() != 0)
++	{
++		//Optimize for the vertex cache
++		VertexCache* vcache = new VertexCache(cacheSize);
++
++		float bestNumHits = -1.0f;
++		float numHits;
++		int bestIndex = 0;
++
++		int firstIndex = 0;
++		float minCost = 10000.0f;
++
++		for(int i = 0; i < tempStrips2.size(); i++)
++		{
++			int numNeighbors = 0;
++
++			//find strip with least number of neighbors per face
++			for(int j = 0; j < tempStrips2[i]->m_faces.size(); j++)
++			{
++				numNeighbors += NumNeighbors(tempStrips2[i]->m_faces[j], edgeInfos);
++			}
++
++			float currCost = (float)numNeighbors / (float)tempStrips2[i]->m_faces.size();
++			if(currCost < minCost)
++			{
++				minCost = currCost;
++				firstIndex = i;
++			}
++		}
++
++		UpdateCacheStrip(vcache, tempStrips2[firstIndex]);
++		outStrips.push_back(tempStrips2[firstIndex]);
++
++		tempStrips2[firstIndex]->visited = true;
++
++		bool bWantsCW = (tempStrips2[firstIndex]->m_faces.size() % 2) == 0;
++
++		//this n^2 algo is what slows down stripification so much....
++		// needs to be improved
++		while(1)
++		{
++			bestNumHits = -1.0f;
++
++			//find best strip to add next, given the current cache
++			for(int i = 0; i < tempStrips2.size(); i++)
++			{
++				if(tempStrips2[i]->visited)
++					continue;
++
++				numHits = CalcNumHitsStrip(vcache, tempStrips2[i]);
++				if(numHits > bestNumHits)
++				{
++					bestNumHits = numHits;
++					bestIndex = i;
++				}
++				else if(numHits >= bestNumHits)
++				{
++					//check previous strip to see if this one requires it to switch polarity
++					NvStripInfo *strip = tempStrips2[i];
++					int nStripFaceCount = strip->m_faces.size();
++
++					NvFaceInfo tFirstFace(strip->m_faces[0]->m_v0, strip->m_faces[0]->m_v1, strip->m_faces[0]->m_v2);
++
++					// If there is a second face, reorder vertices such that the
++					// unique vertex is first
++					if (nStripFaceCount > 1)
++					{
++						int nUnique = NvStripifier::GetUniqueVertexInB(strip->m_faces[1], &tFirstFace);
++						if (nUnique == tFirstFace.m_v1)
++						{
++							SWAP(tFirstFace.m_v0, tFirstFace.m_v1);
++						}
++						else if (nUnique == tFirstFace.m_v2)
++						{
++							SWAP(tFirstFace.m_v0, tFirstFace.m_v2);
++						}
++
++						// If there is a third face, reorder vertices such that the
++						// shared vertex is last
++						if (nStripFaceCount > 2)
++						{
++							int nShared0, nShared1;
++							GetSharedVertices(strip->m_faces[2], &tFirstFace, &nShared0, &nShared1);
++							if ( (nShared0 == tFirstFace.m_v1) && (nShared1 == -1) )
++							{
++								SWAP(tFirstFace.m_v1, tFirstFace.m_v2);
++							}
++						}
++					}
++
++					// Check CW/CCW ordering
++					if (bWantsCW == IsCW(strip->m_faces[0], tFirstFace.m_v0, tFirstFace.m_v1))
++					{
++						//I like this one!
++						bestIndex = i;
++					}
++				}
++			}
++
++			if(bestNumHits == -1.0f)
++				break;
++			tempStrips2[bestIndex]->visited = true;
++			UpdateCacheStrip(vcache, tempStrips2[bestIndex]);
++			outStrips.push_back(tempStrips2[bestIndex]);
++			bWantsCW = (tempStrips2[bestIndex]->m_faces.size() % 2 == 0) ? bWantsCW : !bWantsCW;
++		}
++
++		delete vcache;
++	}
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// UpdateCacheStrip()
++//
++// Updates the input vertex cache with this strip's vertices
++//
++void NvStripifier::UpdateCacheStrip(VertexCache* vcache, NvStripInfo* strip)
++{
++	for(int i = 0; i < strip->m_faces.size(); ++i)
++	{
++		if(!vcache->InCache(strip->m_faces[i]->m_v0))
++			vcache->AddEntry(strip->m_faces[i]->m_v0);
++
++		if(!vcache->InCache(strip->m_faces[i]->m_v1))
++			vcache->AddEntry(strip->m_faces[i]->m_v1);
++
++		if(!vcache->InCache(strip->m_faces[i]->m_v2))
++			vcache->AddEntry(strip->m_faces[i]->m_v2);
++	}
++}
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// UpdateCacheFace()
++//
++// Updates the input vertex cache with this face's vertices
++//
++void NvStripifier::UpdateCacheFace(VertexCache* vcache, NvFaceInfo* face)
++{
++	if(!vcache->InCache(face->m_v0))
++		vcache->AddEntry(face->m_v0);
++
++	if(!vcache->InCache(face->m_v1))
++		vcache->AddEntry(face->m_v1);
++
++	if(!vcache->InCache(face->m_v2))
++		vcache->AddEntry(face->m_v2);
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// CalcNumHitsStrip()
++//
++// returns the number of cache hits per face in the strip
++//
++float NvStripifier::CalcNumHitsStrip(VertexCache* vcache, NvStripInfo* strip)
++{
++	int numHits = 0;
++	int numFaces = 0;
++
++	for(int i = 0; i < strip->m_faces.size(); i++)
++	{
++		if(vcache->InCache(strip->m_faces[i]->m_v0))
++			++numHits;
++
++		if(vcache->InCache(strip->m_faces[i]->m_v1))
++			++numHits;
++
++		if(vcache->InCache(strip->m_faces[i]->m_v2))
++			++numHits;
++
++		numFaces++;
++	}
++
++	return ((float)numHits / (float)numFaces);
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// CalcNumHitsFace()
++//
++// returns the number of cache hits in the face
++//
++int NvStripifier::CalcNumHitsFace(VertexCache* vcache, NvFaceInfo* face)
++{
++	int numHits = 0;
++
++	if(vcache->InCache(face->m_v0))
++		numHits++;
++
++	if(vcache->InCache(face->m_v1))
++		numHits++;
++
++	if(vcache->InCache(face->m_v2))
++		numHits++;
++
++	return numHits;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// NumNeighbors()
++//
++// Returns the number of neighbors that this face has
++//
++int NvStripifier::NumNeighbors(NvFaceInfo* face, NvEdgeInfoVec& edgeInfoVec)
++{
++	int numNeighbors = 0;
++
++	if(FindOtherFace(edgeInfoVec, face->m_v0, face->m_v1, face) != NULL)
++	{
++		numNeighbors++;
++	}
++
++	if(FindOtherFace(edgeInfoVec, face->m_v1, face->m_v2, face) != NULL)
++	{
++		numNeighbors++;
++	}
++
++	if(FindOtherFace(edgeInfoVec, face->m_v2, face->m_v0, face) != NULL)
++	{
++		numNeighbors++;
++	}
++
++	return numNeighbors;
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// AvgStripSize()
++//
++// Finds the average strip size of the input vector of strips
++//
++float NvStripifier::AvgStripSize(const NvStripInfoVec &strips){
++	int sizeAccum = 0;
++	int numStrips = strips.size();
++	for (int i = 0; i < numStrips; i++){
++		NvStripInfo *strip = strips[i];
++		sizeAccum += strip->m_faces.size();
++		sizeAccum -= strip->m_numDegenerates;
++	}
++	return ((float)sizeAccum) / ((float)numStrips);
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// FindAllStrips()
++//
++// Does the stripification, puts output strips into vector allStrips
++//
++// Works by setting runnning a number of experiments in different areas of the mesh, and
++//  accepting the one which results in the longest strips.  It then accepts this, and moves
++//  on to a different area of the mesh.  We try to jump around the mesh some, to ensure that
++//  large open spans of strips get generated.
++//
++void NvStripifier::FindAllStrips(NvStripInfoVec &allStrips,
++								 NvFaceInfoVec &allFaceInfos,
++								 NvEdgeInfoVec &allEdgeInfos,
++								 int numSamples){
++	// the experiments
++	int experimentId = 0;
++	int stripId      = 0;
++	bool done        = false;
++
++	int loopCtr = 0;
++
++	while (!done)
++	{
++		loopCtr++;
++
++		//
++		// PHASE 1: Set up numSamples * numEdges experiments
++		//
++		NvStripInfoVec *experiments = new NvStripInfoVec [numSamples * 6];
++		int experimentIndex = 0;
++		std::set   <NvFaceInfo*>  resetPoints;
++		for (int i = 0; i < numSamples; i++)
++		{
++
++			// Try to find another good reset point.
++			// If there are none to be found, we are done
++			NvFaceInfo *nextFace = FindGoodResetPoint(allFaceInfos, allEdgeInfos);
++			if (nextFace == NULL){
++				done = true;
++				break;
++			}
++			// If we have already evaluated starting at this face in this slew
++			// of experiments, then skip going any further
++			else if (resetPoints.find(nextFace) != resetPoints.end()){
++				continue;
++			}
++
++			// trying it now...
++			resetPoints.insert(nextFace);
++
++			// otherwise, we shall now try experiments for starting on the 01,12, and 20 edges
++			assert(nextFace->m_stripId < 0);
++
++			// build the strip off of this face's 0-1 edge
++			NvEdgeInfo *edge01 = FindEdgeInfo(allEdgeInfos, nextFace->m_v0, nextFace->m_v1);
++			NvStripInfo *strip01 = new NvStripInfo(NvStripStartInfo(nextFace, edge01, true), stripId++, experimentId++);
++			experiments[experimentIndex++].push_back(strip01);
++
++			// build the strip off of this face's 1-0 edge
++			NvEdgeInfo *edge10 = FindEdgeInfo(allEdgeInfos, nextFace->m_v0, nextFace->m_v1);
++			NvStripInfo *strip10 = new NvStripInfo(NvStripStartInfo(nextFace, edge10, false), stripId++, experimentId++);
++			experiments[experimentIndex++].push_back(strip10);
++
++			// build the strip off of this face's 1-2 edge
++			NvEdgeInfo *edge12 = FindEdgeInfo(allEdgeInfos, nextFace->m_v1, nextFace->m_v2);
++			NvStripInfo *strip12 = new NvStripInfo(NvStripStartInfo(nextFace, edge12, true), stripId++, experimentId++);
++			experiments[experimentIndex++].push_back(strip12);
++
++			// build the strip off of this face's 2-1 edge
++			NvEdgeInfo *edge21 = FindEdgeInfo(allEdgeInfos, nextFace->m_v1, nextFace->m_v2);
++			NvStripInfo *strip21 = new NvStripInfo(NvStripStartInfo(nextFace, edge21, false), stripId++, experimentId++);
++			experiments[experimentIndex++].push_back(strip21);
++
++			// build the strip off of this face's 2-0 edge
++			NvEdgeInfo *edge20 = FindEdgeInfo(allEdgeInfos, nextFace->m_v2, nextFace->m_v0);
++			NvStripInfo *strip20 = new NvStripInfo(NvStripStartInfo(nextFace, edge20, true), stripId++, experimentId++);
++			experiments[experimentIndex++].push_back(strip20);
++
++			// build the strip off of this face's 0-2 edge
++			NvEdgeInfo *edge02 = FindEdgeInfo(allEdgeInfos, nextFace->m_v2, nextFace->m_v0);
++			NvStripInfo *strip02 = new NvStripInfo(NvStripStartInfo(nextFace, edge02, false), stripId++, experimentId++);
++			experiments[experimentIndex++].push_back(strip02);
++		}
++
++		//
++		// PHASE 2: Iterate through that we setup in the last phase
++		// and really build each of the strips and strips that follow to see how
++		// far we get
++		//
++		int numExperiments = experimentIndex;
++		for (int i = 0; i < numExperiments; i++){
++
++			// get the strip set
++
++			// build the first strip of the list
++			experiments[i][0]->Build(allEdgeInfos, allFaceInfos);
++			int experimentId = experiments[i][0]->m_experimentId;
++
++			NvStripInfo *stripIter = experiments[i][0];
++			NvStripStartInfo startInfo(NULL, NULL, false);
++			while (FindTraversal(allFaceInfos, allEdgeInfos, stripIter, startInfo)){
++
++				// create the new strip info
++				stripIter = new NvStripInfo(startInfo, stripId++, experimentId);
++
++				// build the next strip
++				stripIter->Build(allEdgeInfos, allFaceInfos);
++
++				// add it to the list
++				experiments[i].push_back(stripIter);
++			}
++		}
++
++		//
++		// Phase 3: Find the experiment that has the most promise
++		//
++		int bestIndex = 0;
++		double bestValue = 0;
++		for (int i = 0; i < numExperiments; i++)
++		{
++			const float avgStripSizeWeight = 1.0f;
++//			const float numTrisWeight      = 0.0f;
++			const float numStripsWeight    = 0.0f;
++			float avgStripSize = AvgStripSize(experiments[i]);
++			float numStrips    = (float) experiments[i].size();
++			float value        = avgStripSize * avgStripSizeWeight + (numStrips * numStripsWeight);
++			//float value = 1.f / numStrips;
++			//float value = numStrips * avgStripSize;
++
++			if (value > bestValue)
++			{
++				bestValue = value;
++				bestIndex = i;
++			}
++		}
++
++		//
++		// Phase 4: commit the best experiment of the bunch
++		//
++		CommitStrips(allStrips, experiments[bestIndex]);
++
++		// and destroy all of the others
++		for (int i = 0; i < numExperiments; i++)
++		{
++			if (i != bestIndex)
++			{
++				int numStrips = experiments[i].size();
++				for (int j = 0; j < numStrips; j++)
++				{
++					delete experiments[i][j];
++				}
++			}
++		}
++
++		// delete the array that we used for all experiments
++		delete [] experiments;
++  }
++}
++
++
++///////////////////////////////////////////////////////////////////////////////////////////
++// CountRemainingTris()
++//
++// This will count the number of triangles left in the
++// strip list starting at iter and finishing up at end
++//
++int NvStripifier::CountRemainingTris(std::list<NvStripInfo*>::iterator iter,
++											std::list<NvStripInfo*>::iterator  end){
++	int count = 0;
++	while (iter != end){
++		count += (*iter)->m_faces.size();
++		iter++;
++	}
++	return count;
++}
+diff --git a/libs/nvtristrip/NvTriStripObjects.h b/libs/nvtristrip/NvTriStripObjects.h
+new file mode 100644
+index 0000000..0e752f5
+--- /dev/null
++++ b/libs/nvtristrip/NvTriStripObjects.h
+@@ -0,0 +1,245 @@
++
++#ifndef NV_TRISTRIP_OBJECTS_H
++#define NV_TRISTRIP_OBJECTS_H
++
++#include <assert.h>
++#include <cstddef>
++#include <cstring>
++#include <cstdio>
++#include <vector>
++#include <list>
++#include "VertexCache.h"
++
++/////////////////////////////////////////////////////////////////////////////////
++//
++// Types defined for stripification
++//
++/////////////////////////////////////////////////////////////////////////////////
++
++struct MyVertex {
++	float x, y, z;
++	float nx, ny, nz;
++};
++
++typedef MyVertex MyVector;
++
++struct MyFace {
++	int v1, v2, v3;
++	float nx, ny, nz;
++};
++
++
++class NvFaceInfo {
++public:
++
++	// vertex indices
++	NvFaceInfo(int v0, int v1, int v2){
++		m_v0 = v0; m_v1 = v1; m_v2 = v2;
++		m_stripId      = -1;
++		m_testStripId  = -1;
++		m_experimentId = -1;
++	}
++
++	// data members are left public
++	int   m_v0, m_v1, m_v2;
++	int   m_stripId;      // real strip Id
++	int   m_testStripId;  // strip Id in an experiment
++	int   m_experimentId; // in what experiment was it given an experiment Id?
++};
++
++// nice and dumb edge class that points knows its
++// indices, the two faces, and the next edge using
++// the lesser of the indices
++class NvEdgeInfo {
++public:
++
++	// constructor puts 1 ref on us
++	NvEdgeInfo (int v0, int v1){
++		m_v0       = v0;
++		m_v1       = v1;
++		m_face0    = NULL;
++		m_face1    = NULL;
++		m_nextV0   = NULL;
++		m_nextV1   = NULL;
++
++		// we will appear in 2 lists.  this is a good
++		// way to make sure we delete it the second time
++		// we hit it in the edge infos
++		m_refCount = 2;
++
++	}
++
++	// ref and unref
++	void Unref () { if (--m_refCount == 0) delete this; }
++
++	// data members are left public
++	unsigned int m_refCount;
++	NvFaceInfo  *m_face0, *m_face1;
++	int          m_v0, m_v1;
++	NvEdgeInfo  *m_nextV0, *m_nextV1;
++};
++
++
++// This class is a quick summary of parameters used
++// to begin a triangle strip.  Some operations may
++// want to create lists of such items, so they were
++// pulled out into a class
++class NvStripStartInfo {
++public:
++	NvStripStartInfo(NvFaceInfo *startFace, NvEdgeInfo *startEdge, bool toV1){
++		m_startFace    = startFace;
++		m_startEdge    = startEdge;
++		m_toV1         = toV1;
++	}
++	NvFaceInfo    *m_startFace;
++	NvEdgeInfo    *m_startEdge;
++	bool           m_toV1;
++};
++
++
++typedef std::vector<NvFaceInfo*>     NvFaceInfoVec;
++typedef std::list  <NvFaceInfo*>     NvFaceInfoList;
++typedef std::list  <NvFaceInfoVec*>  NvStripList;
++typedef std::vector<NvEdgeInfo*>     NvEdgeInfoVec;
++
++typedef std::vector<unsigned short> WordVec;
++typedef std::vector<int> IntVec;
++typedef std::vector<MyVertex> MyVertexVec;
++typedef std::vector<MyFace> MyFaceVec;
++
++template<class T>
++inline void SWAP(T& first, T& second)
++{
++	T temp = first;
++	first = second;
++	second = temp;
++}
++
++// This is a summary of a strip that has been built
++class NvStripInfo {
++public:
++
++	// A little information about the creation of the triangle strips
++	NvStripInfo(const NvStripStartInfo &startInfo, int stripId, int experimentId = -1) :
++	  m_startInfo(startInfo)
++	{
++		m_stripId      = stripId;
++		m_experimentId = experimentId;
++		visited = false;
++		m_numDegenerates = 0;
++	}
++
++	// This is an experiment if the experiment id is >= 0
++	inline bool IsExperiment () const { return m_experimentId >= 0; }
++
++	inline bool IsInStrip (const NvFaceInfo *faceInfo) const
++	{
++		if(faceInfo == NULL)
++			return false;
++
++		return (m_experimentId >= 0 ? faceInfo->m_testStripId == m_stripId : faceInfo->m_stripId == m_stripId);
++	}
++
++	bool SharesEdge(const NvFaceInfo* faceInfo, NvEdgeInfoVec &edgeInfos);
++
++	// take the given forward and backward strips and combine them together
++	void Combine(const NvFaceInfoVec &forward, const NvFaceInfoVec &backward);
++
++	//returns true if the face is "unique", i.e. has a vertex which doesn't exist in the faceVec
++	bool Unique(NvFaceInfoVec& faceVec, NvFaceInfo* face);
++
++	// mark the triangle as taken by this strip
++	bool IsMarked    (NvFaceInfo *faceInfo);
++	void MarkTriangle(NvFaceInfo *faceInfo);
++
++	// build the strip
++	void Build(NvEdgeInfoVec &edgeInfos, NvFaceInfoVec &faceInfos);
++
++	// public data members
++	NvStripStartInfo m_startInfo;
++	NvFaceInfoVec    m_faces;
++	int              m_stripId;
++	int              m_experimentId;
++
++	bool visited;
++
++	int m_numDegenerates;
++};
++
++typedef std::vector<NvStripInfo*>    NvStripInfoVec;
++
++
++//The actual stripifier
++class NvStripifier {
++public:
++
++	// Constructor
++	NvStripifier();
++	~NvStripifier();
++
++	//the target vertex cache size, the structure to place the strips in, and the input indices
++	void Stripify(const WordVec &in_indices, const int in_cacheSize, const int in_minStripLength,
++				  const unsigned short maxIndex, NvStripInfoVec &allStrips, NvFaceInfoVec &allFaces);
++	void CreateStrips(const NvStripInfoVec& allStrips, IntVec& stripIndices, const bool bStitchStrips, unsigned int& numSeparateStrips);
++
++	static int GetUniqueVertexInB(NvFaceInfo *faceA, NvFaceInfo *faceB);
++	//static int GetSharedVertex(NvFaceInfo *faceA, NvFaceInfo *faceB);
++	static void GetSharedVertices(NvFaceInfo *faceA, NvFaceInfo *faceB, int* vertex0, int* vertex1);
++
++	static bool IsDegenerate(const NvFaceInfo* face);
++
++protected:
++
++	WordVec indices;
++	int cacheSize;
++	int minStripLength;
++	float meshJump;
++	bool bFirstTimeResetPoint;
++
++	/////////////////////////////////////////////////////////////////////////////////
++	//
++	// Big mess of functions called during stripification
++	//
++	/////////////////////////////////////////////////////////////////////////////////
++
++	//********************
++	bool IsMoneyFace(const NvFaceInfo& face);
++	bool FaceContainsIndex(const NvFaceInfo& face, const unsigned int index);
++
++	bool IsCW(NvFaceInfo *faceInfo, int v0, int v1);
++	bool NextIsCW(const int numIndices);
++
++	bool IsDegenerate(const unsigned short v0, const unsigned short v1, const unsigned short v2);
++
++	static int  GetNextIndex(const WordVec &indices, NvFaceInfo *face);
++	static NvEdgeInfo *FindEdgeInfo(NvEdgeInfoVec &edgeInfos, int v0, int v1);
++	static NvFaceInfo *FindOtherFace(NvEdgeInfoVec &edgeInfos, int v0, int v1, NvFaceInfo *faceInfo);
++	NvFaceInfo *FindGoodResetPoint(NvFaceInfoVec &faceInfos, NvEdgeInfoVec &edgeInfos);
++
++	void FindAllStrips(NvStripInfoVec &allStrips, NvFaceInfoVec &allFaceInfos, NvEdgeInfoVec &allEdgeInfos, int numSamples);
++	void SplitUpStripsAndOptimize(NvStripInfoVec &allStrips, NvStripInfoVec &outStrips, NvEdgeInfoVec& edgeInfos, NvFaceInfoVec& outFaceList);
++	void RemoveSmallStrips(NvStripInfoVec& allStrips, NvStripInfoVec& allBigStrips, NvFaceInfoVec& faceList);
++
++	bool FindTraversal(NvFaceInfoVec &faceInfos, NvEdgeInfoVec &edgeInfos, NvStripInfo *strip, NvStripStartInfo &startInfo);
++	int  CountRemainingTris(std::list<NvStripInfo*>::iterator iter, std::list<NvStripInfo*>::iterator  end);
++
++	void CommitStrips(NvStripInfoVec &allStrips, const NvStripInfoVec &strips);
++
++	float AvgStripSize(const NvStripInfoVec &strips);
++	int FindStartPoint(NvFaceInfoVec &faceInfos, NvEdgeInfoVec &edgeInfos);
++
++	void UpdateCacheStrip(VertexCache* vcache, NvStripInfo* strip);
++	void UpdateCacheFace(VertexCache* vcache, NvFaceInfo* face);
++	float CalcNumHitsStrip(VertexCache* vcache, NvStripInfo* strip);
++	int CalcNumHitsFace(VertexCache* vcache, NvFaceInfo* face);
++	int NumNeighbors(NvFaceInfo* face, NvEdgeInfoVec& edgeInfoVec);
++
++	void BuildStripifyInfo(NvFaceInfoVec &faceInfos, NvEdgeInfoVec &edgeInfos, const unsigned short maxIndex);
++	bool AlreadyExists(NvFaceInfo* faceInfo, NvFaceInfoVec& faceInfos);
++
++	// let our strip info classes and the other classes get
++	// to these protected stripificaton methods if they want
++	friend NvStripInfo;
++};
++
++#endif
+diff --git a/libs/nvtristrip/README.txt b/libs/nvtristrip/README.txt
+new file mode 100644
+index 0000000..907d1af
+--- /dev/null
++++ b/libs/nvtristrip/README.txt
+@@ -0,0 +1,31 @@
++README for NvTriStrip, library version
++~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
++
++To use:
++-#include "NvTriStrip.h"
++-put nvtristrip.lib in your library path (the pragma in nvtristrip.h will automatically look for the library).
++
++Check out NvTriStrip.h for the interface.
++
++See the StripTest source code (in function LoadXFileStripped) for an example of using the library.
++
++Features:
++-generates strips from arbitrary geometry.
++-flexibly optimizes for post TnL vertex caches (16 on GeForce1/2, 24 on GeForce3).
++-can stitch together strips using degenerate triangles, or not.
++-can output lists instead of strips.
++-can optionally throw excessively small strips into a list instead.
++-can remap indices to improve spatial locality in your vertex buffers.
++
++On cache sizes:
++Note that it's better to UNDERESTIMATE the cache size instead of OVERESTIMATING.
++So, if you're targetting GeForce1, 2, and 3, be conservative and use the GeForce1_2 cache
++size, NOT the GeForce3 cache size.
++This will make sure you don't "blow" the cache of the GeForce1 and 2.
++Also note that the cache size you specify is the "actual" cache size, not the "effective"
++cache size you may of heard about.  This is 16 for GeForce1 and 2, and 24 for GeForce3.
++
++Credit goes to Curtis Beeson and Joe Demers for the basis for this stripifier and to Jason Regier and
++Jon Stone at Blizzard for providing a much cleaner version of CreateStrips().
++
++Questions/comments email cem@nvidia.com
+diff --git a/libs/nvtristrip/SOURCE.md b/libs/nvtristrip/SOURCE.md
+new file mode 100644
+index 0000000..aa97c40
+--- /dev/null
++++ b/libs/nvtristrip/SOURCE.md
+@@ -0,0 +1,11 @@
++NvTriStrip from https://github.com/perilouswithadollarsign/cstrike15_src/tree/master/utils/nvtristriplib . Original readme credits NVIDIA, Curtis Beeson, Joe Demers, Jason Regier and Jon Stone. Portable changes remove Windows typedef/header dependencies, explicit library autolinking and use std::max. The triangle-list API and algorithm are retained.
++
++Original Git blob identifiers (before portable edits):
++
++- `nvtristrip.cpp`: `72df833b781cc83f3f1cfec82abdfd2ebb01916b`
++- `nvtristrip.h`: `b97b679dba1e4d1d6adea8728a02a0aca9ca83ee`
++- `nvtristripobjects.cpp`: `647956a302c8ea80b52d84956dc8d9bf032b9a59`
++- `nvtristripobjects.h`: `930929ce860daf3c2085872fbf16d5bbbb5a2192`
++- `readme.txt`: `8eeb92db0a8ebc31aa0e727189baa85af9dc5b08`
++- `vertexcache.cpp`: `56899b6cfb451a578d316bbce0bd9e4b5db48990`
++- `vertexcache.h`: `3b06665dfa47932e4dbc019e45169d468e3bbc33`
+diff --git a/libs/nvtristrip/VertexCache.cpp b/libs/nvtristrip/VertexCache.cpp
+new file mode 100644
+index 0000000..4733fb2
+--- /dev/null
++++ b/libs/nvtristrip/VertexCache.cpp
+@@ -0,0 +1,86 @@
++
++
++#include "VertexCache.h"
++
++VertexCache::VertexCache()
++{
++  VertexCache(16);
++}
++
++
++VertexCache::VertexCache(int size)
++{
++  numEntries = size;
++
++  entries = new unsigned short[numEntries];
++
++  for(int i = 0; i < numEntries; i++)
++    entries[i] = -1;
++}
++
++
++VertexCache::~VertexCache()
++{
++  delete[] entries;
++}
++
++
++int VertexCache::At(int index)
++{
++  return entries[index];
++}
++
++
++void VertexCache::Set(int index, int value)
++{
++  entries[index] = value;
++}
++
++
++void VertexCache::Clear()
++{
++  for(int i = 0; i < numEntries; i++)
++    entries[i] = -1;
++}
++
++void VertexCache::Copy(VertexCache* inVcache)
++{
++  for(int i = 0; i < numEntries; i++)
++  {
++    inVcache->Set(i, entries[i]);
++  }
++}
++
++bool VertexCache::InCache(int entry)
++{
++  bool returnVal = false;
++
++  for(int i = 0; i < numEntries; i++)
++  {
++    if(entries[i] == entry)
++    {
++      returnVal = true;
++      break;
++    }
++  }
++
++  return returnVal;
++}
++
++
++int VertexCache::AddEntry(int entry)
++{
++  int removed;
++
++  removed = entries[numEntries - 1];
++
++  //push everything right one
++  for(int i = numEntries - 2; i >= 0; i--)
++  {
++    entries[i + 1] = entries[i];
++  }
++
++  entries[0] = entry;
++
++  return removed;
++}
+diff --git a/libs/nvtristrip/VertexCache.h b/libs/nvtristrip/VertexCache.h
+new file mode 100644
+index 0000000..5696816
+--- /dev/null
++++ b/libs/nvtristrip/VertexCache.h
+@@ -0,0 +1,80 @@
++#include <cstddef>
++
++#ifndef VERTEX_CACHE_H
++
++#define VERTEX_CACHE_H
++
++class VertexCache
++{
++
++public:
++
++	VertexCache(int size)
++	{
++		numEntries = size;
++
++		entries = new int[numEntries];
++
++		for(int i = 0; i < numEntries; i++)
++			entries[i] = -1;
++	}
++
++	VertexCache() { VertexCache(16); }
++	~VertexCache() { delete[] entries; entries = 0; }
++
++	bool InCache(int entry)
++	{
++		bool returnVal = false;
++		for(int i = 0; i < numEntries; i++)
++		{
++			if(entries[i] == entry)
++			{
++				returnVal = true;
++				break;
++			}
++		}
++
++		return returnVal;
++	}
++
++	int AddEntry(int entry)
++	{
++		int removed;
++
++		removed = entries[numEntries - 1];
++
++		//push everything right one
++		for(int i = numEntries - 2; i >= 0; i--)
++		{
++			entries[i + 1] = entries[i];
++		}
++
++		entries[0] = entry;
++
++		return removed;
++	}
++
++	void Clear()
++	{
++		memset(entries, -1, sizeof(int) * numEntries);
++	}
++
++	void Copy(VertexCache* inVcache)
++	{
++		for(int i = 0; i < numEntries; i++)
++		{
++			inVcache->Set(i, entries[i]);
++		}
++	}
++
++	int At(int index) { return entries[index]; }
++	void Set(int index, int value) { entries[index] = value; }
++
++private:
++
++  int *entries;
++  int numEntries;
++
++};
++
++#endif
 diff --git a/mdlcompiler/CMakeLists.txt b/mdlcompiler/CMakeLists.txt
-index fcff31d..c831856 100644
+index fcff31d..418f3a2 100644
 --- a/mdlcompiler/CMakeLists.txt
 +++ b/mdlcompiler/CMakeLists.txt
 @@ -1,15 +1,16 @@
@@ -593654,11 +596343,11 @@ index fcff31d..c831856 100644
  find_package(Threads REQUIRED)
  target_link_libraries(mdlcompiler PRIVATE pulse_libs pulse_dmx pulse_math pulse_meshopt
 -                                          pulse_phys pulse_vhacd pulse_ufbx Threads::Threads)
-+                                          pulse_phys pulse_vhacd pulse_ufbx assimp pulse_cgltf Threads::Threads)
++                                          pulse_nvtristrip pulse_phys pulse_vhacd pulse_ufbx assimp pulse_cgltf Threads::Threads)
 +
 +set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")
 diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
-index bdb0c90..909e2a1 100644
+index bdb0c90..384bf5b 100644
 --- a/mdlcompiler/compile.cpp
 +++ b/mdlcompiler/compile.cpp
 @@ -1,6 +1,7 @@
@@ -593805,7 +596494,62 @@ index bdb0c90..909e2a1 100644
      }
  }
  
-@@ -3510,7 +3551,17 @@ std::vector<src::SrcFace> BuildLodFaceList(const Model& model, int lodID,
+@@ -3080,28 +3121,36 @@ void ExpandLodBoneCollapses(Ctx& ctx) {
+ 
+ // FixupReplacedBones: collapse replacement chains, so
+ // a->b, b->c becomes a->c, b->c.
+-void FixupReplacedBones(Ctx& ctx) {
++bool FixupReplacedBones(Ctx& ctx, std::string* err) {
++    auto lower = [](std::string name) {
++        for (char& ch : name) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
++        return name;
++    };
+     for (ScriptLod& lod : ctx.out->scriptLods) {
+-        bool changed;
+-        do {
+-            changed = false;
+-            for (size_t i = 0; i < lod.boneReplacements.size(); i++) {
+-                for (size_t j = 0; j < lod.boneReplacements.size(); j++) {
+-                    if (i == j)
+-                        continue;
+-                    if (_stricmp(lod.boneReplacements[i].src.c_str(),
+-                                 lod.boneReplacements[j].dst.c_str()) != 0)
+-                        continue;
+-                    // only a real change re-runs the sweep; a self-replacement
+-                    // would otherwise spin here forever
+-                    if (lod.boneReplacements[j].dst == lod.boneReplacements[i].dst)
+-                        continue;
+-                    lod.boneReplacements[j].dst = lod.boneReplacements[i].dst;
+-                    changed = true;
++        std::unordered_map<std::string, std::string> edges;
++        for (const LodReplacement& r : lod.boneReplacements) {
++            const auto [it, inserted] = edges.emplace(lower(r.src), r.dst);
++            if (!inserted && lower(it->second) != lower(r.dst)) {
++                if (err) *err = "conflicting LOD replacements for bone '" + r.src + "'";
++                return false;
++            }
++        }
++        for (LodReplacement& r : lod.boneReplacements) {
++            std::unordered_set<std::string> visited{lower(r.src)};
++            std::string target = r.dst;
++            while (true) {
++                const auto found = edges.find(lower(target));
++                if (found == edges.end() || lower(found->first) == lower(found->second)) break;
++                if (!visited.insert(lower(target)).second) {
++                    if (err) *err = "cyclic LOD bone replacement starting at '" + r.src + "'";
++                    return false;
+                 }
++                target = found->second;
+             }
+-        } while (changed);
++            r.dst = target;
++        }
+     }
++    return true;
+ }
+ 
+ // $jointcontents (reference GetContents). Resolved against
+@@ -3510,7 +3559,17 @@ std::vector<src::SrcFace> BuildLodFaceList(const Model& model, int lodID,
  // owns, and its triangles per LOD already reindexed into it.
  struct MeshBucket {
      std::vector<int> verts;  // bucket-relative -> material-relative
@@ -593824,7 +596568,7 @@ index bdb0c90..909e2a1 100644
      std::vector<std::vector<src::SrcFace>> lodFaces;
  };
  
-@@ -3523,27 +3574,31 @@ struct MeshBucket {
+@@ -3523,27 +3582,31 @@ struct MeshBucket {
  // land on both sides of a cut is duplicated into both; those few duplicates are
  // the entire cost of the split.
  std::vector<MeshBucket> PartitionMesh(int numvertices,
@@ -593865,7 +596609,7 @@ index bdb0c90..909e2a1 100644
              if (s < 0) {
                  s = static_cast<int>(b.verts.size());
                  b.verts.push_back(static_cast<int>(v));
-@@ -3594,28 +3649,20 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
+@@ -3594,28 +3657,20 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
      // Verts no triangle names still have to reach the .vvd: the buckets are what
      // Model::vertices becomes, and dropping entries would renumber every flex
      // delta behind them for no gain.
@@ -593901,7 +596645,7 @@ index bdb0c90..909e2a1 100644
          dst->verts.push_back(v);
      }
  
-@@ -3692,13 +3739,13 @@ void BuildOutputMeshes(Ctx& ctx) {
+@@ -3692,13 +3747,13 @@ void BuildOutputMeshes(Ctx& ctx) {
                  model.outMeshes.push_back(std::move(om));
              };
  
@@ -593917,7 +596661,7 @@ index bdb0c90..909e2a1 100644
              for (MeshBucket& bucket : buckets)
                  emit(static_cast<int>(bucket.verts.size()), bucket.verts.data(),
                       std::move(bucket.lodFaces));
-@@ -3717,7 +3764,7 @@ void BuildOutputMeshes(Ctx& ctx) {
+@@ -3717,7 +3772,7 @@ void BuildOutputMeshes(Ctx& ctx) {
              }
              std::printf("Splitting material \"%s\": %d vertices exceeds the %d a mesh can "
                          "index, using %d meshes (%s), %d vertices duplicated\n",
@@ -593926,7 +596670,7 @@ index bdb0c90..909e2a1 100644
                          static_cast<int>(buckets.size()), pieces.c_str(),
                          total - range.numvertices);
          }
-@@ -6301,9 +6348,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6301,9 +6356,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
              }
              case AnimCmd::Match: {
                  // processMatch: rotate every frame by the
@@ -593939,7 +596683,7 @@ index bdb0c90..909e2a1 100644
                  std::vector<Quaternion> deltaQ(m.bones.size());
                  for (size_t k = 0; k < m.bones.size(); k++) {
                      Quaternion qd, qs;
-@@ -6313,11 +6361,41 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6313,11 +6369,41 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
                  }
                  for (int j = 0; j < panim.numframes; j++) {
                      for (size_t k = 0; k < m.bones.size(); k++) {
@@ -593983,7 +596727,121 @@ index bdb0c90..909e2a1 100644
                      }
                  }
                  break;
-@@ -7494,8 +7572,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
+@@ -7180,68 +7266,56 @@ void CompressAnimations(Ctx& ctx) {
+     CompiledModel& m = *ctx.out;
+     int numbones = static_cast<int>(m.bones.size());
+ 
+-    // find scales for all bones
+-    for (int j = 0; j < numbones; j++) {
+-        for (int k = 0; k < 6; k++) {
+-            float minv, maxv, scale;
+-            // total_* tracks the bone's absolute travel, for posrange
+-            float total_minv, total_maxv;
+-            if (k < 3) {
+-                minv = -128.0f;
+-                maxv = 128.0f;
+-                total_minv = total_maxv = (&m.bones[j].pos.x)[k];
+-            } else {
+-                minv = static_cast<float>(-kPiD / 8.0);
+-                maxv = static_cast<float>(kPiD / 8.0);
+-                total_minv = total_maxv = (&m.bones[j].rot.x)[k - 3];
+-            }
+-
+-            for (Anim& a : m.anims) {
+-                for (int n = 0; n < a.numframes; n++) {
+-                    float v = 0.0f;
+-                    const float* pos = &a.sanim[n][j].pos.x;
+-                    const float* rot = &a.sanim[n][j].rot.x;
+-                    const float* bpos = &m.bones[j].pos.x;
+-                    const float* brot = &m.bones[j].rot.x;
+-                    if (k < 3) {
+-                        if (a.flags & STUDIO_DELTA) {
+-                            v = pos[k];
+-                        } else {
+-                            v = pos[k] - bpos[k];
+-                            if (pos[k] < total_minv) total_minv = pos[k];
+-                            if (pos[k] > total_maxv) total_maxv = pos[k];
+-                        }
+-                    } else {
+-                        if (a.flags & STUDIO_DELTA)
+-                            v = rot[k - 3];
+-                        else
+-                            v = rot[k - 3] - brot[k - 3];
+-                        // PARITY: double-op wrap, see ClipRotations
+-                        while (v >= kPiD)
+-                            v = static_cast<float>(v - kPiD * 2);
+-                        while (v < -kPiD)
+-                            v = static_cast<float>(v + kPiD * 2);
++    // Scan frame rows in their storage order instead of striding through them
++    // once per bone/channel. Range extrema and float operations remain identical.
++    struct Range {
++        float minimum[6], maximum[6];
++        float travelMin[3], travelMax[3];
++    };
++    std::vector<Range> ranges(numbones);
++    for (int bone = 0; bone < numbones; ++bone) {
++        auto& r = ranges[bone];
++        for (int axis = 0; axis < 6; ++axis) {
++            r.minimum[axis] = axis < 3 ? -128.0f : static_cast<float>(-kPiD / 8.0);
++            r.maximum[axis] = axis < 3 ? 128.0f : static_cast<float>(kPiD / 8.0);
++            if (axis < 3) r.travelMin[axis] = r.travelMax[axis] = (&m.bones[bone].pos.x)[axis];
++        }
++    }
++    for (const Anim& anim : m.anims) for (int frame = 0; frame < anim.numframes; ++frame) {
++        const auto& poses = anim.sanim[frame];
++        const bool delta = (anim.flags & STUDIO_DELTA) != 0;
++        for (int bone = 0; bone < numbones; ++bone) {
++            auto& r = ranges[bone];
++            const float* pos = &poses[bone].pos.x;
++            const float* rot = &poses[bone].rot.x;
++            for (int axis = 0; axis < 6; ++axis) {
++                float value;
++                if (axis < 3) {
++                    value = delta ? pos[axis] : pos[axis] - (&m.bones[bone].pos.x)[axis];
++                    if (!delta) {
++                        if (pos[axis] < r.travelMin[axis]) r.travelMin[axis] = pos[axis];
++                        if (pos[axis] > r.travelMax[axis]) r.travelMax[axis] = pos[axis];
+                     }
+-                    if (v < minv) minv = v;
+-                    if (v > maxv) maxv = v;
++                } else {
++                    value = delta ? rot[axis - 3] : rot[axis - 3] - (&m.bones[bone].rot.x)[axis - 3];
++                    while (value >= kPiD) value = static_cast<float>(value - kPiD * 2);
++                    while (value < -kPiD) value = static_cast<float>(value + kPiD * 2);
+                 }
+-            }
+-            if (minv < maxv) {
+-                if (-minv > maxv)
+-                    scale = minv / -32768.0f;
+-                else
+-                    scale = maxv / 32767.0f;
+-            } else {
+-                scale = 1.0f / 32.0f;
+-            }
+-            if (k < 3) {
+-                (&m.bones[j].posscale.x)[k] = scale;
+-                (&m.bones[j].posrange.x)[k] = total_maxv - total_minv;
+-            } else {
+-                (&m.bones[j].rotscale.x)[k - 3] = scale;
++                if (value < r.minimum[axis]) r.minimum[axis] = value;
++                if (value > r.maximum[axis]) r.maximum[axis] = value;
+             }
+         }
+     }
++    for (int bone = 0; bone < numbones; ++bone) for (int axis = 0; axis < 6; ++axis) {
++        const auto& r = ranges[bone];
++        float scale = 1.0f / 32.0f;
++        if (r.minimum[axis] < r.maximum[axis])
++            scale = -r.minimum[axis] > r.maximum[axis] ? r.minimum[axis] / -32768.0f : r.maximum[axis] / 32767.0f;
++        if (axis < 3) {
++            (&m.bones[bone].posscale.x)[axis] = scale;
++            (&m.bones[bone].posrange.x)[axis] = r.travelMax[axis] - r.travelMin[axis];
++        } else (&m.bones[bone].rotscale.x)[axis - 3] = scale;
++    }
+ 
+     // reduce animations
+     for (Anim& panim : m.anims) {
+@@ -7494,8 +7568,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -593994,7 +596852,7 @@ index bdb0c90..909e2a1 100644
          int j = m.bones[k].parent;
          if (j != -1) {
              const Vector3& p = m.bones[k].pos;
-@@ -8737,8 +8815,8 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8737,8 +8811,8 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
      // Cost is frames x vertices, so animations run in parallel; min/max is
      // order-independent, so the boxes match a serial run bit for bit.
      auto calcAnim = [&](Anim& panim) {
@@ -594005,7 +596863,7 @@ index bdb0c90..909e2a1 100644
  
          std::vector<matrix3x4> bonetransform;
          std::vector<matrix3x4> posetransform(m.bones.size());
-@@ -8803,14 +8881,16 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8803,14 +8877,16 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                           "max (%g, %g, %g) exceeds coordinate range [%g, %g]; clamping\n",
                           panim.name.c_str(), bmin.x, bmin.y, bmin.z,
                           bmax.x, bmax.y, bmax.z, -kMaxCoord, kMaxCoord);
@@ -594026,7 +596884,7 @@ index bdb0c90..909e2a1 100644
          for (int a : seq.animIndices) {
              if (a < 0) continue;
              bmin = VecMin(m.anims[a].bmin, bmin);
-@@ -9066,6 +9146,13 @@ struct FlexSortEntry {
+@@ -9066,6 +9142,13 @@ struct FlexSortEntry {
      int sourceOrder;
  };
  
@@ -594040,7 +596898,7 @@ index bdb0c90..909e2a1 100644
  int FlexKeysSortFunc(const void* pv1, const void* pv2) {
      const FlexSortEntry* k1 = static_cast<const FlexSortEntry*>(pv1);
      const FlexSortEntry* k2 = static_cast<const FlexSortEntry*>(pv2);
-@@ -9107,7 +9194,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9107,7 +9190,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
          FlexKey* pFlexKey = sorted[i].key;
          src::Source* pVSource = pFlexKey->source;
          src::SrcMorphAnim* pVSourceAnim =
@@ -594049,7 +596907,7 @@ index bdb0c90..909e2a1 100644
          if (!pVSourceAnim)
              continue;
  
-@@ -9144,7 +9231,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9144,7 +9227,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
      std::vector<uint8_t> pDoesMove(nMaxModelVerts, 0);
  
      for (FlexKey& key : m.flexkeys) {
@@ -594058,7 +596916,7 @@ index bdb0c90..909e2a1 100644
          if (!pVSourceAnim)
              continue;
          auto it = morphMaps.find(pVSourceAnim);
-@@ -9345,7 +9432,7 @@ void CullDuplicateFlex(Ctx& ctx) {
+@@ -9345,7 +9428,7 @@ void CullDuplicateFlex(Ctx& ctx) {
      std::vector<FlexController> kept;
      for (size_t c = 0; c < m.flexcontrollers.size(); ++c) {
          int survivor = -1;
@@ -594067,7 +596925,7 @@ index bdb0c90..909e2a1 100644
              if (_stricmp(kept[k].name.c_str(), m.flexcontrollers[c].name.c_str()) == 0) {
                  survivor = static_cast<int>(k);
                  break;
-@@ -9453,7 +9540,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
+@@ -9453,7 +9536,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
      std::vector<FlexKey> kept;
      kept.reserve(m.flexkeys.size());
      for (FlexKey& key : m.flexkeys) {
@@ -594076,7 +596934,7 @@ index bdb0c90..909e2a1 100644
              (key.flexdesc >= 0 && key.flexdesc < static_cast<int>(usedDesc.size()) &&
               usedDesc[key.flexdesc]) ||
              (key.flexpair > 0 && key.flexpair < static_cast<int>(usedDesc.size()) &&
-@@ -9792,6 +9879,7 @@ static std::string AnimSignature(const Anim& a) {
+@@ -9792,6 +9875,7 @@ static std::string AnimSignature(const Anim& a) {
      SigVal(s, a.looprestartpercent);
      SigVal(s, a.isBindPose);
      SigVal(s, a.noAutoIK);
@@ -594084,7 +596942,15 @@ index bdb0c90..909e2a1 100644
      SigVal(s, a.ignoreTransformAngles);
      SigVal(s, a.ignoreTransformPosition);
      SigVal(s, a.motionrollback);
-@@ -10328,6 +10416,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10310,6 +10394,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+                                   : RadianEuler{0.0f, 0.0f, static_cast<float>(kPiD / 2.0)};
+ 
+     out.outname = input.outname;
++    out.legacyStripify = input.ce.legacyStripify;
+     out.forceWriteVertexData = input.forceWriteVertexData;
+     out.mats = &input.mats;
+     // gamedatalist. CompiledModel already defaults surfaceprop to "default";
+@@ -10328,6 +10413,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      out.zeroFramesHighres = input.zeroFramesHighres;
      out.minZeroFramePosDelta = input.minZeroFramePosDelta;
      out.boneSaveFrames = input.boneSaveFrames;
@@ -594092,7 +596958,7 @@ index bdb0c90..909e2a1 100644
      out.bbox[0] = input.bbox[0];
      out.bbox[1] = input.bbox[1];
      out.bboxset = input.bboxSet;
-@@ -10467,6 +10556,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10467,6 +10553,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          a.fudgeloop = ia.fudgeloop;
          a.noAutoIK = ia.noAutoIK;
          a.nocull = ia.nocull;
@@ -594100,7 +596966,7 @@ index bdb0c90..909e2a1 100644
          a.ignoreTransformAngles = ia.ignoreTransformAngles;
          a.ignoreTransformPosition = ia.ignoreTransformPosition;
          a.motiontype = ia.motiontype;
-@@ -10703,6 +10793,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10703,6 +10790,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  cmd.forceRot = ic.forceRot;
                  break;
              case InCmd::RefMotion:
@@ -594108,7 +596974,7 @@ index bdb0c90..909e2a1 100644
              case InCmd::AppendAnim:
              case InCmd::WorldspaceBlend:
              case InCmd::MatchBlend:
-@@ -10714,7 +10805,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10714,7 +10802,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                      "\" in " + a.name;
                      return false;
                  }
@@ -594122,7 +596988,7 @@ index bdb0c90..909e2a1 100644
                             : (ic.kind == InCmd::Match)      ? AnimCmd::Match
                             : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
                             : (ic.kind == InCmd::WorldspaceBlend)
-@@ -10722,6 +10819,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10722,6 +10816,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
                                                             : AnimCmd::AppendAnim;
                  cmd.matchPre = ic.matchPre;
@@ -594131,8 +596997,17 @@ index bdb0c90..909e2a1 100644
                  cmd.matchPost = ic.matchPost;
                  cmd.worldLoops = ic.worldLoops;
                  cmd.motiontype = ic.motiontype;
+@@ -11161,7 +11257,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+     // resulting replacebone chains are flattened before any vertex is remapped
+     // (reference: after RealignBones)
+     ExpandLodBoneCollapses(ctx);
+-    FixupReplacedBones(ctx);
++    if (!FixupReplacedBones(ctx, err)) return false;
+ 
+     { PULSE_TIME_PASS("RemapVertices"); RemapVertices(ctx); }
+     if (!input.bboxMeshes.empty()) {
 diff --git a/mdlcompiler/compile.h b/mdlcompiler/compile.h
-index a9b8bb8..7b30270 100644
+index a9b8bb8..96de9f3 100644
 --- a/mdlcompiler/compile.h
 +++ b/mdlcompiler/compile.h
 @@ -59,6 +59,9 @@ struct Attachment {
@@ -594170,15 +597045,16 @@ index a9b8bb8..7b30270 100644
      int imodel = 0;            // flattened model index (blanks included)
      int flexdesc = 0;
      int flexpair = 0; // stereo: flexdesc = "<name>L", flexpair = "<name>R"
-@@ -992,6 +997,7 @@ struct BoneSaveFrame {
+@@ -992,6 +997,8 @@ struct BoneSaveFrame {
  };
  
  struct CompiledModel {
++    bool legacyStripify = false;
 +    size_t mdlLimit=0,aniLimit=0,fileLimit=0;
      std::string outname; // e.g. "testmodel/testcube" (no extension)
      bool forceWriteVertexData = false; // $forcewritevertexdata - save the empty .vvd/.vtx when there is no geometry
      int gflags = 0;
-@@ -1107,6 +1113,19 @@ enum class Archetype {
+@@ -1107,6 +1114,19 @@ enum class Archetype {
  // Script-level inputs the compile stage needs (filled by the .pulsemdl loader).
  struct CompileInput {
      std::string outname;
@@ -594189,7 +597065,7 @@ index a9b8bb8..7b30270 100644
 +        bool ignoreEyelid=false, ignoreEyeScale=false, ignoreIrisScale=false;
 +        bool collisionOneBone=false, allowCollapseVertex=false, hboxIgnoreChild=false;
 +        bool computeNormals=false, computeWrinkles=false, remapFlexGlobal=false;
-+        bool boneRules=false;
++        bool boneRules=false, legacyStripify=false;
 +        std::string launchPrelude;
 +        size_t mdlLimit=0,aniLimit=0,fileLimit=0; // bytes; zero keeps dynamic-buffer behavior
 +        float eyeScale=0.0f;
@@ -594198,7 +597074,7 @@ index a9b8bb8..7b30270 100644
      Archetype archetype = Archetype::General;
      bool autoCenter = false; // $autocenter
      bool forceWriteVertexData = false; // $forcewritevertexdata
-@@ -1151,6 +1170,9 @@ struct CompileInput {
+@@ -1151,6 +1171,9 @@ struct CompileInput {
      // $modelbudget: per-model ceilings, capped at the pulselimits.h values (a
      // budget above those is rejected at parse time). Bones default to 255 - the
      // last bone a uint8 weight/RLE index can reach - not the 1024 hard cap.
@@ -594208,7 +597084,7 @@ index a9b8bb8..7b30270 100644
      int budgetBones = 255;
      int budgetMaterials = lim::kMaxSkins;
  
-@@ -1196,6 +1218,8 @@ struct CompileInput {
+@@ -1196,6 +1219,8 @@ struct CompileInput {
      // $alwayscollapse: force-collapse these bones. $donotcollapse wins.
      std::vector<std::string> alwaysCollapse;
      bool cullJiggleBones = false; // $culljigglebones
@@ -594217,7 +597093,7 @@ index a9b8bb8..7b30270 100644
      std::vector<std::string> limitRotationBones;
      // $renamebone <from> <to>, script order. Applied to the final bone table at
      // the very end of the compile, so every other command still names the
-@@ -1401,7 +1425,7 @@ struct CompileInput {
+@@ -1401,7 +1426,7 @@ struct CompileInput {
          // Weights/Subtract carry names, resolved in the compile stage.
          struct InCmd {
              enum Kind { Weights, Subtract, Reverse, FixupLoop, Angle, Align, Match,
@@ -594226,7 +597102,7 @@ index a9b8bb8..7b30270 100644
                  Motion, RefMotion, CopyPose, TransformBone, NumFrames,
                  IkFixup, LocalHierarchy, Derivative, NoAnim, LinearDelta,
                  Compress, CounterRotate, ForceBonePosRot, MatchPosition } kind = Weights;
-@@ -1452,6 +1476,8 @@ struct CompileInput {
+@@ -1452,6 +1477,8 @@ struct CompileInput {
          // `blockname <name>`: which clip inside the source to sample. "" picks
          // the first non-BindPose clip, the way an untagged animation does.
          std::string blockname;
@@ -594235,7 +597111,7 @@ index a9b8bb8..7b30270 100644
          // per-animation transform, overriding the model-wide one. Consumed by
          // ConvertAnimation exactly like the model defaults are.
          Vector3 adjust;               // `origin x y z`
-@@ -1469,6 +1495,7 @@ struct CompileInput {
+@@ -1469,6 +1496,7 @@ struct CompileInput {
          std::vector<InIkRule> ikrules;
          bool nocull = false;   // `nocull`: exempt from $animationcullmethod
          // `ignoretransformbone <angles|position>`, see Anim
@@ -594244,10 +597120,41 @@ index a9b8bb8..7b30270 100644
          bool ignoreTransformPosition = false;
          int motiontype = 0;    // motion controls (LX/LY/LZ/LXR/.../LM/LQ)
 diff --git a/mdlcompiler/dmxloader.cpp b/mdlcompiler/dmxloader.cpp
-index 4e13c39..c141c53 100644
+index 4e13c39..ab664c2 100644
 --- a/mdlcompiler/dmxloader.cpp
 +++ b/mdlcompiler/dmxloader.cpp
-@@ -488,6 +488,7 @@ struct UniqueVert { // reference VertIndices_t (single UV channel)
+@@ -24,6 +24,30 @@ namespace lim = pulse::limits;
+ 
+ namespace {
+ 
++template<class T> bool FiniteDmxNumber(const T&) { return true; }
++bool FiniteDmxNumber(float v) { return std::isfinite(v); }
++bool FiniteDmxNumber(const dmx::Vector2& v) { return std::isfinite(v.x) && std::isfinite(v.y); }
++bool FiniteDmxNumber(const dmx::Vector3& v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); }
++bool FiniteDmxNumber(const dmx::Quaternion& v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z) && std::isfinite(v.w); }
++bool FiniteDmxNumber(const dmx::Time& v) { return std::isfinite(v.seconds); }
++template<class T> bool FiniteDmxNumber(const std::vector<T>& values) {
++    for (const auto& value : values) if (!FiniteDmxNumber(value)) return false;
++    return true;
++}
++bool ValidateDmxNumbers(const dmx::Datamodel& dm, std::string* err) {
++    for (const auto& element : dm.elements) for (const auto& attr : element->attributes) {
++        const std::string& n = attr.name;
++        if (n != "position" && n != "orientation" && n != "position$0" && n != "positions" &&
++            n != "normal$0" && n != "normals" && n != "texcoord$0" && n != "textureCoordinates" &&
++            n != "jointWeights" && n != "wrinkle$0" && n != "wrinkleScales" && n != "values" && n != "times") continue;
++        if (!std::visit([](const auto& value) { return FiniteDmxNumber(value); }, attr.value)) {
++            if (err) *err = "non-finite DMX attribute '" + n + "' in element '" + element->name + "'";
++            return false;
++        }
++    }
++    return true;
++}
++
+ pm::Vector3 ToV3(const dmx::Vector3& v) { return {v.x, v.y, v.z}; }
+ pm::Vector2 ToV2(const dmx::Vector2& v) { return {v.x, v.y}; }
+ 
+@@ -488,6 +512,7 @@ struct UniqueVert { // reference VertIndices_t (single UV channel)
  };
  
  struct FlexTemp {
@@ -594255,7 +597162,7 @@ index 4e13c39..c141c53 100644
      bool enabled = false; // rendermesh load - flex data is parsed at all
      std::vector<DeltaTempState> deltaStates;
      std::vector<float> balance; // FIELD_BALANCE data, 1.0f default per mesh
-@@ -1315,11 +1316,11 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
+@@ -1315,11 +1340,11 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
                  }
              }
              const std::vector<float>* aw = PickFloatArray(delta, "wrinkle$0", "wrinkle");
@@ -594269,7 +597176,7 @@ index 4e13c39..c141c53 100644
                  GenerateWrinkleDelta(dPos, dPosIdx, ws->scale, posInverse,
                                       texcoordIndices ? *texcoordIndices : std::vector<int32_t>{},
                                       nTexcoordDataCount, dWrinkle, dWrinkleIdx);
-@@ -2204,6 +2205,9 @@ void CaptureFlexRig(const dmx::Element* comboOp, const ComboTemp& combo, FlexRig
+@@ -2204,6 +2229,9 @@ void CaptureFlexRig(const dmx::Element* comboOp, const ComboTemp& combo, FlexRig
  int MaterialTable::LookupTexture(const char* name, bool relative) {
      // reference LookupTexture: names are stored extension-stripped (path kept).
      // Q_StripExtension: drop the extension, keep any directory.
@@ -594279,16 +597186,17 @@ index 4e13c39..c141c53 100644
      std::string noExt = name;
      {
          size_t dot = noExt.find_last_of('.');
-@@ -2264,7 +2268,7 @@ void ResetDmxUpAxis() { s_bUpAxisY = false; s_bUpAxisChecked = false; }
+@@ -2264,7 +2292,8 @@ void ResetDmxUpAxis() { s_bUpAxisY = false; s_bUpAxisChecked = false; }
  
  bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, float scale,
                     std::string* err, bool morphSource, MeshFilter* filter, bool animOnly,
 -                   bool physicsShapes) {
 +                   bool physicsShapes, const DmxProcessing* processing) {
++    if (!ValidateDmxNumbers(dm, err)) return false;
      const dmx::Element* root = dm.root;
      if (!root) {
          if (err) *err = "DMX has no root element";
-@@ -2300,6 +2304,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
+@@ -2300,6 +2329,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
      ComboTemp comboTemp;
      if (morphSource && !animOnly) {
          flexTemp.enabled = true;
@@ -594297,7 +597205,7 @@ index 4e13c39..c141c53 100644
          // controls first - GenerateWrinkleDeltas runs before the meshes load
          if (const dmx::Element* comboOp = root->GetElement("combinationOperator"))
              ParseComboControls(comboOp, comboTemp, flexTemp);
-@@ -2331,6 +2337,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
+@@ -2331,6 +2362,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
      if (flexTemp.enabled)
          AddFlexKeys(comboTemp, flexTemp, out);
  
@@ -594836,7 +597744,7 @@ index 0000000..ff79408
 +std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate);
 +}
 diff --git a/mdlcompiler/main.cpp b/mdlcompiler/main.cpp
-index 710c49b..4cd0c84 100644
+index 710c49b..735f4e6 100644
 --- a/mdlcompiler/main.cpp
 +++ b/mdlcompiler/main.cpp
 @@ -4,6 +4,8 @@
@@ -594980,7 +597888,7 @@ index 710c49b..4cd0c84 100644
 +        } else if (std::strcmp(argv[i], "-cullanims") == 0) {
 +            cullAnims = true;
 +        } else if (std::strcmp(argv[i],"-nvtristrip")==0) {
-+            return Fail("unsupported option","Neko NvTriStrip mode is not implemented; use the default meshoptimizer backend");
++            cePrelude += "$UseLegacyStripify\n";
 +        } else if (std::strcmp(argv[i],"-reloadhlmv")==0) {
 +            reloadHlmv=true;
 +        } else if (std::strcmp(argv[i],"-playbeep")==0) {
@@ -595171,7 +598079,7 @@ index d460e13..cca5a2a 100644
              // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
              if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index 4ef35e3..0d43a08 100644
+index 4ef35e3..e2f126f 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
 @@ -29,6 +29,7 @@
@@ -596187,7 +599095,7 @@ index 4ef35e3..0d43a08 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,19 +9309,73 @@ struct Command {
+@@ -8859,19 +9309,74 @@ struct Command {
      bool (*fn)(Ctx&, const Token&);
  };
  
@@ -596208,7 +599116,8 @@ index 4ef35e3..0d43a08 100644
 +    if(name=="hboxignorechild") { c.in.ce.hboxIgnoreChild=!c.in.ce.hboxIgnoreChild; return true; }
 +    if(name=="remapflextoglobal") { c.in.ce.remapFlexGlobal=!c.in.ce.remapFlexGlobal; return true; }
 +    if(name=="cebonerules") { c.in.ce.boneRules=true; return true; }
-+    if(name=="uselegacyclampmethod" || name=="uselegacystripify")
++    if(name=="uselegacystripify") { c.in.ce.legacyStripify=true; return true; }
++    if(name=="uselegacyclampmethod")
 +        return c.Fail(cmd.line,name+": legacy CE algorithm is not implemented; current compiler uses mesh splitting and meshoptimizer");
 +    if(name=="eyeballscale") {
 +        if(!c.WantFloat("a positive eye scale",cmd,c.in.ce.eyeScale)) return false;
@@ -596261,7 +599170,7 @@ index 4ef35e3..0d43a08 100644
      {"$else", CmdElifOutside},
      {"$switch", CmdSwitch},
      {"$case", CmdCaseOutside},
-@@ -8887,6 +9391,7 @@ constexpr Command kCommands[] = {
+@@ -8887,6 +9392,7 @@ constexpr Command kCommands[] = {
      {"$body", CmdLegacyBody},
      {"$bodygroup", CmdLegacyBody},
      {"$model", CmdModel},
@@ -596269,7 +599178,7 @@ index 4ef35e3..0d43a08 100644
      {"$modelgrouppreset", CmdModelGroupPreset},
      {"$bodygrouppreset", CmdModelGroupPreset},
      {"$datamodeljoints", CmdDataModelJoints},
-@@ -8905,6 +9410,7 @@ constexpr Command kCommands[] = {
+@@ -8905,6 +9411,7 @@ constexpr Command kCommands[] = {
      {"$includemodel", CmdIncludeModel},
      {"$cmdlist", CmdCmdList},
      {"$defaultfps", CmdDefaultFps},
@@ -596277,7 +599186,7 @@ index 4ef35e3..0d43a08 100644
      {"$motionrollback", CmdMotionRollback},
      {"$nosequence", CmdNoSequence},
      {"$defaultfadein", CmdDefaultFadeIn},
-@@ -8927,11 +9433,43 @@ constexpr Command kCommands[] = {
+@@ -8927,11 +9434,43 @@ constexpr Command kCommands[] = {
      {"$vtxformat", CmdVtxFormat},
      {"$nodx80", CmdNoDx80},
      {"$modelbudget", CmdModelBudget},
@@ -596321,7 +599230,7 @@ index 4ef35e3..0d43a08 100644
      {"$surfaceprop", CmdSurfaceProp},
      {"$contents", CmdContents},
      {"$jointcontents", CmdJointContents},
-@@ -8977,6 +9515,7 @@ constexpr Command kCommands[] = {
+@@ -8977,6 +9516,7 @@ constexpr Command kCommands[] = {
      {"$jigglebone", CmdJiggleBone},
      {"$culljigglebones", CmdCullJiggleBones},
      {"$driverbone", CmdDriverBone},
@@ -596329,7 +599238,7 @@ index 4ef35e3..0d43a08 100644
      {"$driveraimat", CmdDriverAimAt},
      {"$proceduralbones", CmdProceduralBones},
      {"$realignbones", CmdRealignBones},
-@@ -8989,6 +9528,7 @@ constexpr Command kCommands[] = {
+@@ -8989,6 +9529,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},
@@ -596337,7 +599246,7 @@ index 4ef35e3..0d43a08 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
-@@ -9140,9 +9680,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9140,9 +9681,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      seedDirs(includeDirs, c.launchIncludeDirs);
      seedDirs(fileDirs, c.launchSearchDirs);
  
@@ -596350,7 +599259,7 @@ index 4ef35e3..0d43a08 100644
      // the root of the $include cycle check
      std::error_code ec;
      const fs::path canon = fs::weakly_canonical(path, ec);
-@@ -9170,6 +9713,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9170,6 +9714,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      out.upAxisY = source::DmxUpAxisY();
  
      // $renamemorph: before anything below resolves a morph by name
@@ -596950,19 +599859,121 @@ index 59b9b29..ba6f374 100644
      }
      BLOCK "VarFileInfo"
 diff --git a/mdlcompiler/writemdl.cpp b/mdlcompiler/writemdl.cpp
-index 3288136..f4197bd 100644
+index 3288136..6a7b5ee 100644
 --- a/mdlcompiler/writemdl.cpp
 +++ b/mdlcompiler/writemdl.cpp
-@@ -901,7 +901,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
+@@ -20,6 +20,8 @@
+ #include <cstring>
+ #include <filesystem>
+ #include <memory>
++#include <cmath>
++#include <stdexcept>
+ #include <unordered_map>
+ 
+ #ifdef _WIN32
+@@ -530,6 +532,35 @@ void WriteBoneInfo(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
+     buf.Align4();
+ }
+ 
++bool FitsHalfPosition(const pm::Vector3& p) {
++    return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z) &&
++           std::fabs(p.x) <= 65504.0f && std::fabs(p.y) <= 65504.0f && std::fabs(p.z) <= 65504.0f;
++}
++
++bool NeedsFrameEncoding(const cm::Anim& anim) {
++    for (size_t section = 0; section < anim.anim.size(); ++section) {
++        const int frame = std::min(static_cast<int>(section) * anim.sectionframes, anim.numframes - 1);
++        for (size_t bone = 0; bone < anim.anim[section].size(); ++bone) {
++            const auto& channels = anim.anim[section][bone];
++            size_t words = 0;
++            bool constant = true;
++            for (int count : channels.num) { words += count; constant &= count <= 2; }
++            if (!words) continue;
++            if (constant) {
++                if ((channels.num[0] || channels.num[1] || channels.num[2]) &&
++                    !FitsHalfPosition(anim.sanim[frame][bone].pos)) return true;
++            } else if (16 + words * sizeof(uint16_t) > 32767) return true;
++        }
++    }
++    return false;
++}
++
++int16_t CheckedErrorOffset(ptrdiff_t offset) {
++    if (offset < 0 || offset > 32767)
++        throw std::runtime_error("compressed IK/local-hierarchy offset exceeds 32767 bytes; shorten the animation or error range");
++    return static_cast<int16_t>(offset);
++}
++
+ // ---------------------------------------------------------------------------
+ // WriteRLEAnimationData
+ // ---------------------------------------------------------------------------
+@@ -655,6 +686,12 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
+ 
+     for (int j = 0; j < numbones; j++) {
+         const cm::AnimChannels& psrcdata = srcanim.anim[w][j];
++        bool highResPosition = m.animblockHighRes;
++        const int endFrame = srcanim.sectionframes > 0 ?
++            std::min((w + 1) * srcanim.sectionframes, srcanim.numframes - 1) : srcanim.numframes - 1;
++        if (!highResPosition && (psrcdata.num[0] || psrcdata.num[1] || psrcdata.num[2]))
++            for (int frame = iFrame; frame <= endFrame; ++frame)
++                if (!FitsHalfPosition(srcanim.sanim[frame][j].pos)) { highResPosition = true; break; }
+ 
+         if (psrcdata.num[3] == 0 && psrcdata.num[4] == 0 && psrcdata.num[5] == 0) {
+             // no rotation on this bone in this section
+@@ -674,7 +711,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
+         if (psrcdata.num[0] == 0 && psrcdata.num[1] == 0 && psrcdata.num[2] == 0) {
+             // no translation on this bone in this section
+         } else if (psrcdata.num[0] <= 2 && psrcdata.num[1] <= 2 && psrcdata.num[2] <= 2) {
+-            if (m.animblockHighRes) {
++            if (highResPosition) {
+                 flag[j] |= fmt::STUDIO_FRAME_CONST_POS2;
+                 CopyV3(*reinterpret_cast<fmt::Vector3*>(buf.p()), srcanim.sanim[iFrame][j].pos);
+                 buf.pos += sizeof(fmt::Vector3);
+@@ -686,7 +723,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
+                 buf.pos += sizeof(v48);
+             }
+         } else {
+-            if (m.animblockHighRes) {
++            if (highResPosition) {
+                 flag[j] |= fmt::STUDIO_FRAME_ANIM_POS2;
+                 framelength += static_cast<int>(sizeof(fmt::Vector3));
+             } else {
+@@ -797,7 +834,7 @@ void WriteIkErrors(cm::Anim& srcanim, Buf& buf) {
+         for (k = 0; k < 6; k++) {
+             pCompressed->scale[k] = rule.errorData.scale[k];
+             pCompressed->offset[k] =
+-                static_cast<int16_t>(buf.p() - reinterpret_cast<uint8_t*>(pCompressed));
++                CheckedErrorOffset(buf.p() - reinterpret_cast<uint8_t*>(pCompressed));
+             size_t size = rule.errorData.numanim[k] * sizeof(uint16_t);
+             if (size)
+                 memcpy(buf.p(), rule.errorData.data[k].data(), size);
+@@ -865,7 +902,7 @@ void WriteLocalHierarchy(cm::Anim& srcanim, Buf& buf) {
+         for (k = 0; k < 6; k++) {
+             pCompressed->scale[k] = rule.localData.scale[k];
+             pCompressed->offset[k] =
+-                static_cast<int16_t>(buf.p() - reinterpret_cast<uint8_t*>(pCompressed));
++                CheckedErrorOffset(buf.p() - reinterpret_cast<uint8_t*>(pCompressed));
+             size_t size = rule.localData.numanim[k] * sizeof(uint16_t);
+             if (size)
+                 memcpy(buf.p(), rule.localData.data[k].data(), size);
+@@ -885,6 +922,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
+                         fmt::mstudioanimdesc_t* destanimdesc, size_t destanimOff, Buf& local,
+                         Buf* ext, fmt::mstudioanimsections_t* pSections) {
+     const int animblocksize = m.animblocksize;
++    const bool needsFrame = NeedsFrameEncoding(srcanim);
+ 
+     for (int w = 0; w < srcanim.numsections; w++) {
+         bool bUseExtData = false;
+@@ -901,7 +939,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
  
          // a demand-loaded model uses the frame-major encoding throughout -
          // including the clips that stayed local
 -        if (ext && !m.animblockLowRes) {
-+        if ((ext && !m.animblockLowRes) || m.bones.size() == 256) {
++        if ((ext && !m.animblockLowRes) || m.bones.size() == 256 || needsFrame) {
              srcanim.flags |= fmt::STUDIO_FRAMEANIM;
              destanimdesc->flags |= fmt::STUDIO_FRAMEANIM;
          }
-@@ -2803,6 +2803,23 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
+@@ -2803,6 +2841,44 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
  
  bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legacyVtx,
                       bool writeDx80, std::string* err) {
@@ -596983,10 +599994,31 @@ index 3288136..f4197bd 100644
 +            }
 +        }
 +
++    // Error streams use signed 16-bit relative offsets even in frame animations.
++    // Reject an unrepresentable stream before reserving or writing any output.
++    auto validErrors = [&](const cm::AnimStream& stream, const std::string& name) {
++        bool empty = true;
++        for (int count : stream.numanim) empty &= count == 0;
++        if (empty) return true;
++        size_t offset = sizeof(fmt::mstudiocompressedikerror_t);
++        for (int count : stream.numanim) {
++            if (offset > 32767) {
++                if (err) *err = "animation '" + name + "': compressed IK/local-hierarchy offset exceeds 32767 bytes; shorten the animation or error range";
++                return false;
++            }
++            offset += static_cast<size_t>(count) * sizeof(uint16_t);
++        }
++        return true;
++    };
++    for (const cm::Anim& anim : m.anims) {
++        for (const auto& rule : anim.ikrules) if (!validErrors(rule.errorData, anim.name)) return false;
++        for (const auto& rule : anim.localhierarchy) if (!validErrors(rule.localData, anim.name)) return false;
++    }
++
      Buf buf(kFileBuffer);
  
      fmt::studiohdr_t* phdr = buf.Reserve<fmt::studiohdr_t>();
-@@ -3028,6 +3045,15 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3028,6 +3104,15 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::vector<uint8_t> phyBuf =
          BuildPhy(m, reinterpret_cast<fmt::studiohdr_t*>(mdlBuf.data())->checksum);
  
@@ -597002,6 +600034,124 @@ index 3288136..f4197bd 100644
      // save. Reference hardcodes a "models/" root in the disk path (not in the
      // header name), so $modelname stays prefix-free and the .mdl bytes match.
      std::filesystem::path base =
+diff --git a/mdlcompiler/writephy.cpp b/mdlcompiler/writephy.cpp
+index 1034afa..12fdd0d 100644
+--- a/mdlcompiler/writephy.cpp
++++ b/mdlcompiler/writephy.cpp
+@@ -38,9 +38,11 @@ void KeyInt(std::vector<uint8_t>& buf, const char* key, int v) {
+ }
+ 
+ void KeyString(std::vector<uint8_t>& buf, const char* key, const char* v) {
+-    char tmp[512];
+-    std::snprintf(tmp, sizeof(tmp), "\"%s\" \"%s\"\n", key, v);
+-    AppendText(buf, tmp);
++    AppendText(buf, "\"");
++    AppendText(buf, key);
++    AppendText(buf, "\" \"");
++    AppendText(buf, v);
++    AppendText(buf, "\"\n");
+ }
+ 
+ void KeyFloat(std::vector<uint8_t>& buf, const char* key, float v) {
+@@ -165,9 +167,8 @@ std::vector<uint8_t> BuildPhy(cm::CompiledModel& m, int32_t checksum) {
+     if (m.physConcave)
+         KeyInt(buf, "concave", 1);
+     for (const std::pair<std::string, std::string>& merge : m.physJointMerges) {
+-        char tmp[512];
+-        std::snprintf(tmp, sizeof(tmp), "%s,%s", merge.first.c_str(), merge.second.c_str());
+-        KeyString(buf, "jointmerge", tmp);
++        const std::string value = merge.first + "," + merge.second;
++        KeyString(buf, "jointmerge", value.c_str());
+     }
+     AppendText(buf, "}\n");
+ 
+diff --git a/mdlcompiler/writevtx.cpp b/mdlcompiler/writevtx.cpp
+index f2981a8..87c2931 100644
+--- a/mdlcompiler/writevtx.cpp
++++ b/mdlcompiler/writevtx.cpp
+@@ -22,6 +22,10 @@
+ #include "format/vvd.h"
+ #include "format/vtx.h"
+ #include "meshoptimizer.h"
++#include "NvTriStrip.h"
++#include <memory>
++#include <mutex>
++#include <stdexcept>
+ #include "pulselimits.h"
+ 
+ namespace pulse::writer {
+@@ -537,11 +541,30 @@ void BuildStripsFloodFill(Builder& b, std::vector<uint16_t>& indices, std::vecto
+ }
+ 
+ // Stripify - trilist + meshopt vcache
+-void Stripify(const std::vector<uint16_t>& sourceIndices, Strip& strip) {
++void Stripify(const std::vector<uint16_t>& sourceIndices, Strip& strip, bool legacy) {
+     if (sourceIndices.empty()) {
+         strip.numIndices = 0;
+         return;
+     }
++    if (legacy) {
++        // Mesh tasks run concurrently; NvTriStrip's configuration is global.
++        static std::once_flag configured;
++        std::call_once(configured, [] {
++            SetCacheSize(CACHESIZE_GEFORCE1_2);
++            SetStitchStrips(true);
++            SetMinStripSize(0);
++            SetListsOnly(true);
++        });
++        PrimitiveGroup* groups = nullptr;
++        unsigned short count = 0;
++        GenerateStrips(sourceIndices.data(), static_cast<unsigned int>(sourceIndices.size()), &groups, &count);
++        std::unique_ptr<PrimitiveGroup[]> owned(groups);
++        if (count != 1 || !groups || groups[0].type != PT_LIST)
++            throw std::runtime_error("NvTriStrip failed to generate one triangle list");
++        strip.indices.assign(groups[0].indices, groups[0].indices + groups[0].numIndices);
++        strip.numIndices = static_cast<int>(strip.indices.size());
++        return;
++    }
+     size_t indexCount = sourceIndices.size();
+     std::vector<unsigned int> indices32(indexCount);
+     unsigned int vertex_count = 0;
+@@ -584,10 +607,10 @@ void BuildHWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
+         Strip& newStrip = pStripGroup->strips.back();
+         newStrip.flags = fmt::vtx::STRIP_IS_TRILIST;
+ 
+-        Stripify(facesToStrip, newStrip);
++        Stripify(facesToStrip, newStrip, b.m->legacyStripify);
+ 
+         // meshopt_optimizeOverdraw at 1.05 (positions from the vvd copy)
+-        if (newStrip.numIndices > 0) {
++        if (newStrip.numIndices > 0 && !b.m->legacyStripify) {
+             int nVerts = static_cast<int>(vertices.size());
+             std::vector<float> positions(nVerts * 3);
+             for (int vi = 0; vi < nVerts; vi++) {
+@@ -628,7 +651,7 @@ void BuildHWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
+ // BuildSWSkinnedStrips - one software-skinned tri-list strip: no hardware bone
+ // palette, no bone-state changes, every group vert copied. dx80 flexed groups
+ // (clamped to 1 bone) land here. Reference tri-list path only; SubD is unused.
+-void BuildSWSkinnedStrips(std::vector<Face>& faceList,
++void BuildSWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
+                           std::vector<fmt::vtx::Vertex_t>& vertices, StripGroup* pStripGroup) {
+     pStripGroup->strips.emplace_back();
+     Strip& strip = pStripGroup->strips.back();
+@@ -642,7 +665,7 @@ void BuildSWSkinnedStrips(std::vector<Face>& faceList,
+         indices.push_back(static_cast<uint16_t>(f.vertID[1]));
+         indices.push_back(static_cast<uint16_t>(f.vertID[2]));
+     }
+-    Stripify(indices, strip);
++    Stripify(indices, strip, b.m->legacyStripify);
+     strip.verts = vertices;
+     strip.numBoneStateChanges = 0;
+ }
+@@ -755,7 +778,7 @@ void ProcessStripGroup(Builder& b, StripGroup* pStripGroup, bool bIsHWSkinned, b
+         BuildHWSkinnedStrips(b, stripGroupSourceFaces, stripGroupVertices, pStripGroup,
+                              maxBonesPerStrip, pStudioModel, pStudioMesh);
+     else
+-        BuildSWSkinnedStrips(stripGroupSourceFaces, stripGroupVertices, pStripGroup);
++        BuildSWSkinnedStrips(b, stripGroupSourceFaces, stripGroupVertices, pStripGroup);
+ }
+ 
+ // how many verts this strip will contribute to its group (each strip gets its
 diff --git a/mdldecompiler/CMakeLists.txt b/mdldecompiler/CMakeLists.txt
 index ee18bb2..8241af1 100644
 --- a/mdldecompiler/CMakeLists.txt

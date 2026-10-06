@@ -149,6 +149,9 @@ class AutomationTests(unittest.TestCase):
                 (source / name).write_text(name)
             (source / 'libs/vendor').mkdir(parents=True)
             (source / 'libs/vendor/LICENSE').write_text('vendor notice')
+            (source / 'libs/nvtristrip').mkdir()
+            for name in ('README.txt', 'SOURCE.md'):
+                (source / 'libs/nvtristrip' / name).write_text('dependency provenance')
             (root / 'manifest.json').write_text('{}')
             (root / 'StudioMDL-CE.exe').write_text('reference only')
             sync.package(argparse.Namespace(dist=dist, source=source, output=root / 'out.zip',
@@ -158,6 +161,8 @@ class AutomationTests(unittest.TestCase):
                 self.assertIn('NewPageMergeMDL/BINARY_ANALYSIS.md', archive.namelist())
                 self.assertIn('NewPageMergeMDL/README.en.md', archive.namelist())
                 self.assertIn('NewPageMergeMDL/libs/vendor/LICENSE', archive.namelist())
+                for name in ('README.txt', 'SOURCE.md'):
+                    self.assertIn('NewPageMergeMDL/libs/nvtristrip/' + name, archive.namelist())
                 self.assertFalse(any('StudioMDL-CE' in name for name in archive.namelist()))
 
     def test_checksums_verify_actual_artifacts_and_are_idempotent(self):

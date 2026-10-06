@@ -997,6 +997,7 @@ struct BoneSaveFrame {
 };
 
 struct CompiledModel {
+    bool legacyStripify = false;
     size_t mdlLimit=0,aniLimit=0,fileLimit=0;
     std::string outname; // e.g. "testmodel/testcube" (no extension)
     bool forceWriteVertexData = false; // $forcewritevertexdata - save the empty .vvd/.vtx when there is no geometry
@@ -1120,7 +1121,7 @@ struct CompileInput {
         bool ignoreEyelid=false, ignoreEyeScale=false, ignoreIrisScale=false;
         bool collisionOneBone=false, allowCollapseVertex=false, hboxIgnoreChild=false;
         bool computeNormals=false, computeWrinkles=false, remapFlexGlobal=false;
-        bool boneRules=false;
+        bool boneRules=false, legacyStripify=false;
         std::string launchPrelude;
         size_t mdlLimit=0,aniLimit=0,fileLimit=0; // bytes; zero keeps dynamic-buffer behavior
         float eyeScale=0.0f;

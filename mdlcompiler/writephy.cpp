@@ -38,9 +38,11 @@ void KeyInt(std::vector<uint8_t>& buf, const char* key, int v) {
 }
 
 void KeyString(std::vector<uint8_t>& buf, const char* key, const char* v) {
-    char tmp[512];
-    std::snprintf(tmp, sizeof(tmp), "\"%s\" \"%s\"\n", key, v);
-    AppendText(buf, tmp);
+    AppendText(buf, "\"");
+    AppendText(buf, key);
+    AppendText(buf, "\" \"");
+    AppendText(buf, v);
+    AppendText(buf, "\"\n");
 }
 
 void KeyFloat(std::vector<uint8_t>& buf, const char* key, float v) {
@@ -165,9 +167,8 @@ std::vector<uint8_t> BuildPhy(cm::CompiledModel& m, int32_t checksum) {
     if (m.physConcave)
         KeyInt(buf, "concave", 1);
     for (const std::pair<std::string, std::string>& merge : m.physJointMerges) {
-        char tmp[512];
-        std::snprintf(tmp, sizeof(tmp), "%s,%s", merge.first.c_str(), merge.second.c_str());
-        KeyString(buf, "jointmerge", tmp);
+        const std::string value = merge.first + "," + merge.second;
+        KeyString(buf, "jointmerge", value.c_str());
     }
     AppendText(buf, "}\n");
 

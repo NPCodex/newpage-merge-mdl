@@ -19,6 +19,6 @@ endif()
 # stage calls the decomposition API for PhysicsShapeFromRender.
 find_package(Threads REQUIRED)
 target_link_libraries(mdlcompiler PRIVATE pulse_libs pulse_dmx pulse_math pulse_meshopt
-                                          pulse_phys pulse_vhacd pulse_ufbx assimp pulse_cgltf Threads::Threads)
+                                          pulse_nvtristrip pulse_phys pulse_vhacd pulse_ufbx assimp pulse_cgltf Threads::Threads)
 
 set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")

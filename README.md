@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.0
+# NewPageMergeMDL v1.2.1
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.0**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.1**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -63,9 +63,20 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 ### 本项目的工具与维护功能
 
-- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.0** 版本号；彩色启动横幅，重定向日志保持纯文本。
+- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.1** 版本号；彩色启动横幅，重定向日志保持纯文本。
 - 自动拉取 PulseModel、套用维护补丁，完成 Windows/Linux 构建与测试后发布 GitHub Release；冲突或检查失败停止发布。CE/++/Neko 的新增闭源功能仍需人工分析。
-- 85 项兼容测试及 16 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
+- 97 项兼容测试及 16 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
+
+## v1.2.1 新增功能与修复
+
+- `$UseLegacyStripify` / `-nvtristrip` 使用随源码附带的 NvTriStrip 后端；默认继续使用 meshoptimizer。验证 DX80/DX90、两种 VTX 布局、LOD 和跨硬件骨骼调色板的蒙皮映射。旧算法会移除重复及索引退化面。
+- LOD 骨骼替换拒绝循环与冲突，正确解析连续替换；增加 IK 链、驱动骨、骨骼重命名和未使用骨骼折叠的联合输出测试。
+- DMX 加载拒绝位置、法线、权重及动画数值中的 NaN/Inf；新增 corrective COMBO/DOMINATE 规则的数值求值测试，尚不代表所有复杂 rig 一致。
+- 大位移或超长 RLE 动画自动采用帧编码，超出半精度范围的位置使用 float32；验证 255 帧重复段边界和动画分节。IK/局部层级压缩偏移超过 32767 字节时，在改写输出文件前报错。
+- PHY 的长表面属性、根骨名称及合并名称不再被 512 字节临时缓冲截断。
+- 动画压缩的范围扫描改为连续访问姿态。128 骨骼、1800 帧专项测试的三次运行中位数从 118.1 ms 降至 109.5 ms，四个输出文件 SHA256 一致；这是压缩阶段的局部测量。
+
+NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题的验证范围及剩余工作见 [RESEARCH.md](RESEARCH.md)。
 
 ## v1.2.0 新增验证与优化
 
@@ -84,7 +95,7 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 | glTF 动画与压缩 | 快速路径支持位移/旋转的 LINEAR、STEP、CUBICSPLINE，静态缩放烘焙进网格。动画缩放、形态键权重和网格切换会明确报错，需要先烘焙或改用 QC flex 控制器。Draco、meshopt 压缩与 GPU 实例扩展需要先展开源模型。Assimp 后备路径可能改变 STEP/CUBICSPLINE 插值，建议优先使用快速路径。 |
 | NekoMDL 算法与默认值 | `$MaxVerts` 控制每材质输出网格的分割上限，实际不超过 65536；不复现 Neko 的源文件预拆分/裁剪算法。`$FileBufferSize` 限制各输出文件字节数，不预分配固定内存。保留本项目动态缓冲区、骨骼折叠和序列排序默认值；需要保留加权骨骼时启用 `$CEBoneRules`。 |
 | NekoMDL 面部与驱动骨 | 基础双侧权重及飘骨旋转/约束已对照二进制输出；多 studio、眼睑和驱动骨有输出测试，但复杂 driver/procedural/IK 层级尚未做全面差分。 |
-| 旧版网格算法 | CE `$UseLegacyStripify`（NvTriStrip）、`$UseLegacyClampMethod`（全局顶点裁剪）和 Neko `-nvtristrip` 尚未实现；使用这些开关会明确报错。 |
+| 旧版网格算法 | `$UseLegacyStripify` / `-nvtristrip` 已接入 NvTriStrip；`$UseLegacyClampMethod`（跨材质全局顶点裁剪）仍未实现，使用时明确报错。 |
 | `gameinfo.txt` AppID 挂载 | 尚未实现，不能依靠 AppID 自动找到其他游戏资源。 |
 | 完整语法与输出兼容 | 动画 `copy`、`match pos/rot` 和条件语句采用本项目定义的语义；尚未认证与 StudioMDL++ 完全一致。输出为 v49，不能与 CE/++ 的 v48 文件逐字节比较。 |
 | 复杂面部与 DMX | 已验证基础法线、皱纹、逆向表情和眼睑规则；复杂 corrective rig、硬边、自定义法线、控制器重映射及游戏内眼睑表现仍需更多验证。 |
@@ -135,7 +146,7 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-85 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 16 项自动发布测试。
+97 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 16 项自动发布测试。
 
 已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。这项验证不包含游戏内加载或渲染。
 

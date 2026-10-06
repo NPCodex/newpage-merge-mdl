@@ -248,6 +248,10 @@ def prepare(args):
         'scene import, Neko model/driver syntax, jiggle options and QC extensions. '
         'Neko binaries are not redistributed; reference updates are reviewed manually. '
         'See both READMEs and COMPATIBILITY.md for remaining differences.\n\n'
+        'Includes NvTriStrip legacy ordering, LOD replacement validation, '
+        'DMX finite-number checks, safe oversized animation encoding and long PHY strings. '
+        'Global legacy clamping and 512 final bones remain unsupported; '
+        'see RESEARCH.md for measured performance and validation scope.\n\n'
         'Both platform builds and compatibility tests must pass before publication. '
         'The attached source archive is the actual merged build input; '
         'GitHub-generated source archives correspond to the controller commit.\n'
@@ -280,7 +284,8 @@ def package(args):
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         # Preserve bundled third-party license notices.
         for path in sorted((Path(args.source) / 'libs').rglob('*')):
-            if path.is_file() and ('license' in path.name.lower() or 'copying' in path.name.lower()):
+            nv_notice = path.parent.name == 'nvtristrip' and path.name in {'README.txt', 'SOURCE.md'}
+            if path.is_file() and ('license' in path.name.lower() or 'copying' in path.name.lower() or nv_notice):
                 archive.write(path, Path('NewPageMergeMDL') / path.relative_to(args.source))
 
 

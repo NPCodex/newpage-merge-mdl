@@ -22,6 +22,10 @@
 #include "format/vvd.h"
 #include "format/vtx.h"
 #include "meshoptimizer.h"
+#include "NvTriStrip.h"
+#include <memory>
+#include <mutex>
+#include <stdexcept>
 #include "pulselimits.h"
 
 namespace pulse::writer {
@@ -537,9 +541,28 @@ void BuildStripsFloodFill(Builder& b, std::vector<uint16_t>& indices, std::vecto
 }
 
 // Stripify - trilist + meshopt vcache
-void Stripify(const std::vector<uint16_t>& sourceIndices, Strip& strip) {
+void Stripify(const std::vector<uint16_t>& sourceIndices, Strip& strip, bool legacy) {
     if (sourceIndices.empty()) {
         strip.numIndices = 0;
+        return;
+    }
+    if (legacy) {
+        // Mesh tasks run concurrently; NvTriStrip's configuration is global.
+        static std::once_flag configured;
+        std::call_once(configured, [] {
+            SetCacheSize(CACHESIZE_GEFORCE1_2);
+            SetStitchStrips(true);
+            SetMinStripSize(0);
+            SetListsOnly(true);
+        });
+        PrimitiveGroup* groups = nullptr;
+        unsigned short count = 0;
+        GenerateStrips(sourceIndices.data(), static_cast<unsigned int>(sourceIndices.size()), &groups, &count);
+        std::unique_ptr<PrimitiveGroup[]> owned(groups);
+        if (count != 1 || !groups || groups[0].type != PT_LIST)
+            throw std::runtime_error("NvTriStrip failed to generate one triangle list");
+        strip.indices.assign(groups[0].indices, groups[0].indices + groups[0].numIndices);
+        strip.numIndices = static_cast<int>(strip.indices.size());
         return;
     }
     size_t indexCount = sourceIndices.size();
@@ -584,10 +607,10 @@ void BuildHWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
         Strip& newStrip = pStripGroup->strips.back();
         newStrip.flags = fmt::vtx::STRIP_IS_TRILIST;
 
-        Stripify(facesToStrip, newStrip);
+        Stripify(facesToStrip, newStrip, b.m->legacyStripify);
 
         // meshopt_optimizeOverdraw at 1.05 (positions from the vvd copy)
-        if (newStrip.numIndices > 0) {
+        if (newStrip.numIndices > 0 && !b.m->legacyStripify) {
             int nVerts = static_cast<int>(vertices.size());
             std::vector<float> positions(nVerts * 3);
             for (int vi = 0; vi < nVerts; vi++) {
@@ -628,7 +651,7 @@ void BuildHWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
 // BuildSWSkinnedStrips - one software-skinned tri-list strip: no hardware bone
 // palette, no bone-state changes, every group vert copied. dx80 flexed groups
 // (clamped to 1 bone) land here. Reference tri-list path only; SubD is unused.
-void BuildSWSkinnedStrips(std::vector<Face>& faceList,
+void BuildSWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
                           std::vector<fmt::vtx::Vertex_t>& vertices, StripGroup* pStripGroup) {
     pStripGroup->strips.emplace_back();
     Strip& strip = pStripGroup->strips.back();
@@ -642,7 +665,7 @@ void BuildSWSkinnedStrips(std::vector<Face>& faceList,
         indices.push_back(static_cast<uint16_t>(f.vertID[1]));
         indices.push_back(static_cast<uint16_t>(f.vertID[2]));
     }
-    Stripify(indices, strip);
+    Stripify(indices, strip, b.m->legacyStripify);
     strip.verts = vertices;
     strip.numBoneStateChanges = 0;
 }
@@ -755,7 +778,7 @@ void ProcessStripGroup(Builder& b, StripGroup* pStripGroup, bool bIsHWSkinned, b
         BuildHWSkinnedStrips(b, stripGroupSourceFaces, stripGroupVertices, pStripGroup,
                              maxBonesPerStrip, pStudioModel, pStudioMesh);
     else
-        BuildSWSkinnedStrips(stripGroupSourceFaces, stripGroupVertices, pStripGroup);
+        BuildSWSkinnedStrips(b, stripGroupSourceFaces, stripGroupVertices, pStripGroup);
 }
 
 // how many verts this strip will contribute to its group (each strip gets its

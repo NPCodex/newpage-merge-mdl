@@ -316,7 +316,7 @@ static int RunCompile(int argc, char** argv) {
         } else if (std::strcmp(argv[i], "-cullanims") == 0) {
             cullAnims = true;
         } else if (std::strcmp(argv[i],"-nvtristrip")==0) {
-            return Fail("unsupported option","Neko NvTriStrip mode is not implemented; use the default meshoptimizer backend");
+            cePrelude += "$UseLegacyStripify\n";
         } else if (std::strcmp(argv[i],"-reloadhlmv")==0) {
             reloadHlmv=true;
         } else if (std::strcmp(argv[i],"-playbeep")==0) {

@@ -898,7 +898,7 @@ class Compatibility(unittest.TestCase):
         self.assertIn('<helper> expects',output)
 
     def test_ce_unimplemented_legacy_algorithms_fail_explicitly(self):
-        for option in ['UseLegacyClampMethod','UseLegacyStripify']:
+        for option in ['UseLegacyClampMethod']:
             output=self.run_qc('$modelname legacy\n$'+option+'\n',success=False)
             self.assertIn('legacy CE algorithm is not implemented',output)
             self.assertFalse((self.root/'models/legacy.mdl').exists())
@@ -937,6 +937,211 @@ class Compatibility(unittest.TestCase):
         self.assertEqual(results[0],results[1])
         self.assertEqual(bindings,['upper','dummy_eyelid'])
 
+
+
+    def vtx_triangles(self, name, extension='dx90', full=False, lod=0):
+        from collections import Counter
+        data=(self.root/f'models/{name}.{extension}.vtx').read_bytes()
+        body=struct.unpack_from('<i',data,32)[0]
+        model=body+struct.unpack_from('<i',data,body+4)[0]
+        level=model+struct.unpack_from('<i',data,model+4)[0]+lod*12
+        meshes,offset=struct.unpack_from('<2i',data,level)
+        triangles=Counter()
+        for mi in range(meshes):
+            mesh=level+offset+mi*9
+            groups,goff=struct.unpack_from('<2i',data,mesh)
+            for gi in range(groups):
+                group=mesh+goff+gi*(33 if full else 25)
+                nv,vo,ni,io,ns,so=struct.unpack_from('<6i',data,group)
+                vertices=[struct.unpack_from('<H',data,group+vo+v*9+4)[0] for v in range(nv)]
+                for si in range(ns):
+                    strip=group+so+si*(35 if full else 27)
+                    count,base=struct.unpack_from('<2i',data,strip)
+                    self.assertEqual(data[strip+18]&1,1)
+                    ids=struct.unpack_from('<'+'H'*count,data,group+io+base*2)
+                    self.assertTrue(all(i<nv for i in ids))
+                    for start in range(0,len(ids),3):
+                        tri=tuple(vertices[i] for i in ids[start:start+3])
+                        triangles[(mi,min(tri,tri[1:]+tri[:1],tri[2:]+tri[:2]))]+=1
+        return triangles
+
+    def test_nvtristrip_qc_and_cli_preserve_triangles_and_lods(self):
+        self.scene_fixture()
+        for full in (False,True):
+            qc=f'$modelname strips\n$vtxformat {int(full)}\n$body m scene.gltf\n$lod 10 {{ }}\n'
+            self.scene_qc(qc)
+            before={(ext,lod):self.vtx_triangles('strips',ext,full,lod) for ext in (('dx90',) if full else ('dx80','dx90')) for lod in (0,1)}
+            for flag,args in (('$UseLegacyStripify\n',()),('',('-nvtristrip',))):
+                self.scene_qc(flag+qc,*args)
+                after={(ext,lod):self.vtx_triangles('strips',ext,full,lod) for ext in (('dx90',) if full else ('dx80','dx90')) for lod in (0,1)}
+                self.assertEqual(before,after)
+
+    def test_smd_fallback_bone_is_validated(self):
+        original=(self.root/'mesh.smd').read_text()
+        for bone in ('-1','999'):
+            self.write('bad.smd',original.replace('0 0 0 0 0 0 1 0 0',bone+' 0 0 0 0 0 1 0 0'))
+            output=self.scene_qc('$modelname bad\n$body m bad.smd\n',success=False)
+            self.assertIn('bogus bone index',output)
+            self.assertFalse((self.root/'models/bad.mdl').exists())
+
+    def test_lod_bone_replacement_cycles_and_conflicts_fail(self):
+        for options,error in [('replacebone root child\nreplacebone child root','cyclic LOD'),
+                              ('replacebone child root\nreplacebone child child','conflicting LOD')]:
+            output=self.run_qc('$modelname bad\n$bonecullmethod none\n$lod 10 {\n'+options+'\n}\n',success=False)
+            self.assertIn(error,output)
+            self.assertFalse((self.root/'models/bad.mdl').exists())
+        self.run_qc('$modelname identity\n$lod 10 { replacebone root root }\n')
+        self.mdl('identity')
+
+    def test_large_constant_animation_uses_finite_full_precision_position(self):
+        source=(self.root/'mesh.smd').read_text()
+        prefix=source.split('triangles\n')[0].removesuffix('end\n')
+        self.write('far.smd',prefix+'time 1\n0 100000 0 0 0 0 0\nend\n')
+        self.run_qc('$modelname far\n$sequence moved far.smd { frame 1 1 }\n')
+        data=self.mdl('far');anim=struct.unpack_from('<i',data,184)[0]
+        self.assertTrue(struct.unpack_from('<i',data,anim+12)[0]&0x40)
+        poses=self.animation_poses('far','moved')
+        self.assertTrue(all(__import__('math').isfinite(v) for pose in poses for v in pose))
+        self.assertAlmostEqual(sum(v*v for v in poses[0][:3])**.5,100000,delta=2)
+
+    def test_long_animation_avoids_signed_rle_offsets(self):
+        import math
+        poses=''.join(f'time {i}\n0 {math.sin(i*.13)*10} {math.cos(i*.17)*10} {math.sin(i*.23)*10} {math.sin(i*.11)*.2} {math.cos(i*.19)*.2} {math.sin(i*.29)*.2}\n' for i in range(3500))
+        self.write('long.smd','version 1\nnodes\n0 "root" -1\nend\nskeleton\n'+poses+'end\n')
+        self.run_qc('$modelname long\n$sectionframes 10000 10000\n$sequence move long.smd\n')
+        data=self.mdl('long');anim=struct.unpack_from('<i',data,184)[0]
+        self.assertTrue(struct.unpack_from('<i',data,anim+12)[0]&0x40)
+        actual=self.animation_poses('long','move');self.assertEqual(len(actual),3500)
+        for i in (0,255,256,3499):
+            self.assertTrue(all(math.isfinite(v) for v in actual[i]))
+            self.assertAlmostEqual(actual[i][2],math.sin(i*.23)*10,delta=.02)
+
+    def test_dmx_nonfinite_geometry_and_morphs_fail_before_output(self):
+        import re
+        fixture=(Path(__file__).parent/'fixtures/ce-facial.dmx').read_text()
+        for key in ('positions','normals','jointWeights'):
+            pattern=r'("'+key+r'"\s+"[^"]+"\s*\[\s*")([^"]+)'
+            bad=re.sub(pattern,lambda m:m[1]+'nan'+((' '+m[2].split(' ',1)[1]) if ' ' in m[2] else ''),fixture,count=1)
+            self.assertNotEqual(bad,fixture);self.write('bad.dmx',bad)
+            output=self.scene_qc('$modelname bad\n$model m bad.dmx { }\n',success=False)
+            self.assertIn('non-finite DMX attribute',output)
+            self.assertFalse((self.root/'models/bad.mdl').exists())
+
+    def test_collision_long_names_and_surface_properties_are_not_truncated(self):
+        name='bone_'+('a'*600);surface='surface_'+('b'*600)
+        self.write('tetra.smd','version 1\nnodes\n0 "'+name+'" -1\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\nend\ntriangles\n'+''.join('material\n'+''.join(f'0 {x} {y} {z} 0 0 1 0 0\n' for x,y,z in face) for face in [((0,0,0),(0,1,0),(1,0,0)),((0,0,0),(1,0,0),(0,0,1)),((0,0,0),(0,0,1),(0,1,0)),((1,0,0),(0,1,0),(0,0,1))])+'end\n')
+        self.scene_qc('$modelname physics\n$surfaceprop "'+surface+'"\n$body m tetra.smd\n$collisionmodel tetra.smd { $mass 10 }\n')
+        data=(self.root/'models/physics.phy').read_bytes()
+        self.assertIn(('"surfaceprop" "'+surface+'"\n').encode(),data)
+        self.assertIn(('"rootname" "'+name+'"\n').encode(),data)
+
+
+    def test_rle_repeat_runs_and_animation_section_seams(self):
+        for sections,frames in ((False,262),(True,122)):
+            samples=[1 if i<256 else 2 for i in range(frames)] if not sections else [i*.125 for i in range(frames)]
+            poses=''.join(f'time {i}\n0 {value} 0 0 0 0 0\n' for i,value in enumerate(samples))
+            self.write('runs.smd','version 1\nnodes\n0 "root" -1\nend\nskeleton\n'+poses+'end\n')
+            self.run_qc('$modelname runs\n'+('$sectionframes 30 30\n' if sections else '$sectionframes 1000 1000\n')+'$sequence move runs.smd\n')
+            actual=self.animation_poses('runs','move');self.assertEqual(len(actual),frames)
+            for i in ((0,29,30,31,59,60,61,121) if sections else (0,254,255,256,261)):
+                self.assertAlmostEqual(sum(x*x for x in actual[i][:3])**.5,samples[i],delta=.015)
+
+    def test_ik_chain_and_procedural_helper_survive_bone_collapse_and_rename(self):
+        nodes='0 "hip" -1\n1 "knee" 0\n2 "foot" 1\n3 "unused" 0\n4 "helper" 0\n'
+        bind='0 0 0 0 0 0 0\n1 1 0 0 0 0 0\n2 1 .1 0 0 0 0\n3 0 0 0 0 0 0\n4 0 0 1 0 0 0\n'
+        mesh='version 1\nnodes\n'+nodes+'end\nskeleton\ntime 0\n'+bind+'end\ntriangles\nmaterial\n2 0 0 0 0 0 1 0 0\n2 1 0 0 0 0 1 1 0\n2 0 1 0 0 0 1 0 1\nend\n'
+        self.write('chain.smd',mesh)
+        self.write('driver.smd','version 1\nnodes\n'+nodes+'end\nskeleton\ntime 0\n'+bind+'time 1\n'+bind.replace('4 0 0 1 0 0 0','4 .25 0 1 0 .2 0')+'end\n')
+        self.scene_qc('$modelname chain\n$body m chain.smd\n$ikchain leg foot knee 0 1 0\n$ikautoplaylock leg 1 .5\n$NekoDriverBone hip {\npose driver.smd\ntrigger 90 0\ntrigger 90 1\nhelper\n}\n$renamebone hip renamed_hip\n$sequence idle chain.smd\n')
+        data=self.mdl('chain');count,bones=struct.unpack_from('<2i',data,156)
+        names=[]
+        for i in range(count):
+            p=bones+i*216;start=p+struct.unpack_from('<i',data,p)[0];names.append(data[start:data.index(b'\0',start)].decode())
+        self.assertEqual(set(names),{'renamed_hip','knee','foot','helper'})
+        chains,index=struct.unpack_from('<2i',data,284);self.assertEqual(chains,1)
+        links,offset=struct.unpack_from('<2i',data,index+8);self.assertEqual(links,3)
+        self.assertEqual([names[struct.unpack_from('<i',data,index+offset+i*28)[0]] for i in range(3)],['renamed_hip','knee','foot'])
+        helper=bones+names.index('helper')*216
+        self.assertEqual(struct.unpack_from('<i',data,helper+164)[0],2)
+        self.assertEqual(struct.unpack_from('<i',data,helper+160)[0]&4,4)
+        locks,offset=struct.unpack_from('<2i',data,320);self.assertEqual(locks,1)
+        chain,pos,rot=struct.unpack_from('<iff',data,offset)
+        self.assertEqual(chain,0);self.assertAlmostEqual(pos,1);self.assertAlmostEqual(rot,.5)
+
+    def test_dmx_corrective_and_dominator_rules_evaluate_numerically(self):
+        import math
+        self.write('face.dmx',(Path(__file__).parent/'fixtures/ce-facial.dmx').read_text())
+        self.scene_qc('$modelname face\n$model m face.dmx { NoAutoDMXRules }\n$flexcontroller test range 0 1 A B D\n$flexcorrective smile A B\n$flexdominate smile D\n')
+        controllers,keys,_,rules,_=self.ce_data()
+        self.assertTrue(any(k['name']=='smile' and k['vertices'] for k in keys))
+        operations=next(ops for name,ops in rules if name=='smile')
+        for values in ({'A':.4,'B':.5,'D':.2},{'A':1,'B':1,'D':1},{'A':0,'B':1,'D':0}):
+            stack=[]
+            for op,value in operations:
+                if op==2:stack.append(values[controllers[value][0]])
+                elif op in (18,19):
+                    product=math.prod(stack[-value:]);del stack[-value:]
+                    if op==18:stack.append(product)
+                    else:stack[-1]*=1-product
+                else:self.fail(f'unexpected flex opcode {op}')
+            self.assertEqual(len(stack),1)
+            self.assertAlmostEqual(stack[0],values['A']*values['B']*(1-values['D']),places=6)
+
+    def test_nvtristrip_skin_palettes_match_vvd_across_lod_replacements(self):
+        nodes='\n'.join(['0 "root" -1']+[f'{i} "b{i}" 0' for i in range(1,70)])
+        poses='\n'.join(f'{i} 0 0 0 0 0 0' for i in range(70))
+        triangles=''
+        for face in range(30):
+            triangles+='material\n'
+            for corner,(dx,dy) in enumerate(((0,0),(1,0),(0,1))):
+                bone=1+(face*3+corner)%69;triangles+=f'{bone} {face*2+dx} {dy} 0 0 0 1 {dx} {dy} 2 0 .4 {bone} .6\n'
+        self.write('skin.smd','version 1\nnodes\n'+nodes+'\nend\nskeleton\ntime 0\n'+poses+'\nend\ntriangles\n'+triangles+'end\n')
+        for mode in ('','$UseLegacyStripify\n'):
+            self.scene_qc('$modelname skin\n$bonecullmethod none\n'+mode+'$body m skin.smd\n$lod 10 { replacebone b65 root }\n')
+            mdl=self.mdl('skin');bp=struct.unpack_from('<i',mdl,236)[0];model=bp+struct.unpack_from('<i',mdl,bp+12)[0]
+            model_vertex=struct.unpack_from('<i',mdl,model+84)[0];mesh=model+struct.unpack_from('<i',mdl,model+76)[0];mesh_vertex=struct.unpack_from('<i',mdl,mesh+12)[0]
+            vvd=(self.root/'models/skin.vvd').read_bytes();start=struct.unpack_from('<i',vvd,56)[0];fixups,fixup_start=struct.unpack_from('<2i',vvd,48)
+            if fixups:
+                spans=[struct.unpack_from('<3i',vvd,fixup_start+i*12) for i in range(fixups)]
+                vvd=b''.join(vvd[start+source*48:start+(source+count)*48] for lod,source,count in spans if lod>=0)
+            else:vvd=vvd[start:]
+            vstart=model_vertex+mesh_vertex*48
+            for extension in ('dx80','dx90'):
+                data=(self.root/f'models/skin.{extension}.vtx').read_bytes();body=struct.unpack_from('<i',data,32)[0];vm=body+struct.unpack_from('<i',data,body+4)[0]
+                lo=vm+struct.unpack_from('<i',data,vm+4)[0]
+                for lod in (0,1):
+                    level=lo+lod*12;mesh=level+struct.unpack_from('<i',data,level+4)[0]
+                    ng,go=struct.unpack_from('<2i',data,mesh)
+                    for g in range(ng):
+                        group=mesh+go+g*25;nv,vo,ni,io,ns,so=struct.unpack_from('<6i',data,group)
+                        if not data[group+24]&2:continue
+                        if extension=='dx90' and lod==0:self.assertGreater(ns,1)
+                        for s in range(ns):
+                            strip=group+so+s*27;count,offset=struct.unpack_from('<2i',data,strip);nc,co=struct.unpack_from('<2i',data,strip+19)
+                            palette=dict(struct.unpack_from('<ii',data,strip+co+c*8) for c in range(nc))
+                            self.assertLessEqual(len(palette),16 if extension=='dx80' else 53)
+                            indices=struct.unpack_from('<'+'H'*count,data,group+io+offset*2)
+                            for i in indices:
+                                vertex=group+vo+i*9;original=struct.unpack_from('<H',data,vertex+4)[0]
+                                for slot in range(data[vertex+3]):
+                                    weight=data[vertex+slot];hardware=data[vertex+6+slot]
+                                    self.assertEqual(palette[hardware],vvd[vstart+original*48+12+weight])
+
+
+    def test_ik_error_offset_overflow_preserves_existing_output(self):
+        import math
+        nodes='0 "hip" -1\n1 "knee" 0\n2 "foot" 1\n'
+        bind='0 0 0 0 0 0 0\n1 1 0 0 0 0 0\n2 1 .1 0 0 0 0\n'
+        self.write('chain.smd','version 1\nnodes\n'+nodes+'end\nskeleton\ntime 0\n'+bind+'end\ntriangles\nmaterial\n2 0 0 0 0 0 1 0 0\n2 1 0 0 0 0 1 1 0\n2 0 1 0 0 0 1 0 1\nend\n')
+        self.scene_qc('$modelname longik\n$body m chain.smd\n')
+        previous={p.name:p.read_bytes() for p in (self.root/'models').glob('longik.*')}
+        text='version 1\nnodes\n'+nodes+'end\nskeleton\n'
+        for i in range(4500):
+            text+=f'time {i}\n0 0 0 0 0 0 0\n1 {1+math.sin(i*.13)*.2} {math.cos(i*.17)*.2} {math.sin(i*.23)*.2} {math.sin(i*.11)*.3} {math.cos(i*.19)*.3} {math.sin(i*.29)*.3}\n2 {1+math.cos(i*.14)*.2} {math.sin(i*.18)*.2} {math.cos(i*.24)*.2} {math.cos(i*.12)*.3} {math.sin(i*.2)*.3} {math.cos(i*.3)*.3}\n'
+        self.write('move.smd',text+'end\n')
+        output=self.scene_qc('$modelname longik\n$body m chain.smd\n$ikchain leg foot\n$sequence move move.smd { ikrule leg touch hip usesource }\n',success=False)
+        self.assertIn('32767',output);self.assertIn('write error',output)
+        self.assertEqual({p.name:p.read_bytes() for p in (self.root/'models').glob('longik.*')},previous)
 
 if __name__ == "__main__":
     unittest.main()

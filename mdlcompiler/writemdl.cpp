@@ -20,6 +20,8 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <cmath>
+#include <stdexcept>
 #include <unordered_map>
 
 #ifdef _WIN32
@@ -530,6 +532,35 @@ void WriteBoneInfo(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
     buf.Align4();
 }
 
+bool FitsHalfPosition(const pm::Vector3& p) {
+    return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z) &&
+           std::fabs(p.x) <= 65504.0f && std::fabs(p.y) <= 65504.0f && std::fabs(p.z) <= 65504.0f;
+}
+
+bool NeedsFrameEncoding(const cm::Anim& anim) {
+    for (size_t section = 0; section < anim.anim.size(); ++section) {
+        const int frame = std::min(static_cast<int>(section) * anim.sectionframes, anim.numframes - 1);
+        for (size_t bone = 0; bone < anim.anim[section].size(); ++bone) {
+            const auto& channels = anim.anim[section][bone];
+            size_t words = 0;
+            bool constant = true;
+            for (int count : channels.num) { words += count; constant &= count <= 2; }
+            if (!words) continue;
+            if (constant) {
+                if ((channels.num[0] || channels.num[1] || channels.num[2]) &&
+                    !FitsHalfPosition(anim.sanim[frame][bone].pos)) return true;
+            } else if (16 + words * sizeof(uint16_t) > 32767) return true;
+        }
+    }
+    return false;
+}
+
+int16_t CheckedErrorOffset(ptrdiff_t offset) {
+    if (offset < 0 || offset > 32767)
+        throw std::runtime_error("compressed IK/local-hierarchy offset exceeds 32767 bytes; shorten the animation or error range");
+    return static_cast<int16_t>(offset);
+}
+
 // ---------------------------------------------------------------------------
 // WriteRLEAnimationData
 // ---------------------------------------------------------------------------
@@ -655,6 +686,12 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf, 
 
     for (int j = 0; j < numbones; j++) {
         const cm::AnimChannels& psrcdata = srcanim.anim[w][j];
+        bool highResPosition = m.animblockHighRes;
+        const int endFrame = srcanim.sectionframes > 0 ?
+            std::min((w + 1) * srcanim.sectionframes, srcanim.numframes - 1) : srcanim.numframes - 1;
+        if (!highResPosition && (psrcdata.num[0] || psrcdata.num[1] || psrcdata.num[2]))
+            for (int frame = iFrame; frame <= endFrame; ++frame)
+                if (!FitsHalfPosition(srcanim.sanim[frame][j].pos)) { highResPosition = true; break; }
 
         if (psrcdata.num[3] == 0 && psrcdata.num[4] == 0 && psrcdata.num[5] == 0) {
             // no rotation on this bone in this section
@@ -674,7 +711,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf, 
         if (psrcdata.num[0] == 0 && psrcdata.num[1] == 0 && psrcdata.num[2] == 0) {
             // no translation on this bone in this section
         } else if (psrcdata.num[0] <= 2 && psrcdata.num[1] <= 2 && psrcdata.num[2] <= 2) {
-            if (m.animblockHighRes) {
+            if (highResPosition) {
                 flag[j] |= fmt::STUDIO_FRAME_CONST_POS2;
                 CopyV3(*reinterpret_cast<fmt::Vector3*>(buf.p()), srcanim.sanim[iFrame][j].pos);
                 buf.pos += sizeof(fmt::Vector3);
@@ -686,7 +723,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf, 
                 buf.pos += sizeof(v48);
             }
         } else {
-            if (m.animblockHighRes) {
+            if (highResPosition) {
                 flag[j] |= fmt::STUDIO_FRAME_ANIM_POS2;
                 framelength += static_cast<int>(sizeof(fmt::Vector3));
             } else {
@@ -797,7 +834,7 @@ void WriteIkErrors(cm::Anim& srcanim, Buf& buf) {
         for (k = 0; k < 6; k++) {
             pCompressed->scale[k] = rule.errorData.scale[k];
             pCompressed->offset[k] =
-                static_cast<int16_t>(buf.p() - reinterpret_cast<uint8_t*>(pCompressed));
+                CheckedErrorOffset(buf.p() - reinterpret_cast<uint8_t*>(pCompressed));
             size_t size = rule.errorData.numanim[k] * sizeof(uint16_t);
             if (size)
                 memcpy(buf.p(), rule.errorData.data[k].data(), size);
@@ -865,7 +902,7 @@ void WriteLocalHierarchy(cm::Anim& srcanim, Buf& buf) {
         for (k = 0; k < 6; k++) {
             pCompressed->scale[k] = rule.localData.scale[k];
             pCompressed->offset[k] =
-                static_cast<int16_t>(buf.p() - reinterpret_cast<uint8_t*>(pCompressed));
+                CheckedErrorOffset(buf.p() - reinterpret_cast<uint8_t*>(pCompressed));
             size_t size = rule.localData.numanim[k] * sizeof(uint16_t);
             if (size)
                 memcpy(buf.p(), rule.localData.data[k].data(), size);
@@ -885,6 +922,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
                         fmt::mstudioanimdesc_t* destanimdesc, size_t destanimOff, Buf& local,
                         Buf* ext, fmt::mstudioanimsections_t* pSections) {
     const int animblocksize = m.animblocksize;
+    const bool needsFrame = NeedsFrameEncoding(srcanim);
 
     for (int w = 0; w < srcanim.numsections; w++) {
         bool bUseExtData = false;
@@ -901,7 +939,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
 
         // a demand-loaded model uses the frame-major encoding throughout -
         // including the clips that stayed local
-        if ((ext && !m.animblockLowRes) || m.bones.size() == 256) {
+        if ((ext && !m.animblockLowRes) || m.bones.size() == 256 || needsFrame) {
             srcanim.flags |= fmt::STUDIO_FRAMEANIM;
             destanimdesc->flags |= fmt::STUDIO_FRAMEANIM;
         }
@@ -2819,6 +2857,27 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
                 return false;
             }
         }
+
+    // Error streams use signed 16-bit relative offsets even in frame animations.
+    // Reject an unrepresentable stream before reserving or writing any output.
+    auto validErrors = [&](const cm::AnimStream& stream, const std::string& name) {
+        bool empty = true;
+        for (int count : stream.numanim) empty &= count == 0;
+        if (empty) return true;
+        size_t offset = sizeof(fmt::mstudiocompressedikerror_t);
+        for (int count : stream.numanim) {
+            if (offset > 32767) {
+                if (err) *err = "animation '" + name + "': compressed IK/local-hierarchy offset exceeds 32767 bytes; shorten the animation or error range";
+                return false;
+            }
+            offset += static_cast<size_t>(count) * sizeof(uint16_t);
+        }
+        return true;
+    };
+    for (const cm::Anim& anim : m.anims) {
+        for (const auto& rule : anim.ikrules) if (!validErrors(rule.errorData, anim.name)) return false;
+        for (const auto& rule : anim.localhierarchy) if (!validErrors(rule.localData, anim.name)) return false;
+    }
 
     Buf buf(kFileBuffer);
 

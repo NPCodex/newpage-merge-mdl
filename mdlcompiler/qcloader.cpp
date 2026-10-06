@@ -9326,7 +9326,8 @@ bool CmdCeOption(Ctx& c, const Token& cmd) {
     if(name=="hboxignorechild") { c.in.ce.hboxIgnoreChild=!c.in.ce.hboxIgnoreChild; return true; }
     if(name=="remapflextoglobal") { c.in.ce.remapFlexGlobal=!c.in.ce.remapFlexGlobal; return true; }
     if(name=="cebonerules") { c.in.ce.boneRules=true; return true; }
-    if(name=="uselegacyclampmethod" || name=="uselegacystripify")
+    if(name=="uselegacystripify") { c.in.ce.legacyStripify=true; return true; }
+    if(name=="uselegacyclampmethod")
         return c.Fail(cmd.line,name+": legacy CE algorithm is not implemented; current compiler uses mesh splitting and meshoptimizer");
     if(name=="eyeballscale") {
         if(!c.WantFloat("a positive eye scale",cmd,c.in.ce.eyeScale)) return false;

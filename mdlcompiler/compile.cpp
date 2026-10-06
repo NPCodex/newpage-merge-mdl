@@ -3121,28 +3121,36 @@ void ExpandLodBoneCollapses(Ctx& ctx) {
 
 // FixupReplacedBones: collapse replacement chains, so
 // a->b, b->c becomes a->c, b->c.
-void FixupReplacedBones(Ctx& ctx) {
+bool FixupReplacedBones(Ctx& ctx, std::string* err) {
+    auto lower = [](std::string name) {
+        for (char& ch : name) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        return name;
+    };
     for (ScriptLod& lod : ctx.out->scriptLods) {
-        bool changed;
-        do {
-            changed = false;
-            for (size_t i = 0; i < lod.boneReplacements.size(); i++) {
-                for (size_t j = 0; j < lod.boneReplacements.size(); j++) {
-                    if (i == j)
-                        continue;
-                    if (_stricmp(lod.boneReplacements[i].src.c_str(),
-                                 lod.boneReplacements[j].dst.c_str()) != 0)
-                        continue;
-                    // only a real change re-runs the sweep; a self-replacement
-                    // would otherwise spin here forever
-                    if (lod.boneReplacements[j].dst == lod.boneReplacements[i].dst)
-                        continue;
-                    lod.boneReplacements[j].dst = lod.boneReplacements[i].dst;
-                    changed = true;
-                }
+        std::unordered_map<std::string, std::string> edges;
+        for (const LodReplacement& r : lod.boneReplacements) {
+            const auto [it, inserted] = edges.emplace(lower(r.src), r.dst);
+            if (!inserted && lower(it->second) != lower(r.dst)) {
+                if (err) *err = "conflicting LOD replacements for bone '" + r.src + "'";
+                return false;
             }
-        } while (changed);
+        }
+        for (LodReplacement& r : lod.boneReplacements) {
+            std::unordered_set<std::string> visited{lower(r.src)};
+            std::string target = r.dst;
+            while (true) {
+                const auto found = edges.find(lower(target));
+                if (found == edges.end() || lower(found->first) == lower(found->second)) break;
+                if (!visited.insert(lower(target)).second) {
+                    if (err) *err = "cyclic LOD bone replacement starting at '" + r.src + "'";
+                    return false;
+                }
+                target = found->second;
+            }
+            r.dst = target;
+        }
     }
+    return true;
 }
 
 // $jointcontents (reference GetContents). Resolved against
@@ -7258,67 +7266,55 @@ void CompressAnimations(Ctx& ctx) {
     CompiledModel& m = *ctx.out;
     int numbones = static_cast<int>(m.bones.size());
 
-    // find scales for all bones
-    for (int j = 0; j < numbones; j++) {
-        for (int k = 0; k < 6; k++) {
-            float minv, maxv, scale;
-            // total_* tracks the bone's absolute travel, for posrange
-            float total_minv, total_maxv;
-            if (k < 3) {
-                minv = -128.0f;
-                maxv = 128.0f;
-                total_minv = total_maxv = (&m.bones[j].pos.x)[k];
-            } else {
-                minv = static_cast<float>(-kPiD / 8.0);
-                maxv = static_cast<float>(kPiD / 8.0);
-                total_minv = total_maxv = (&m.bones[j].rot.x)[k - 3];
-            }
-
-            for (Anim& a : m.anims) {
-                for (int n = 0; n < a.numframes; n++) {
-                    float v = 0.0f;
-                    const float* pos = &a.sanim[n][j].pos.x;
-                    const float* rot = &a.sanim[n][j].rot.x;
-                    const float* bpos = &m.bones[j].pos.x;
-                    const float* brot = &m.bones[j].rot.x;
-                    if (k < 3) {
-                        if (a.flags & STUDIO_DELTA) {
-                            v = pos[k];
-                        } else {
-                            v = pos[k] - bpos[k];
-                            if (pos[k] < total_minv) total_minv = pos[k];
-                            if (pos[k] > total_maxv) total_maxv = pos[k];
-                        }
-                    } else {
-                        if (a.flags & STUDIO_DELTA)
-                            v = rot[k - 3];
-                        else
-                            v = rot[k - 3] - brot[k - 3];
-                        // PARITY: double-op wrap, see ClipRotations
-                        while (v >= kPiD)
-                            v = static_cast<float>(v - kPiD * 2);
-                        while (v < -kPiD)
-                            v = static_cast<float>(v + kPiD * 2);
+    // Scan frame rows in their storage order instead of striding through them
+    // once per bone/channel. Range extrema and float operations remain identical.
+    struct Range {
+        float minimum[6], maximum[6];
+        float travelMin[3], travelMax[3];
+    };
+    std::vector<Range> ranges(numbones);
+    for (int bone = 0; bone < numbones; ++bone) {
+        auto& r = ranges[bone];
+        for (int axis = 0; axis < 6; ++axis) {
+            r.minimum[axis] = axis < 3 ? -128.0f : static_cast<float>(-kPiD / 8.0);
+            r.maximum[axis] = axis < 3 ? 128.0f : static_cast<float>(kPiD / 8.0);
+            if (axis < 3) r.travelMin[axis] = r.travelMax[axis] = (&m.bones[bone].pos.x)[axis];
+        }
+    }
+    for (const Anim& anim : m.anims) for (int frame = 0; frame < anim.numframes; ++frame) {
+        const auto& poses = anim.sanim[frame];
+        const bool delta = (anim.flags & STUDIO_DELTA) != 0;
+        for (int bone = 0; bone < numbones; ++bone) {
+            auto& r = ranges[bone];
+            const float* pos = &poses[bone].pos.x;
+            const float* rot = &poses[bone].rot.x;
+            for (int axis = 0; axis < 6; ++axis) {
+                float value;
+                if (axis < 3) {
+                    value = delta ? pos[axis] : pos[axis] - (&m.bones[bone].pos.x)[axis];
+                    if (!delta) {
+                        if (pos[axis] < r.travelMin[axis]) r.travelMin[axis] = pos[axis];
+                        if (pos[axis] > r.travelMax[axis]) r.travelMax[axis] = pos[axis];
                     }
-                    if (v < minv) minv = v;
-                    if (v > maxv) maxv = v;
+                } else {
+                    value = delta ? rot[axis - 3] : rot[axis - 3] - (&m.bones[bone].rot.x)[axis - 3];
+                    while (value >= kPiD) value = static_cast<float>(value - kPiD * 2);
+                    while (value < -kPiD) value = static_cast<float>(value + kPiD * 2);
                 }
-            }
-            if (minv < maxv) {
-                if (-minv > maxv)
-                    scale = minv / -32768.0f;
-                else
-                    scale = maxv / 32767.0f;
-            } else {
-                scale = 1.0f / 32.0f;
-            }
-            if (k < 3) {
-                (&m.bones[j].posscale.x)[k] = scale;
-                (&m.bones[j].posrange.x)[k] = total_maxv - total_minv;
-            } else {
-                (&m.bones[j].rotscale.x)[k - 3] = scale;
+                if (value < r.minimum[axis]) r.minimum[axis] = value;
+                if (value > r.maximum[axis]) r.maximum[axis] = value;
             }
         }
+    }
+    for (int bone = 0; bone < numbones; ++bone) for (int axis = 0; axis < 6; ++axis) {
+        const auto& r = ranges[bone];
+        float scale = 1.0f / 32.0f;
+        if (r.minimum[axis] < r.maximum[axis])
+            scale = -r.minimum[axis] > r.maximum[axis] ? r.minimum[axis] / -32768.0f : r.maximum[axis] / 32767.0f;
+        if (axis < 3) {
+            (&m.bones[bone].posscale.x)[axis] = scale;
+            (&m.bones[bone].posrange.x)[axis] = r.travelMax[axis] - r.travelMin[axis];
+        } else (&m.bones[bone].rotscale.x)[axis - 3] = scale;
     }
 
     // reduce animations
@@ -10398,6 +10394,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                   : RadianEuler{0.0f, 0.0f, static_cast<float>(kPiD / 2.0)};
 
     out.outname = input.outname;
+    out.legacyStripify = input.ce.legacyStripify;
     out.forceWriteVertexData = input.forceWriteVertexData;
     out.mats = &input.mats;
     // gamedatalist. CompiledModel already defaults surfaceprop to "default";
@@ -11260,7 +11257,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     // resulting replacebone chains are flattened before any vertex is remapped
     // (reference: after RealignBones)
     ExpandLodBoneCollapses(ctx);
-    FixupReplacedBones(ctx);
+    if (!FixupReplacedBones(ctx, err)) return false;
 
     { PULSE_TIME_PASS("RemapVertices"); RemapVertices(ctx); }
     if (!input.bboxMeshes.empty()) {

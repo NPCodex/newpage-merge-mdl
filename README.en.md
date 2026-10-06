@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.0
+# NewPageMergeMDL v1.2.1
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.0.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.1.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -65,9 +65,20 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 
 ### Project tooling and maintenance
 
-- Compiler, decompiler and utilities share the project naming and **v1.2.0** version; colored startup banner, plain redirected logs.
+- Compiler, decompiler and utilities share the project naming and **v1.2.1** version; colored startup banner, plain redirected logs.
 - Automatic PulseModel integration through a maintained patch, followed by Windows/Linux builds, tests and GitHub Release publication. Conflicts or failed checks stop publication. New closed-source CE/++/Neko features require manual analysis.
-- 85 compatibility tests and 16 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
+- 97 compatibility tests and 16 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
+
+## v1.2.1 additions and fixes
+
+- `$UseLegacyStripify` / `-nvtristrip` select the bundled NvTriStrip backend; meshoptimizer remains the default. Tests cover DX80/DX90, both VTX layouts, LODs and skin remapping across hardware bone palettes. The legacy algorithm removes duplicate and index-degenerate faces.
+- LOD bone replacement resolves chains and rejects cycles or conflicting targets. Added combined output checks for IK chains, procedural drivers, renamed bones and unused-bone collapse.
+- DMX loading rejects NaN/Inf in geometry, weights and animation numbers. Corrective COMBO/DOMINATE rules have numeric evaluation tests; comprehensive complex-rig parity remains unverified.
+- Large translations and oversized RLE animation records use frame encoding, with float32 positions when half precision would overflow. Tests cover 255-frame repeat boundaries and section seams. Compressed IK/local-hierarchy offsets above 32767 bytes fail before replacing output files.
+- Long PHY surface properties, root-bone names and merge names are no longer truncated by 512-byte temporary buffers.
+- Animation range scanning visits contiguous poses. A 128-bone, 1800-frame benchmark improves its three-run median from 118.1 to 109.5 ms, with identical SHA256 values for four output files. This measures the compression stage of one fixture.
+
+See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESEARCH.md) for the six investigations and remaining work.
 
 ## v1.2.0 validation and optimizations
 
@@ -86,7 +97,7 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 | glTF animation/compression | The fast importer supports LINEAR, STEP and CUBICSPLINE translation/rotation; static scale is baked into geometry. Animated scale, morph weights and mesh swaps fail explicitly and need baking or QC flex controllers. Draco, meshopt compression and GPU instancing need expanded source files. Assimp fallback interpolation may differ for STEP/CUBICSPLINE; prefer the fast path. |
 | Neko algorithms/defaults | `$MaxVerts` splits per-material output meshes, with a real 65536 index ceiling, rather than reproducing source pre-splitting/clamping. `$FileBufferSize` caps serialized output sizes without fixed preallocation. Existing dynamic buffers, bone collapse and sequence ordering defaults remain. Use `$CEBoneRules` to retain weighted bones. |
 | Neko faces/drivers | Basic stereo balance and jiggle rotation/constraints are checked against binary output. Multi-studio faces and drivers have output tests; complex procedural/driver/IK hierarchy parity is unverified. |
-| Legacy mesh algorithms | CE `$UseLegacyStripify` / `$UseLegacyClampMethod` and Neko `-nvtristrip` remain unimplemented and fail explicitly. |
+| Legacy mesh algorithms | `$UseLegacyStripify` / `-nvtristrip` now use NvTriStrip. Cross-material global clamping (`$UseLegacyClampMethod`) remains unimplemented and fails explicitly. |
 | `gameinfo.txt` AppID mounting | Unimplemented; AppID-based discovery of other games' resources is unavailable. |
 | Full syntax/output parity | Animation copy, channel matching and conditions use this project's documented semantics. Complete StudioMDL++ parity is unverified. Output is v49 rather than the reference compilers' v48; whole-file byte equality is not expected. |
 | Complex face/DMX rigs | Basic normals, wrinkles, inverse flexes and eyelid rules are tested. Complex corrective rigs, hard edges, authored normals, controller remaps and in-game eyelids need more verification. |
@@ -141,7 +152,7 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 python -m unittest discover -s tests -p test_automation.py
 ```
 
-There are 85 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
+There are 97 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
 and 16 automation tests. Tests inspect MDL/VVD data and decompile animations to
 check positions, rotations and conditions. The user-provided Alyx QC compiled
 successfully with 113 bones and 27,571 VVD vertices; this does not cover in-game

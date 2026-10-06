@@ -24,6 +24,30 @@ namespace lim = pulse::limits;
 
 namespace {
 
+template<class T> bool FiniteDmxNumber(const T&) { return true; }
+bool FiniteDmxNumber(float v) { return std::isfinite(v); }
+bool FiniteDmxNumber(const dmx::Vector2& v) { return std::isfinite(v.x) && std::isfinite(v.y); }
+bool FiniteDmxNumber(const dmx::Vector3& v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); }
+bool FiniteDmxNumber(const dmx::Quaternion& v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z) && std::isfinite(v.w); }
+bool FiniteDmxNumber(const dmx::Time& v) { return std::isfinite(v.seconds); }
+template<class T> bool FiniteDmxNumber(const std::vector<T>& values) {
+    for (const auto& value : values) if (!FiniteDmxNumber(value)) return false;
+    return true;
+}
+bool ValidateDmxNumbers(const dmx::Datamodel& dm, std::string* err) {
+    for (const auto& element : dm.elements) for (const auto& attr : element->attributes) {
+        const std::string& n = attr.name;
+        if (n != "position" && n != "orientation" && n != "position$0" && n != "positions" &&
+            n != "normal$0" && n != "normals" && n != "texcoord$0" && n != "textureCoordinates" &&
+            n != "jointWeights" && n != "wrinkle$0" && n != "wrinkleScales" && n != "values" && n != "times") continue;
+        if (!std::visit([](const auto& value) { return FiniteDmxNumber(value); }, attr.value)) {
+            if (err) *err = "non-finite DMX attribute '" + n + "' in element '" + element->name + "'";
+            return false;
+        }
+    }
+    return true;
+}
+
 pm::Vector3 ToV3(const dmx::Vector3& v) { return {v.x, v.y, v.z}; }
 pm::Vector2 ToV2(const dmx::Vector2& v) { return {v.x, v.y}; }
 
@@ -2269,6 +2293,7 @@ void ResetDmxUpAxis() { s_bUpAxisY = false; s_bUpAxisChecked = false; }
 bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, float scale,
                    std::string* err, bool morphSource, MeshFilter* filter, bool animOnly,
                    bool physicsShapes, const DmxProcessing* processing) {
+    if (!ValidateDmxNumbers(dm, err)) return false;
     const dmx::Element* root = dm.root;
     if (!root) {
         if (err) *err = "DMX has no root element";

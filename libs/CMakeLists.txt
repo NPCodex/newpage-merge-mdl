@@ -77,3 +77,7 @@ add_library(pulse_drlibs STATIC
     drlibs/drlibs_impl.c
 )
 target_include_directories(pulse_drlibs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/drlibs)
+
+# Optional legacy triangle-list cache optimizer.
+add_library(pulse_nvtristrip STATIC nvtristrip/NvTriStrip.cpp nvtristrip/NvTriStripObjects.cpp )
+target_include_directories(pulse_nvtristrip PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/nvtristrip)

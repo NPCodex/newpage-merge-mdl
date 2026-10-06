@@ -64,7 +64,7 @@ into unconditional `$alwayscollapse` and protects vertex bones unless
 | Bone collapse rules | `$CEBoneRules` is opt-in; full skeletal/procedural/LOD parity still needs larger fixtures. |
 | Bounding-box warnings / cmdlist checks | Diagnostic parity and extreme-input fixtures; dynamic vectors already avoid fixed-array overflow. |
 | CE face/flex extensions | Implemented below; arbitrary corrective rigs, custom normals, eyelid setup and engine rendering are not certified identical. |
-| CE legacy mesh algorithms | `$UseLegacyStripify` (NvTriStrip) and `$UseLegacyClampMethod` are not implemented and fail explicitly. Current output uses meshoptimizer and mesh splitting. |
+| CE legacy mesh algorithms | `$UseLegacyStripify` / `-nvtristrip` select NvTriStrip triangle-list ordering (16-entry cache, no meshoptimizer overdraw pass). `$UseLegacyClampMethod` remains unimplemented and fails explicitly; default output uses meshoptimizer and per-material mesh splitting. |
 | Other Tools++ tools | VBSP/VVIS/VRAD/BSPZIP are map tools, outside this model compiler port. |
 
 ## Build and validation
@@ -78,7 +78,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 85 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 97 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -196,7 +196,7 @@ is a behavioral reference, not bundled or called by this compiler.
 Static node scale is baked into geometry. Animated scene scale cannot be encoded
 as MDL bone TRS and fails explicitly; bake it into vertex animation first.
 
-Unimplemented or unverified: NvTriStrip (`-nvtristrip` fails), full source clamp
+Unimplemented or unverified: full source clamp
 algorithm parity, all scene formats/complex rigs, animated morph weights/mesh
 swaps, compressed/instanced glTF, and engine integration. Assimp fallback can
 lose glTF STEP/CUBICSPLINE interpolation semantics. No claim of whole-file or
@@ -208,14 +208,13 @@ changes through the overlay; Neko reference updates are reviewed manually.
 The user-specified `perilouswithadollarsign/cstrike15_src` repository contains a
 historical StudioMDL implementation. This investigation inspected its
 `studiomdl.cpp`, `simplify.cpp`, `optimize.cpp`, `tristrip.cpp` and `studiomdl.h`.
-Reference files remain outside this project's source and release archives.
+Historical core compiler reference files remain outside the release archives. The NvTriStrip dependency is bundled in `libs/nvtristrip`; see its `SOURCE.md` and original README for provenance.
 
 - The historical source splits whole source models across material boundaries;
   its accounting conservatively reserves a face's vertices before deduplication.
   Current per-material output splitting is a different algorithm. This does not
   establish that CE's `$UseLegacyClampMethod` is identical to this version.
-- NvTriStrip is a separate dependency referenced by `optimize.cpp`; `tristrip.cpp`
-  alone does not provide that backend. Legacy stripification remains unfinished.
+- The complete reference tree contains `utils/nvtristriplib`. The bundled portable backend now implements legacy triangle-list ordering. It removes duplicate and index-degenerate faces. Configuration is initialized once before concurrent mesh tasks use it; the default backend remains meshoptimizer.
 - Cmdlist overflow guards protect fixed arrays in that source. This project's
   dynamic vectors do not need the same numeric cap; imposing it would reject
   otherwise valid scripts rather than improve safety.
@@ -232,3 +231,13 @@ No performance improvement is claimed from this bounds correctness fix.
 SMD nodes require a valid parent defined before the child. Coordinates and weights must be finite; influences are nonnegative and limited to the loader's 16 input slots. Invalid inputs fail before output. A 256-bone model uses frame animation encoding to avoid the RLE bone-255 terminator collision. Standard MDL/VVD tables cannot encode more than 256 final bones; the writer rejects this even when a larger `$ModelBudget` is requested. 512 source bones can be collapsed to fit the output budget.
 
 A real 172.88 MiB VTA and 130 output materials pass serialization tests. See [RESEARCH.md](RESEARCH.md) for measured partition/loading improvements, the supplied extreme model and reference-program startup limitations.
+
+## v1.2.1 investigation results
+
+LOD replacement chains are flattened; identity mappings are accepted, cycles and conflicting targets fail. Output tests verify bone-palette remapping over DX80/DX90 palette boundaries and LOD replacement, alongside retained IK links and procedural controls.
+
+DMX positions, normals, texture coordinates, weights, orientation and animation values/times must be finite. A corrective rule test evaluates COMBO and DOMINATE numerically and checks the emitted flex geometry. This does not certify arbitrary production rigs or engine rendering.
+
+Oversized RLE records and constant translations outside the half-float range switch the complete animation to frame encoding. Frame position channels use float32 when needed. Compressed IK/local-hierarchy channel offsets must fit the signed 16-bit field: oversized inputs fail before any output replacement. RLE 255-frame runs and section seams are tested by decompiling poses.
+
+PHY string serialization no longer uses fixed 512-byte buffers for keyed strings or joint-merge names. A 600-character surface property and root-bone name survive output. Simulation behavior remains unverified. See RESEARCH.md for benchmark scope and unresolved global clamp, full rig and 512-final-bone work.
