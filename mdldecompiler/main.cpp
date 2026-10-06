@@ -2606,7 +2606,9 @@ void WriteSequences(Qc& q, const Mdl& m) {
             opt("autoplay");
         if (f & fm::STUDIO_HIDDEN)
             opt("hidden");
-        if (f & fm::STUDIO_REALTIME)
+        if (f & fm::STUDIO_GMTIME)
+            opt("gmtime");
+        else if (f & fm::STUDIO_REALTIME)
             opt("realtime");
         if (f & fm::STUDIO_WORLD_AND_RELATIVE)
             opt("worldrelative");

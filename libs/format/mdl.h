@@ -112,6 +112,8 @@ inline constexpr int32_t STUDIO_ALLZEROS = 0x0020;
 inline constexpr int32_t STUDIO_FRAMEANIM = 0x0040;
 inline constexpr int32_t STUDIO_CYCLEPOSE = 0x0080;
 inline constexpr int32_t STUDIO_REALTIME = 0x0100;
+// StudioMDL++ extension; the target mod must implement UTC synchronization.
+inline constexpr int32_t STUDIO_GMTIME = 0x100000;
 inline constexpr int32_t STUDIO_LOCAL = 0x0200;
 inline constexpr int32_t STUDIO_HIDDEN = 0x0400;
 inline constexpr int32_t STUDIO_OVERRIDE = 0x0800;

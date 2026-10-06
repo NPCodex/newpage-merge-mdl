@@ -5,7 +5,7 @@
 基于 [PulseModel](https://github.com/ToppiOfficial/PulseModel) 的 Source 模型编译工具，加入 StudioMDL-CE / StudioMDL++ 兼容功能与自行实现的动画扩展。
 
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
-支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 本地构建已验证；Linux 构建尚未在本次修改后实测。
+支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 ## 当前功能
 
@@ -14,6 +14,7 @@
 - `-cullanims`、`-MostlyOpaque`，重复变量定义警告。
 - 自行实现的动画 `copy`、`match pos/rot`、嵌套 `if / else if / else`。
 - VTA 同名 `flex` / `flexpair` 多帧：保留独立顶点数据和 StudioMDL 兼容权重区间。
+- `$sequence gmtime`，默认保留已有模型的序列顺序，`-noremap` 使用 QC 顺序。
 - 带终端颜色的启动横幅；重定向日志保持纯文本。
 
 完整合并尚未完成，语法和差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。不能保证与 StudioMDL-CE / StudioMDL++ 的全部行为一致。

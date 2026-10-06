@@ -3,7 +3,8 @@
 This fork uses PulseModel commit `c8b969c4961360bf7fd1275d012b6b17dbc15a65`
 as its base. It does not include StudioMDL-CE or Tools++ binaries or claim
 complete behavioral parity. Implementations use public documentation and the
-StudioMDL++ changelog supplied by the user on 2026-10-06.
+StudioMDL++ changelog supplied by the user on 2026-10-06, plus analysis and
+isolated differential tests of the user-supplied executable; see BINARY_ANALYSIS.md.
 
 References:
 - https://github.com/ToppiOfficial/PulseModel
@@ -28,6 +29,9 @@ References:
 | Animation `copy reference [pos] [rot]` | Self-authored weighted local-pose copy. Keeps destination length and FPS; holds the source's final frame when shorter. References must be earlier, non-declared animations. Defaults to both channels. |
 | Animation `match reference [pos] [rot]` | Adds the first-frame local translation difference and/or applies the first-frame rotation correction across the clip. Default remains rotation only. |
 | Animation `if / else if / else` | Self-authored compile-time braced conditions using the existing variable/comparison evaluator. Only the chosen body is parsed. Nested conditions work. |
+
+| Sequence `gmtime` | Emits REALTIME plus the UTC extension bit (0x100100); decompiler preserves it. Requires target mod support. |
+| Existing sequence order / `-noremap` | Reads existing v48/v49 local sequence names, matches case insensitively, preserves surviving sequence order and appends new names. Updates autolayer indices. Invalid old models warn and fall back to QC order. `-noremap` bypasses reading. |
 
 PulseModel's `$donotcollapse` still wins over force-collapse, including prefix
 collapse. This differs from StudioMDL++'s unconditional `$alwayscollapse` rule.
@@ -55,9 +59,7 @@ Launch equivalents of IncludePrefix and IncludeAnimPrefix are not yet implemente
 | Area | Remaining work / needed specification |
 | --- | --- |
 | Tools++ syntax parity | The self-authored animation extensions have documented semantics and passing tests, but their syntax and output are not certified identical to StudioMDL++. |
-| Sequence `gmtime` | Exact binary flag value and target mod contract. |
 | `gameinfo.txt` appid mounting | Search-path rules and installed-game fixtures. |
-| `-noremap` | PulseModel currently does not read an existing output model to remap sequences; default sequence-order behavior needs comparison. |
 | Bone collapse rules | An explicit compatibility mode is needed to preserve existing PulseModel scripts. |
 | Bounding-box warnings / cmdlist checks | Diagnostic parity and extreme-input fixtures; dynamic vectors already avoid fixed-array overflow. |
 | CE face/flex extensions | Eye scaling, inverted flexes, zero decay, controller overrides, DMX normals/wrinkles switches and per-reference material edits still need implementation and fixtures. |
@@ -75,7 +77,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 23 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 31 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.

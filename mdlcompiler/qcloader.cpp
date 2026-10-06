@@ -48,6 +48,7 @@ constexpr int kStudioDelta = 0x0004;
 constexpr int kStudioAutoplay = 0x0008;
 constexpr int kStudioPost = 0x0010;
 constexpr int kStudioRealtime = 0x0100;
+constexpr int kStudioGmtime = 0x100000;
 constexpr int kStudioLocal = 0x0200;
 constexpr int kStudioHidden = 0x0400;
 constexpr int kStudioOverride = 0x0800;
@@ -4168,6 +4169,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
             if (_stricmp(o.c_str(), "autoplay") == 0) { seq.flags |= kStudioAutoplay; continue; }
             if (_stricmp(o.c_str(), "hidden") == 0) { seq.flags |= kStudioHidden; continue; }
             if (_stricmp(o.c_str(), "realtime") == 0) { seq.flags |= kStudioRealtime; continue; }
+            if (_stricmp(o.c_str(), "gmtime") == 0) { seq.flags |= kStudioRealtime | kStudioGmtime; continue; }
             if (_stricmp(o.c_str(), "post") == 0) { seq.flags |= kStudioPost; continue; }
             if (_stricmp(o.c_str(), "delta") == 0) {
                 seq.flags |= kStudioDelta | kStudioPost;

@@ -23,6 +23,7 @@
 #include "qcloader.h"
 #include "writer.h"
 #include "branding.h"
+#include "sequence_remap.h"
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -49,6 +50,7 @@ static int Usage() {
     std::printf("                .vtx layout, overriding the script's $vtxformat.\n");
     std::printf("                0 = legacy (TF2/L4D2/GMod/HL2), 1 = full (SFM/CS:GO/ASW)\n");
     std::printf("  -nodx80       skip the DirectX 8 .dx80.vtx output (also $nodx80).\n");
+    std::printf("  -noremap      use script sequence order instead of preserving existing .mdl order\n");
     std::printf("                dx80 is only written when the vtx format is 0\n");
     std::printf("  -includesearchdir <dir>\n");
     std::printf("                extra fallback dir for $include, searched after any\n");
@@ -200,6 +202,7 @@ static int RunCompile(int argc, char** argv) {
     std::string modelname; // -modelname: overrides the script's $modelname
     int vtxFormat = -1; // unset; otherwise wins over the script's $vtxformat
     bool noDx80 = false; // -nodx80: force-skip .dx80.vtx, overriding the script
+    bool noRemap = false;
     int launchMinLod = -1;
     bool stripLods = false;
     bool forceWriteVertexData = false;
@@ -260,6 +263,8 @@ static int RunCompile(int argc, char** argv) {
             }
         } else if (std::strcmp(argv[i], "-cullanims") == 0) {
             cullAnims = true;
+        } else if (std::strcmp(argv[i], "-noremap") == 0) {
+            noRemap = true;
         } else if (std::strcmp(argv[i], "-MostlyOpaque") == 0 ||
                    std::strcmp(argv[i], "-mostlyopaque") == 0) {
             mostlyOpaque = true;
@@ -381,6 +386,11 @@ static int RunCompile(int argc, char** argv) {
     }
 
     if (!verify) {
+        if (!noRemap) {
+            std::string warning;
+            if (!newpage::PreserveSequenceOrder(model, outdir, warning))
+                std::fprintf(stderr, "warning: %s\n", warning.c_str());
+        }
         g_stage = "write";
         // dx80 only ships with the legacy archetype; Alien Swarm+ (archetype 1)
         // dropped DirectX 8, and $nodx80 / -nodx80 opt out explicitly.

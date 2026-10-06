@@ -80,6 +80,19 @@ index 0000000..4e04268
 +    std::fflush(stdout);
 +}
 +} // namespace newpage
+diff --git a/libs/format/mdl.h b/libs/format/mdl.h
+index b75eb2c..ccfdc54 100644
+--- a/libs/format/mdl.h
++++ b/libs/format/mdl.h
+@@ -112,6 +112,8 @@ inline constexpr int32_t STUDIO_ALLZEROS = 0x0020;
+ inline constexpr int32_t STUDIO_FRAMEANIM = 0x0040;
+ inline constexpr int32_t STUDIO_CYCLEPOSE = 0x0080;
+ inline constexpr int32_t STUDIO_REALTIME = 0x0100;
++// StudioMDL++ extension; the target mod must implement UTC synchronization.
++inline constexpr int32_t STUDIO_GMTIME = 0x100000;
+ inline constexpr int32_t STUDIO_LOCAL = 0x0200;
+ inline constexpr int32_t STUDIO_HIDDEN = 0x0400;
+ inline constexpr int32_t STUDIO_OVERRIDE = 0x0800;
 diff --git a/mdlcompiler/CMakeLists.txt b/mdlcompiler/CMakeLists.txt
 index 56dc20d..ecfcc05 100644
 --- a/mdlcompiler/CMakeLists.txt
@@ -302,18 +315,19 @@ index fe77451..b6bbc72 100644
              int descL = AddFlexdesc(in, key.name + "L", err);
              int descR = AddFlexdesc(in, key.name + "R", err);
 diff --git a/mdlcompiler/main.cpp b/mdlcompiler/main.cpp
-index 710c49b..d18cd06 100644
+index 710c49b..bf1a077 100644
 --- a/mdlcompiler/main.cpp
 +++ b/mdlcompiler/main.cpp
-@@ -22,6 +22,7 @@
+@@ -22,6 +22,8 @@
  #include "pulselimits.h"
  #include "qcloader.h"
  #include "writer.h"
 +#include "branding.h"
++#include "sequence_remap.h"
  
  #ifdef _WIN32
  #include <fcntl.h>
-@@ -35,15 +36,11 @@ using pulse::fatal::Fail;
+@@ -35,15 +37,11 @@ using pulse::fatal::Fail;
  static const char*& g_stage = pulse::fatal::g_stage;
  
  static void PrintHeader() {
@@ -331,7 +345,15 @@ index 710c49b..d18cd06 100644
      std::printf("\n");
      std::printf("  -game <dir>   mod dir to install into; output goes to\n");
      std::printf("                <dir>\\models\\<modelname>.mdl (-outdir is a synonym)\n");
-@@ -64,6 +61,9 @@ static int Usage() {
+@@ -52,6 +50,7 @@ static int Usage() {
+     std::printf("                .vtx layout, overriding the script's $vtxformat.\n");
+     std::printf("                0 = legacy (TF2/L4D2/GMod/HL2), 1 = full (SFM/CS:GO/ASW)\n");
+     std::printf("  -nodx80       skip the DirectX 8 .dx80.vtx output (also $nodx80).\n");
++    std::printf("  -noremap      use script sequence order instead of preserving existing .mdl order\n");
+     std::printf("                dx80 is only written when the vtx format is 0\n");
+     std::printf("  -includesearchdir <dir>\n");
+     std::printf("                extra fallback dir for $include, searched after any\n");
+@@ -64,6 +63,9 @@ static int Usage() {
      std::printf("                define a .pulseqc script variable ($name$) before the\n");
      std::printf("                script runs; repeatable. The script cannot override it\n");
      std::printf("  -striplods    ignore all $lod and $shadowlod commands\n");
@@ -341,7 +363,15 @@ index 710c49b..d18cd06 100644
      std::printf("  -forcewritevertexdata\n");
      std::printf("                save .vvd/.vtx even when the model has no geometry;\n");
      std::printf("                same as $forcewritevertexdata in the script\n");
-@@ -209,6 +209,9 @@ static int RunCompile(int argc, char** argv) {
+@@ -200,6 +202,7 @@ static int RunCompile(int argc, char** argv) {
+     std::string modelname; // -modelname: overrides the script's $modelname
+     int vtxFormat = -1; // unset; otherwise wins over the script's $vtxformat
+     bool noDx80 = false; // -nodx80: force-skip .dx80.vtx, overriding the script
++    bool noRemap = false;
+     int launchMinLod = -1;
+     bool stripLods = false;
+     bool forceWriteVertexData = false;
+@@ -209,6 +212,9 @@ static int RunCompile(int argc, char** argv) {
      bool dumpProcedural = false;
      bool scriptFromStdin = false;
      bool dumpDependencies = false;
@@ -351,12 +381,14 @@ index 710c49b..d18cd06 100644
      pulse::loader::ScriptVars defvars;
      pulse::loader::SearchDirs includeDirs, fileDirs;
      for (int i = 1; i < argc; ++i) {
-@@ -255,6 +258,16 @@ static int RunCompile(int argc, char** argv) {
+@@ -255,6 +261,18 @@ static int RunCompile(int argc, char** argv) {
                  return Fail("bad option", "-minlod needs a non-negative LOD index, got \"" +
                                                value + "\"");
              }
 +        } else if (std::strcmp(argv[i], "-cullanims") == 0) {
 +            cullAnims = true;
++        } else if (std::strcmp(argv[i], "-noremap") == 0) {
++            noRemap = true;
 +        } else if (std::strcmp(argv[i], "-MostlyOpaque") == 0 ||
 +                   std::strcmp(argv[i], "-mostlyopaque") == 0) {
 +            mostlyOpaque = true;
@@ -368,7 +400,7 @@ index 710c49b..d18cd06 100644
          } else if (std::strcmp(argv[i], "-nodx80") == 0) {
              noDx80 = true;
          } else if (std::strcmp(argv[i], "-striplods") == 0) {
-@@ -317,6 +330,12 @@ static int RunCompile(int argc, char** argv) {
+@@ -317,6 +335,12 @@ static int RunCompile(int argc, char** argv) {
                                       scriptFromStdin ? &stdinText : nullptr))
          return Fail("script error", err);
      auto tLoad = Clock::now();
@@ -381,11 +413,51 @@ index 710c49b..d18cd06 100644
      if (forceWriteVertexData)
          input.forceWriteVertexData = true;
      if (stripLods)
+@@ -362,6 +386,11 @@ static int RunCompile(int argc, char** argv) {
+     }
+ 
+     if (!verify) {
++        if (!noRemap) {
++            std::string warning;
++            if (!newpage::PreserveSequenceOrder(model, outdir, warning))
++                std::fprintf(stderr, "warning: %s\n", warning.c_str());
++        }
+         g_stage = "write";
+         // dx80 only ships with the legacy archetype; Alien Swarm+ (archetype 1)
+         // dropped DirectX 8, and $nodx80 / -nodx80 opt out explicitly.
+diff --git a/mdlcompiler/pulseloader.cpp b/mdlcompiler/pulseloader.cpp
+index d460e13..cca5a2a 100644
+--- a/mdlcompiler/pulseloader.cpp
++++ b/mdlcompiler/pulseloader.cpp
+@@ -35,6 +35,7 @@ constexpr int kStudioDelta = 0x0004;
+ constexpr int kStudioAutoplay = 0x0008;
+ constexpr int kStudioPost = 0x0010;
+ constexpr int kStudioRealtime = 0x0100;
++constexpr int kStudioGmtime = 0x100000;
+ constexpr int kStudioLocal = 0x0200;
+ constexpr int kStudioHidden = 0x0400;
+ constexpr int kStudioOverride = 0x0800;
+@@ -1422,6 +1423,7 @@ bool LoadPulseScript(const char* path, cm::CompileInput& out, std::string* err)
+             if (e->GetBool("snap", false)) seq.flags |= kStudioSnap;
+             if (e->GetBool("autoplay", false)) seq.flags |= kStudioAutoplay;
+             if (e->GetBool("realtime", false)) seq.flags |= kStudioRealtime;
++            if (e->GetBool("gmtime", false)) seq.flags |= kStudioRealtime | kStudioGmtime;
+             if (e->GetBool("hidden", false)) seq.flags |= kStudioHidden;
+             // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
+             if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index db90844..9d6f39d 100644
+index db90844..9a64765 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
-@@ -215,6 +215,9 @@ struct Ctx {
+@@ -48,6 +48,7 @@ constexpr int kStudioDelta = 0x0004;
+ constexpr int kStudioAutoplay = 0x0008;
+ constexpr int kStudioPost = 0x0010;
+ constexpr int kStudioRealtime = 0x0100;
++constexpr int kStudioGmtime = 0x100000;
+ constexpr int kStudioLocal = 0x0200;
+ constexpr int kStudioHidden = 0x0400;
+ constexpr int kStudioOverride = 0x0800;
+@@ -215,6 +216,9 @@ struct Ctx {
      std::map<std::string, Macro> macros; // keyed lowercased
      int macroExpansions = 0; // runaway-recursion guard
      std::vector<std::string> lockedVars; // -defvar names; locked against $definevariable
@@ -395,7 +467,7 @@ index db90844..9d6f39d 100644
      bool scriptBreak = false; // $break, sticky through every $include parent
  
      float defaultFps = 30.0f;
-@@ -2358,6 +2361,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
+@@ -2358,6 +2362,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
  //    1 - consumed as an option
  //    0 - not an animation option (caller treats it as a filename / seq ref)
  //   -1 - error, c.err set (includes a known-but-unsupported option)
@@ -404,7 +476,7 @@ index db90844..9d6f39d 100644
  int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
      if (t.quoted)
          return 0; // a quoted token is always a filename
-@@ -2744,13 +2749,52 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2744,13 +2750,52 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
              return 1;
          }
      }
@@ -458,7 +530,7 @@ index db90844..9d6f39d 100644
          a.cmds.push_back(std::move(cmd));
          return 1;
      }
-@@ -3225,6 +3269,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
+@@ -3225,6 +3270,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
      std::string name;
      if (!c.Want("a compiled .mdl path", cmd, name))
          return false;
@@ -469,7 +541,15 @@ index db90844..9d6f39d 100644
      // must name a .mdl - a source .dmx/.smd or a bare name would compile fine
      // and leave a reference the engine silently fails to resolve
      if (name.size() < 4 || _stricmp(name.c_str() + name.size() - 4, ".mdl") != 0)
-@@ -5391,6 +5439,16 @@ bool CmdAlwaysCollapse(Ctx& c, const Token& cmd) {
+@@ -4120,6 +4169,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
+             if (_stricmp(o.c_str(), "autoplay") == 0) { seq.flags |= kStudioAutoplay; continue; }
+             if (_stricmp(o.c_str(), "hidden") == 0) { seq.flags |= kStudioHidden; continue; }
+             if (_stricmp(o.c_str(), "realtime") == 0) { seq.flags |= kStudioRealtime; continue; }
++            if (_stricmp(o.c_str(), "gmtime") == 0) { seq.flags |= kStudioRealtime | kStudioGmtime; continue; }
+             if (_stricmp(o.c_str(), "post") == 0) { seq.flags |= kStudioPost; continue; }
+             if (_stricmp(o.c_str(), "delta") == 0) {
+                 seq.flags |= kStudioDelta | kStudioPost;
+@@ -5391,6 +5441,16 @@ bool CmdAlwaysCollapse(Ctx& c, const Token& cmd) {
      return true;
  }
  
@@ -486,7 +566,7 @@ index db90844..9d6f39d 100644
  // $hierarchy <child> <parent> (Cmd_ForcedHierarchy, "$heirarchy" is stock's own
  // misspelling and works too): reparent a bone. Applied once the global bone
  // table exists, so it can join two source skeletons that were exported apart.
-@@ -8146,7 +8204,12 @@ bool SpliceInclude(Ctx& c) {
+@@ -8146,7 +8206,12 @@ bool SpliceInclude(Ctx& c) {
      Token pathTok = c.toks[p++];
      if (!pathTok.expanded && !ExpandVars(c, pathTok))
          return false;
@@ -500,7 +580,7 @@ index db90844..9d6f39d 100644
  
      bool localDir = false, optional = false;
      while (p < c.toks.size() && !c.toks[p].quoted && c.toks[p].line == cmd.line &&
-@@ -8170,7 +8233,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8170,7 +8235,7 @@ bool SpliceInclude(Ctx& c) {
      if (relPath.is_absolute()) {
          tries.push_back(relPath);
      } else {
@@ -509,7 +589,7 @@ index db90844..9d6f39d 100644
          // stock resolves every $include against the root script's dir, so a
          // nested one often carries the whole path down from there
          if (c.curDir != c.scriptDir)
-@@ -8390,9 +8453,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
+@@ -8390,9 +8455,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
          return false;
      if (PinnedByDefVar(c, cmd, name))
          return true;
@@ -525,7 +605,7 @@ index db90844..9d6f39d 100644
      c.variables[name] = value;
      return true;
  }
-@@ -8413,6 +8479,38 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
+@@ -8413,6 +8481,38 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
      return true;
  }
  
@@ -564,7 +644,7 @@ index db90844..9d6f39d 100644
  bool IsCommandName(const std::string& name); // the kCommands lookup, below
  
  // $definemacro <name> [<param>[=<default>] ...] <body> $endmacro.
-@@ -8767,6 +8865,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8767,6 +8867,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
  }
  
  bool CmdIf(Ctx& c, const Token& cmd) { return IfChain(c, cmd, false); }
@@ -607,7 +687,7 @@ index db90844..9d6f39d 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,6 +8993,10 @@ constexpr Command kCommands[] = {
+@@ -8859,6 +8995,10 @@ constexpr Command kCommands[] = {
      {"$print", CmdPrint},
      {"$definevariable", CmdDefineVariable},
      {"$redefinevariable", CmdRedefineVariable},
@@ -618,7 +698,7 @@ index db90844..9d6f39d 100644
      {"$definemacro", CmdDefineMacro},
      {"$endmacro", CmdEndMacroOutside},
      {"$if", CmdIf},
-@@ -8981,6 +9119,7 @@ constexpr Command kCommands[] = {
+@@ -8981,6 +9121,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},
@@ -626,6 +706,100 @@ index db90844..9d6f39d 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
+diff --git a/mdlcompiler/sequence_remap.h b/mdlcompiler/sequence_remap.h
+new file mode 100644
+index 0000000..42f1d4d
+--- /dev/null
++++ b/mdlcompiler/sequence_remap.h
+@@ -0,0 +1,88 @@
++// Preserve existing local sequence order, as observed in StudioMDL++.
++// Read only the header, sequence table and names; never trust file offsets.
++#ifndef NEWPAGE_SEQUENCE_REMAP_H
++#define NEWPAGE_SEQUENCE_REMAP_H
++#include <algorithm>
++#include <cctype>
++#include <cstdint>
++#include <filesystem>
++#include <fstream>
++#include <numeric>
++#include <string>
++#include <unordered_map>
++#include "compile.h"
++#include "format/mdl.h"
++#include "pathcompat.h"
++
++namespace newpage {
++inline std::string SequenceNameKey(std::string name) {
++    for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
++    return name;
++}
++
++inline bool PreserveSequenceOrder(pulse::compile::CompiledModel& model,
++                                  const std::string& outputDirectory, std::string& warning) {
++    namespace fm = pulse::format;
++    const auto file = pulse::FilePath(outputDirectory.empty() ? "." : outputDirectory) /
++                      "models" / pulse::FilePath(model.outname + ".mdl");
++    std::error_code ec;
++    if (!std::filesystem::exists(file, ec)) return true;
++    auto invalid = [&]() {
++        warning = "Cannot preserve sequence order from invalid/unsupported model: " + file.string();
++        return false;
++    };
++    std::ifstream stream(file, std::ios::binary | std::ios::ate);
++    if (!stream) return invalid();
++    const int64_t size = static_cast<int64_t>(stream.tellg());
++    if (size < static_cast<int64_t>(sizeof(fm::studiohdr_t))) return invalid();
++    stream.seekg(0);
++    fm::studiohdr_t header{};
++    if (!stream.read(reinterpret_cast<char*>(&header), sizeof(header))) return invalid();
++    if (header.id != 0x54534449 || (header.version != 48 && header.version != 49) ||
++        header.length < static_cast<int32_t>(sizeof(header)) || header.length > size ||
++        header.numlocalseq < 0 || header.numlocalseq > 32767 || header.localseqindex < 0 ||
++        int64_t(header.localseqindex) + int64_t(header.numlocalseq) * sizeof(fm::mstudioseqdesc_t) > header.length)
++        return invalid();
++    std::unordered_map<std::string, int> ranks;
++    for (int i = 0; i < header.numlocalseq; ++i) {
++        const int64_t offset = int64_t(header.localseqindex) + int64_t(i) * sizeof(fm::mstudioseqdesc_t);
++        fm::mstudioseqdesc_t sequence{};
++        stream.seekg(offset);
++        if (!stream.read(reinterpret_cast<char*>(&sequence), sizeof(sequence))) return invalid();
++        const int64_t label = offset + int64_t(sequence.szlabelindex);
++        if (label < static_cast<int64_t>(sizeof(header)) || label >= header.length) return invalid();
++        stream.seekg(label);
++        std::string name;
++        bool terminated = false;
++        // Bounds are the declared file length, not a guessed fixed name limit.
++        for (int64_t p = label; p < header.length; ++p) {
++            char c;
++            if (!stream.get(c)) return invalid();
++            if (!c) { terminated = true; break; }
++            name += c;
++            if (name.size() > 4096) return invalid();
++        }
++        if (!terminated || name.empty() || !ranks.emplace(SequenceNameKey(name), i).second) return invalid();
++    }
++    std::vector<size_t> order(model.sequences.size());
++    std::iota(order.begin(), order.end(), 0);
++    auto rank = [&](size_t i) {
++        auto it = ranks.find(SequenceNameKey(model.sequences[i].name));
++        return it == ranks.end() ? header.numlocalseq : it->second;
++    };
++    std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return rank(a) < rank(b); });
++    std::vector<int> remap(order.size());
++    for (size_t i = 0; i < order.size(); ++i) remap[order[i]] = static_cast<int>(i);
++    for (const auto& sequence : model.sequences)
++        for (const auto& layer : sequence.autolayers)
++            if (layer.sequence < 0 || layer.sequence >= static_cast<int>(remap.size())) return invalid();
++    std::vector<pulse::compile::Sequence> reordered;
++    reordered.reserve(order.size());
++    for (size_t index : order) reordered.push_back(std::move(model.sequences[index]));
++    for (auto& sequence : reordered)
++        for (auto& layer : sequence.autolayers) layer.sequence = remap[layer.sequence];
++    model.sequences.swap(reordered);
++    return true;
++}
++} // namespace newpage
++#endif
 diff --git a/mdlcompiler/smdloader.cpp b/mdlcompiler/smdloader.cpp
 index 149ae76..b4a5cb5 100644
 --- a/mdlcompiler/smdloader.cpp
@@ -694,7 +868,7 @@ index ee18bb2..c43198c 100644
  target_compile_definitions(mdldecompiler PRIVATE PULSEMODEL_VERSION="${TOOL_VERSION}")
  
 diff --git a/mdldecompiler/main.cpp b/mdldecompiler/main.cpp
-index c1a5fbb..fa2eb1f 100644
+index c1a5fbb..3f391b7 100644
 --- a/mdldecompiler/main.cpp
 +++ b/mdldecompiler/main.cpp
 @@ -36,6 +36,7 @@
@@ -723,6 +897,17 @@ index c1a5fbb..fa2eb1f 100644
      std::printf("                     [-forceversion <n>] [-dmxencoding <enc>] [-dmxmodel <n>]\n");
      std::printf("                     [-smdanimation] [-pulseqc]\n");
      std::printf("                     [-nomesh] [-noanimation] [-declaresequence]\n");
+@@ -2609,7 +2606,9 @@ void WriteSequences(Qc& q, const Mdl& m) {
+             opt("autoplay");
+         if (f & fm::STUDIO_HIDDEN)
+             opt("hidden");
+-        if (f & fm::STUDIO_REALTIME)
++        if (f & fm::STUDIO_GMTIME)
++            opt("gmtime");
++        else if (f & fm::STUDIO_REALTIME)
+             opt("realtime");
+         if (f & fm::STUDIO_WORLD_AND_RELATIVE)
+             opt("worldrelative");
 diff --git a/mdldecompiler/version.rc.in b/mdldecompiler/version.rc.in
 index 5c2dd5a..5668e84 100644
 --- a/mdldecompiler/version.rc.in

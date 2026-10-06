@@ -35,6 +35,7 @@ constexpr int kStudioDelta = 0x0004;
 constexpr int kStudioAutoplay = 0x0008;
 constexpr int kStudioPost = 0x0010;
 constexpr int kStudioRealtime = 0x0100;
+constexpr int kStudioGmtime = 0x100000;
 constexpr int kStudioLocal = 0x0200;
 constexpr int kStudioHidden = 0x0400;
 constexpr int kStudioOverride = 0x0800;
@@ -1422,6 +1423,7 @@ bool LoadPulseScript(const char* path, cm::CompileInput& out, std::string* err) 
             if (e->GetBool("snap", false)) seq.flags |= kStudioSnap;
             if (e->GetBool("autoplay", false)) seq.flags |= kStudioAutoplay;
             if (e->GetBool("realtime", false)) seq.flags |= kStudioRealtime;
+            if (e->GetBool("gmtime", false)) seq.flags |= kStudioRealtime | kStudioGmtime;
             if (e->GetBool("hidden", false)) seq.flags |= kStudioHidden;
             // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
             if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;

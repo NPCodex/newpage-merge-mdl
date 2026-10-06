@@ -47,6 +47,79 @@ class Compatibility(unittest.TestCase):
     def mdl(self, name):
         return (self.root / "models" / (name + ".mdl")).read_bytes()
 
+    def sequences(self, name):
+        data = self.mdl(name)
+        count, index = struct.unpack_from('<2i', data, 188)
+        result = []
+        for i in range(count):
+            offset = index + i * 212
+            label = offset + struct.unpack_from('<i', data, offset + 4)[0]
+            name = data[label:data.index(b'\0', label)].decode()
+            result.append((name, struct.unpack_from('<i', data, offset + 12)[0], offset))
+        return result
+
+    def test_gmtime_exact_flags_and_decompile_round_trip(self):
+        self.run_qc('$modelname utc\n$sequence idle mesh.smd gmtime loop\n')
+        self.assertEqual(self.sequences('utc')[0][1] & 0x100101, 0x100101)
+        compiler = Path(COMPILER)
+        decompiler = compiler.with_name('NewPageMergeMDL-Decompiler' + compiler.suffix)
+        result = subprocess.run([str(decompiler), str(self.root / 'models/utc.mdl'), '-pulseqc',
+                                 '-outdir', str(self.root / 'utc-decompiled')], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        qc = next((self.root / 'utc-decompiled').rglob('*.pulseqc'))
+        self.assertIn('gmtime', qc.read_text())
+        result = subprocess.run([COMPILER, str(qc), '-game', str(self.root / 'roundtrip')],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        data = (self.root / 'roundtrip/models/utc.mdl').read_bytes()
+        index = struct.unpack_from('<i', data, 192)[0]
+        self.assertEqual(struct.unpack_from('<i', data, index + 12)[0] & 0x100101, 0x100101)
+
+    def test_default_sequence_remap_and_noremap_opt_out(self):
+        self.run_qc('$modelname ordering\n$sequence Idle mesh.smd\n$sequence walk mesh.smd\n')
+        reversed_qc = '$modelname ordering\n$sequence walk mesh.smd\n$sequence idle mesh.smd\n'
+        self.run_qc(reversed_qc)
+        self.assertEqual([s[0] for s in self.sequences('ordering')], ['idle', 'walk'])
+        self.run_qc(reversed_qc, '-noremap')
+        self.assertEqual([s[0] for s in self.sequences('ordering')], ['walk', 'idle'])
+
+    def test_sequence_remap_removes_missing_names_and_appends_new_names(self):
+        self.run_qc('$modelname ordering\n$sequence idle mesh.smd\n$sequence walk mesh.smd\n$sequence fire mesh.smd\n')
+        self.run_qc('$modelname ordering\n$sequence run mesh.smd\n$sequence walk mesh.smd\n')
+        self.assertEqual([s[0] for s in self.sequences('ordering')], ['walk', 'run'])
+
+    def test_sequence_remap_updates_autolayer_indices_and_accepts_v48_header(self):
+        self.run_qc('$modelname layered\n$sequence layer mesh.smd\n'
+                    '$sequence base mesh.smd { addlayer layer }\n')
+        path = self.root / 'models/layered.mdl'
+        data = bytearray(path.read_bytes())
+        struct.pack_into('<i', data, 4, 48)
+        path.write_bytes(data)
+        qc = '$modelname layered\n$sequence base mesh.smd { addlayer layer }\n$sequence layer mesh.smd\n'
+        self.run_qc(qc)
+        sequences = self.sequences('layered')
+        self.assertEqual([s[0] for s in sequences], ['layer', 'base'])
+        data = self.mdl('layered')
+        count, index = struct.unpack_from('<2i', data, sequences[1][2] + 148)
+        self.assertEqual(count, 1)
+        self.assertEqual(struct.unpack_from('<h', data, sequences[1][2] + index)[0], 0)
+        self.run_qc(qc, '-noremap')
+        sequences = self.sequences('layered')
+        self.assertEqual([s[0] for s in sequences], ['base', 'layer'])
+        data = self.mdl('layered')
+        index = struct.unpack_from('<i', data, sequences[0][2] + 152)[0]
+        self.assertEqual(struct.unpack_from('<h', data, sequences[0][2] + index)[0], 1)
+
+    def test_invalid_existing_model_offsets_do_not_crash_or_control_output(self):
+        self.run_qc('$modelname ordering\n$sequence idle mesh.smd\n')
+        path = self.root / 'models/ordering.mdl'
+        data = bytearray(path.read_bytes())
+        struct.pack_into('<i', data, 192, 0x7fffffff)
+        path.write_bytes(data)
+        output = self.run_qc('$modelname ordering\n$sequence walk mesh.smd\n$sequence idle mesh.smd\n')
+        self.assertIn('Cannot preserve sequence order', output)
+        self.assertEqual([s[0] for s in self.sequences('ordering')], ['walk', 'idle'])
+
     def vta_keys(self, options, stereo=False):
         self.write('face.vta', 'version 1\nnodes\n0 "root" -1\nend\n'
                    'skeleton\ntime 0\n0 0 0 0 0 0 0\ntime 1\n0 0 0 0 0 0 0\n'
