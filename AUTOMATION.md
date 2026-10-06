@@ -2,7 +2,7 @@
 
 目标仓库：https://github.com/Kudvvv/newpage-merge-mdl
 
-`.github/workflows/upstream-release.yml` 每六小时检查一次，也可通过 Actions
+`.github/workflows/upstream-release.yml` 每六小时检查 PulseModel 的更新，也可通过 Actions
 中的 **Upstream sync and automatic release → Run workflow** 手动启动。
 推送相关源码或补丁到 `main` 时也会启动。定时任务需要工作流位于默认分支；
 GitHub 的调度可能延迟，长时间无活动的公开仓库可能被自动停用定时任务。
@@ -10,18 +10,20 @@ GitHub 的调度可能延迟，长时间无活动的公开仓库可能被自动�
 ## 自动化实际执行的内容
 
 1. 查找 PulseModel 默认分支的最新提交，下载并检出精确版本。
-2. 获取 StudioMDL-CE 默认分支的最新 ZIP（其仓库包含 Preview 二进制）。
-3. 查询 ficool2/misc_tools 的 `v1` Release 中 Tools++ Windows/Linux 的最新资产。
-   这些资产可能沿用同一个标签，因此比较资产 ID、大小及更新时间，而非只看标签。
+2. PulseModel 或本仓库维护代码发生变化时，获取 StudioMDL-CE 默认分支的 ZIP
+   （其仓库包含 Preview 二进制），作为本次构建的来源对照记录。
+3. 同时获取 ficool2/misc_tools 的 `v1` Release 中 Tools++ Windows/Linux 资产，
+   记录资产 ID、大小、更新时间和下载校验值。这两项闭源项目不单独触发发布。
 4. 对最新 PulseModel 执行 `git apply --3way --index automation/compatibility.patch`，
    保留 NewPageMergeMDL 名称及已实现的兼容扩展。冲突即失败，不丢弃本地修改。
 5. Windows/Linux 都构建全部工具并运行自动化单元测试和模型兼容测试。
 6. 两个平台均通过后，发布 GitHub **预发布版本**，含两个平台 ZIP、实际糅合源码 ZIP、
    上游版本/哈希清单、发布说明与 SHA256 校验值。上传完成前保持草稿。
-7. 上游版本与本仓库版本未变时不重复构建、发布；失败不更新已发布状态，后续可重试。
+7. PulseModel 与本仓库版本未变时不重复构建、发布；失败不更新已发布状态，后续可重试。
 
 **闭源功能不会被自动移植。** StudioMDL-CE / StudioMDL++ 的下载仅用于版本追踪，
-临时保存在 runner 中，不执行、不打包、不重新分发。它们更新时会触发新的对照版本记录，
+临时保存在 runner 中，不执行、不打包、不重新分发。用户在对话中提供它们的更新内容后，
+由维护者实现对应功能并更新源码补丁；它们的版本变化本身不会触发发布。
 不能据此宣称 NewPageMergeMDL 已获得相同新增功能。新增功能仍需实现、测试并更新补丁。
 
 ## 补丁维护

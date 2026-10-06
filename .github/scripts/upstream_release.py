@@ -117,12 +117,6 @@ def prepare(args):
         'overlay_sha256': sha256(overlay),
         'configuration_sha256': sha256(ROOT / 'automation/upstreams.json'),
         'pulsemodel': {'repo': config['pulsemodel'], 'sha': latest_commit(config['pulsemodel'])},
-        'studiomdl_ce': {'repo': config['studiomdl_ce'], 'sha': latest_commit(config['studiomdl_ce'])},
-        'studiomdl_plusplus': {
-            'repo': config['tools_repository'], 'tag': config['tools_tag'],
-            'assets': select_tools(api(f"repos/{config['tools_repository']}/releases/tags/{config['tools_tag']}"),
-                                  config['tools_assets'])
-        },
         'integration': {
             'pulsemodel': 'source patch overlay',
             'studiomdl_ce': 'reference download; new functionality not automatically ported',
@@ -135,6 +129,14 @@ def prepare(args):
     if previous and previous.get('fingerprint') == state['fingerprint'] and not args.force:
         emit(changed=False, tag=tag)
         return
+    # Closed-source versions are provenance only. They cannot independently
+    # trigger a rebuild; the user supplies their functional updates manually.
+    state['studiomdl_ce'] = {'repo': config['studiomdl_ce'], 'sha': latest_commit(config['studiomdl_ce'])}
+    state['studiomdl_plusplus'] = {
+        'repo': config['tools_repository'], 'tag': config['tools_tag'],
+        'assets': select_tools(api(f"repos/{config['tools_repository']}/releases/tags/{config['tools_tag']}"),
+                              config['tools_assets'])
+    }
     work = Path(args.work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     references = work / 'references'

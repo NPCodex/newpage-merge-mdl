@@ -22,10 +22,10 @@ def asset(name='tools.zip', identifier=1):
 
 
 class AutomationTests(unittest.TestCase):
-    def test_asset_replacement_changes_fingerprint_even_at_same_tag(self):
+    def test_reference_metadata_records_replaced_assets_even_at_same_tag(self):
         old = sync.select_tools({'assets': [asset()]}, ['tools.zip'])
         new = sync.select_tools({'assets': [asset(identifier=2)]}, ['tools.zip'])
-        self.assertNotEqual(sync.fingerprint(old), sync.fingerprint(new))
+        self.assertNotEqual(old, new)
 
     def test_missing_or_ambiguous_asset_fails(self):
         for assets in ([], [asset(), asset()]):
@@ -51,7 +51,7 @@ class AutomationTests(unittest.TestCase):
             (root / 'automation/upstreams.json').write_text(json.dumps(config))
             (root / 'automation/compatibility.patch').write_text('patch')
             with patch.object(sync, 'ROOT', root), patch.dict(os.environ, GITHUB_SHA='controller', GITHUB_REPOSITORY='o/r'), \
-                 patch.object(sync, 'latest_commit', return_value='sha'), patch.object(sync, 'api', return_value={'assets': [asset()]}), \
+                 patch.object(sync, 'latest_commit', return_value='sha') as commits, patch.object(sync, 'api') as api, \
                  patch.object(sync, 'fingerprint', return_value='unchanged'), patch.object(sync, 'published_manifest', return_value={'fingerprint': 'unchanged'}), \
                  patch.object(sync, 'fetch') as download, patch.object(sync, 'create_source') as merge, patch.object(sync, 'emit') as emit:
                 sync.prepare(argparse.Namespace(work=root / 'work', force=False))
@@ -59,6 +59,8 @@ class AutomationTests(unittest.TestCase):
                 merge.assert_not_called()
                 emit.assert_called_once_with(changed=False, tag='newpage-auto-unchanged')
                 self.assertFalse((root / 'work').exists())
+                commits.assert_called_once_with('p/p')
+                api.assert_not_called()
 
     def test_candidate_refuses_existing_directory(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(sync, 'run') as git:
