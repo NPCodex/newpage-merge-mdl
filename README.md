@@ -57,7 +57,7 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-55 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 12 项自动发布测试。
+56 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 12 项自动发布测试。
 
 CE 的旧版 NvTriStrip 和全局顶点裁剪算法尚未实现，相关开关会明确报错。复杂 DMX、眼睑和游戏内渲染仍需更多验证。
 

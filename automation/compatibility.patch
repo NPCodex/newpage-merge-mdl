@@ -523,7 +523,7 @@ index 9271c44..a94843b 100644
  // $datamodelflexes: pull just the combination-operator rig out of a DMX (no
  // skeleton/mesh/morphs). A file with no combination operator yields an empty
 diff --git a/mdlcompiler/facemarkup.cpp b/mdlcompiler/facemarkup.cpp
-index 02d1bce..0c4686c 100644
+index 02d1bce..2b34f49 100644
 --- a/mdlcompiler/facemarkup.cpp
 +++ b/mdlcompiler/facemarkup.cpp
 @@ -36,6 +36,8 @@ bool RegisterEyeball(cm::CompileInput& in, const FaceMarkup::Eyeball& src, std::
@@ -535,14 +535,16 @@ index 02d1bce..0c4686c 100644
      eye.bonename = src.bonename;
      eye.material = src.material;
      eye.org = src.origin;
-@@ -248,6 +250,7 @@ bool RegisterFaceMarkup(cm::CompileInput& in, const FaceMarkup& markup, std::str
-                     return false;
-                 break;
-             case FaceMarkup::Kind::Eyelid:
-+                if (in.ce.ignoreEyelid) break;
-                 if (!RegisterEyelid(in, e.eyelid, err))
-                     return false;
-                 break;
+@@ -182,6 +184,9 @@ bool RegisterEyelid(cm::CompileInput& in, const FaceMarkup::Eyelid& src, std::st
+         in.flexkeys.push_back(std::move(fk));
+     }
+ 
++    // Ignore eye binding only; flex descriptors/keys must remain for manual rules.
++    if(in.ce.ignoreEyelid) return true;
++
+     // bind onto the already-registered eyeballs (hence list order)
+     bool rightOk = false, leftOk = mono;
+     for (cm::Eyeball& eye : in.eyeballs) {
 diff --git a/mdlcompiler/facemarkup.h b/mdlcompiler/facemarkup.h
 index 13487cd..a0d922f 100644
 --- a/mdlcompiler/facemarkup.h

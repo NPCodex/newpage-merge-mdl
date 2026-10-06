@@ -75,3 +75,8 @@ custom authored normals, collision physics, large vertex sets and engine renderi
 are not certified identical. Legacy NvTriStrip/global clamp algorithms remain
 unimplemented and their switches fail explicitly. Compatibility details and
 intentional differences are listed in COMPATIBILITY.md.
+
+IgnoreEyelid differential tests retain the controller and `%upper` rule while
+binding the eye to `dummy_eyelid` with targets (-1,0,1), instead of the authored
+upper descriptor/targets. The regression fixture checks both rule preservation
+and the disabled eye binding.

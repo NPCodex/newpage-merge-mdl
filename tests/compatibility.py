@@ -599,5 +599,20 @@ class Compatibility(unittest.TestCase):
             if count==0:self.assertEqual(struct.unpack_from('<i',d,276)[0],0)
 
 
+    def test_ce_ignore_eyelid_preserves_flex_rules_without_eye_binding(self):
+        self.ce_fixture()
+        block=('eyeball eye root 0 0 0 material 2 0 iris .5\n'
+               'eyelid upper face.vta lowerer 1 -.2 neutral 0 0 raiser 2 .2 split 0 eyeball eye\n'
+               'flexcontroller eyelid range -1 1 lid\n%upper = lid\n')
+        results=[]; bindings=[]
+        for flags in ['', '$IgnoreEyelid']:
+            data=self.ce_compile(flags,block);results.append(data[:2]+(data[3],))
+            d=self.mdl('face');model=data[4][0];eye=model+struct.unpack_from('<i',d,model+104)[0]
+            index=struct.unpack_from('<i',d,eye+116)[0];entry=struct.unpack_from('<i',d,264)[0]+index*4
+            start=entry+struct.unpack_from('<i',d,entry)[0];bindings.append(d[start:d.index(b'\0',start)].decode())
+        self.assertEqual(results[0],results[1])
+        self.assertEqual(bindings,['upper','dummy_eyelid'])
+
+
 if __name__ == "__main__":
     unittest.main()

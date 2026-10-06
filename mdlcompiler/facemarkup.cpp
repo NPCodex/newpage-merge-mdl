@@ -184,6 +184,9 @@ bool RegisterEyelid(cm::CompileInput& in, const FaceMarkup::Eyelid& src, std::st
         in.flexkeys.push_back(std::move(fk));
     }
 
+    // Ignore eye binding only; flex descriptors/keys must remain for manual rules.
+    if(in.ce.ignoreEyelid) return true;
+
     // bind onto the already-registered eyeballs (hence list order)
     bool rightOk = false, leftOk = mono;
     for (cm::Eyeball& eye : in.eyeballs) {
@@ -250,7 +253,6 @@ bool RegisterFaceMarkup(cm::CompileInput& in, const FaceMarkup& markup, std::str
                     return false;
                 break;
             case FaceMarkup::Kind::Eyelid:
-                if (in.ce.ignoreEyelid) break;
                 if (!RegisterEyelid(in, e.eyelid, err))
                     return false;
                 break;
