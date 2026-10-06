@@ -28,7 +28,20 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def fetch(url):
+class GitHubRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        parsed = urllib.parse.urlparse(newurl)
+        host = parsed.hostname or ''
+        if parsed.scheme != 'https' or not (host in {'api.github.com', 'github.com', 'codeload.github.com'}
+                                           or host.endswith('.githubusercontent.com')):
+            raise ValueError('Unexpected GitHub download redirect')
+        redirected = super().redirect_request(request, fp, code, message, headers, newurl)
+        if redirected and host != urllib.parse.urlparse(request.full_url).hostname:
+            redirected.remove_header('Authorization')
+        return redirected
+
+
+def fetch(url, accept=None):
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != 'https' or parsed.hostname not in {
         'api.github.com', 'github.com', 'codeload.github.com'
@@ -36,10 +49,11 @@ def fetch(url):
         raise ValueError('Unexpected upstream URL host')
     headers = {'User-Agent': 'NewPageMergeMDL-upstream-sync'}
     if parsed.hostname == 'api.github.com':
-        headers['Accept'] = 'application/vnd.github+json'
+        headers['Accept'] = accept or 'application/vnd.github+json'
         if os.environ.get('GH_TOKEN'):
             headers['Authorization'] = 'Bearer ' + os.environ['GH_TOKEN']
-    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=120) as response:
+    opener = urllib.request.build_opener(GitHubRedirect())
+    with opener.open(urllib.request.Request(url, headers=headers), timeout=120) as response:
         return response.read()
 
 
@@ -76,7 +90,8 @@ def published_manifest(repo):
             continue
         for asset in release['assets']:
             if asset['name'] == 'upstream-manifest.json':
-                return json.loads(fetch(asset['browser_download_url']))
+                # The API endpoint supports GITHUB_TOKEN for private repositories.
+                return json.loads(fetch(asset['url'], accept='application/octet-stream'))
     return None
 
 

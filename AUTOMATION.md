@@ -47,6 +47,7 @@ python .github/scripts/refresh_overlay.py
 - 首次将本目录提交并推送到目标仓库的 `main` 分支。
 - 仓库 Actions 应允许运行工作流。发布 job 使用仓库自带的 `GITHUB_TOKEN`，请求
   `contents: write`；不需要个人访问令牌。若组织策略限制权限，需要仓库管理员调整策略。
+  已发布清单通过带认证的 GitHub API 读取，支持私有仓库。
 - 发布不会更新默认分支的源码：最新上游源码和本地补丁的合并结果在 Release 的
   **NewPageMergeMDL-source.zip** 中。GitHub 自动生成的 Source code 包对应控制仓库提交。
 - 现有 `release.yml` 仍提供人工草稿发布；自动发布使用独立工作流。

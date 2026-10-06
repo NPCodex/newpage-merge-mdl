@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('upstream_release', ROOT / '.github/scripts/upstream_release.py')
@@ -18,6 +19,7 @@ spec.loader.exec_module(sync)
 
 def asset(name='tools.zip', identifier=1):
     return dict(id=identifier, name=name, size=3, updated_at='2026-01-01',
+                url='https://api.github.com/repos/official/releases/assets/' + str(identifier),
                 browser_download_url='https://github.com/official/releases/download/v1/' + name)
 
 
@@ -42,6 +44,16 @@ class AutomationTests(unittest.TestCase):
         with patch.object(sync, 'api', return_value=releases), patch.object(sync, 'fetch', return_value=b'{"fingerprint":"ready"}') as download:
             self.assertEqual(sync.published_manifest('owner/repo')['fingerprint'], 'ready')
             download.assert_called_once()
+            download.assert_called_once_with(asset()['url'], accept='application/octet-stream')
+
+    def test_download_redirect_strips_credentials_on_host_change(self):
+        request = urllib.request.Request('https://api.github.com/repos/o/r/releases/assets/1',
+                                         headers={'Authorization': 'Bearer test-only'})
+        redirected = sync.GitHubRedirect().redirect_request(request, None, 302, 'Found', {},
+                                                            'https://release-assets.githubusercontent.com/file')
+        self.assertIsNone(redirected.get_header('Authorization'))
+        with self.assertRaises(ValueError):
+            sync.GitHubRedirect().redirect_request(request, None, 302, 'Found', {}, 'https://unrelated.example/file')
 
     def test_unchanged_versions_skip_download_and_build(self):
         with tempfile.TemporaryDirectory() as folder:
