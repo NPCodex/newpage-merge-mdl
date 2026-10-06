@@ -5548,6 +5548,13 @@ bool CmdAlwaysCollapse(Ctx& c, const Token& cmd) {
     return true;
 }
 
+// $culljigglebones: drop every $jigglebone whose bone and descendants carry no
+// vertex weight, leaving the bone to the normal cull/collapse.
+bool CmdCullJiggleBones(Ctx& c, const Token&) {
+    c.in.cullJiggleBones = true;
+    return true;
+}
+
 bool CmdAlwaysCollapseByPrefix(Ctx& c, const Token& cmd) {
     std::string prefix;
     if (!c.Want("a non-empty bone prefix", cmd, prefix))
@@ -9288,6 +9295,7 @@ constexpr Command kCommands[] = {
     {"$physicsnocollide", CmdPhysicsOutsideModel},
     {"$assumeworldspace", CmdPhysicsOutsideModel},
     {"$jigglebone", CmdJiggleBone},
+    {"$culljigglebones", CmdCullJiggleBones},
     {"$driverbone", CmdDriverBone},
     {"$driveraimat", CmdDriverAimAt},
     {"$proceduralbones", CmdProceduralBones},

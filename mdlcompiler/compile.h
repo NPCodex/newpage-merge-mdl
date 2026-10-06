@@ -1213,6 +1213,7 @@ struct CompileInput {
     std::vector<BoneMarkup> bonemarkups;
     // $alwayscollapse: force-collapse these bones. $donotcollapse wins.
     std::vector<std::string> alwaysCollapse;
+    bool cullJiggleBones = false; // $culljigglebones
     // StudioMDL-CE: force-collapse all bones whose names start with a prefix.
     std::vector<std::string> alwaysCollapsePrefixes;
     std::vector<std::string> limitRotationBones;

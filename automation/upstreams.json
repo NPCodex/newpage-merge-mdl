@@ -3,6 +3,9 @@
   "studiomdl_ce": "DeadZoneLuna/StudioMDL-CE",
   "tools_repository": "ficool2/misc_tools",
   "tools_tag": "v1",
-  "tools_assets": ["tools++_windows.zip", "tools++_linux.tar.gz"],
-  "pulse_base": "c8b969c4961360bf7fd1275d012b6b17dbc15a65"
+  "tools_assets": [
+    "tools++_windows.zip",
+    "tools++_linux.tar.gz"
+  ],
+  "pulse_base": "52cf296a953fd6c2d072e34cfde5eb8eccc95564"
 }

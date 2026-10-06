@@ -1,6 +1,6 @@
 # NewPageMergeMDL compatibility
 
-This fork uses PulseModel commit `c8b969c4961360bf7fd1275d012b6b17dbc15a65`
+This fork uses PulseModel commit `52cf296a953fd6c2d072e34cfde5eb8eccc95564`
 as its base. It does not include StudioMDL-CE or Tools++ binaries or claim
 complete behavioral parity. Implementations use public documentation and the
 StudioMDL++ changelog supplied by the user on 2026-10-06, plus analysis and

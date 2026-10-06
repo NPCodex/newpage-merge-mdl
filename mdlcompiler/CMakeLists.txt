@@ -4,8 +4,7 @@ add_executable(mdlcompiler main.cpp dmxloader.cpp dmxrig.cpp smdloader.cpp
                fbxloader.cpp meshedit.cpp compile.cpp facemarkup.cpp
                flexreg.cpp qcloader.cpp writemdl.cpp writevtx.cpp writephy.cpp)
 # Each tool owns its own version; there is no project-wide one.
-set(TOOL_VERSION 0.33.0)
-set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")
+set(TOOL_VERSION 0.34.0)
 string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
 target_compile_definitions(mdlcompiler PRIVATE PULSEMODEL_VERSION="${TOOL_VERSION}")
 
@@ -20,3 +19,5 @@ endif()
 find_package(Threads REQUIRED)
 target_link_libraries(mdlcompiler PRIVATE pulse_libs pulse_dmx pulse_math pulse_meshopt
                                           pulse_phys pulse_vhacd pulse_ufbx Threads::Threads)
+
+set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")

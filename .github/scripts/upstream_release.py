@@ -117,6 +117,9 @@ def create_source(root, pulse_repo, revision, base, patch):
         f'https://github.com/{pulse_repo}.git', root)
     # Fetch both exact revisions. Do not substitute a moving branch or release tag.
     run('git', 'fetch', 'origin', revision, base, cwd=root)
+    # Materialize the base blobs before applying an abbreviated-id patch.
+    # Partial clones cannot lazy-fetch unknown abbreviated object ids.
+    run('git', 'checkout', '--detach', base, cwd=root)
     run('git', 'checkout', '--detach', revision, cwd=root)
     run('git', 'apply', '--3way', '--index', Path(patch).resolve(), cwd=root)
     run('git', 'diff', '--check', '--cached', cwd=root)
