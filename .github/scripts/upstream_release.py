@@ -9,6 +9,8 @@ import datetime
 import hashlib
 import json
 import os
+import re
+import sys
 from pathlib import Path
 import shutil
 import subprocess
@@ -87,12 +89,15 @@ def published_manifest(repo):
     releases = api(f'repos/{repo}/releases?per_page=100')
     # API list order can differ from publication order when tags share an older target.
     for release in sorted(releases, key=lambda item: item.get('published_at') or '', reverse=True):
-        if release['draft'] or not release['tag_name'].startswith('newpage-auto-'):
+        if release['draft'] or not (release['tag_name'].startswith('newpage-auto-') or
+                                  re.fullmatch(r'v\d+\.\d+(?:\.\d+)?(?:-auto-[\w-]+)?', release['tag_name'])):
             continue
         for asset in release['assets']:
             if asset['name'] == 'upstream-manifest.json':
                 # The API endpoint supports GITHUB_TOKEN for private repositories.
-                return json.loads(fetch(asset['url'], accept='application/octet-stream'))
+                manifest = json.loads(fetch(asset['url'], accept='application/octet-stream'))
+                manifest.setdefault('release_tag', release['tag_name'])
+                return manifest
     return None
 
 
@@ -128,6 +133,40 @@ def create_source(root, pulse_repo, revision, base, patch):
         ':(exclude)libs/assimp/**', ':(exclude)libs/cgltf/cgltf.h', cwd=root)
 
 
+def release_version(base, previous, content_fingerprint):
+    """Allocate a patch release, preserving the identity of forced retries."""
+    def parts(value):
+        if not re.fullmatch(r'\d+\.\d+(?:\.\d+)?', value):
+            raise ValueError('Invalid project version: ' + value)
+        return tuple(map(int, (value + '.0' if value.count('.') == 1 else value).split('.')))
+    floor = parts(base)
+    if previous and previous.get('fingerprint') == content_fingerprint:
+        version = previous.get('project_version', base)
+        parts(version)
+        return version, previous.get('release_tag', 'v' + version)
+    if previous and previous.get('project_version'):
+        old = parts(previous['project_version'])
+        floor = max(floor, (old[0], old[1], old[2] + 1))
+    version = '.'.join(map(str, floor))
+    return version, 'v' + version
+
+
+def stamp_version(candidate, base, version):
+    cmake = candidate / 'CMakeLists.txt'
+    text = cmake.read_text(encoding='utf-8')
+    text, count = re.subn(r'(project\(NewPageMergeMDL VERSION )\S+', lambda m: m[1] + version, text)
+    if count != 1:
+        raise ValueError('Expected one compiler project version')
+    cmake.write_text(text, encoding='utf-8')
+    for name in ('README.md', 'README.en.md', 'AUTOMATION.md'):
+        path = candidate / name
+        path.write_text(path.read_text(encoding='utf-8').replace('v' + base, 'v' + version), encoding='utf-8')
+    config_path = candidate / 'automation/upstreams.json'
+    config = json.loads(config_path.read_text(encoding='utf-8'))
+    config['project_version'] = version
+    config_path.write_text(json.dumps(config, indent=2) + '\n', encoding='utf-8')
+
+
 def prepare(args):
     config = json.loads((ROOT / 'automation/upstreams.json').read_text())
     overlay = ROOT / 'automation/compatibility.patch'
@@ -135,7 +174,7 @@ def prepare(args):
         ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     state = {
         'schema': 1,
-        'project_version': config.get('project_version', '1.1'),
+        'project_version': config.get('project_version', '1.2.0'),
         'controller_sha': controller,
         'overlay_sha256': sha256(overlay),
         'configuration_sha256': sha256(ROOT / 'automation/upstreams.json'),
@@ -147,8 +186,11 @@ def prepare(args):
         }
     }
     state['fingerprint'] = fingerprint(state)
-    tag = 'v' + state['project_version'] + '-auto-' + state['fingerprint'][:20]
     previous = published_manifest(os.environ.get('GITHUB_REPOSITORY'))
+    base_version = state['project_version']
+    state['project_version'], tag = release_version(base_version, previous, state['fingerprint'])
+    state['version_base'] = base_version
+    state['release_tag'] = tag
     if previous and previous.get('fingerprint') == state['fingerprint'] and not args.force:
         emit(changed=False, tag=tag)
         return
@@ -186,8 +228,11 @@ def prepare(args):
                 raise ValueError('Controller target escapes candidate')
             shutil.rmtree(target)
         shutil.copytree(ROOT / name, candidate / name, dirs_exist_ok=True)
-    for name in ('README.md', 'README.en.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', '.gitignore'):
+    for name in ('README.md', 'README.en.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', '.gitignore'):
         shutil.copy2(ROOT / name, candidate / name)
+    stamp_version(candidate, base_version, state['project_version'])
+    run(sys.executable, candidate / '.github/scripts/refresh_overlay.py', '--base-repository', candidate)
+    state['build_overlay_sha256'] = sha256(candidate / 'automation/compatibility.patch')
     state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     (work / 'upstream-manifest.json').write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
     notes = (
@@ -230,7 +275,7 @@ def package(args):
         for path in sorted(dist.rglob('*')):
             if path.is_file():
                 archive.write(path, Path('NewPageMergeMDL') / path.relative_to(dist))
-        for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md'):
+        for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md'):
             archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         # Preserve bundled third-party license notices.

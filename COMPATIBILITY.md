@@ -78,13 +78,13 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 74 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 85 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
 Synthetic DMX tests cover smooth normals, wrinkle switches and changed bind-pose
 remapping. Engine loading, large-model stress tests and general whole-file binary
-parity with closed-source compilers remain unverified. There are also 12 automation
+parity with closed-source compilers remain unverified. There are also 16 automation
 unit tests. The user-provided Alyx QC was recompiled successfully (113 bones,
 27571 VVD vertices) with outputs isolated from the game directory.
 
@@ -226,3 +226,9 @@ Reference files remain outside this project's source and release archives.
   intentionally more robust than reproducing historical clipping defects.
 
 No performance improvement is claimed from this bounds correctness fix.
+
+## v1.2.0 safety and stress validation
+
+SMD nodes require a valid parent defined before the child. Coordinates and weights must be finite; influences are nonnegative and limited to the loader's 16 input slots. Invalid inputs fail before output. A 256-bone model uses frame animation encoding to avoid the RLE bone-255 terminator collision. Standard MDL/VVD tables cannot encode more than 256 final bones; the writer rejects this even when a larger `$ModelBudget` is requested. 512 source bones can be collapsed to fit the output budget.
+
+A real 172.88 MiB VTA and 130 output materials pass serialization tests. See [RESEARCH.md](RESEARCH.md) for measured partition/loading improvements, the supplied extreme model and reference-program startup limitations.

@@ -67,22 +67,23 @@ bool ReadAllLines(const std::string& path, LineReader& r, std::string* err) {
         if (err) *err = "cannot open \"" + path + "\"";
         return false;
     }
-    std::stringstream ss;
-    ss << f.rdbuf();
-    std::string all = ss.str();
-
-    // strip a leading UTF-8 BOM if present
-    if (all.size() >= 3 && static_cast<unsigned char>(all[0]) == 0xEF &&
-        static_cast<unsigned char>(all[1]) == 0xBB && static_cast<unsigned char>(all[2]) == 0xBF)
-        all.erase(0, 3);
-
+    // Read directly into the retained line list, avoiding several whole-file
+    // copies for large SMD/VTA inputs. Preserve UTF-8 BOM and CRLF behavior.
     std::string line;
-    std::istringstream ls(all);
-    while (std::getline(ls, line)) {
+    bool first = true;
+    while (std::getline(f, line)) {
+        if (first && line.size() >= 3 && static_cast<unsigned char>(line[0]) == 0xEF &&
+            static_cast<unsigned char>(line[1]) == 0xBB && static_cast<unsigned char>(line[2]) == 0xBF)
+            line.erase(0, 3);
+        first = false;
         if (!line.empty() && line.back() == '\r')
             line.pop_back();
         r.lines.push_back(std::move(line));
         line.clear();
+    }
+    if (f.bad()) {
+        if (err) *err = "failed while reading " + path;
+        return false;
     }
     return true;
 }
@@ -127,6 +128,17 @@ bool GrabNodes(LineReader& r, Source& out, std::string* err) {
         return false;
     }
     bones.resize(out.numbones);
+    for (int i = 0; i < out.numbones; ++i) {
+        const int parent = bones[i].parent;
+        if (parent < -1 || parent >= out.numbones) {
+            if (err) *err = "invalid parent index for SMD bone " + bones[i].name;
+            return false;
+        }
+        if (parent >= i) {
+            if (err) *err = "SMD bone parent must precede child: " + bones[i].name;
+            return false;
+        }
+    }
     out.localBone = std::move(bones);
     return true;
 }
@@ -159,6 +171,11 @@ bool GrabAnimation(LineReader& r, float scale, Source& out, std::string* err) {
         float p0, p1, p2, e0, e1, e2;
         if (std::sscanf(line->c_str(), "%d %f %f %f %f %f %f", &index, &p0, &p1, &p2, &e0, &e1,
                         &e2) == 7) {
+            if (!std::isfinite(p0 * scale) || !std::isfinite(p1 * scale) || !std::isfinite(p2 * scale) ||
+                !std::isfinite(e0) || !std::isfinite(e1) || !std::isfinite(e2)) {
+                if (err) *err = "non-finite SMD bone pose";
+                return false;
+            }
             if (startframe < 0) {
                 if (err) *err = "bone data before the first `time` in skeleton block";
                 return false;
@@ -388,6 +405,13 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
         }
 
         pos.x *= scale; pos.y *= scale; pos.z *= scale;
+        if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z) ||
+            !std::isfinite(nrm.x) || !std::isfinite(nrm.y) || !std::isfinite(nrm.z) ||
+            !std::isfinite(tc.x) || !std::isfinite(tc.y)) {
+            if (err) *err = "non-finite SMD vertex";
+            return false;
+        }
+
 
         int iCount = 0;
         int bones[lim::kMaxSrcBoneWeights];
@@ -399,10 +423,18 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
         if (*q && *q != '\n' && *q != '\r') {
             iCount = static_cast<int>(std::strtol(p, &end, 10));
             p = end;
-            const int actual = iCount < lim::kMaxSrcBoneWeights ? iCount : lim::kMaxSrcBoneWeights;
+            if (iCount < 0 || iCount > lim::kMaxSrcBoneWeights) {
+                if (err) *err = "SMD vertex weight count must be 0.." + std::to_string(lim::kMaxSrcBoneWeights);
+                return false;
+            }
+            const int actual = iCount;
             for (int k = 0; k < actual; ++k) {
                 bones[k] = static_cast<int>(std::strtol(p, &end, 10)); p = end;
                 weights[k] = std::strtof(p, &end); p = end;
+                if (bones[k] < 0 || bones[k] >= numbones || !std::isfinite(weights[k]) || weights[k] < 0) {
+                    if (err) *err = "invalid SMD vertex bone influence";
+                    return false;
+                }
             }
             // SMD v3 extra texcoords: parsed to advance, ignored (single UV).
             if (version >= 3) {
@@ -761,6 +793,11 @@ bool GrabVertexAnimation(LineReader& r, float scale, std::vector<VtaFrame>& out,
                 return false;
             }
             v.pos.x *= scale; v.pos.y *= scale; v.pos.z *= scale;
+            if (!std::isfinite(v.pos.x) || !std::isfinite(v.pos.y) || !std::isfinite(v.pos.z) ||
+                !std::isfinite(v.normal.x) || !std::isfinite(v.normal.y) || !std::isfinite(v.normal.z)) {
+                if (err) *err = "non-finite VTA vertex";
+                return false;
+            }
             out.back().verts.push_back({index, v});
             continue;
         }

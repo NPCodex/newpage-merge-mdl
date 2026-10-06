@@ -350,8 +350,8 @@ struct Ctx {
         try {
             size_t used = 0;
             const float v = std::stof(s, &used);
-            if (used != s.size())
-                throw std::invalid_argument("trailing characters");
+            if (used != s.size() || !std::isfinite(v))
+                throw std::invalid_argument("expected a finite number");
             value = v;
         } catch (const std::exception&) {
             return Fail(cmd.line, cmd.text + " expects " + what + ", got \"" + s + "\"");

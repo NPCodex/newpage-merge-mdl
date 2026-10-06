@@ -901,7 +901,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
 
         // a demand-loaded model uses the frame-major encoding throughout -
         // including the clips that stayed local
-        if (ext && !m.animblockLowRes) {
+        if ((ext && !m.animblockLowRes) || m.bones.size() == 256) {
             srcanim.flags |= fmt::STUDIO_FRAMEANIM;
             destanimdesc->flags |= fmt::STUDIO_FRAMEANIM;
         }
@@ -2803,6 +2803,23 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
 
 bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legacyVtx,
                      bool writeDx80, std::string* err) {
+    // Both the VVD skin indices and MDL bone-name lookup table store bytes.
+    if (m.bones.size() > 256) {
+        if (err) *err = "standard MDL/VVD byte-index tables cannot encode more than 256 output bones; "
+            "collapse unused source bones before output";
+        return false;
+    }
+    // VVD bone indices are bytes even when the MDL bone table is larger.
+    for (const auto& model : m.models) for (const auto& vertex : model.vertices)
+        for (int influence = 0; influence < vertex.boneweight.numbones; ++influence) {
+            const int bone = vertex.boneweight.bone[influence];
+            if (bone < 0 || bone > 255) {
+                if (err) *err = "VVD vertex references bone " + std::to_string(bone) +
+                    "; skinned bone indices must be 0..255";
+                return false;
+            }
+        }
+
     Buf buf(kFileBuffer);
 
     fmt::studiohdr_t* phdr = buf.Reserve<fmt::studiohdr_t>();

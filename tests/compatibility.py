@@ -170,6 +170,23 @@ class Compatibility(unittest.TestCase):
             for x,y in zip(a,b): self.assertAlmostEqual(x,y,places=3)
         self.assertNotEqual(raw,aligned)
 
+    def test_split_mesh_preserves_flexes_and_reduced_lod(self):
+        import json
+        self.scene_fixture()
+        doc=json.loads((self.root/'scene.gltf').read_bytes())
+        doc['nodes']=doc['nodes'][:2];doc['nodes'][0]['children']=[1]
+        self.write('lod.gltf',json.dumps(doc))
+        self.scene_qc('$modelname lod\n$MaxVerts 3\n$NekoModel face {\nstudio scene.gltf\n'
+                      'flex Smile\nflexcontroller test strength\n%Smile = strength\n}\n'
+                      '$lod 10 { replacemodel scene.gltf lod.gltf }\n')
+        data=(self.root/'models/lod.vvd').read_bytes()
+        self.assertEqual(struct.unpack_from('<i',data,12)[0],2)
+        self.assertEqual(struct.unpack_from('<2i',data,16),(6,3))
+        keys=self.ce_data('lod')[1]
+        self.assertEqual(sum(len(key['vertices']) for key in keys),6)
+        for key in keys:
+            for va in key['vertices']:self.assertAlmostEqual(va[2][1],-.25,delta=.002)
+
     def test_neko_small_mesh_limit_splits_without_dropping_geometry(self):
         self.scene_fixture()
         self.scene_qc('$modelname split\n$MaxVerts 3\n$body m scene.gltf\n')
@@ -260,6 +277,68 @@ class Compatibility(unittest.TestCase):
             limit=16384 if x>0 else -16384
             self.assertAlmostEqual(low[1],limit)
             self.assertAlmostEqual(high[1],limit)
+
+    def test_smd_invalid_parent_is_diagnostic_not_crash(self):
+        for parent in (-2, 999, 0):
+            text=(self.root/'mesh.smd').read_text().replace('0 "root" -1',f'0 "root" {parent}')
+            self.write('bad.smd',text)
+            output=self.scene_qc('$modelname invalid\n$body m bad.smd\n',success=False)
+            self.assertIn('parent',output)
+            self.assertFalse((self.root/'models/invalid.mdl').exists())
+
+    def test_qc_nonfinite_numbers_preserve_previous_output(self):
+        self.run_qc('$modelname finite\n')
+        previous=self.mdl('finite')
+        for value in ('nan','inf','-inf'):
+            self.run_qc('$modelname finite\n$scale '+value+'\n',success=False)
+            self.assertEqual(previous,self.mdl('finite'))
+
+    def test_smd_stream_reader_preserves_bom_and_crlf(self):
+        original=(self.root/'mesh.smd').read_text()
+        (self.root/'mesh.smd').write_bytes(b'\xef\xbb\xbf'+original.replace('\n','\r\n').encode())
+        self.run_qc('$modelname bom\n$sequence idle mesh.smd\n')
+        self.assertTrue(self.mdl('bom').startswith(b'IDST'))
+
+    def test_512_source_bones_collapse_and_extended_output_fails_explicitly(self):
+        nodes='\n'.join(['0 "root" -1']+[f'{i} "bone{i}" 0' for i in range(1,512)])
+        poses='\n'.join(f'{i} 0 0 0 0 0 0' for i in range(512))
+        triangles=(self.root/'mesh.smd').read_text().split('triangles\n')[1]
+        self.write('manybones.smd','version 1\nnodes\n'+nodes+'\nend\nskeleton\ntime 0\n'+poses+'\nend\ntriangles\n'+triangles)
+        self.scene_qc('$modelname manybones\n$body m manybones.smd\n$sequence idle manybones.smd\n')
+        self.assertLessEqual(struct.unpack_from('<i',self.mdl('manybones'),156)[0],256)
+        before=self.mdl('manybones')
+        output=self.scene_qc('$modelname manybones\n$ModelBudget bones 512\n$bonecullmethod none\n$body m manybones.smd\n',success=False)
+        self.assertIn('byte-index tables',output)
+        self.assertEqual(before,self.mdl('manybones'))
+
+    def test_256_bone_animation_uses_frame_encoding_for_highest_index(self):
+        nodes='\n'.join(['0 "root" -1']+[f'{i} "bone{i}" 0' for i in range(1,256)])
+        poses='\n'.join(f'{i} 0 0 0 0 0 0' for i in range(256))
+        triangles=(self.root/'mesh.smd').read_text().split('triangles\n')[1]
+        self.write('full.smd','version 1\nnodes\n'+nodes+'\nend\nskeleton\ntime 0\n'+poses+'\ntime 1\n255 1 0 0 0 0 0\nend\ntriangles\n'+triangles)
+        self.scene_qc('$modelname full\n$MaxBones 256\n$bonecullmethod none\n$body m full.smd\n$sequence idle full.smd\n')
+        data=self.mdl('full');self.assertEqual(struct.unpack_from('<i',data,156)[0],256)
+        index=struct.unpack_from('<i',data,184)[0]
+        self.assertTrue(struct.unpack_from('<i',data,index+12)[0] & 0x40)
+        self.animation_poses('full','idle')
+        files=list((self.root/'decompiled').rglob('idle.smd'))
+        poses=[list(map(float,line.split()[1:])) for line in files[0].read_text().splitlines() if line.startswith('255 ') and '"' not in line]
+        self.assertEqual(len(poses),2)
+        self.assertGreater(sum(abs(a-b) for a,b in zip(*poses)),.5)
+
+    def test_smd_invalid_weights_fail_before_output(self):
+        base=(self.root/'mesh.smd').read_text()
+        for suffix in (' 17 '+'0 1 '*17, ' 1 999 1', ' 1 0 nan', ' 1 0 -1'):
+            self.write('bad.smd',base.replace('0 0 0 0 0 0 1 0 0\n','0 0 0 0 0 0 1 0 0'+suffix+'\n'))
+            output=self.scene_qc('$modelname invalid\n$body m bad.smd\n',success=False)
+            self.assertTrue('weight count' in output or 'influence' in output)
+
+    def test_more_than_128_materials_serialize_without_truncation(self):
+        text=(self.root/'mesh.smd').read_text();head,triangle=text.split('triangles\n')
+        triangles=triangle.removesuffix('end\n')
+        self.write('materials.smd',head+'triangles\n'+''.join(triangles.replace('material\n',f'material{i}\n') for i in range(130))+'end\n')
+        self.scene_qc('$modelname materials\n$body m materials.smd\n')
+        self.assertEqual(struct.unpack_from('<i',self.mdl('materials'),204)[0],130)
 
     def test_gmtime_exact_flags_and_decompile_round_trip(self):
         self.run_qc('$modelname utc\n$sequence idle mesh.smd gmtime loop\n')
@@ -704,6 +783,47 @@ class Compatibility(unittest.TestCase):
         self.write('face.dmx',(Path(__file__).parent/'fixtures/ce-facial.dmx').read_text())
         self.run_qc('$modelname dmx\n'+global_options+'\n$model face face.dmx '+suboptions+'\n')
         return self.ce_data('dmx')
+
+    def test_ce_dmx_remap_translation_preserves_morph_deltas(self):
+        baseline=self.ce_dmx()[1]
+        shifted=self.ce_dmx('$RemapFlexToGlobal\n$definebone root "" 10 20 30 0 0 0 0 0 0 0 0 0')[1]
+        self.assertEqual(len(baseline),len(shifted))
+        for original,remapped in zip(baseline,shifted):
+            self.assertEqual(original['vertices'],remapped['vertices'])
+
+    def test_collision_bone_rename_updates_phy_hierarchy(self):
+        points=[(0,0,0),(1,0,0),(0,1,0),(0,0,1)]
+        faces=[(0,2,1),(0,1,3),(0,3,2),(1,2,3)]
+        text='version 1\nnodes\n0 "root" -1\n1 "child" 0\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\n1 3 0 0 0 0 0\nend\ntriangles\n'
+        for bone in (0,1):
+            for face in faces:
+                text+='material\n'
+                for index in face:
+                    x,y,z=points[index];text+=f'{bone} {x+3*bone} {y} {z} 0 0 1 0 0\n'
+        self.write('tetra.smd',text+'end\n')
+        self.scene_qc('$modelname physics\n$bonecullmethod none\n$body m tetra.smd\n'
+                      '$collisionjoints tetra.smd { $mass 10 $rootbone root }\n'
+                      '$renamebone root renamed_root\n$renamebone child renamed_child\n')
+        data=(self.root/'models/physics.phy').read_bytes()
+        self.assertIn(b'renamed_root',data);self.assertIn(b'renamed_child',data)
+        self.assertIn(b'parent',data);self.assertIn(b'ragdollconstraint',data)
+        self.assertNotIn(b'"name" "root"',data);self.assertNotIn(b'"name" "child"',data)
+
+    def test_ce_dmx_two_bone_remap_preserves_weighted_position_deltas(self):
+        import re
+        fixture=(Path(__file__).parent/'fixtures/ce-facial.dmx').read_text()
+        results=[]
+        for weight in (1,0,.5):
+            text=fixture.replace('"jointCount" "int" "1"','"jointCount" "int" "2"')
+            values='\n'.join(f'"{v}"' for v in [weight,1-weight]*3)
+            text=re.sub(r'("jointWeights" "float_array"\s*\[).*?(\])',lambda m:m[1]+values+m[2],text,flags=re.S)
+            text=re.sub(r'("jointIndices" "int_array"\s*\[).*?(\])',lambda m:m[1]+'"0", "1", "0", "1", "0", "1"'+m[2],text,flags=re.S)
+            self.write('blend.dmx',text)
+            self.run_qc('$modelname blend\n$bonecullmethod none\n$RemapFlexToGlobal\n'
+                        '$definebone root "" 0 0 0 90 0 0 0 0 0 0 0 0\n'
+                        '$definebone mesh "" 0 0 0 0 0 0 0 0 0 0 0 0\n$model face blend.dmx\n')
+            results.append(self.ce_data('blend')[1][0]['vertices'][0][2][:3])
+        for a,b,mixed in zip(*results): self.assertAlmostEqual(mixed,.5*(a+b),delta=.002)
 
     def test_ce_dmx_smooth_normals_include_stationary_vertices(self):
         baseline=self.ce_dmx()[1][0]['vertices'];self.assertEqual(len(baseline),1)

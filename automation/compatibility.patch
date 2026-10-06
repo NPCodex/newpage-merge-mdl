@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..0ebacf5 100644
+index fed7eaf..c269c32 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..0ebacf5 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.1 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.0 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -593658,7 +593658,7 @@ index fcff31d..c831856 100644
 +
 +set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")
 diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
-index bdb0c90..79029b1 100644
+index bdb0c90..909e2a1 100644
 --- a/mdlcompiler/compile.cpp
 +++ b/mdlcompiler/compile.cpp
 @@ -1,6 +1,7 @@
@@ -593805,7 +593805,26 @@ index bdb0c90..79029b1 100644
      }
  }
  
-@@ -3523,8 +3564,7 @@ struct MeshBucket {
+@@ -3510,7 +3551,17 @@ std::vector<src::SrcFace> BuildLodFaceList(const Model& model, int lodID,
+ // owns, and its triangles per LOD already reindexed into it.
+ struct MeshBucket {
+     std::vector<int> verts;  // bucket-relative -> material-relative
+-    std::vector<int> slot;   // material-relative -> bucket-relative, -1 absent
++    std::vector<int> slot;   // dense material-relative lookup for ordinary splits
++    std::unordered_map<int, int> sparseSlot; // tiny caps avoid a full pool per bucket
++    int FindSlot(int v) const {
++        if (!slot.empty()) return slot[v];
++        auto found = sparseSlot.find(v);
++        return found == sparseSlot.end() ? -1 : found->second;
++    }
++    int& Slot(int v) {
++        if (!slot.empty()) return slot[v];
++        return sparseSlot.try_emplace(v, -1).first->second;
++    }
+     std::vector<std::vector<src::SrcFace>> lodFaces;
+ };
+ 
+@@ -3523,27 +3574,31 @@ struct MeshBucket {
  // land on both sides of a cut is duplicated into both; those few duplicates are
  // the entire cost of the split.
  std::vector<MeshBucket> PartitionMesh(int numvertices,
@@ -593813,9 +593832,76 @@ index bdb0c90..79029b1 100644
 -    const int cap = lim::kMaxMeshVerts;
 +                                      const std::vector<std::vector<src::SrcFace>>& lodFaces,int cap) {
      std::vector<MeshBucket> buckets;
++    std::vector<bool> owned(numvertices, false);
  
      auto addBucket = [&]() {
-@@ -3692,13 +3732,13 @@ void BuildOutputMeshes(Ctx& ctx) {
+         buckets.emplace_back();
+         MeshBucket& b = buckets.back();
+-        b.slot.assign(numvertices, -1);
++        if (numvertices <= 4LL * cap)
++            b.slot.assign(numvertices, -1);
++        else
++            b.sparseSlot.reserve(std::min(cap, 1024));
+         b.lodFaces.resize(lodFaces.size());
+     };
+     // how many of the face's verts this bucket would have to take on
+     auto missing = [](const MeshBucket& b, const src::SrcFace& f) {
+         int n = 0;
+-        if (b.slot[f.a] < 0) n++;
+-        if (b.slot[f.b] < 0 && f.b != f.a) n++;
+-        if (b.slot[f.c] < 0 && f.c != f.a && f.c != f.b) n++;
++        if (b.FindSlot(f.a) < 0) n++;
++        if (b.FindSlot(f.b) < 0 && f.b != f.a) n++;
++        if (b.FindSlot(f.c) < 0 && f.c != f.a && f.c != f.b) n++;
+         return n;
+     };
+-    auto place = [](MeshBucket& b, int lodID, const src::SrcFace& f) {
+-        auto take = [&b](uint32_t v) {
+-            int& s = b.slot[v];
++    auto place = [&owned](MeshBucket& b, int lodID, const src::SrcFace& f) {
++        auto take = [&b, &owned](uint32_t v) {
++            owned[v] = true;
++            int& s = b.Slot(v);
+             if (s < 0) {
+                 s = static_cast<int>(b.verts.size());
+                 b.verts.push_back(static_cast<int>(v));
+@@ -3594,28 +3649,20 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
+     // Verts no triangle names still have to reach the .vvd: the buckets are what
+     // Model::vertices becomes, and dropping entries would renumber every flex
+     // delta behind them for no gain.
++    size_t available = 0;
+     for (int v = 0; v < numvertices; v++) {
+-        bool owned = false;
+-        for (const MeshBucket& b : buckets) {
+-            if (b.slot[v] >= 0) {
+-                owned = true;
+-                break;
+-            }
+-        }
+-        if (owned)
++        if (owned[v])
+             continue;
+         MeshBucket* dst = nullptr;
+-        for (MeshBucket& b : buckets) {
+-            if (static_cast<int>(b.verts.size()) < cap) {
+-                dst = &b;
+-                break;
+-            }
+-        }
++        while (available < buckets.size() && static_cast<int>(buckets[available].verts.size()) >= cap)
++            ++available;
++        if (available < buckets.size())
++            dst = &buckets[available];
+         if (!dst) {
+             addBucket();
+             dst = &buckets.back();
+         }
+-        dst->slot[v] = static_cast<int>(dst->verts.size());
++        dst->Slot(v) = static_cast<int>(dst->verts.size());
+         dst->verts.push_back(v);
+     }
+ 
+@@ -3692,13 +3739,13 @@ void BuildOutputMeshes(Ctx& ctx) {
                  model.outMeshes.push_back(std::move(om));
              };
  
@@ -593831,7 +593917,7 @@ index bdb0c90..79029b1 100644
              for (MeshBucket& bucket : buckets)
                  emit(static_cast<int>(bucket.verts.size()), bucket.verts.data(),
                       std::move(bucket.lodFaces));
-@@ -3717,7 +3757,7 @@ void BuildOutputMeshes(Ctx& ctx) {
+@@ -3717,7 +3764,7 @@ void BuildOutputMeshes(Ctx& ctx) {
              }
              std::printf("Splitting material \"%s\": %d vertices exceeds the %d a mesh can "
                          "index, using %d meshes (%s), %d vertices duplicated\n",
@@ -593840,7 +593926,7 @@ index bdb0c90..79029b1 100644
                          static_cast<int>(buckets.size()), pieces.c_str(),
                          total - range.numvertices);
          }
-@@ -6301,9 +6341,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6301,9 +6348,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
              }
              case AnimCmd::Match: {
                  // processMatch: rotate every frame by the
@@ -593853,7 +593939,7 @@ index bdb0c90..79029b1 100644
                  std::vector<Quaternion> deltaQ(m.bones.size());
                  for (size_t k = 0; k < m.bones.size(); k++) {
                      Quaternion qd, qs;
-@@ -6313,11 +6354,41 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6313,11 +6361,41 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
                  }
                  for (int j = 0; j < panim.numframes; j++) {
                      for (size_t k = 0; k < m.bones.size(); k++) {
@@ -593897,7 +593983,7 @@ index bdb0c90..79029b1 100644
                      }
                  }
                  break;
-@@ -7494,8 +7565,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
+@@ -7494,8 +7572,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -593908,7 +593994,7 @@ index bdb0c90..79029b1 100644
          int j = m.bones[k].parent;
          if (j != -1) {
              const Vector3& p = m.bones[k].pos;
-@@ -8737,8 +8808,8 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8737,8 +8815,8 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
      // Cost is frames x vertices, so animations run in parallel; min/max is
      // order-independent, so the boxes match a serial run bit for bit.
      auto calcAnim = [&](Anim& panim) {
@@ -593919,7 +594005,7 @@ index bdb0c90..79029b1 100644
  
          std::vector<matrix3x4> bonetransform;
          std::vector<matrix3x4> posetransform(m.bones.size());
-@@ -8803,14 +8874,16 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8803,14 +8881,16 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                           "max (%g, %g, %g) exceeds coordinate range [%g, %g]; clamping\n",
                           panim.name.c_str(), bmin.x, bmin.y, bmin.z,
                           bmax.x, bmax.y, bmax.z, -kMaxCoord, kMaxCoord);
@@ -593940,7 +594026,7 @@ index bdb0c90..79029b1 100644
          for (int a : seq.animIndices) {
              if (a < 0) continue;
              bmin = VecMin(m.anims[a].bmin, bmin);
-@@ -9066,6 +9139,13 @@ struct FlexSortEntry {
+@@ -9066,6 +9146,13 @@ struct FlexSortEntry {
      int sourceOrder;
  };
  
@@ -593954,7 +594040,7 @@ index bdb0c90..79029b1 100644
  int FlexKeysSortFunc(const void* pv1, const void* pv2) {
      const FlexSortEntry* k1 = static_cast<const FlexSortEntry*>(pv1);
      const FlexSortEntry* k2 = static_cast<const FlexSortEntry*>(pv2);
-@@ -9107,7 +9187,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9107,7 +9194,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
          FlexKey* pFlexKey = sorted[i].key;
          src::Source* pVSource = pFlexKey->source;
          src::SrcMorphAnim* pVSourceAnim =
@@ -593963,7 +594049,7 @@ index bdb0c90..79029b1 100644
          if (!pVSourceAnim)
              continue;
  
-@@ -9144,7 +9224,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9144,7 +9231,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
      std::vector<uint8_t> pDoesMove(nMaxModelVerts, 0);
  
      for (FlexKey& key : m.flexkeys) {
@@ -593972,7 +594058,7 @@ index bdb0c90..79029b1 100644
          if (!pVSourceAnim)
              continue;
          auto it = morphMaps.find(pVSourceAnim);
-@@ -9345,7 +9425,7 @@ void CullDuplicateFlex(Ctx& ctx) {
+@@ -9345,7 +9432,7 @@ void CullDuplicateFlex(Ctx& ctx) {
      std::vector<FlexController> kept;
      for (size_t c = 0; c < m.flexcontrollers.size(); ++c) {
          int survivor = -1;
@@ -593981,7 +594067,7 @@ index bdb0c90..79029b1 100644
              if (_stricmp(kept[k].name.c_str(), m.flexcontrollers[c].name.c_str()) == 0) {
                  survivor = static_cast<int>(k);
                  break;
-@@ -9453,7 +9533,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
+@@ -9453,7 +9540,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
      std::vector<FlexKey> kept;
      kept.reserve(m.flexkeys.size());
      for (FlexKey& key : m.flexkeys) {
@@ -593990,7 +594076,7 @@ index bdb0c90..79029b1 100644
              (key.flexdesc >= 0 && key.flexdesc < static_cast<int>(usedDesc.size()) &&
               usedDesc[key.flexdesc]) ||
              (key.flexpair > 0 && key.flexpair < static_cast<int>(usedDesc.size()) &&
-@@ -9792,6 +9872,7 @@ static std::string AnimSignature(const Anim& a) {
+@@ -9792,6 +9879,7 @@ static std::string AnimSignature(const Anim& a) {
      SigVal(s, a.looprestartpercent);
      SigVal(s, a.isBindPose);
      SigVal(s, a.noAutoIK);
@@ -593998,7 +594084,7 @@ index bdb0c90..79029b1 100644
      SigVal(s, a.ignoreTransformAngles);
      SigVal(s, a.ignoreTransformPosition);
      SigVal(s, a.motionrollback);
-@@ -10328,6 +10409,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10328,6 +10416,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      out.zeroFramesHighres = input.zeroFramesHighres;
      out.minZeroFramePosDelta = input.minZeroFramePosDelta;
      out.boneSaveFrames = input.boneSaveFrames;
@@ -594006,7 +594092,7 @@ index bdb0c90..79029b1 100644
      out.bbox[0] = input.bbox[0];
      out.bbox[1] = input.bbox[1];
      out.bboxset = input.bboxSet;
-@@ -10467,6 +10549,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10467,6 +10556,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          a.fudgeloop = ia.fudgeloop;
          a.noAutoIK = ia.noAutoIK;
          a.nocull = ia.nocull;
@@ -594014,7 +594100,7 @@ index bdb0c90..79029b1 100644
          a.ignoreTransformAngles = ia.ignoreTransformAngles;
          a.ignoreTransformPosition = ia.ignoreTransformPosition;
          a.motiontype = ia.motiontype;
-@@ -10703,6 +10786,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10703,6 +10793,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  cmd.forceRot = ic.forceRot;
                  break;
              case InCmd::RefMotion:
@@ -594022,7 +594108,7 @@ index bdb0c90..79029b1 100644
              case InCmd::AppendAnim:
              case InCmd::WorldspaceBlend:
              case InCmd::MatchBlend:
-@@ -10714,7 +10798,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10714,7 +10805,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                      "\" in " + a.name;
                      return false;
                  }
@@ -594036,7 +594122,7 @@ index bdb0c90..79029b1 100644
                             : (ic.kind == InCmd::Match)      ? AnimCmd::Match
                             : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
                             : (ic.kind == InCmd::WorldspaceBlend)
-@@ -10722,6 +10812,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10722,6 +10819,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
                                                             : AnimCmd::AppendAnim;
                  cmd.matchPre = ic.matchPre;
@@ -595085,7 +595171,7 @@ index d460e13..cca5a2a 100644
              // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
              if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index 4ef35e3..18f8dd1 100644
+index 4ef35e3..0d43a08 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
 @@ -29,6 +29,7 @@
@@ -595154,6 +595240,17 @@ index 4ef35e3..18f8dd1 100644
      float defaultMotionRollback = 0.3f; // seed for a new anim's motionrollback
      float defaultFadeIn = 0.2f;
      float defaultFadeOut = 0.2f;
+@@ -315,8 +350,8 @@ struct Ctx {
+         try {
+             size_t used = 0;
+             const float v = std::stof(s, &used);
+-            if (used != s.size())
+-                throw std::invalid_argument("trailing characters");
++            if (used != s.size() || !std::isfinite(v))
++                throw std::invalid_argument("expected a finite number");
+             value = v;
+         } catch (const std::exception&) {
+             return Fail(cmd.line, cmd.text + " expects " + what + ", got \"" + s + "\"");
 @@ -453,7 +488,7 @@ std::string WithDmxExtension(const std::string& s) {
  std::string WithSourceExtension(const Ctx& c, const std::string& s) {
      if (HasExtension(s))
@@ -596608,10 +596705,122 @@ index 0000000..42f1d4d
 +} // namespace newpage
 +#endif
 diff --git a/mdlcompiler/smdloader.cpp b/mdlcompiler/smdloader.cpp
-index 149ae76..522ef1f 100644
+index 149ae76..b654004 100644
 --- a/mdlcompiler/smdloader.cpp
 +++ b/mdlcompiler/smdloader.cpp
-@@ -962,6 +962,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
+@@ -67,23 +67,24 @@ bool ReadAllLines(const std::string& path, LineReader& r, std::string* err) {
+         if (err) *err = "cannot open \"" + path + "\"";
+         return false;
+     }
+-    std::stringstream ss;
+-    ss << f.rdbuf();
+-    std::string all = ss.str();
+-
+-    // strip a leading UTF-8 BOM if present
+-    if (all.size() >= 3 && static_cast<unsigned char>(all[0]) == 0xEF &&
+-        static_cast<unsigned char>(all[1]) == 0xBB && static_cast<unsigned char>(all[2]) == 0xBF)
+-        all.erase(0, 3);
+-
++    // Read directly into the retained line list, avoiding several whole-file
++    // copies for large SMD/VTA inputs. Preserve UTF-8 BOM and CRLF behavior.
+     std::string line;
+-    std::istringstream ls(all);
+-    while (std::getline(ls, line)) {
++    bool first = true;
++    while (std::getline(f, line)) {
++        if (first && line.size() >= 3 && static_cast<unsigned char>(line[0]) == 0xEF &&
++            static_cast<unsigned char>(line[1]) == 0xBB && static_cast<unsigned char>(line[2]) == 0xBF)
++            line.erase(0, 3);
++        first = false;
+         if (!line.empty() && line.back() == '\r')
+             line.pop_back();
+         r.lines.push_back(std::move(line));
+         line.clear();
+     }
++    if (f.bad()) {
++        if (err) *err = "failed while reading " + path;
++        return false;
++    }
+     return true;
+ }
+ 
+@@ -127,6 +128,17 @@ bool GrabNodes(LineReader& r, Source& out, std::string* err) {
+         return false;
+     }
+     bones.resize(out.numbones);
++    for (int i = 0; i < out.numbones; ++i) {
++        const int parent = bones[i].parent;
++        if (parent < -1 || parent >= out.numbones) {
++            if (err) *err = "invalid parent index for SMD bone " + bones[i].name;
++            return false;
++        }
++        if (parent >= i) {
++            if (err) *err = "SMD bone parent must precede child: " + bones[i].name;
++            return false;
++        }
++    }
+     out.localBone = std::move(bones);
+     return true;
+ }
+@@ -159,6 +171,11 @@ bool GrabAnimation(LineReader& r, float scale, Source& out, std::string* err) {
+         float p0, p1, p2, e0, e1, e2;
+         if (std::sscanf(line->c_str(), "%d %f %f %f %f %f %f", &index, &p0, &p1, &p2, &e0, &e1,
+                         &e2) == 7) {
++            if (!std::isfinite(p0 * scale) || !std::isfinite(p1 * scale) || !std::isfinite(p2 * scale) ||
++                !std::isfinite(e0) || !std::isfinite(e1) || !std::isfinite(e2)) {
++                if (err) *err = "non-finite SMD bone pose";
++                return false;
++            }
+             if (startframe < 0) {
+                 if (err) *err = "bone data before the first `time` in skeleton block";
+                 return false;
+@@ -388,6 +405,13 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
+         }
+ 
+         pos.x *= scale; pos.y *= scale; pos.z *= scale;
++        if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z) ||
++            !std::isfinite(nrm.x) || !std::isfinite(nrm.y) || !std::isfinite(nrm.z) ||
++            !std::isfinite(tc.x) || !std::isfinite(tc.y)) {
++            if (err) *err = "non-finite SMD vertex";
++            return false;
++        }
++
+ 
+         int iCount = 0;
+         int bones[lim::kMaxSrcBoneWeights];
+@@ -399,10 +423,18 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
+         if (*q && *q != '\n' && *q != '\r') {
+             iCount = static_cast<int>(std::strtol(p, &end, 10));
+             p = end;
+-            const int actual = iCount < lim::kMaxSrcBoneWeights ? iCount : lim::kMaxSrcBoneWeights;
++            if (iCount < 0 || iCount > lim::kMaxSrcBoneWeights) {
++                if (err) *err = "SMD vertex weight count must be 0.." + std::to_string(lim::kMaxSrcBoneWeights);
++                return false;
++            }
++            const int actual = iCount;
+             for (int k = 0; k < actual; ++k) {
+                 bones[k] = static_cast<int>(std::strtol(p, &end, 10)); p = end;
+                 weights[k] = std::strtof(p, &end); p = end;
++                if (bones[k] < 0 || bones[k] >= numbones || !std::isfinite(weights[k]) || weights[k] < 0) {
++                    if (err) *err = "invalid SMD vertex bone influence";
++                    return false;
++                }
+             }
+             // SMD v3 extra texcoords: parsed to advance, ignored (single UV).
+             if (version >= 3) {
+@@ -761,6 +793,11 @@ bool GrabVertexAnimation(LineReader& r, float scale, std::vector<VtaFrame>& out,
+                 return false;
+             }
+             v.pos.x *= scale; v.pos.y *= scale; v.pos.z *= scale;
++            if (!std::isfinite(v.pos.x) || !std::isfinite(v.pos.y) || !std::isfinite(v.pos.z) ||
++                !std::isfinite(v.normal.x) || !std::isfinite(v.normal.y) || !std::isfinite(v.normal.z)) {
++                if (err) *err = "non-finite VTA vertex";
++                return false;
++            }
+             out.back().verts.push_back({index, v});
+             continue;
+         }
+@@ -962,6 +999,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
      const int count = static_cast<int>(morph.vanims.size());
      SrcFlexKey key;
      key.name = morph.name;
@@ -596619,7 +596828,7 @@ index 149ae76..522ef1f 100644
      key.target1 = position;
      out.flexkeys.push_back(std::move(key));
      out.morphs.push_back(std::move(morph));
-@@ -996,13 +997,13 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
+@@ -996,13 +1034,13 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                           opt.name.c_str(), opt.frame, path.c_str());
              continue;
          }
@@ -596741,10 +596950,43 @@ index 59b9b29..ba6f374 100644
      }
      BLOCK "VarFileInfo"
 diff --git a/mdlcompiler/writemdl.cpp b/mdlcompiler/writemdl.cpp
-index 3288136..ed18db5 100644
+index 3288136..f4197bd 100644
 --- a/mdlcompiler/writemdl.cpp
 +++ b/mdlcompiler/writemdl.cpp
-@@ -3028,6 +3028,15 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -901,7 +901,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
+ 
+         // a demand-loaded model uses the frame-major encoding throughout -
+         // including the clips that stayed local
+-        if (ext && !m.animblockLowRes) {
++        if ((ext && !m.animblockLowRes) || m.bones.size() == 256) {
+             srcanim.flags |= fmt::STUDIO_FRAMEANIM;
+             destanimdesc->flags |= fmt::STUDIO_FRAMEANIM;
+         }
+@@ -2803,6 +2803,23 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
+ 
+ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legacyVtx,
+                      bool writeDx80, std::string* err) {
++    // Both the VVD skin indices and MDL bone-name lookup table store bytes.
++    if (m.bones.size() > 256) {
++        if (err) *err = "standard MDL/VVD byte-index tables cannot encode more than 256 output bones; "
++            "collapse unused source bones before output";
++        return false;
++    }
++    // VVD bone indices are bytes even when the MDL bone table is larger.
++    for (const auto& model : m.models) for (const auto& vertex : model.vertices)
++        for (int influence = 0; influence < vertex.boneweight.numbones; ++influence) {
++            const int bone = vertex.boneweight.bone[influence];
++            if (bone < 0 || bone > 255) {
++                if (err) *err = "VVD vertex references bone " + std::to_string(bone) +
++                    "; skinned bone indices must be 0..255";
++                return false;
++            }
++        }
++
+     Buf buf(kFileBuffer);
+ 
+     fmt::studiohdr_t* phdr = buf.Reserve<fmt::studiohdr_t>();
+@@ -3028,6 +3045,15 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::vector<uint8_t> phyBuf =
          BuildPhy(m, reinterpret_cast<fmt::studiohdr_t*>(mdlBuf.data())->checksum);
  

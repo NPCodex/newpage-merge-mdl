@@ -3551,7 +3551,17 @@ std::vector<src::SrcFace> BuildLodFaceList(const Model& model, int lodID,
 // owns, and its triangles per LOD already reindexed into it.
 struct MeshBucket {
     std::vector<int> verts;  // bucket-relative -> material-relative
-    std::vector<int> slot;   // material-relative -> bucket-relative, -1 absent
+    std::vector<int> slot;   // dense material-relative lookup for ordinary splits
+    std::unordered_map<int, int> sparseSlot; // tiny caps avoid a full pool per bucket
+    int FindSlot(int v) const {
+        if (!slot.empty()) return slot[v];
+        auto found = sparseSlot.find(v);
+        return found == sparseSlot.end() ? -1 : found->second;
+    }
+    int& Slot(int v) {
+        if (!slot.empty()) return slot[v];
+        return sparseSlot.try_emplace(v, -1).first->second;
+    }
     std::vector<std::vector<src::SrcFace>> lodFaces;
 };
 
@@ -3566,24 +3576,29 @@ struct MeshBucket {
 std::vector<MeshBucket> PartitionMesh(int numvertices,
                                       const std::vector<std::vector<src::SrcFace>>& lodFaces,int cap) {
     std::vector<MeshBucket> buckets;
+    std::vector<bool> owned(numvertices, false);
 
     auto addBucket = [&]() {
         buckets.emplace_back();
         MeshBucket& b = buckets.back();
-        b.slot.assign(numvertices, -1);
+        if (numvertices <= 4LL * cap)
+            b.slot.assign(numvertices, -1);
+        else
+            b.sparseSlot.reserve(std::min(cap, 1024));
         b.lodFaces.resize(lodFaces.size());
     };
     // how many of the face's verts this bucket would have to take on
     auto missing = [](const MeshBucket& b, const src::SrcFace& f) {
         int n = 0;
-        if (b.slot[f.a] < 0) n++;
-        if (b.slot[f.b] < 0 && f.b != f.a) n++;
-        if (b.slot[f.c] < 0 && f.c != f.a && f.c != f.b) n++;
+        if (b.FindSlot(f.a) < 0) n++;
+        if (b.FindSlot(f.b) < 0 && f.b != f.a) n++;
+        if (b.FindSlot(f.c) < 0 && f.c != f.a && f.c != f.b) n++;
         return n;
     };
-    auto place = [](MeshBucket& b, int lodID, const src::SrcFace& f) {
-        auto take = [&b](uint32_t v) {
-            int& s = b.slot[v];
+    auto place = [&owned](MeshBucket& b, int lodID, const src::SrcFace& f) {
+        auto take = [&b, &owned](uint32_t v) {
+            owned[v] = true;
+            int& s = b.Slot(v);
             if (s < 0) {
                 s = static_cast<int>(b.verts.size());
                 b.verts.push_back(static_cast<int>(v));
@@ -3634,28 +3649,20 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
     // Verts no triangle names still have to reach the .vvd: the buckets are what
     // Model::vertices becomes, and dropping entries would renumber every flex
     // delta behind them for no gain.
+    size_t available = 0;
     for (int v = 0; v < numvertices; v++) {
-        bool owned = false;
-        for (const MeshBucket& b : buckets) {
-            if (b.slot[v] >= 0) {
-                owned = true;
-                break;
-            }
-        }
-        if (owned)
+        if (owned[v])
             continue;
         MeshBucket* dst = nullptr;
-        for (MeshBucket& b : buckets) {
-            if (static_cast<int>(b.verts.size()) < cap) {
-                dst = &b;
-                break;
-            }
-        }
+        while (available < buckets.size() && static_cast<int>(buckets[available].verts.size()) >= cap)
+            ++available;
+        if (available < buckets.size())
+            dst = &buckets[available];
         if (!dst) {
             addBucket();
             dst = &buckets.back();
         }
-        dst->slot[v] = static_cast<int>(dst->verts.size());
+        dst->Slot(v) = static_cast<int>(dst->verts.size());
         dst->verts.push_back(v);
     }
 

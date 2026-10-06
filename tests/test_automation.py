@@ -24,6 +24,38 @@ def asset(name='tools.zip', identifier=1):
 
 
 class AutomationTests(unittest.TestCase):
+    def test_release_versions_increment_and_respect_manual_floor(self):
+        self.assertEqual(sync.release_version('1.2.0', None, 'new'), ('1.2.0', 'v1.2.0'))
+        old = dict(project_version='1.1', fingerprint='old')
+        self.assertEqual(sync.release_version('1.2.0', old, 'new'), ('1.2.0', 'v1.2.0'))
+        old['project_version'] = '1.2.8'
+        self.assertEqual(sync.release_version('1.2.0', old, 'new'), ('1.2.9', 'v1.2.9'))
+        self.assertEqual(sync.release_version('1.3.0', old, 'new'), ('1.3.0', 'v1.3.0'))
+
+    def test_retry_reuses_published_version_and_tag(self):
+        old = dict(project_version='1.2.8', fingerprint='same', release_tag='v1.2.8')
+        self.assertEqual(sync.release_version('1.2.0', old, 'same'), ('1.2.8', 'v1.2.8'))
+        with self.assertRaises(ValueError):
+            sync.release_version('invalid', None, 'new')
+
+    def test_versioned_release_manifest_is_recognized(self):
+        for tag in ('v1.1-auto-abcdef', 'v1.2.0'):
+            release = dict(draft=False, tag_name=tag, assets=[asset('upstream-manifest.json')])
+            with patch.object(sync, 'api', return_value=[release]), patch.object(sync, 'fetch', return_value=b'{}'):
+                self.assertEqual(sync.published_manifest('o/r')['release_tag'], tag)
+
+    def test_source_archive_versions_match_release(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'automation').mkdir()
+            (root / 'CMakeLists.txt').write_text('project(NewPageMergeMDL VERSION 1.2.0 LANGUAGES CXX C)\n')
+            for name in ('README.md', 'README.en.md', 'AUTOMATION.md'):
+                (root / name).write_text('NewPageMergeMDL v1.2.0\n', encoding='utf-8')
+            (root / 'automation/upstreams.json').write_text('{"project_version":"1.2.0"}')
+            sync.stamp_version(root, '1.2.0', '1.2.9')
+            self.assertIn('VERSION 1.2.9', (root / 'CMakeLists.txt').read_text())
+            self.assertEqual(json.loads((root / 'automation/upstreams.json').read_text())['project_version'], '1.2.9')
+            self.assertIn('v1.2.9', (root / 'README.en.md').read_text())
     def test_reference_metadata_records_replaced_assets_even_at_same_tag(self):
         old = sync.select_tools({'assets': [asset()]}, ['tools.zip'])
         new = sync.select_tools({'assets': [asset(identifier=2)]}, ['tools.zip'])
@@ -73,12 +105,12 @@ class AutomationTests(unittest.TestCase):
             (root / 'automation/compatibility.patch').write_text('patch')
             with patch.object(sync, 'ROOT', root), patch.dict(os.environ, GITHUB_SHA='controller', GITHUB_REPOSITORY='o/r'), \
                  patch.object(sync, 'latest_commit', return_value='sha') as commits, patch.object(sync, 'api') as api, \
-                 patch.object(sync, 'fingerprint', return_value='unchanged'), patch.object(sync, 'published_manifest', return_value={'fingerprint': 'unchanged'}), \
+                 patch.object(sync, 'fingerprint', return_value='unchanged'), patch.object(sync, 'published_manifest', return_value={'fingerprint': 'unchanged', 'project_version': '1.2.3', 'release_tag': 'v1.2.3'}), \
                  patch.object(sync, 'fetch') as download, patch.object(sync, 'create_source') as merge, patch.object(sync, 'emit') as emit:
                 sync.prepare(argparse.Namespace(work=root / 'work', force=False))
                 download.assert_not_called()
                 merge.assert_not_called()
-                emit.assert_called_once_with(changed=False, tag='v1.1-auto-unchanged')
+                emit.assert_called_once_with(changed=False, tag='v1.2.3')
                 self.assertFalse((root / 'work').exists())
                 commits.assert_called_once_with('p/p')
                 api.assert_not_called()
@@ -113,7 +145,7 @@ class AutomationTests(unittest.TestCase):
             dist.mkdir(); source.mkdir()
             for name in ('NewPageMergeMDL.exe', 'NewPageMergeMDL-Decompiler.exe'):
                 (dist / name).write_bytes(b'binary')
-            for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md'):
+            for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md'):
                 (source / name).write_text(name)
             (source / 'libs/vendor').mkdir(parents=True)
             (source / 'libs/vendor/LICENSE').write_text('vendor notice')
