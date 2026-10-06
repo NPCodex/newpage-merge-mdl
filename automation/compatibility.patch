@@ -1,0 +1,713 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index fed7eaf..e129678 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
+ # feeding both its -version printout and its Win32 version resource.
+ # C is enabled only for the vendored ufbx single-file reader; all of our own
+ # code is C++.
+-project(PulseModel LANGUAGES CXX C)
++project(NewPageMergeMDL LANGUAGES CXX C)
+ 
+ # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
+ # with byte-identical output, but made an incremental build 4x slower. Left off;
+@@ -20,7 +20,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+         set(PLATFORM_DEFINES COMPILER_MSVC64 COMPILER_MSVC _AMD64_)
+     else()
+-        message(FATAL_ERROR "PulseModel targets 64-bit only.")
++        message(FATAL_ERROR "NewPageMergeMDL targets 64-bit only.")
+     endif()
+ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+     set(PLATFORM_DEFINES LINUX COMPILER_GCC POSIX _AMD64_)
+@@ -31,7 +31,7 @@ add_compile_definitions(${PLATFORM_DEFINES} _CRT_SECURE_NO_WARNINGS)
+ # Both tools ship side by side in one PulseModel/ folder. Guarded so a -D on
+ # the command line (the CI workflows) still wins.
+ if(NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/PulseModel")
++    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/NewPageMergeMDL")
+ endif()
+ 
+ # Layout (kept shallow):
+diff --git a/libs/branding.h b/libs/branding.h
+new file mode 100644
+index 0000000..4e04268
+--- /dev/null
++++ b/libs/branding.h
+@@ -0,0 +1,45 @@
++// NewPageMergeMDL console branding. Keep captured logs free of terminal codes.
++#pragma once
++#include <cstdio>
++#ifdef _WIN32
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#include <windows.h>
++#include <io.h>
++#else
++#include <unistd.h>
++#endif
++
++namespace newpage {
++inline void PrintBanner(const char* role, const char* version, const char* format) {
++#ifdef _WIN32
++    HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
++    CONSOLE_SCREEN_BUFFER_INFO saved{};
++    const bool color = _isatty(_fileno(stdout)) && GetConsoleScreenBufferInfo(console, &saved);
++    if (color) SetConsoleTextAttribute(console, FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
++#else
++    const bool color = isatty(fileno(stdout));
++    if (color) std::printf("\033[1;36m");
++#endif
++    std::printf(R"(
++   .____________________________________________________________.
++   |   /\    /\      N E W  P A G E                              |
++   |  /  \__/  \     M E R G E  M D L                            |
++   |  \  /  \  /     [ SOURCE MODEL FORGE ]                      |
++   |   \/____\/      Compile ideas. Turn the page.               |
++   '------------------------------------------------------------'
++)");
++#ifdef _WIN32
++    if (color) SetConsoleTextAttribute(console, saved.wAttributes);
++#else
++    if (color) std::printf("\033[0m");
++#endif
++    std::printf("   NewPageMergeMDL | %s | v%s | MDL %s\n", role, version, format);
++    std::printf("   Based on PulseModel by Toppi | Community compatibility extensions\n\n");
++    std::fflush(stdout);
++}
++} // namespace newpage
+diff --git a/mdlcompiler/CMakeLists.txt b/mdlcompiler/CMakeLists.txt
+index 56dc20d..ecfcc05 100644
+--- a/mdlcompiler/CMakeLists.txt
++++ b/mdlcompiler/CMakeLists.txt
+@@ -5,6 +5,7 @@ add_executable(mdlcompiler main.cpp dmxloader.cpp dmxrig.cpp smdloader.cpp
+                flexreg.cpp qcloader.cpp writemdl.cpp writevtx.cpp writephy.cpp)
+ # Each tool owns its own version; there is no project-wide one.
+ set(TOOL_VERSION 0.33.0)
++set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")
+ string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
+ target_compile_definitions(mdlcompiler PRIVATE PULSEMODEL_VERSION="${TOOL_VERSION}")
+ 
+diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
+index 7f2e1d3..0a57de8 100644
+--- a/mdlcompiler/compile.cpp
++++ b/mdlcompiler/compile.cpp
+@@ -390,6 +390,9 @@ bool BoneIsAlwaysCollapse(const Ctx& ctx, const char* pname) {
+     for (const std::string& n : ctx.in->alwaysCollapse)
+         if (_stricmp(n.c_str(), pname) == 0)
+             return true;
++    for (const std::string& prefix : ctx.in->alwaysCollapsePrefixes)
++        if (_strnicmp(prefix.c_str(), pname, prefix.size()) == 0)
++            return true;
+     return false;
+ }
+ 
+@@ -6244,9 +6247,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+             }
+             case AnimCmd::Match: {
+                 // processMatch: rotate every frame by the
+-                // difference between the two clips' first frames. `match` never
+-                // sets the position flag, so only rotation is matched.
++                // difference between the two clips' first frames. The legacy
++                // default selects rotation; explicit pos/rot select channels.
+                 Anim& ref = m.anims[cmd.refAnim];
++                const auto destFirst = panim.sanim[0];
+                 std::vector<Quaternion> deltaQ(m.bones.size());
+                 for (size_t k = 0; k < m.bones.size(); k++) {
+                     Quaternion qd, qs;
+@@ -6256,11 +6260,41 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+                 }
+                 for (int j = 0; j < panim.numframes; j++) {
+                     for (size_t k = 0; k < m.bones.size(); k++) {
+-                        if (panim.weight[k] <= 0.0f)
++                        if (panim.weight[k] <= 0.0f &&
++                            (!cmd.copyPos || panim.posweight[k] <= 0.0f))
+                             continue;
+                         Quaternion q;
+                         pm::AngleQuaternion(panim.sanim[j][k].rot, q);
+-                        pm::QuaternionMAAngles(q, 1.0f, deltaQ[k], panim.sanim[j][k].rot);
++                        if (cmd.copyRot && panim.weight[k] > 0.0f)
++                            pm::QuaternionMAAngles(q, 1.0f, deltaQ[k], panim.sanim[j][k].rot);
++                        if (cmd.copyPos && panim.posweight[k] > 0.0f) {
++                            auto& p = panim.sanim[j][k].pos;
++                            const auto& r = ref.sanim[0][k].pos;
++                            const auto& d = destFirst[k].pos;
++                            p.x += r.x - d.x; p.y += r.y - d.y; p.z += r.z - d.z;
++                        }
++                    }
++                }
++                break;
++            }
++            case AnimCmd::CopyClip: {
++                const Anim& ref = m.anims[cmd.refAnim];
++                for (int j = 0; j < panim.numframes; ++j) {
++                    const auto& frame = ref.sanim[std::min(j, ref.numframes - 1)];
++                    for (size_t k = 0; k < m.bones.size(); ++k) {
++                        if (cmd.copyPos) {
++                            auto& p = panim.sanim[j][k].pos;
++                            const auto& r = frame[k].pos;
++                            const float w = panim.posweight[k];
++                            p.x += (r.x-p.x)*w; p.y += (r.y-p.y)*w; p.z += (r.z-p.z)*w;
++                        }
++                        if (cmd.copyRot && panim.weight[k] > 0.0f) {
++                            Quaternion q, r, blended;
++                            pm::AngleQuaternion(panim.sanim[j][k].rot, q);
++                            pm::AngleQuaternion(frame[k].rot, r);
++                            pm::QuaternionSlerp(q, r, panim.weight[k], blended);
++                            pm::QuaternionAngles(blended, panim.sanim[j][k].rot);
++                        }
+                     }
+                 }
+                 break;
+@@ -10646,6 +10680,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+                 cmd.forceRot = ic.forceRot;
+                 break;
+             case InCmd::RefMotion:
++            case InCmd::CopyClip:
+             case InCmd::AppendAnim:
+             case InCmd::WorldspaceBlend:
+             case InCmd::MatchBlend:
+@@ -10657,7 +10692,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+                                     "\" in " + a.name;
+                     return false;
+                 }
++                if (ic.kind == InCmd::CopyClip &&
++                    (ref >= static_cast<int>(i) || out.anims[ref].isOverride)) {
++                    if (err) *err = "copy requires an earlier animation: \"" + ic.name + "\"";
++                    return false;
++                }
+                 cmd.kind = (ic.kind == InCmd::Align)        ? AnimCmd::Align
++                           : (ic.kind == InCmd::CopyClip)   ? AnimCmd::CopyClip
+                            : (ic.kind == InCmd::Match)      ? AnimCmd::Match
+                            : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
+                            : (ic.kind == InCmd::WorldspaceBlend)
+@@ -10665,6 +10706,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+                            : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
+                                                            : AnimCmd::AppendAnim;
+                 cmd.matchPre = ic.matchPre;
++                cmd.copyPos = ic.copyPos;
++                cmd.copyRot = ic.copyRot;
+                 cmd.matchPost = ic.matchPost;
+                 cmd.worldLoops = ic.worldLoops;
+                 cmd.motiontype = ic.motiontype;
+diff --git a/mdlcompiler/compile.h b/mdlcompiler/compile.h
+index f10a9fa..93a5339 100644
+--- a/mdlcompiler/compile.h
++++ b/mdlcompiler/compile.h
+@@ -460,7 +460,7 @@ struct AnimBoneTransform {
+ // per-animation command (reference s_animcmd_t subset)
+ struct AnimCmd {
+     enum Kind { Weights, Subtract, Reverse, FixupLoop, Angle, Align, Match,
+-                MatchBlend, WorldspaceBlend, AppendAnim, BoneDriver,
++                MatchBlend, WorldspaceBlend, AppendAnim, CopyClip, BoneDriver,
+                 Motion, RefMotion, CopyPose, TransformBone, NumFrames,
+                 IkFixup, LocalHierarchy, Derivative, NoAnim, LinearDelta,
+                 Compress, CounterRotate, ForceBonePosRot, MatchPosition } kind = Weights;
+@@ -1195,6 +1195,8 @@ struct CompileInput {
+     std::vector<BoneMarkup> bonemarkups;
+     // $alwayscollapse: force-collapse these bones. $donotcollapse wins.
+     std::vector<std::string> alwaysCollapse;
++    // StudioMDL-CE: force-collapse all bones whose names start with a prefix.
++    std::vector<std::string> alwaysCollapsePrefixes;
+     std::vector<std::string> limitRotationBones;
+     // $renamebone <from> <to>, script order. Applied to the final bone table at
+     // the very end of the compile, so every other command still names the
+@@ -1400,7 +1402,7 @@ struct CompileInput {
+         // Weights/Subtract carry names, resolved in the compile stage.
+         struct InCmd {
+             enum Kind { Weights, Subtract, Reverse, FixupLoop, Angle, Align, Match,
+-                MatchBlend, WorldspaceBlend, AppendAnim, BoneDriver,
++                MatchBlend, WorldspaceBlend, AppendAnim, CopyClip, BoneDriver,
+                 Motion, RefMotion, CopyPose, TransformBone, NumFrames,
+                 IkFixup, LocalHierarchy, Derivative, NoAnim, LinearDelta,
+                 Compress, CounterRotate, ForceBonePosRot, MatchPosition } kind = Weights;
+diff --git a/mdlcompiler/main.cpp b/mdlcompiler/main.cpp
+index 710c49b..d18cd06 100644
+--- a/mdlcompiler/main.cpp
++++ b/mdlcompiler/main.cpp
+@@ -22,6 +22,7 @@
+ #include "pulselimits.h"
+ #include "qcloader.h"
+ #include "writer.h"
++#include "branding.h"
+ 
+ #ifdef _WIN32
+ #include <fcntl.h>
+@@ -35,15 +36,11 @@ using pulse::fatal::Fail;
+ static const char*& g_stage = pulse::fatal::g_stage;
+ 
+ static void PrintHeader() {
+-    std::printf("-------------------------------\n");
+-    std::printf("PulseModel [Model Compiler]\n");
+-    std::printf("version:   %s (model version %d)\n", kAppVersion, pulse::limits::kStudioVersion);
+-    std::printf("developer: Toppi\n");
+-    std::printf("-------------------------------\n");
++    newpage::PrintBanner("Model Compiler", kAppVersion, "49");
+ }
+ 
+ static int Usage() {
+-    std::printf("usage: mdlcompiler <file.qc|file.pulseqc> [-game <dir>]\n");
++    std::printf("usage: NewPageMergeMDL <file.qc|file.pulseqc> [-game <dir>]\n");
+     std::printf("\n");
+     std::printf("  -game <dir>   mod dir to install into; output goes to\n");
+     std::printf("                <dir>\\models\\<modelname>.mdl (-outdir is a synonym)\n");
+@@ -64,6 +61,9 @@ static int Usage() {
+     std::printf("                define a .pulseqc script variable ($name$) before the\n");
+     std::printf("                script runs; repeatable. The script cannot override it\n");
+     std::printf("  -striplods    ignore all $lod and $shadowlod commands\n");
++    std::printf("  -cullanims    aggressively cull unreferenced animations; overrides the QC\n");
++    std::printf("  -MostlyOpaque force translucent two-pass rendering (also $mostlyopaque)\n");
++    std::printf("  -AlwaysCollapseByPrefix <prefix> force-collapse matching bones; repeatable\n");
+     std::printf("  -forcewritevertexdata\n");
+     std::printf("                save .vvd/.vtx even when the model has no geometry;\n");
+     std::printf("                same as $forcewritevertexdata in the script\n");
+@@ -209,6 +209,9 @@ static int RunCompile(int argc, char** argv) {
+     bool dumpProcedural = false;
+     bool scriptFromStdin = false;
+     bool dumpDependencies = false;
++    bool cullAnims = false;
++    bool mostlyOpaque = false;
++    std::vector<std::string> collapsePrefixes;
+     pulse::loader::ScriptVars defvars;
+     pulse::loader::SearchDirs includeDirs, fileDirs;
+     for (int i = 1; i < argc; ++i) {
+@@ -255,6 +258,16 @@ static int RunCompile(int argc, char** argv) {
+                 return Fail("bad option", "-minlod needs a non-negative LOD index, got \"" +
+                                               value + "\"");
+             }
++        } else if (std::strcmp(argv[i], "-cullanims") == 0) {
++            cullAnims = true;
++        } else if (std::strcmp(argv[i], "-MostlyOpaque") == 0 ||
++                   std::strcmp(argv[i], "-mostlyopaque") == 0) {
++            mostlyOpaque = true;
++        } else if (std::strcmp(argv[i], "-AlwaysCollapseByPrefix") == 0 ||
++                   std::strcmp(argv[i], "-alwayscollapsebyprefix") == 0) {
++            if (i + 1 >= argc || !argv[i + 1][0] || argv[i + 1][0] == '-')
++                return Fail("bad option", "-AlwaysCollapseByPrefix needs a non-empty prefix");
++            collapsePrefixes.emplace_back(argv[++i]);
+         } else if (std::strcmp(argv[i], "-nodx80") == 0) {
+             noDx80 = true;
+         } else if (std::strcmp(argv[i], "-striplods") == 0) {
+@@ -317,6 +330,12 @@ static int RunCompile(int argc, char** argv) {
+                                      scriptFromStdin ? &stdinText : nullptr))
+         return Fail("script error", err);
+     auto tLoad = Clock::now();
++    if (cullAnims)
++        input.animCullMethod = pulse::compile::AnimCullMethod::Aggressive;
++    if (mostlyOpaque)
++        input.renderPass = 2;
++    input.alwaysCollapsePrefixes.insert(input.alwaysCollapsePrefixes.end(),
++                                        collapsePrefixes.begin(), collapsePrefixes.end());
+     if (forceWriteVertexData)
+         input.forceWriteVertexData = true;
+     if (stripLods)
+diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
+index db90844..a3a1e4b 100644
+--- a/mdlcompiler/qcloader.cpp
++++ b/mdlcompiler/qcloader.cpp
+@@ -215,6 +215,9 @@ struct Ctx {
+     std::map<std::string, Macro> macros; // keyed lowercased
+     int macroExpansions = 0; // runaway-recursion guard
+     std::vector<std::string> lockedVars; // -defvar names; locked against $definevariable
++    std::map<std::string, std::string> includePrefixes;
++    std::string includeAnimPrefix;
++    bool pushdInclude = false;
+     bool scriptBreak = false; // $break, sticky through every $include parent
+ 
+     float defaultFps = 30.0f;
+@@ -2744,13 +2747,53 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+             return 1;
+         }
+     }
+-    // match <anim>  (CMD_MATCH): rotate every frame so this clip's first frame
++    // Self-authored extensions: compile-time braced animation conditionals.
++    // Defined beside the shared script condition evaluator below.
++    if (!t.quoted && _stricmp(o.c_str(), "if") == 0) {
++        extern bool AnimationIf(Ctx&, const Token&);
++        return AnimationIf(c, t) ? 1 : -1;
++    }
++    if (!t.quoted && (_stricmp(o.c_str(), "else") == 0)) {
++        c.Fail(t.line, "animation else without a preceding if");
++        return -1;
++    }
++    // copy <earlier-animation> [pos] [rot]: replace weighted channels over
++    // the destination's existing duration, holding the last source frame.
++    if (_stricmp(o.c_str(), "copy") == 0) {
++        cm::CompileInput::InAnim::InCmd cmd;
++        cmd.kind = cm::CompileInput::InAnim::InCmd::CopyClip;
++        if (!c.Want("an animation name", t, cmd.name))
++            return -1;
++        bool pos = false, rot = false;
++        while (!c.AtCommand() && !c.Eof() && !c.Cur().quoted) {
++            const std::string channel = Lower(c.Cur().text);
++            if (channel == "pos") pos = true;
++            else if (channel == "rot") rot = true;
++            else break;
++            ++c.pos;
++        }
++        cmd.copyPos = pos || !rot;
++        cmd.copyRot = rot || !pos;
++        a.cmds.push_back(std::move(cmd));
++        return 1;
++    }
++    // match <anim> [pos] [rot]: rotate every frame so this clip's first frame
+     // lines up with the reference animation's first frame.
+     if (_stricmp(o.c_str(), "match") == 0) {
+         cm::CompileInput::InAnim::InCmd cmd;
+         cmd.kind = cm::CompileInput::InAnim::InCmd::Match;
+         if (!c.Want("an animation name", t, cmd.name))
+             return -1;
++        bool pos = false, rot = false;
++        while (!c.AtCommand() && !c.Eof() && !c.Cur().quoted) {
++            const std::string channel = Lower(c.Cur().text);
++            if (channel == "pos") pos = true;
++            else if (channel == "rot") rot = true;
++            else break;
++            ++c.pos;
++        }
++        cmd.copyPos = pos;
++        cmd.copyRot = rot || !pos; // preserve legacy rotation-only default
+         a.cmds.push_back(std::move(cmd));
+         return 1;
+     }
+@@ -3225,6 +3268,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
+     std::string name;
+     if (!c.Want("a compiled .mdl path", cmd, name))
+         return false;
++    if (!c.includeAnimPrefix.empty()) {
++        const size_t sep = name.find_last_of("/\\");
++        name.insert(sep == std::string::npos ? 0 : sep + 1, c.includeAnimPrefix);
++    }
+     // must name a .mdl - a source .dmx/.smd or a bare name would compile fine
+     // and leave a reference the engine silently fails to resolve
+     if (name.size() < 4 || _stricmp(name.c_str() + name.size() - 4, ".mdl") != 0)
+@@ -5391,6 +5438,16 @@ bool CmdAlwaysCollapse(Ctx& c, const Token& cmd) {
+     return true;
+ }
+ 
++bool CmdAlwaysCollapseByPrefix(Ctx& c, const Token& cmd) {
++    std::string prefix;
++    if (!c.Want("a non-empty bone prefix", cmd, prefix))
++        return false;
++    if (prefix.empty())
++        return c.Fail(cmd.line, cmd.text + ": empty prefix would collapse every bone");
++    c.in.alwaysCollapsePrefixes.push_back(std::move(prefix));
++    return true;
++}
++
+ // $hierarchy <child> <parent> (Cmd_ForcedHierarchy, "$heirarchy" is stock's own
+ // misspelling and works too): reparent a bone. Applied once the global bone
+ // table exists, so it can join two source skeletons that were exported apart.
+@@ -8146,7 +8203,12 @@ bool SpliceInclude(Ctx& c) {
+     Token pathTok = c.toks[p++];
+     if (!pathTok.expanded && !ExpandVars(c, pathTok))
+         return false;
+-    const std::string rel = pathTok.text;
++    std::string rel = pathTok.text;
++    const auto prefix = c.includePrefixes.find(Lower(rel));
++    if (prefix != c.includePrefixes.end()) {
++        const size_t sep = rel.find_last_of("/\\");
++        rel.insert(sep == std::string::npos ? 0 : sep + 1, prefix->second);
++    }
+ 
+     bool localDir = false, optional = false;
+     while (p < c.toks.size() && !c.toks[p].quoted && c.toks[p].line == cmd.line &&
+@@ -8170,7 +8232,7 @@ bool SpliceInclude(Ctx& c) {
+     if (relPath.is_absolute()) {
+         tries.push_back(relPath);
+     } else {
+-        tries.push_back(c.curDir / relPath);
++        tries.push_back((c.pushdInclude ? c.sourceDirStack.back() : c.curDir) / relPath);
+         // stock resolves every $include against the root script's dir, so a
+         // nested one often carries the whole path down from there
+         if (c.curDir != c.scriptDir)
+@@ -8390,9 +8452,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
+         return false;
+     if (PinnedByDefVar(c, cmd, name))
+         return true;
+-    if (c.variables.count(name))
+-        return c.Fail(cmd.line, "duplicate $definevariable \"" + name +
+-                                "\" - use $redefinevariable to change it");
++    if (c.variables.count(name)) {
++        std::printf("WARNING: %s(%d): duplicate $definevariable \"%s\" ignored; "
++                    "use $setvariable or $redefinevariable to change it\n",
++                    c.file.c_str(), cmd.line, name.c_str());
++        return true;
++    }
+     c.variables[name] = value;
+     return true;
+ }
+@@ -8413,6 +8478,38 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
+     return true;
+ }
+ 
++// Tools++ permits both first assignment and replacement. Launch -defvar stays pinned.
++bool CmdSetVariable(Ctx& c, const Token& cmd) {
++    std::string name, value;
++    if (!c.Want("a name", cmd, name) || !c.Want("a value", cmd, value))
++        return false;
++    if (!PinnedByDefVar(c, cmd, name))
++        c.variables[name] = std::move(value);
++    return true;
++}
++
++bool CmdIncludePrefix(Ctx& c, const Token& cmd) {
++    std::string target, prefix;
++    if (!c.Want("an include path", cmd, target) || !c.Want("a prefix", cmd, prefix))
++        return false;
++    c.includePrefixes[Lower(target)] = std::move(prefix);
++    return true;
++}
++
++bool CmdIncludeAnimPrefix(Ctx& c, const Token& cmd) {
++    return c.Want("a prefix", cmd, c.includeAnimPrefix);
++}
++
++bool CmdPushdInclude(Ctx& c, const Token& cmd) {
++    std::string value;
++    if (!c.Want("0 or 1", cmd, value))
++        return false;
++    if (value != "0" && value != "1")
++        return c.Fail(cmd.line, cmd.text + ": expected 0 or 1");
++    c.pushdInclude = value == "1";
++    return true;
++}
++
+ bool IsCommandName(const std::string& name); // the kCommands lookup, below
+ 
+ // $definemacro <name> [<param>[=<default>] ...] <body> $endmacro.
+@@ -8767,6 +8864,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+ }
+ 
+ bool CmdIf(Ctx& c, const Token& cmd) { return IfChain(c, cmd, false); }
++// Unlike script directives, these bare keywords live inside animation bodies.
++// Collect every branch raw; only the selected body is parsed as options.
++bool AnimationIf(Ctx& c, const Token& cmd) {
++    const bool savedRaw = c.rawCollect;
++    c.rawCollect = true;
++    std::vector<Token> chosen;
++    bool taken = false;
++    auto parse = [&]() -> bool {
++        Token clause = cmd;
++        for (;;) {
++            std::vector<CondTok> cond;
++            std::vector<Token> body;
++            bool value = false;
++            if (!ReadCondition(c, clause, cond) || !EvalCondition(c, clause, cond, value) ||
++                !CollectBlock(c, clause, body))
++                return false;
++            if (value && !taken) { taken = true; chosen = std::move(body); }
++            if (c.Eof() || c.Cur().quoted || Lower(c.Cur().text) != "else")
++                break;
++            clause = c.toks[c.pos++];
++            if (!c.Eof() && !c.Cur().quoted && Lower(c.Cur().text) == "if") {
++                clause = c.toks[c.pos++];
++                continue;
++            }
++            if (!ExpectBrace(c, clause) || !CollectBlock(c, clause, body))
++                return false;
++            if (!taken) chosen = std::move(body);
++            break;
++        }
++        return true;
++    };
++    const bool ok = parse();
++    c.rawCollect = savedRaw;
++    if (ok) c.SpliceAt(c.pos, chosen);
++    return ok;
++}
+ bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
+ bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
+ 
+@@ -8859,6 +8992,10 @@ constexpr Command kCommands[] = {
+     {"$print", CmdPrint},
+     {"$definevariable", CmdDefineVariable},
+     {"$redefinevariable", CmdRedefineVariable},
++    {"$setvariable", CmdSetVariable},
++    {"$includeprefix", CmdIncludePrefix},
++    {"$includeanimprefix", CmdIncludeAnimPrefix},
++    {"$pushdinclude", CmdPushdInclude},
+     {"$definemacro", CmdDefineMacro},
+     {"$endmacro", CmdEndMacroOutside},
+     {"$if", CmdIf},
+@@ -8981,6 +9118,7 @@ constexpr Command kCommands[] = {
+     {"$bonemerge", CmdBoneMerge},
+     {"$donotcollapse", CmdDoNotCollapse},
+     {"$alwayscollapse", CmdAlwaysCollapse},
++    {"$alwayscollapsebyprefix", CmdAlwaysCollapseByPrefix},
+     {"$hierarchy", CmdHierarchy},
+     {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
+     {"$ambientboost", CmdAmbientBoost},
+diff --git a/mdlcompiler/version.rc.in b/mdlcompiler/version.rc.in
+index 59b9b29..cd79989 100644
+--- a/mdlcompiler/version.rc.in
++++ b/mdlcompiler/version.rc.in
+@@ -11,10 +11,10 @@ FILETYPE       0x1L        // VFT_APP
+         {
+             VALUE "FileDescription",  "Source model compiler (.pulseqc -> .mdl)"
+             VALUE "FileVersion",      "@TOOL_VERSION@"
+-            VALUE "InternalName",     "mdlcompiler"
++            VALUE "InternalName",     "NewPageMergeMDL"
+             VALUE "LegalCopyright",   "Copyright (c) 2026 Toppi"
+-            VALUE "OriginalFilename", "mdlcompiler.exe"
+-            VALUE "ProductName",      "PulseModel"
++            VALUE "OriginalFilename", "NewPageMergeMDL.exe"
++            VALUE "ProductName",      "NewPageMergeMDL"
+             VALUE "ProductVersion",   "@TOOL_VERSION@"
+         }
+     }
+diff --git a/mdldecompiler/CMakeLists.txt b/mdldecompiler/CMakeLists.txt
+index ee18bb2..c43198c 100644
+--- a/mdldecompiler/CMakeLists.txt
++++ b/mdldecompiler/CMakeLists.txt
+@@ -4,6 +4,7 @@ add_executable(mdldecompiler main.cpp dmxwrite.cpp animwrite.cpp flexrig.cpp gol
+ target_include_directories(mdldecompiler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+ # Each tool owns its own version; there is no project-wide one.
+ set(TOOL_VERSION 0.18.1)
++set_target_properties(mdldecompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL-Decompiler")
+ string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
+ target_compile_definitions(mdldecompiler PRIVATE PULSEMODEL_VERSION="${TOOL_VERSION}")
+ 
+diff --git a/mdldecompiler/main.cpp b/mdldecompiler/main.cpp
+index c1a5fbb..fa2eb1f 100644
+--- a/mdldecompiler/main.cpp
++++ b/mdldecompiler/main.cpp
+@@ -36,6 +36,7 @@
+ #include "format/phy.h"
+ #include "mdlfile.h"
+ #include "perf.h"
++#include "branding.h"
+ 
+ using namespace mdldecompiler;
+ using pulse::fatal::Fail;
+@@ -49,15 +50,11 @@ static constexpr const char* kAppVersion = PULSEMODEL_VERSION;
+ namespace {
+ 
+ void PrintHeader() {
+-    std::printf("-------------------------------\n");
+-    std::printf("PulseModel [Model Decompiler]\n");
+-    std::printf("version:   %s (model version 10-49)\n", kAppVersion);
+-    std::printf("developer: Toppi\n");
+-    std::printf("-------------------------------\n");
++    newpage::PrintBanner("Model Decompiler", kAppVersion, "10-49");
+ }
+ 
+ int Usage() {
+-    std::printf("usage: mdldecompiler <file.mdl|folder> ... [-outdir <dir>]\n");
++    std::printf("usage: NewPageMergeMDL-Decompiler <file.mdl|folder> ... [-outdir <dir>]\n");
+     std::printf("                     [-forceversion <n>] [-dmxencoding <enc>] [-dmxmodel <n>]\n");
+     std::printf("                     [-smdanimation] [-pulseqc]\n");
+     std::printf("                     [-nomesh] [-noanimation] [-declaresequence]\n");
+diff --git a/mdldecompiler/version.rc.in b/mdldecompiler/version.rc.in
+index 5c2dd5a..5668e84 100644
+--- a/mdldecompiler/version.rc.in
++++ b/mdldecompiler/version.rc.in
+@@ -11,10 +11,10 @@ FILETYPE       0x1L        // VFT_APP
+         {
+             VALUE "FileDescription",  "Source model decompiler (.mdl -> .pulseqc)"
+             VALUE "FileVersion",      "@TOOL_VERSION@"
+-            VALUE "InternalName",     "mdldecompiler"
++            VALUE "InternalName",     "NewPageMergeMDL-Decompiler"
+             VALUE "LegalCopyright",   "Copyright (c) 2026 Toppi"
+-            VALUE "OriginalFilename", "mdldecompiler.exe"
+-            VALUE "ProductName",      "PulseModel"
++            VALUE "OriginalFilename", "NewPageMergeMDL-Decompiler.exe"
++            VALUE "ProductName",      "NewPageMergeMDL"
+             VALUE "ProductVersion",   "@TOOL_VERSION@"
+         }
+     }
+diff --git a/subtools/importqc/main.cpp b/subtools/importqc/main.cpp
+index e52e3c8..ea191cf 100644
+--- a/subtools/importqc/main.cpp
++++ b/subtools/importqc/main.cpp
+@@ -23,7 +23,7 @@ static int Usage() {
+ int main(int argc, char** argv) {
+     std::setvbuf(stdout, nullptr, _IONBF, 0);
+     std::printf("-------------------------------\n");
+-    std::printf("PulseModel [QC Importer]\n");
++    std::printf("NewPageMergeMDL [QC Importer]\n");
+     std::printf("version:   %s\n", kAppVersion);
+     std::printf("developer: Toppi\n");
+     std::printf("-------------------------------\n");
+diff --git a/subtools/importqc/version.rc.in b/subtools/importqc/version.rc.in
+index 9d16dfa..02c1dc0 100644
+--- a/subtools/importqc/version.rc.in
++++ b/subtools/importqc/version.rc.in
+@@ -14,7 +14,7 @@ FILETYPE       0x1L        // VFT_APP
+             VALUE "InternalName",     "importqc"
+             VALUE "LegalCopyright",   "Copyright (c) 2026 Toppi"
+             VALUE "OriginalFilename", "importqc.exe"
+-            VALUE "ProductName",      "PulseModel"
++            VALUE "ProductName",      "NewPageMergeMDL"
+             VALUE "ProductVersion",   "@TOOL_VERSION@"
+         }
+     }
+diff --git a/subtools/l4d_animswap/main.cpp b/subtools/l4d_animswap/main.cpp
+index 1619ffe..fd93121 100644
+--- a/subtools/l4d_animswap/main.cpp
++++ b/subtools/l4d_animswap/main.cpp
+@@ -1090,7 +1090,7 @@ bool WriteLight(const std::string& path, const Survivor& rig, const Survivor& tg
+ 
+ void PrintHeader() {
+     std::printf("-------------------------------\n");
+-    std::printf("PulseModel [L4D2 Anim Swap]\n");
++    std::printf("NewPageMergeMDL [L4D2 Anim Swap]\n");
+     std::printf("version:   %s\n", PULSEMODEL_VERSION);
+     std::printf("developer: Toppi\n");
+     std::printf("-------------------------------\n");
+diff --git a/subtools/l4d_animswap/version.rc.in b/subtools/l4d_animswap/version.rc.in
+index 0aa1c02..9bab38a 100644
+--- a/subtools/l4d_animswap/version.rc.in
++++ b/subtools/l4d_animswap/version.rc.in
+@@ -14,7 +14,7 @@ FILETYPE       0x1L        // VFT_APP
+             VALUE "InternalName",     "l4d_animswap"
+             VALUE "LegalCopyright",   "Copyright (c) 2026 Toppi"
+             VALUE "OriginalFilename", "l4d_animswap.exe"
+-            VALUE "ProductName",      "PulseModel"
++            VALUE "ProductName",      "NewPageMergeMDL"
+             VALUE "ProductVersion",   "@TOOL_VERSION@"
+         }
+     }
+diff --git a/subtools/meshtool/version.rc.in b/subtools/meshtool/version.rc.in
+index ab74489..c1e0729 100644
+--- a/subtools/meshtool/version.rc.in
++++ b/subtools/meshtool/version.rc.in
+@@ -14,7 +14,7 @@ FILETYPE       0x1L        // VFT_APP
+             VALUE "InternalName",     "meshtool"
+             VALUE "LegalCopyright",   "Copyright (c) 2026 Toppi"
+             VALUE "OriginalFilename", "meshtool.exe"
+-            VALUE "ProductName",      "PulseModel"
++            VALUE "ProductName",      "NewPageMergeMDL"
+             VALUE "ProductVersion",   "@TOOL_VERSION@"
+         }
+     }
+diff --git a/subtools/vmd2valvebiped/main.cpp b/subtools/vmd2valvebiped/main.cpp
+index 0117649..845c3b1 100644
+--- a/subtools/vmd2valvebiped/main.cpp
++++ b/subtools/vmd2valvebiped/main.cpp
+@@ -890,7 +890,7 @@ struct Leg {
+ 
+ void PrintHeader() {
+     std::printf("-------------------------------\n");
+-    std::printf("PulseModel [VMD to ValveBiped]\n");
++    std::printf("NewPageMergeMDL [VMD to ValveBiped]\n");
+     std::printf("version:   %s\n", PULSEMODEL_VERSION);
+     std::printf("developer: Toppi\n");
+     std::printf("-------------------------------\n");
+diff --git a/subtools/vmd2valvebiped/version.rc.in b/subtools/vmd2valvebiped/version.rc.in
+index 67add67..e654ad7 100644
+--- a/subtools/vmd2valvebiped/version.rc.in
++++ b/subtools/vmd2valvebiped/version.rc.in
+@@ -14,7 +14,7 @@ FILETYPE       0x1L        // VFT_APP
+             VALUE "InternalName",     "vmd2valvebiped"
+             VALUE "LegalCopyright",   "Copyright (c) 2026 Toppi"
+             VALUE "OriginalFilename", "vmd2valvebiped.exe"
+-            VALUE "ProductName",      "PulseModel"
++            VALUE "ProductName",      "NewPageMergeMDL"
+             VALUE "ProductVersion",   "@TOOL_VERSION@"
+         }
+     }

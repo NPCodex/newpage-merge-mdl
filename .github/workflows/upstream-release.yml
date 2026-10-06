@@ -1,0 +1,144 @@
+name: Upstream sync and automatic release
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'automation/**'
+      - '.github/scripts/upstream_release.py'
+      - '.github/scripts/refresh_overlay.py'
+      - '.github/workflows/upstream-release.yml'
+      - 'tests/**'
+      - 'libs/**'
+      - 'mdlcompiler/**'
+      - 'mdldecompiler/**'
+      - 'subtools/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild current upstream versions
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newpage-upstream-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      changed: ${{ steps.sync.outputs.changed }}
+      tag: ${{ steps.sync.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Verify maintained source matches the overlay
+        run: python3 .github/scripts/refresh_overlay.py --check
+      - name: Discover versions, download references and apply compatibility patch
+        id: sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_REBUILD: ${{ inputs.force || false }}
+        shell: bash
+        run: |
+          args=()
+          if [ "$FORCE_REBUILD" = "true" ]; then args+=(--force); fi
+          python3 .github/scripts/upstream_release.py prepare --work sync-work "${args[@]}"
+      - name: Archive exact merged source
+        if: steps.sync.outputs.changed == 'true'
+        run: python3 .github/scripts/upstream_release.py source-archive --source sync-work/candidate --output sync-work/NewPageMergeMDL-source.zip
+      - uses: actions/upload-artifact@v7
+        if: steps.sync.outputs.changed == 'true'
+        with:
+          name: merged-source
+          path: |
+            sync-work/NewPageMergeMDL-source.zip
+            sync-work/upstream-manifest.json
+            sync-work/release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win64
+            ext: .exe
+          - os: ubuntu-latest
+            platform: linux64
+            ext: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: merged-source
+          path: prepared
+      - name: Extract source
+        run: python -m zipfile -e prepared/NewPageMergeMDL-source.zip candidate
+      - name: Configure
+        run: cmake -S candidate/NewPageMergeMDL -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist"
+      - name: Build every tool
+        run: cmake --build build --config Release --parallel 2
+      - name: Test pipeline helpers
+        run: python -m unittest discover -s tests -p test_automation.py -v
+      - name: Test emitted models and decompiled animations
+        run: python candidate/NewPageMergeMDL/tests/compatibility.py dist/NewPageMergeMDL${{ matrix.ext }}
+      - name: Package with source provenance
+        run: python .github/scripts/upstream_release.py package --source candidate/NewPageMergeMDL --dist dist --platform ${{ matrix.platform }} --manifest prepared/upstream-manifest.json --output newpage-merge-mdl-${{ matrix.platform }}.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tested-${{ matrix.platform }}
+          path: newpage-merge-mdl-${{ matrix.platform }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: merged-source
+          path: release-files
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: tested-*
+          merge-multiple: true
+          path: release-files
+      - name: Generate checksums
+        run: python3 .github/scripts/upstream_release.py checksums --folder release-files
+      - name: Publish complete tested release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "NewPageMergeMDL $RELEASE_TAG" --notes-file release-files/release-notes.md --draft --prerelease
+          fi
+          gh release upload "$RELEASE_TAG" release-files/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease --notes-file release-files/release-notes.md

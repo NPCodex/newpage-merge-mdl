@@ -48,6 +48,9 @@ Build/
 build-*/
 out/
 dist/
+sync-work/
+candidate/
+release-files/
 __pycache__/
 
 # CMake generated files

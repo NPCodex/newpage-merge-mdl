@@ -1,5 +1,7 @@
 # NewPageMergeMDL
 
+自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
+
 基于 [PulseModel](https://github.com/ToppiOfficial/PulseModel) 的 Source 模型编译工具，加入 StudioMDL-CE / StudioMDL++ 兼容功能与自行实现的动画扩展。
 
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
