@@ -13,27 +13,61 @@ The compiler is `NewPageMergeMDL.exe`; the decompiler is
 GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
 
-## Features
+## Inherited PulseModel features
 
-- PulseModel SMD / DMX / FBX compilation, model decompilation and utility tools.
-- `$setvariable`, include/model prefixes, `$PUSHDInclude` and bone prefix collapse.
-- `-cullanims`, `-MostlyOpaque` and duplicate variable warnings.
-- Independently specified animation `copy`, `match pos/rot` and nested conditions.
-- Repeated VTA `flex` / `flexpair` names preserve separate frame deltas and ramps.
-- `$sequence gmtime`, existing sequence order preservation and `-noremap`.
-- CE controller overrides/duplicates, inverse flexes, `fscale`, zero decay and default pose baking.
-- Eye scaling, DMX smooth normals/wrinkles and flex remapping to compiled bind space.
-- Bodygroup face blocks, per-reference material renames, single-bone weights,
-  optional CE bone collapse rules and output size limits.
-- Colored terminal banner; redirected logs remain plain text.
-- Fast glTF / GLB / VRM import and Assimp OBJ / DAE / PMX and other scene formats; existing FBX support is retained.
-- Neko `InNode`, `Pick`, `SampleRate`, `$FPS`, `$NekoModel`, `$NekoDriverBone` and jiggle orientation commands.
-- Material pre-renaming, delta normal discard, vertex/bone/file budgets, line conditionals, `$UndefineVariable`, `$Msg` and `-Dname value`.
-- Windows HLMV reload, completion tones and `$NoFastGltf` to select the Assimp fallback.
+SMD / DMX / FBX compilation, model decompilation and utility tools are retained. Fast SMD loading, meshoptimizer, dynamic output buffers, mesh splitting, `-nodx80`, animation `reverse`, macro defaults / `$endmacro`, `nocull`, mesh-selected `$bbox` and unused-material removal already exist upstream and are not additions by this project.
 
-The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies.
-The user's Alyx QC also remains compilable. Automated tests use self-authored
-fixtures; user models and NekoMDL executables are not redistributed.
+## Additions compared with original PulseModel
+
+This comparison uses merge baseline `52cf296a953fd6c2d072e34cfde5eb8eccc95564`. The following features and compatibility fixes are implemented independently; they do not certify full parity with the closed-source reference compilers. See [COMPATIBILITY.md](COMPATIBILITY.md) for arguments and behavioral differences.
+
+### QC, animation and StudioMDL++ compatibility
+
+| Feature | Supported additions |
+| --- | --- |
+| Variables and diagnostics | `$setvariable` replaces variables; duplicate `$definevariable` warns and preserves the first definition. |
+| Include resolution | `$IncludePrefix` / `-IncludePrefix`, `$IncludeAnimPrefix` / `-IncludeAnimPrefix`; `$PUSHDInclude` enables lookup in the current pushd directory. |
+| Animation extensions | `copy reference [pos] [rot]`, `match reference [pos] [rot]`, and nested animation `if / else if / else`, with this project's documented semantics. |
+| Animation culling / rendering | `-cullanims` forces unreferenced-animation culling while honoring `nocull`; `-MostlyOpaque` overrides QC render settings. |
+| Sequence ordering / UTC flag | Preserves order from existing v48/v49 models by default; `-noremap` selects QC order. `$sequence gmtime` survives decompilation; UTC synchronization needs mod support. |
+| VTA compatibility fix | Repeated `flex` / `flexpair` names preserve independent frame deltas and weight ramps. |
+
+### StudioMDL-CE face, bone and output extensions
+
+| Feature | Supported additions |
+| --- | --- |
+| Flex controllers | `$OverrideFlexControllers`, `$AllowDuplicationFlexControllers`, model-block `addcontrollerbyflex`. |
+| Inverse flexes / delta scaling | `$AddInvStudioFlexes` / `InvertControllers`; `$DefaqScale`, `$IgnoreDMXDefaq`, per-key `fscale`. |
+| Decay / default flex | `$ZeroFlexDecay`; default-flex baking and `$IgnoreDefaultFlexKey`; `NoAutoDMXRulesLegacy` clears previous automatic rules/controllers. |
+| Eyes / eyelids | `$EyeballScale`, `$IgnoreEyeballScaling`, `$IgnoreEyeballIrisScale`, `$IgnoreEyelid`; eye binding remains scoped to each model. |
+| DMX normals / wrinkles | `$ComputeDeltaNormals`, `$ComputeWrinkles`, `$ComputeNormalsAndWrinkles` and model-level overrides; `$RemapFlexToGlobal` maps flexes into compiled bind space. |
+| Per-model options | `$body` / `$bodygroup studio` face blocks; private `RenameMat` / `RenameMatByPrefix`; `BindToOneBone` / `$CollisionBindToOneBone`. |
+| Bones / bounds | Opt-in `$CEBoneRules`; `$AllowCollapseVertexBone`; `$AlwaysCollapseByPrefix` and its launch equivalent; `$HBoxIgnoreChild`. |
+| Paths / output limits | `$PUSHDProcedural`; `$OutDir` / `-OutDir`; `$OutputBufferSize`, `$MDLOutputBufferSize`, `$ANIOutputBufferSize` check sizes before writing. |
+
+CE compatibility switches are opt-in; some boolean switches toggle when repeated. Single-bone weighting is experimental, and arbitrary complex rigs are not certified equivalent to CE.
+
+### NekoMDL import and scripting extensions
+
+Implementation follows the supplied **Chinese v2.3.0 changelog**.
+
+| Feature | Supported additions |
+| --- | --- |
+| More formats | Fast cgltf import of glTF / GLB / VRM; Assimp import of OBJ, DAE, PMX and other supported formats; `$NoFastGltf` selects Assimp for glTF. The existing ufbx FBX importer remains. |
+| Scenes / morphs | Node transforms, static scale, skins, named morph targets; missing UVs/morph normals are accepted, and missing base normals are generated. |
+| Node / animation selection | `InNode` selects a node and descendants; `Pick` selects an animation; `SampleRate` controls sampling; `$FPS` sets subsequent default playback/sampling rates; `$UpAxis y/z gltf/assimp` independently sets import axes. |
+| Faces / driver bones | `$NekoModel` supports multiple studios, shared flexes/rules and scoped eyes/lids; named `flex` / `flexpair` bind source morphs; `$NekoDriverBone`. |
+| Jiggle / animation transforms | `$JiggleBoneRealign`, `$ReverseJiggleBoneRotation`; animation `NoBoneRealign`, `AppendScale`. |
+| Materials / morph normals | `$PreRenameMaterial`; `$DiscardVertexAnimationNormals` removes delta normals while retaining base normals and position deltas. |
+| Resource budgets | `$MaxVerts limit [clamp]` splits per-material output meshes; `$MaxBones` / `-maxbones`; `$FileBufferSize` caps each serialized output. Algorithm/default differences are documented below. |
+| Scripts | Line `$if/$ifdef/$elif/$eldef/$else/$endif`; `$UndefineVariable`, `$Msg`, `-Dname value`; `$Include file iffileexists`; `$QCAssert` with an omitted expected boolean. |
+| Post-compilation actions | `-checksequenceorder`; `-reloadhlmv` notifies Windows HLMV; `-playbeep` signals success/failure. |
+
+### Project tooling and maintenance
+
+- Compiler, decompiler and utilities share the project naming and **v1.1** version; colored startup banner, plain redirected logs.
+- Automatic PulseModel integration through a maintained patch, followed by Windows/Linux builds, tests and GitHub Release publication. Conflicts or failed checks stop publication. New closed-source CE/++/Neko features require manual analysis.
+- 73 compatibility tests and 12 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
 
 ## Unfinished features and known issues
 

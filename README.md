@@ -11,26 +11,61 @@
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
 
-## 当前功能
+## 原版 PulseModel 功能
 
-- 原 PulseModel 的 SMD / DMX / FBX 编译、模型反编译和辅助工具。
-- `$setvariable`、包含文件和动画模型前缀、`$PUSHDInclude`、按骨骼前缀折叠。
-- `-cullanims`、`-MostlyOpaque`，重复变量定义警告。
-- 自行实现的动画 `copy`、`match pos/rot`、嵌套 `if / else if / else`。
-- VTA 同名 `flex` / `flexpair` 多帧：保留独立顶点数据和 StudioMDL 兼容权重区间。
-- `$sequence gmtime`，默认保留已有模型的序列顺序，`-noremap` 使用 QC 顺序。
-- CE 面部扩展：控制器覆盖/重复、反向表情、`fscale`、零衰减和默认表情烘焙。
-- CE 眼球缩放、DMX 法线/皱纹计算、全局骨骼空间表情重映射。
-- bodygroup 面部块、独立材质重命名、单骨权重、可选骨骼折叠规则和输出限制。
-- glTF / GLB / VRM 快速导入，以及 Assimp 的 OBJ、DAE、PMX 等格式导入；保留原 FBX 导入器。
-- NekoMDL 的 `InNode`、`Pick`、`SampleRate`、`$FPS`、`$NekoModel`、`$NekoDriverBone` 和飘骨轴向命令。
-- `$PreRenameMaterial`、`$DiscardVertexAnimationNormals`、`$MaxVerts`、`$MaxBones`、`$FileBufferSize`；无花括号条件语句、`$UndefineVariable`、`$Msg` 和 `-Dname value`。
-- `-reloadhlmv`（Windows）和 `-playbeep`；`$NoFastGltf` 切换到 Assimp 后备导入。
-- 带终端颜色的启动横幅；重定向日志保持纯文本。
+保留原版的 SMD / DMX / FBX 编译、模型反编译及辅助工具。快速 SMD 读取、meshoptimizer、动态输出缓冲区、网格分割、`-nodx80`、动画 `reverse`、宏默认参数/`$endmacro`、`nocull`、按网格计算 `$bbox` 和未使用材质清理等均为上游已有能力，不计入本项目新增功能。
 
-完整合并尚未完成，语法和差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。不能保证与 StudioMDL-CE / StudioMDL++ 的全部行为一致。
+## 相比原版 PulseModel 新增的功能
 
-NekoMDL 附带的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证；用户的 Alyx QC 也保持可编译。自动测试使用自行编写的小模型，不将用户模型或 NekoMDL 二进制打包到仓库。
+以下对比基于当前合并基线 `52cf296a953fd6c2d072e34cfde5eb8eccc95564`。这里列出已实现的功能及兼容修复；闭源参考编译器的命令由本项目自行实现，不代表完整行为一致。详细参数与差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+
+### QC、动画与 StudioMDL++ 兼容扩展
+
+| 功能 | 已支持的内容 |
+| --- | --- |
+| 变量与诊断 | `$setvariable` 覆盖变量；重复 `$definevariable` 警告并保留首次定义。 |
+| 包含文件查找 | `$IncludePrefix` / `-IncludePrefix`、`$IncludeAnimPrefix` / `-IncludeAnimPrefix`；`$PUSHDInclude` 启用当前 pushd 目录查找。 |
+| 动画扩展 | `copy reference [pos] [rot]`、`match reference [pos] [rot]`，以及动画内嵌套 `if / else if / else`；具体语义按本项目文档。 |
+| 动画裁剪与渲染 | `-cullanims` 强制裁剪未引用动画，保留 `nocull`；`-MostlyOpaque` 覆盖 QC 渲染设置。 |
+| 序列排序与 UTC 标记 | 默认按已有 v48/v49 模型保留序列顺序，`-noremap` 使用 QC 顺序；`$sequence gmtime` 及其反编译保留，需要模组支持 UTC 同步。 |
+| VTA 兼容修复 | 同名 `flex` / `flexpair` 多帧保留独立顶点增量和权重区间。 |
+
+### StudioMDL-CE 面部、骨骼与输出扩展
+
+| 功能 | 已支持的内容 |
+| --- | --- |
+| 表情控制器 | `$OverrideFlexControllers`、`$AllowDuplicationFlexControllers`、模型块 `addcontrollerbyflex`。 |
+| 反向表情与增量缩放 | `$AddInvStudioFlexes` / `InvertControllers`；`$DefaqScale`、`$IgnoreDMXDefaq`、表情键 `fscale`。 |
+| 表情衰减与默认表情 | `$ZeroFlexDecay`；默认表情烘焙及 `$IgnoreDefaultFlexKey`；`NoAutoDMXRulesLegacy` 清除先前自动规则和控制器。 |
+| 眼球与眼睑 | `$EyeballScale`、`$IgnoreEyeballScaling`、`$IgnoreEyeballIrisScale`、`$IgnoreEyelid`；眼球绑定保留各模型作用范围。 |
+| DMX 法线与皱纹 | `$ComputeDeltaNormals`、`$ComputeWrinkles`、`$ComputeNormalsAndWrinkles` 及模型级覆盖；`$RemapFlexToGlobal` 将表情转换到编译后的绑定空间。 |
+| 独立模型选项 | `$body` / `$bodygroup studio` 面部块；`RenameMat`、`RenameMatByPrefix` 独立材质重命名；`BindToOneBone`、`$CollisionBindToOneBone` 单骨权重。 |
+| 骨骼与包围盒 | `$CEBoneRules` 显式启用 CE/++ 折叠规则；`$AllowCollapseVertexBone`；`$AlwaysCollapseByPrefix` / 同名启动参数；`$HBoxIgnoreChild`。 |
+| 路径与文件上限 | `$PUSHDProcedural`；`$OutDir` / `-OutDir`；`$OutputBufferSize`、`$MDLOutputBufferSize`、`$ANIOutputBufferSize` 在写入前检查大小。 |
+
+CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态。单骨权重属于实验功能，不能据此保证任意复杂 rig 与 CE 一致。
+
+### NekoMDL 导入与脚本扩展
+
+依据附带的**中文版 v2.3.0 更新日志**实现。
+
+| 功能 | 已支持的内容 |
+| --- | --- |
+| 更多模型格式 | cgltf 快速导入 glTF / GLB / VRM；Assimp 导入 OBJ、DAE、PMX 等格式；`$NoFastGltf` 切换 glTF 到 Assimp。保留原 ufbx FBX 导入器。 |
+| 场景与形态键 | 节点变换、静态缩放、蒙皮、命名形态键；缺少 UV/形态键法线可加载，缺少基础法线时生成平滑法线。 |
+| 节点及动画选择 | `InNode` 筛选节点及子节点；`Pick` 选择动画；`SampleRate` 控制采样率；`$FPS` 设置后续默认播放/采样帧率；`$UpAxis y/z gltf/assimp` 分别设置向上轴。 |
+| 面部与驱动骨 | `$NekoModel` 多 studio、共享表情/规则及各模型独立眼球/眼睑；按源形态键名声明 `flex` / `flexpair`；`$NekoDriverBone`。 |
+| 飘骨与动画变换 | `$JiggleBoneRealign`、`$ReverseJiggleBoneRotation`；动画 `NoBoneRealign`、`AppendScale`。 |
+| 材质与形态键法线 | `$PreRenameMaterial`；`$DiscardVertexAnimationNormals` 清除增量法线并保留基础法线与位置增量。 |
+| 资源上限 | `$MaxVerts limit [clamp]` 按材质分割输出网格；`$MaxBones` / `-maxbones`；`$FileBufferSize` 限制各输出文件大小。算法和默认值差异见下文。 |
+| 脚本兼容 | 行式 `$if/$ifdef/$elif/$eldef/$else/$endif`；`$UndefineVariable`、`$Msg`、`-Dname value`；`$Include file iffileexists`；省略布尔预期值的 `$QCAssert`。 |
+| 编译后操作 | `-checksequenceorder`；`-reloadhlmv` 通知 Windows HLMV 刷新；`-playbeep` 播放成功/失败提示音。 |
+
+### 本项目的工具与维护功能
+
+- 编译器、反编译器及辅助工具统一命名和使用 **v1.1** 版本号；彩色启动横幅，重定向日志保持纯文本。
+- 自动拉取 PulseModel、套用维护补丁，完成 Windows/Linux 构建与测试后发布 GitHub Release；冲突或检查失败停止发布。CE/++/Neko 的新增闭源功能仍需人工分析。
+- 73 项兼容测试及 12 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
 
 ## 未完成与已知问题
 
