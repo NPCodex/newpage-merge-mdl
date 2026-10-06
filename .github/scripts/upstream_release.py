@@ -85,7 +85,8 @@ def published_manifest(repo):
     if not repo:
         return None
     releases = api(f'repos/{repo}/releases?per_page=100')
-    for release in releases:
+    # API list order can differ from publication order when tags share an older target.
+    for release in sorted(releases, key=lambda item: item.get('published_at') or '', reverse=True):
         if release['draft'] or not release['tag_name'].startswith('newpage-auto-'):
             continue
         for asset in release['assets']:

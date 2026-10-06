@@ -46,6 +46,15 @@ class AutomationTests(unittest.TestCase):
             download.assert_called_once()
             download.assert_called_once_with(asset()['url'], accept='application/octet-stream')
 
+    def test_published_state_uses_publication_time_instead_of_api_order(self):
+        releases = [dict(draft=False, tag_name='newpage-auto-old', published_at='2026-10-06T04:00:00Z',
+                         assets=[asset('upstream-manifest.json', 1)]),
+                    dict(draft=False, tag_name='newpage-auto-new', published_at='2026-10-06T05:00:00Z',
+                         assets=[asset('upstream-manifest.json', 2)])]
+        with patch.object(sync, 'api', return_value=releases), patch.object(sync, 'fetch', return_value=b'{"fingerprint":"new"}') as download:
+            self.assertEqual(sync.published_manifest('owner/repo')['fingerprint'], 'new')
+            download.assert_called_once_with(asset(identifier=2)['url'], accept='application/octet-stream')
+
     def test_download_redirect_strips_credentials_on_host_change(self):
         request = urllib.request.Request('https://api.github.com/repos/o/r/releases/assets/1',
                                          headers={'Authorization': 'Bearer test-only'})
