@@ -145,7 +145,7 @@ class AutomationTests(unittest.TestCase):
             dist.mkdir(); source.mkdir()
             for name in ('NewPageMergeMDL.exe', 'NewPageMergeMDL-Decompiler.exe'):
                 (dist / name).write_bytes(b'binary')
-            for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md'):
+            for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md'):
                 (source / name).write_text(name)
             (source / 'libs/vendor').mkdir(parents=True)
             (source / 'libs/vendor/LICENSE').write_text('vendor notice')
@@ -185,6 +185,47 @@ class AutomationTests(unittest.TestCase):
             sync.checksums(args)
             self.assertEqual((root / 'SHA256SUMS.txt').read_text(), expected)
 
+
+
+class PackageValidationTests(unittest.TestCase):
+    def make_package(self, root, extra=None, manifest=None):
+        suffix='.exe' if os.name=='nt' else ''
+        binary=b'MZfixture' if os.name=='nt' else b'\x7fELFfixture'
+        archive=root/'package.zip'
+        with zipfile.ZipFile(archive,'w') as z:
+            z.writestr('NewPageMergeMDL/upstream-manifest.json',json.dumps(manifest or {'project_version':'1.2.6'}))
+            for name in ('README.md','README.en.md','VALIDATION.md','IMPROVEMENTS.md','integration/gmod/newpage_vertexanim.lua'):z.writestr('NewPageMergeMDL/'+name,'fixture')
+            for name in ('NewPageMergeMDL','NewPageMergeMDL-Decompiler'):z.writestr('NewPageMergeMDL/'+name+suffix,binary)
+            if extra:z.writestr(extra,'unexpected')
+        return archive
+
+    def verifier(self):
+        spec=importlib.util.spec_from_file_location('verify_package',ROOT/'tests/verify_package.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
+
+    def test_packaged_provenance_and_runtime_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);archive=self.make_package(root)
+            self.assertTrue(self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted').exists())
+
+    def test_tampered_manifest_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);archive=self.make_package(root,manifest={'project_version':'wrong'})
+            with self.assertRaisesRegex(ValueError,'provenance'):self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted')
+
+    def test_package_traversal_is_rejected_before_extracting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);archive=self.make_package(root,extra='NewPageMergeMDL/../../outside')
+            with self.assertRaisesRegex(ValueError,'Unsafe'):self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted')
+            self.assertFalse((root/'extracted').exists())
+
+    def test_duplicate_package_entry_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore',UserWarning);archive=self.make_package(root,extra='NewPageMergeMDL/README.md')
+            with self.assertRaisesRegex(ValueError,'Duplicate'):self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted')
 
 if __name__ == '__main__':
     unittest.main()

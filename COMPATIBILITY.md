@@ -26,7 +26,7 @@ References:
 | `-AlwaysCollapseByPrefix prefix` | Repeatable launch equivalent of the QC command. |
 | `-MostlyOpaque` / `-mostlyopaque` | Overrides QC render-pass settings with translucent two-pass rendering. |
 | `-cullanims` | Overrides `$animationcullmethod` with aggressive culling; `nocull` survives. |
-| Animation `copy reference [pos] [rot]` | Self-authored weighted local-pose copy. Keeps destination length and FPS; holds the source's final frame when shorter. References must be earlier, non-declared animations. Defaults to both channels. |
+| Animation `copy reference [pos] [rot]` | With an explicit named weightlist (v1.2.6), positive weights select channels, matching the tested StudioMDL++ behavior. Without it, the original weighted local-pose extension remains. Keeps destination length and FPS; holds the source's final frame when shorter. References must be earlier, non-declared animations. Defaults to both channels. |
 | Animation `match reference [pos] [rot]` | Adds the first-frame local translation difference and/or applies the first-frame rotation correction across the clip. Default remains rotation only. |
 | Animation `if / else if / else` | Self-authored compile-time braced conditions using the existing variable/comparison evaluator. Only the chosen body is parsed. Nested conditions work. |
 

@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.5
+# NewPageMergeMDL v1.2.6
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.5**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.6**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -10,6 +10,10 @@
 
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
+
+## v1.2.6：兼容、物理与发布验证
+
+新增显式 copy weightlist、修复 jiggle 碰撞几何导致的布娃娃异常、改善 include 诊断和长场景动画采样性能。完整 Hair player/NPC 已在 GMod 检查；当前 137 项兼容回归、20 项自动化回归。七项结果及明确保留的问题见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。
 
 ## v1.2.5：Hair QC 编译修复
 
@@ -25,7 +29,7 @@
 - **游戏实测**：GMod 验证 Alyx 加载、表情/眼睑、强制 LOD；自制样例验证顶点动画、双物理体质量和地面碰撞。白色材质覆盖用于几何检查，未认证用户材质的全部着色效果。
 - **性能诊断**：`-perfjson` 报告加载/编译/写入耗时和峰值工作集；生产模型各三次隔离编译并检查输出 SHA256 一致。
 
-当前 **128 项兼容回归、16 项自动化测试**。参数、实测范围和复现方法见 [VALIDATION.md](VALIDATION.md)。
+当前 **137 项兼容回归、20 项自动化测试**。参数、实测范围和复现方法见 [VALIDATION.md](VALIDATION.md)。
 
 ## 原版 PulseModel 功能
 
@@ -79,9 +83,9 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 ### 本项目的工具与维护功能
 
-- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.5** 版本号；彩色启动横幅，重定向日志保持纯文本。
+- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.6** 版本号；彩色启动横幅，重定向日志保持纯文本。
 - 自动拉取 PulseModel、套用维护补丁，完成 Windows/Linux 构建与测试后发布 GitHub Release；冲突或检查失败停止发布。CE/++/Neko 的新增闭源功能仍需人工分析。
-- 128 项兼容测试及 16 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
+- 137 项兼容测试及 20 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
 
 ## v1.2.3 缩减未完成项
 
@@ -129,9 +133,9 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 | NekoMDL 导入兼容 | 使用 cgltf 快速路径和 Assimp 6.0.4 后备路径，不使用闭源编译器源码。已验证基础场景变换、蒙皮、命名形态键、节点筛选和动画采样；尚未逐一认证所有 Assimp 格式、复杂 FBX/VRM rig 与游戏内表现。 |
 | glTF 动画与压缩 | Draco、meshopt 和采样式缩放/权重烘焙已实现。烘焙最多 4096 帧、1600 万个源顶点采样；精度取决于采样率，播放需要控制器驱动代码。网格切换和蒙皮实例仍未支持；Assimp 后备插值未全面认证。 |
 | NekoMDL 算法与默认值 | `$MaxVerts` 控制每材质输出网格的分割上限，实际不超过 65536；不复现 Neko 的源文件预拆分/裁剪算法。`$FileBufferSize` 限制各输出文件字节数，不预分配固定内存。保留本项目动态缓冲区、骨骼折叠和序列排序默认值；需要保留加权骨骼时启用 `$CEBoneRules`。 |
-| NekoMDL 面部与驱动骨 | jiggle、基础 IK/LOD、DMX 和眼睑有参考差分；多 studio、驱动骨、corrective 有输出/数值回归。任意复杂层级仍需具体模型验证。 |
+| NekoMDL 面部与驱动骨 | jiggle、基础 IK/LOD、DMX 和眼睑有参考差分；多 studio、驱动骨、corrective 有输出/数值回归。新增联合 rig 与立体表情对照；DMX 自动规则、重复控制器仍有具体差异，见 IMPROVEMENTS.md。任意复杂层级仍需具体模型验证。 |
 | 旧版网格算法 | `$UseLegacyStripify` / `-nvtristrip` 已接入 NvTriStrip；`$UseLegacyClampMethod` 已支持跨材质拆分及同步身体组选项。实现基于统一后的 LOD 顶点字典，不保证与 CE 的源文件预拆分逐字节一致；默认仍为按材质分割。 |
-| 完整语法与输出兼容 | 动画 `copy`、`match pos/rot` 和条件语句采用本项目定义的语义；尚未认证与 StudioMDL++ 完全一致。输出为 v49，不能与 CE/++ 的 v48 文件逐字节比较。 |
+| 完整语法与输出兼容 | 显式 `copy animation weightlist`、`match pos/rot`、条件语句及 reverse 已通过七个 StudioMDL++ 姿态/FPS 样例；原有 copy pos/rot 是本项目扩展，未认证所有场景一致。输出为 v49，不能与 CE/++ 的 v48 文件逐字节比较。 |
 | 复杂面部与 DMX | 基础法线、皱纹、逆向表情、corrective 和眼睑已有回归；Alyx 表情/眼睑在 GMod 实测。其他复杂 rig、硬边、自定义法线及控制器重映射需逐模型验证。 |
 | `NoAutoDMXRules` | 保留 PulseModel 的单源规则禁用语义，与 CE 在多模型场景下禁用先前自动规则的行为不同；`NoAutoDMXRulesLegacy` 会清除先前自动控制器和规则。 |
 | `addcontrollerbyflex` | 按文档正确处理 min/max；不复现 CE 二进制把两者写入 min 字段的缺陷。 |
@@ -179,7 +183,7 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-128 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 16 项自动发布测试。
+137 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 20 项自动发布测试。
 
 已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。v1.2.4 另完成 GMod 几何、表情/眼睑与 LOD 验证。
 

@@ -32,11 +32,10 @@ template<class Key,class Value,class Interpolate>
 Value Sample(const Key* keys,unsigned count,double time,Value fallback,Interpolate interpolate) {
     if(!count) return fallback;
     if(time<=keys[0].mTime) return keys[0].mValue;
-    for(unsigned k=1;k<count;++k) if(time<keys[k].mTime) {
-        const double span=keys[k].mTime-keys[k-1].mTime;
-        return interpolate(keys[k-1].mValue,keys[k].mValue,span>0?float((time-keys[k-1].mTime)/span):0);
-    }
-    return keys[count-1].mValue;
+    const auto upper=std::upper_bound(keys,keys+count,time,[](double t,const Key& key){return t<key.mTime;});
+    if(upper==keys+count) return keys[count-1].mValue;
+    const auto lower=upper-1; const double span=upper->mTime-lower->mTime;
+    return interpolate(lower->mValue,upper->mValue,span>0?float((time-lower->mTime)/span):0);
 }
 }
 bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,float scale,
@@ -89,13 +88,21 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
         auto keep=[&](int n) { if(selected<0) return true; for(int p=n;p>=0;p=parents[p]) if(p==selected) return true; return false; };
         // Bone offsets define the skin's bind pose, independently of the scene's current pose.
         auto bindWorld=worlds;
+        std::map<int,aiMatrix4x4> skinBinds;
         for(size_t n=0;n<nodes.size();++n) for(unsigned j=0;j<nodes[n]->mNumMeshes;++j) {
             auto mesh=scene->mMeshes[nodes[n]->mMeshes[j]];
             for(unsigned b=0;b<mesh->mNumBones;++b) {
                 auto bone=mesh->mBones[b]; auto i=byName.find(bone->mName.C_Str());
                 if(i==byName.end()) throw std::runtime_error("missing skin joint: "+std::string(bone->mName.C_Str()));
-                bindWorld[i->second]=gltf ? aiMatrix4x4(bone->mOffsetMatrix).Inverse()
-                                         : worlds[n]*aiMatrix4x4(bone->mOffsetMatrix).Inverse();
+                if(std::abs(bone->mOffsetMatrix.Determinant())<1e-12f)
+                    throw std::runtime_error("singular inverse bind matrix for skin joint: "+std::string(bone->mName.C_Str()));
+                const aiMatrix4x4 bind=gltf ? aiMatrix4x4(bone->mOffsetMatrix).Inverse()
+                                          : worlds[n]*aiMatrix4x4(bone->mOffsetMatrix).Inverse();
+                auto existing=skinBinds.find(i->second);
+                if(existing!=skinBinds.end()) for(int row=0;row<4;++row) for(int col=0;col<4;++col)
+                    if(std::abs(existing->second[row][col]-bind[row][col])>1e-4f)
+                        throw std::runtime_error("conflicting bind poses for shared skin joint: "+std::string(bone->mName.C_Str()));
+                skinBinds[i->second]=bind; bindWorld[i->second]=bind;
                 out.localBone[i->second].isNonSkeletal=false;
             }
         }

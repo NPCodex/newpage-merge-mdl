@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.5
+# NewPageMergeMDL v1.2.6
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.5.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.6.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -12,6 +12,10 @@ The compiler is `NewPageMergeMDL.exe`; the decompiler is
 `NewPageMergeMDL-Decompiler.exe`. Windows x64 and Linux builds are verified by
 GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
+
+## v1.2.6: compatibility, ragdolls and package verification
+
+Adds explicit copy weightlists, fixes procedural collision geometry causing unstable ragdolls, improves include diagnostics and long-scene sampling. Complete Hair player/NPC models were tested in GMod. There are 137 compatibility and 20 automation tests. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for all seven areas and unresolved differences.
 
 ## v1.2.5: Hair QC compilation fix
 
@@ -27,7 +31,7 @@ Correct overly strict bodygroup validation; add final-product and preset-integer
 - Actual GMod Alyx loading, faces/eyelids and forced LOD, plus authored vertex-animation and two-body physics/ground-contact tests. White material override isolates geometry; authored shaders are not comprehensively certified.
 - `-perfjson` phase timings/peak working set and isolated repeated production benchmarks with deterministic output checksums.
 
-**128 compatibility tests and 16 automation tests.** Usage and bounded results: [VALIDATION.md](VALIDATION.md).
+**137 compatibility tests and 20 automation tests.** Usage and bounded results: [VALIDATION.md](VALIDATION.md).
 
 ## Inherited PulseModel features
 
@@ -81,9 +85,9 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 
 ### Project tooling and maintenance
 
-- Compiler, decompiler and utilities share the project naming and **v1.2.5** version; colored startup banner, plain redirected logs.
+- Compiler, decompiler and utilities share the project naming and **v1.2.6** version; colored startup banner, plain redirected logs.
 - Automatic PulseModel integration through a maintained patch, followed by Windows/Linux builds, tests and GitHub Release publication. Conflicts or failed checks stop publication. New closed-source CE/++/Neko features require manual analysis.
-- 128 compatibility tests and 16 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
+- 137 compatibility tests and 20 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
 
 ## v1.2.3: fewer incomplete features
 
@@ -185,7 +189,7 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 python -m unittest discover -s tests -p test_automation.py
 ```
 
-There are 128 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
+There are 137 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
 and 16 automation tests. Tests inspect MDL/VVD data and decompile animations to
 check positions, rotations and conditions. The user-provided Alyx QC compiled
 successfully with 113 bones and 27,571 VVD vertices; this does not cover in-game

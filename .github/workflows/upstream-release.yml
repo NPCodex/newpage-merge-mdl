@@ -9,6 +9,8 @@ on:
       - 'README.md'
       - 'README.en.md'
       - 'RESEARCH.md'
+      - 'IMPROVEMENTS.md'
+      - 'VALIDATION.md'
       - 'COMPATIBILITY.md'
       - 'AUTOMATION.md'
       - 'automation/**'
@@ -108,6 +110,8 @@ jobs:
         run: python candidate/NewPageMergeMDL/tests/compatibility.py dist/NewPageMergeMDL${{ matrix.ext }}
       - name: Package with source provenance
         run: python .github/scripts/upstream_release.py package --source candidate/NewPageMergeMDL --dist dist --platform ${{ matrix.platform }} --manifest prepared/upstream-manifest.json --output newpage-merge-mdl-${{ matrix.platform }}.zip
+      - name: Verify packaged binaries before release
+        run: python candidate/NewPageMergeMDL/tests/verify_package.py newpage-merge-mdl-${{ matrix.platform }}.zip --manifest prepared/upstream-manifest.json
       - uses: actions/upload-artifact@v7
         with:
           name: tested-${{ matrix.platform }}

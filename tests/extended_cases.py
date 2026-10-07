@@ -1,3 +1,4 @@
+from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
@@ -136,3 +137,99 @@ class ExtendedCases:
   phy=(self.root/'models/ragdoll.phy').read_bytes();self.assertEqual(struct.unpack_from('<i',phy,8)[0],2)
   self.assertIn(b'"parent" "root"',phy);self.assertIn(b'ragdollconstraint',phy)
   masses=[float(v) for v in re.findall(rb'"mass" "([^"]+)"',phy)];self.assertAlmostEqual(sum(masses),10,places=3)
+
+ def test_scene_shared_skin_instances_and_vrm_path(self):
+  from scene_fixtures import skinned_scene_bytes
+  doc=json.loads(skinned_scene_bytes());doc['nodes'][2]['skin']=0
+  for suffix in ('gltf','vrm'):
+   self.write('skin.'+suffix,json.dumps(doc))
+   self.scene_qc('$modelname instances\n$CEBoneRules\n$body m skin.'+suffix+'\n')
+   d=self.mdl('instances');self.assertIn(b'Joint\0',d)
+   vvd=(self.root/'models/instances.vvd').read_bytes();start=struct.unpack_from('<i',vvd,56)[0]
+   count=struct.unpack_from('<i',vvd,16)[0];points=[struct.unpack_from('<3f',vvd,start+i*48+16) for i in range(count)]
+   self.assertAlmostEqual(min(x[0] for x in points),-1);self.assertAlmostEqual(max(x[0] for x in points),1)
+
+ def test_conflicting_shared_skin_bind_and_singular_matrix_are_rejected(self):
+  from scene_fixtures import skinned_scene_bytes
+  doc=json.loads(skinned_scene_bytes());doc['nodes'][2]['skin']=1;doc['skins'].append(copy.deepcopy(doc['skins'][0]))
+  binary=bytearray(base64.b64decode(doc['buffers'][0]['uri'].split(',')[1]));off=len(binary)
+  binary.extend(struct.pack('<16f',1,0,0,0,0,1,0,0,0,0,1,0,-10,0,0,1))
+  doc['bufferViews'].append({'buffer':0,'byteOffset':off,'byteLength':64});doc['accessors'].append({'bufferView':len(doc['bufferViews'])-1,'componentType':5126,'count':1,'type':'MAT4'})
+  doc['skins'][1]['inverseBindMatrices']=len(doc['accessors'])-1
+  def emit():
+   doc['buffers'][0]={'byteLength':len(binary),'uri':'data:application/octet-stream;base64,'+base64.b64encode(binary).decode()};self.write('skin.gltf',json.dumps(doc))
+  emit();text=self.scene_qc('$modelname badskin\n$body m skin.gltf\n',success=False);self.assertIn('conflicting bind poses',text)
+  struct.pack_into('<16f',binary,off,*([0]*16));emit()
+  self.assertIn('singular inverse bind',self.scene_qc('$modelname badskin\n$body m skin.gltf\n',success=False))
+
+ def test_invalid_scene_animation_times_preserve_existing_output(self):
+  self.scene_fixture();self.scene_qc('$modelname times\n$body m scene.gltf\n');old=self.mdl('times')
+  doc=json.loads(scene_bytes());time=doc['animations'][0]['samplers'][0]['input'];view=doc['bufferViews'][doc['accessors'][time]['bufferView']]
+  for values in [(1,0),(0,0),(-1,1),(0,float('nan'))]:
+   blob=bytearray(base64.b64decode(doc['buffers'][0]['uri'].split(',')[1]));struct.pack_into('<2f',blob,view['byteOffset'],*values)
+   doc['buffers'][0]['uri']='data:application/octet-stream;base64,'+base64.b64encode(blob).decode();self.write('scene.gltf',json.dumps(doc))
+   text=self.scene_qc('$modelname times\n$body m scene.gltf\n',success=False);self.assertIn('strictly increasing',text);self.assertEqual(self.mdl('times'),old)
+
+ def test_nested_include_error_reports_ancestry(self):
+  self.write('outer.qci','$include inner.qci\n');self.write('inner.qci','$body broken missing.smd\n')
+  text=self.run_qc('$modelname bad\n$include outer.qci\n',success=False)
+  self.assertIn('inner.qci(1)',text);self.assertIn('included from',text);self.assertIn('outer.qci',text)
+
+ def test_compile_bodygroup_error_retains_include_location(self):
+  self.write('groups.qci',''.join(f'$bodygroup b{i} {{ blank\nblank\n}}\n' for i in range(32)))
+  text=self.run_qc('$modelname bad\n$include groups.qci\n',success=False)
+  self.assertIn('groups.qci(94)',text);self.assertIn("'b31'",text)
+
+ def test_copy_explicit_weightlist_uses_positive_mask_without_changing_duration(self):
+  self.animation_fixture()
+  for value,expected in [(0,0),(.5,10),(1,10)]:
+   self.run_qc('$modelname mask\n$weightlist mask { root '+str(value)+' }\n$animation source moving.smd\n$animation dest mesh.smd { numframes 4 copy source mask }\n$sequence original source\n$sequence idle dest\n')
+   frames=self.animation_poses('mask','dest');self.assertEqual(len(frames),4)
+   self.assertAlmostEqual(frames[0][0],expected,delta=.01)
+   self.assertAlmostEqual(frames[-1][0],20 if value else 0,delta=.01)
+
+ def test_ragdoll_procedural_joint_geometry_merges_into_physical_parent(self):
+  header='version 1\nnodes\n0 "root" -1\n1 "hair" 0\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\n1 3 0 0 0 0 0\nend\ntriangles\n'
+  points=[(0,0,0),(1,0,0),(0,1,0),(0,0,1)];mesh=header
+  for bone in (0,1):
+   for face in [(0,2,1),(0,1,3),(0,3,2),(1,2,3)]:
+    mesh+='material\n'+''.join(f'{bone} {points[v][0]+bone*3} {points[v][1]} {points[v][2]} 0 0 1 0 0\n' for v in face)
+  self.write('rig.smd',mesh+'end\n')
+  base='$modelname ragmask\n$bonecullmethod none\n$body m rig.smd\n$sequence idle rig.smd\n'
+  self.scene_qc(base+'$collisionjoints rig.smd { $mass 10 }\n')
+  self.assertEqual(struct.unpack_from('<i',(self.root/'models/ragmask.phy').read_bytes(),8)[0],2)
+  self.scene_qc(base+'$jigglebone hair { is_flexible { length 3 tip_mass 1 } }\n$collisionjoints rig.smd { $mass 10 }\n')
+  phy=(self.root/'models/ragmask.phy').read_bytes();self.assertEqual(struct.unpack_from('<i',phy,8)[0],1)
+  self.assertIn(b'"name" "root"',phy);self.assertNotIn(b'"name" "hair"',phy)
+  self.assertIn(b'hair\0',self.mdl('ragmask'))
+  old=self.mdl('ragmask')
+  text=self.scene_qc(base+'$collisionjoints rig.smd { $jointmerge root hair $jointmerge hair root }\n',success=False)
+  self.assertIn('cyclic collision joint merge',text);self.assertEqual(self.mdl('ragmask'),old)
+
+ def test_fbx_hierarchy_bakes_nonuniform_scale_and_generates_normals(self):
+  self.write('hierarchy.fbx',(Path(__file__).parent/'fixtures/hierarchy.fbx').read_text())
+  self.scene_qc('$modelname hierarchy\n$body m hierarchy.fbx\n')
+  vvd=(self.root/'models/hierarchy.vvd').read_bytes();start=struct.unpack_from('<i',vvd,56)[0]
+  points=[struct.unpack_from('<3f',vvd,start+i*48+16) for i in range(3)]
+  self.assertEqual(sorted(round(p[0],3) for p in points),[12,12,14])
+  self.assertEqual(sorted(round(p[1],3) for p in points),[3,3,4])
+  self.assertEqual({round(p[2],3) for p in points},{4})
+  for i in range(3):self.assertAlmostEqual(sum(v*v for v in struct.unpack_from('<3f',vvd,start+i*48+28)),1,places=4)
+
+ def test_generated_production_mesh_splits_without_losing_lods_or_skin_families(self):
+  header='version 1\nnodes\n0 "root" -1\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\nend\ntriangles\n'
+  pieces=[]
+  for i in range(30000):
+   x,y=(i%300)*2,(i//300)*2
+   pieces.append(f'material\n0 {x} {y} 0 0 0 1 0 0\n0 {x+1} {y} 0 0 0 1 1 0\n0 {x} {y+1} 0 0 0 1 0 1\n')
+  self.write('production.smd',header+''.join(pieces)+'end\n')
+  groups=''.join(f'$bodygroup choice{i} {{ blank\nblank\n}}\n' for i in range(20))
+  skins='$texturegroup family {\n'+''.join('{ '+('material' if i==0 else 'material'+str(i))+' }\n' for i in range(20))+'}\n'
+  self.scene_qc('$modelname production\n$MaxVerts 60000\n$body m production.smd\n$lod 10 { }\n$lod 30 { }\n'+groups+skins)
+  d=self.mdl('production');self.assertEqual(struct.unpack_from('<i',d,224)[0],20)
+  vvd=(self.root/'models/production.vvd').read_bytes();self.assertEqual(struct.unpack_from('<i',vvd,12)[0],3)
+  self.assertEqual(struct.unpack_from('<3i',vvd,16),(90000,90000,90000))
+  bp=struct.unpack_from('<i',d,236)[0];model=bp+struct.unpack_from('<i',d,bp+12)[0]
+  count,offset=struct.unpack_from('<2i',d,model+72);self.assertGreater(count,1)
+  sizes=[struct.unpack_from('<i',d,model+offset+i*116+8)[0] for i in range(count)]
+  self.assertEqual(sum(sizes),90000);self.assertLessEqual(max(sizes),60000)

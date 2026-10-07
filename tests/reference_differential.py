@@ -17,7 +17,11 @@ cases={
  'ik_lod':'$ikchain arm hand\n$lod 10 { replacebone hand upper }\n',
  'face':'$model face mesh.smd { flexfile face.vta {\nflex Smile frame 1\n}\nflexcontroller test range 0 1 strength\n%Smile = strength\n}\n',
  'eyelid':'$model face mesh.smd {\neyeball eye root 0 0 0 material 2 0 iris .5\neyelid upper face.vta lowerer 1 -.2 neutral 0 0 raiser 2 .2 split 0 eyeball eye\nflexcontroller eyelid range -1 1 lid\n%upper = lid\n}\n',
- 'dmx':'$model face face.dmx\n'
+ 'dmx':'$model face face.dmx\n',
+ 'dmx_explicit':'$model face face.dmx {\n%smile = smile\n}\n',
+ 'dmx_multi':'$model face_a face.dmx\n$model face_b face.dmx\n',
+ 'rig_combined':'$attachment grip hand 1 2 3\n$ikchain arm hand\n$lod 10 { replacebone hand upper }\n$jigglebone helper { is_flexible { length 10 tip_mass 1 pitch_stiffness 100 yaw_stiffness 100 pitch_constraint -10 30 yaw_constraint -20 40 } }\n',
+ 'face_stereo':'$model face mesh.smd { flexfile face.vta {\nflexpair Smile .5 frame 1\n}\nflexcontroller test range 0 1 left right\n%SmileL = left\n%SmileR = right\n}\n'
 }
 (root/'face.dmx').write_bytes((Path(__file__).parent/'fixtures/ce-facial.dmx').read_bytes())
 vta='version 1\nnodes\n'+nodes+'end\nskeleton\ntime 0\n'+pose+'time 1\n'+pose+'time 2\n'+pose+'end\nvertexanimation\ntime 0\n'
@@ -43,6 +47,16 @@ def summary(path):
  result['controllers']=[]
  for i in range(integer(268)):
   c=integer(272)+i*20;result['controllers'].append([string(c+integer(c+4)),*struct.unpack_from('<2f',d,c+12)])
+ result['rules']=[]
+ for i in range(integer(276)):
+  rule=integer(280)+i*12;target,count,relative=struct.unpack_from('<3i',d,rule);ops=[]
+  for k in range(count):
+   op,value=struct.unpack_from('<2i',d,rule+relative+k*8)
+   if op==1:value=struct.unpack_from('<f',d,rule+relative+k*8+4)[0]
+   elif op==2:value=result['controllers'][value][0]
+   elif op==12:value=result['descriptors'][value]
+   ops.append([op,value])
+  result['rules'].append([result['descriptors'][target],ops])
  result['eyes']=[]
  for b in range(integer(232)):
   bp=integer(236)+b*16
@@ -58,7 +72,7 @@ def close(x,y):
  return x==y
 report={'schema':1,'reference':str(Path(a.reference).resolve()),'cases':[]}
 for name,options in cases.items():
- qc=root/(name+'.qc');qc.write_text('$modelname '+name+'\n'+('' if name in ('face','eyelid','dmx') else '$body body mesh.smd\n')+options+definitions+'$sequence idle mesh.smd\n')
+ qc=root/(name+'.qc');qc.write_text('$modelname '+name+'\n'+('' if name in ('face','eyelid','dmx','dmx_explicit','dmx_multi','face_stereo') else '$body body mesh.smd\n')+options+definitions+'$sequence idle mesh.smd\n')
  outputs={}
  for label,compiler in [('project',a.compiler),('reference',a.reference)]:
   game=root/label;game.mkdir(exist_ok=True);(game/'gameinfo.txt').write_text('GameInfo { game fixture FileSystem { SteamAppId 220 SearchPaths { game "|gameinfo_path|." } } }')
@@ -75,8 +89,10 @@ for name,options in cases.items():
    if any(abs(u-v)>2e-4 for field in ('position','rotation') for u,v in zip(x[field],y[field])):differences.append(x['name']+' bind transform')
  for field in ('ikchains','flexdescs','flexcontrollers'):
   if expected[field]!=actual[field]:differences.append(field)
- for field in ('descriptors','controllers','eyes'):
-  if not close(expected[field],actual[field]):differences.append(field)
+ for field in ('descriptors','controllers','eyes','rules'):
+  left,right=expected[field],actual[field]
+  if field=='descriptors':left,right=sorted(left),sorted(right) # names/bindings are semantic; table order is not
+  if not close(left,right):differences.append(field)
  report['cases'].append({'name':name,'outputs':outputs,'differences':differences})
 (root/'report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))
 if any(c['differences'] for c in report['cases']):raise SystemExit(1)

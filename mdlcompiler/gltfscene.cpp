@@ -137,8 +137,19 @@ void DecodeDraco(cgltf_data* data,DracoViews& storage) {
 aiVector3D V(const std::vector<float>& x,size_t k) { return {x[k*3],x[k*3+1],x[k*3+2]}; }
 // Evaluate glTF samplers before handing a regular frame grid to the shared
 // converter. This retains STEP and CUBICSPLINE semantics (including tangents).
-std::vector<float> Evaluate(const cgltf_animation_sampler& s,double time,int width,bool rotation) {
-    auto times=Values(s.input,1), values=Values(s.output,s.output->type==cgltf_type_scalar?1:width);
+using SamplerCache = std::map<std::pair<const cgltf_animation_sampler*,int>,std::pair<std::vector<float>,std::vector<float>>>;
+std::vector<float> Evaluate(const cgltf_animation_sampler& s,double time,int width,bool rotation,SamplerCache& cache) {
+    const auto key=std::make_pair(&s,width);
+    auto found=cache.find(key);
+    if(found==cache.end()) {
+        auto times=Values(s.input,1), values=Values(s.output,s.output->type==cgltf_type_scalar?1:width);
+        for(size_t i=0;i<times.size();++i)
+            if(!std::isfinite(times[i]) || times[i]<0 || (i && times[i]<=times[i-1]))
+                throw std::runtime_error("glTF animation times must be finite, nonnegative and strictly increasing");
+        for(float v:values) if(!std::isfinite(v)) throw std::runtime_error("non-finite glTF animation value");
+        found=cache.emplace(key,std::make_pair(std::move(times),std::move(values))).first;
+    }
+    const auto& times=found->second.first; const auto& values=found->second.second;
     if(times.empty()) throw std::runtime_error("empty glTF animation sampler");
     const bool cubic=s.interpolation==cgltf_interpolation_type_cubic_spline;
     if(values.size()!=times.size()*width*(cubic?3:1)) throw std::runtime_error("invalid glTF animation sample count");
@@ -300,6 +311,7 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
     for(size_t i=0;i<roots.size();++i) scene->mRootNode->mChildren[i]=node(roots[i],scene->mRootNode);
     scene->mNumMeshes=unsigned(meshes.size()); scene->mMeshes=new aiMesh*[meshes.size()]{};
     for(size_t i=0;i<meshes.size();++i) scene->mMeshes[i]=meshes[i].release();
+    SamplerCache samplerCache;
     scene->mNumAnimations=unsigned(raw->animations_count); scene->mAnimations=new aiAnimation*[raw->animations_count]{};
     for(unsigned a=0;a<scene->mNumAnimations;++a) {
         auto& animation=raw->animations[a]; auto result=scene->mAnimations[a]=new aiAnimation(); result->mTicksPerSecond=1;
@@ -328,7 +340,7 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
             size_t width=node->mesh->primitives[0].targets_count;
             if(!width)throw std::runtime_error("glTF morph animation has no targets");
             auto dst=result->mMorphMeshChannels[k]=new aiMeshMorphAnim();dst->mName=aiString(names.at(node));dst->mNumKeys=frames;dst->mKeys=new aiMeshMorphKey[frames];
-            for(unsigned f=0;f<frames;++f){double time=std::min(duration,double(f)/sampleRate);auto weights=Evaluate(*channel->sampler,time,int(width),false);
+            for(unsigned f=0;f<frames;++f){double time=std::min(duration,double(f)/sampleRate);auto weights=Evaluate(*channel->sampler,time,int(width),false,samplerCache);
                 auto& key=dst->mKeys[f];key.mTime=time;key.mNumValuesAndWeights=unsigned(width);key.mValues=new unsigned[width];key.mWeights=new double[width];
                 for(size_t m=0;m<width;++m){if(!std::isfinite(weights[m]))throw std::runtime_error("non-finite glTF morph weight");key.mValues[m]=unsigned(m);key.mWeights[m]=weights[m];}
             }
@@ -341,7 +353,7 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
             for(unsigned f=0;f<frames;++f) {
                 double time=std::min(duration,double(f)/sampleRate); auto p=baseP,s=baseS; auto q=baseQ;
                 for(auto channel:entry.second) {
-                    bool rot=channel->target_path==cgltf_animation_path_type_rotation; auto values=Evaluate(*channel->sampler,time,rot?4:3,rot);
+                    bool rot=channel->target_path==cgltf_animation_path_type_rotation; auto values=Evaluate(*channel->sampler,time,rot?4:3,rot,samplerCache);
                     if(rot) q=aiQuaternion(values[3],values[0],values[1],values[2]);
                     else if(channel->target_path==cgltf_animation_path_type_translation) p={values[0],values[1],values[2]};
                     else if(channel->target_path==cgltf_animation_path_type_scale) s={values[0],values[1],values[2]};

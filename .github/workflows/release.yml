@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.rel.outputs.tag }}
+      version: ${{ steps.rel.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -20,8 +21,9 @@ jobs:
         id: rel
         shell: bash
         run: |
-          version=$(sed -n 's/^set(TOOL_VERSION \([0-9.]*\)).*/\1/p' mdlcompiler/CMakeLists.txt)
+          version=$(sed -n 's/^project(NewPageMergeMDL VERSION \([0-9.]*\) .*/\1/p' CMakeLists.txt)
           test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           tag=$(git tag --list "v$version-r*" --sort=-v:refname | head -n 1)
           [ -n "$tag" ] && revision=$((${tag##*-r} + 1)) || revision=1
           echo "tag=v$version-r$revision" >> "$GITHUB_OUTPUT"
@@ -39,7 +41,6 @@ jobs:
             plat: linux64
             ext: ""
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.plat == 'linux64' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -50,16 +51,17 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Package
+      - name: Test emitted models
+        run: python tests/compatibility.py dist/NewPageMergeMDL${{ matrix.ext }}
+
+      - name: Package with maintained source provenance
         shell: bash
         run: |
-          # both tools ship in one NewPageMergeMDL/ folder inside the archive, with
-          # the subtools in their own folder under it
-          mkdir -p NewPageMergeMDL
-          cp "dist/NewPageMergeMDL${{ matrix.ext }}" "dist/NewPageMergeMDL-Decompiler${{ matrix.ext }}" \
-             LICENSE NewPageMergeMDL/
-          cp -r dist/subtools NewPageMergeMDL/
-          7z a -tzip "newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip" NewPageMergeMDL/
+          python -c 'import json; json.dump({"project_version":"${{ needs.prepare.outputs.version }}","controller_sha":"${{ github.sha }}","release_tag":"${{ needs.prepare.outputs.tag }}","source_kind":"maintained checkout"},open("upstream-manifest.json","w"))'
+          python .github/scripts/upstream_release.py package --source . --dist dist --platform ${{ matrix.plat }} --manifest upstream-manifest.json --output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip
+
+      - name: Verify actual packaged binaries
+        run: python tests/verify_package.py newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip --manifest upstream-manifest.json
 
       - uses: actions/upload-artifact@v7
         with:

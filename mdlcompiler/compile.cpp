@@ -4789,8 +4789,14 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
         // bonemap[i] == i means "build a body here"; -1 is skipped, anything
         // else folds this bone's geometry into that bone's body.
         std::vector<int> bonemap(numLocalBones);
-        for (int i = 0; i < numLocalBones; i++)
+        for (int i = 0; i < numLocalBones; i++) {
             bonemap[i] = i;
+            const int global=ResolveLocalBoneToGlobal(ps,i,nullptr);
+            // A procedurally simulated joint cannot independently drive a
+            // ragdoll body. Fold its geometry into the nearest physical ancestor.
+            if(global>=0 && (m.bones[global].flags & BONE_ALWAYS_PROCEDURAL))
+                bonemap[i]=ps->localBone[i].parent;
+        }
         for (const PhysicsMarkup& mk : in.physMarkups) {
             if (!mk.skip && mk.mergeInto.empty())
                 continue;
@@ -4808,6 +4814,18 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
                 continue;
             }
             bonemap[idx] = parent;
+        }
+
+        for(int i=0;i<numLocalBones;++i) {
+            int target=i; std::vector<bool> seen(numLocalBones,false);
+            while(target>=0 && target<numLocalBones && bonemap[target]!=target) {
+                if(seen[target]) {
+                    if(err)*err="cyclic collision joint merge at bone: "+ps->localBone[i].name;
+                    freeBodies(); return false;
+                }
+                seen[target]=true; target=bonemap[target];
+            }
+            bonemap[i]=target;
         }
 
         std::vector<SrcTri> allFaces;
@@ -6553,20 +6571,22 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
             }
             case AnimCmd::CopyClip: {
                 const Anim& ref = m.anims[cmd.refAnim];
+                const auto& posWeights=cmd.copyWeightlistIndex<0?panim.posweight:weightlists[cmd.copyWeightlistIndex].posweight;
+                const auto& rotWeights=cmd.copyWeightlistIndex<0?panim.weight:weightlists[cmd.copyWeightlistIndex].weight;
                 for (int j = 0; j < panim.numframes; ++j) {
                     const auto& frame = ref.sanim[std::min(j, ref.numframes - 1)];
                     for (size_t k = 0; k < m.bones.size(); ++k) {
                         if (cmd.copyPos) {
                             auto& p = panim.sanim[j][k].pos;
                             const auto& r = frame[k].pos;
-                            const float w = panim.posweight[k];
+                            const float w = cmd.copyWeightlistIndex<0?posWeights[k]:(posWeights[k]>0?1.0f:0.0f);
                             p.x += (r.x-p.x)*w; p.y += (r.y-p.y)*w; p.z += (r.z-p.z)*w;
                         }
-                        if (cmd.copyRot && panim.weight[k] > 0.0f) {
+                        if (cmd.copyRot && rotWeights[k] > 0.0f) {
                             Quaternion q, r, blended;
                             pm::AngleQuaternion(panim.sanim[j][k].rot, q);
                             pm::AngleQuaternion(frame[k].rot, r);
-                            pm::QuaternionSlerp(q, r, panim.weight[k], blended);
+                            pm::QuaternionSlerp(q, r, cmd.copyWeightlistIndex<0?rotWeights[k]:1.0f, blended);
                             pm::QuaternionAngles(blended, panim.sanim[j][k].rot);
                         }
                     }
@@ -10107,6 +10127,7 @@ static std::string AnimSignature(const Anim& a) {
         SigVal(s, c.copyEndFrame);
         SigVal(s, c.fadeIn);
         SigVal(s, c.fadeOut);
+        SigVal(s, c.copyWeightlistIndex);
         SigVal(s, c.copyPos);
         SigVal(s, c.copyRot);
         SigStr(s, c.xform.bone);
@@ -10692,7 +10713,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         }
         const size_t choices = std::max<size_t>(1, bp.models.size());
         if (choices > 1 && bodypartBase > INT32_MAX) {
-            if (err) *err = "bodygroup combination count exceeds signed 32-bit capacity at '" + bp.name + "'";
+            if (err) *err = bp.location + "bodygroup combination count exceeds signed 32-bit capacity at '" + bp.name + "'";
             return false;
         }
         part.base = bodypartBase <= INT32_MAX ? static_cast<int>(bodypartBase) : 1;
@@ -11037,6 +11058,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                 cmd.matchPre = ic.matchPre;
                 cmd.copyPos = ic.copyPos;
                 cmd.copyRot = ic.copyRot;
+                if(!ic.copyWeightlist.empty()) {
+                    for(size_t w=0;w<input.weightlists.size();++w)
+                        if(_stricmp(input.weightlists[w].name.c_str(),ic.copyWeightlist.c_str())==0)
+                            cmd.copyWeightlistIndex=static_cast<int>(w)+1;
+                    if(cmd.copyWeightlistIndex<0) {
+                        if(err)*err="unknown copy weightlist: "+ic.copyWeightlist;
+                        return false;
+                    }
+                }
                 cmd.matchPost = ic.matchPost;
                 cmd.worldLoops = ic.worldLoops;
                 cmd.motiontype = ic.motiontype;

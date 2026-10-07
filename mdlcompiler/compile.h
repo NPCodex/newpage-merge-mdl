@@ -504,6 +504,7 @@ struct AnimCmd {
     int copyEndFrame = 0;
     float fadeIn = 0.0f, fadeOut = 0.0f;
     bool copyPos = true, copyRot = true;
+    int copyWeightlistIndex = -1; // explicit StudioMDL++ copy mask
     AnimBoneTransform xform; // TransformBone
     IkRule ikfixup;          // IkFixup: the rule this command bakes in
     // LocalHierarchy: alignBone is the bone, parentBone its new parent
@@ -1376,6 +1377,7 @@ struct CompileInput {
         source::Source* source = nullptr; // null = blank
     };
     struct InBodyPart {
+        std::string location; // QC/QCI origin retained for compile-stage diagnostics
         std::string name;
         std::vector<InModel> models;
     };
@@ -1456,6 +1458,7 @@ struct CompileInput {
             int copyEndFrame = 0;
             float fadeIn = 0.0f, fadeOut = 0.0f;
             bool copyPos = true, copyRot = true;
+            std::string copyWeightlist;
             AnimBoneTransform xform; // TransformBone
             InIkRule ikfixup;        // IkFixup
             // LocalHierarchy: bone in `alignBone`, new parent in `name`

@@ -200,6 +200,8 @@ struct Ctx {
     cm::CompileInput& in;
     fs::path scriptDir; // root script's directory
     std::string file;
+    std::string commandFile;
+    std::vector<std::string> commandParents;
     std::string rootFile; // `file` for the root script; an $include changes `file`, not this
     std::vector<Token> toks;
     size_t pos = 0;
@@ -324,7 +326,11 @@ struct Ctx {
 
     bool Fail(int line, const std::string& msg) {
         if (abortErr) return false; // keep the first $include error, not a cascade
-        if (err) *err = file + "(" + std::to_string(line) + "): " + msg;
+        if (err) {
+            *err = (commandFile.empty()?file:commandFile) + "(" + std::to_string(line) + "): " + msg;
+            for(auto it=commandParents.rbegin();it!=commandParents.rend();++it)
+                *err += "\n  included from " + *it;
+        }
         return false;
     }
 
@@ -1276,6 +1282,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
             return c.Fail(cmd.line, "$modelgroup \"" + name + "\" already exists");
     const std::string where = "$modelgroup \"" + name + "\"";
     cm::CompileInput::InBodyPart part;
+    part.location=c.file+"("+std::to_string(cmd.line)+"): ";
     part.name = name;
 
     // One choice: the $rendermesh names to the end of `line`, plus the optional
@@ -1831,6 +1838,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& 
 bool CmdModel(Ctx& c, const Token& cmd);
 bool CmdLegacyBody(Ctx& c, const Token& cmd) {
     cm::CompileInput::InBodyPart part;
+    part.location=c.file+"("+std::to_string(cmd.line)+"): ";
     if (!c.Want("a name", cmd, part.name))
         return false;
     const std::string where = cmd.text + " \"" + part.name + "\"";
@@ -1896,6 +1904,7 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
 // frame-addressed eyelid) are SMD-only; a DMX carries its own delta states.
 bool CmdModel(Ctx& c, const Token& cmd) {
     cm::CompileInput::InBodyPart part;
+    part.location=c.file+"("+std::to_string(cmd.line)+"): ";
     if (!c.Want("a name", cmd, part.name))
         return false;
     const std::string where = cmd.text + " \"" + part.name + "\"";
@@ -2954,6 +2963,10 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
         cmd.kind = cm::CompileInput::InAnim::InCmd::CopyClip;
         if (!c.Want("an animation name", t, cmd.name))
             return -1;
+        if(!c.AtCommand() && !c.Eof()) for(const auto& list:c.in.weightlists)
+            if(_stricmp(list.name.c_str(),c.Cur().text.c_str())==0) {
+                cmd.copyWeightlist=c.Cur().text; ++c.pos; break;
+            }
         bool pos = false, rot = false;
         while (!c.AtCommand() && !c.Eof() && !c.Cur().quoted) {
             const std::string channel = Lower(c.Cur().text);
@@ -3448,7 +3461,7 @@ bool CmdNekoModel(Ctx& c,const Token& cmd) {
         dest.insert(dest.end(),line.begin(),line.end());
     }
     if(choices.empty()) return c.Fail(cmd.line,"$NekoModel has no studios");
-    cm::CompileInput::InBodyPart result; result.name=name;
+    cm::CompileInput::InBodyPart result; result.name=name; result.location=c.file+"("+std::to_string(cmd.line)+"): ";
     for(size_t i=0;i<choices.size();++i) {
         std::vector<Token> body={{name+"_studio_"+std::to_string(i),cmd.line,true}};
         body.insert(body.end(),choices[i].header.begin(),choices[i].header.end());
@@ -8510,6 +8523,8 @@ bool ExpandVars(Ctx& c, Token& t) {
 // an included file - source filenames, $proceduralbones - stays relative to the
 // ROOT script's directory, matching how stock keeps cddir pinned to the top.
 bool SpliceInclude(Ctx& c) {
+    c.commandFile=c.file; c.commandParents.clear();
+    for(const auto& frame:c.includeFrames)c.commandParents.push_back(frame.savedFile);
     const Token cmd = c.toks[c.pos]; // the $include token
     size_t p = c.pos + 1;
     if (p >= c.toks.size() || (!c.toks[p].quoted && c.toks[p].text[0] == '$'))
@@ -9587,6 +9602,8 @@ bool RunCommands(Ctx& c) {
         if (!ExpandCommandVars(c))
             return false;
 
+        c.commandFile=c.file; c.commandParents.clear();
+        for(const auto& frame:c.includeFrames) c.commandParents.push_back(frame.savedFile);
         const Token cmd = c.toks[c.pos];
         if (cmd.quoted || cmd.text[0] != '$')
             return c.Fail(cmd.line, "expected a $command, got \"" + cmd.text + "\"");

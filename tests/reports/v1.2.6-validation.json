@@ -1,0 +1,4220 @@
+{
+  "version": "1.2.6",
+  "compatibility_tests": 137,
+  "automation_tests": 20,
+  "compiler_sha256": "4214c78a0649d94433f2371c882b5bbe75485a0ef34e142b9fc83120a42235c0",
+  "production_game": {
+    "schema": 1,
+    "engine": "GarrysMod x64",
+    "render_cases": 75,
+    "geometry_and_selection_verified": true,
+    "full_material_rendering_verified": false,
+    "material_probes": [
+      {
+        "missing": [
+          "___error"
+        ],
+        "model": "models/newpage_production_validation/hair_player.mdl"
+      },
+      {
+        "missing": [
+          "___error"
+        ],
+        "model": "models/newpage_production_validation/hair_npc.mdl"
+      },
+      {
+        "missing": [
+          "___error"
+        ],
+        "model": "models/newpage_production_validation/hair_reference.mdl"
+      }
+    ],
+    "physics": [
+      {
+        "model": "models/newpage_production_validation/hair_player.mdl",
+        "bodies": 18,
+        "max_horizontal_drift": 36.86103439331055,
+        "max_final_speed": 0
+      },
+      {
+        "model": "models/newpage_production_validation/hair_npc.mdl",
+        "bodies": 18,
+        "max_horizontal_drift": 34.61372756958008,
+        "max_final_speed": 0
+      },
+      {
+        "model": "models/newpage_production_validation/hair_reference.mdl",
+        "bodies": 18,
+        "max_horizontal_drift": 49.13924789428711,
+        "max_final_speed": 0
+      }
+    ]
+  },
+  "animation_differential": {
+    "schema": 1,
+    "cases": [
+      {
+        "name": "copy",
+        "command": "copy source full",
+        "outputs": {
+          "project": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.499994
+              ],
+              [
+                19.996704,
+                -1e-06,
+                0.0,
+                0.0,
+                0.0,
+                0.999999
+              ]
+            ]
+          },
+          "reference": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.499994
+              ],
+              [
+                19.996704,
+                -1e-06,
+                0.0,
+                0.0,
+                0.0,
+                0.999999
+              ]
+            ]
+          }
+        },
+        "max_pose_error": 0.0,
+        "status": "match"
+      },
+      {
+        "name": "copy_half",
+        "command": "copy source half",
+        "outputs": {
+          "project": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.499994
+              ],
+              [
+                19.996704,
+                -1e-06,
+                0.0,
+                0.0,
+                0.0,
+                0.999999
+              ]
+            ]
+          },
+          "reference": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.499994
+              ],
+              [
+                19.996704,
+                -1e-06,
+                0.0,
+                0.0,
+                0.0,
+                0.999999
+              ]
+            ]
+          }
+        },
+        "max_pose_error": 0.0,
+        "status": "match"
+      },
+      {
+        "name": "copy_zero",
+        "command": "copy source zero",
+        "outputs": {
+          "project": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                -4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ],
+              [
+                -9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ]
+            ]
+          },
+          "reference": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                -4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ],
+              [
+                -9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ]
+            ]
+          }
+        },
+        "max_pose_error": 0.0,
+        "status": "match"
+      },
+      {
+        "name": "match_pos",
+        "command": "match source pos",
+        "outputs": {
+          "project": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ],
+              [
+                4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ]
+            ]
+          },
+          "reference": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ],
+              [
+                4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ]
+            ]
+          }
+        },
+        "max_pose_error": 0.0,
+        "status": "match"
+      },
+      {
+        "name": "match_rot",
+        "command": "match source rot",
+        "outputs": {
+          "project": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                -4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.499994
+              ],
+              [
+                -9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.499994
+              ]
+            ]
+          },
+          "reference": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                -4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.499994
+              ],
+              [
+                -9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.499994
+              ]
+            ]
+          }
+        },
+        "max_pose_error": 0.0,
+        "status": "match"
+      },
+      {
+        "name": "conditional",
+        "command": "if 0 == 1 { fps 12 } else if 1 == 1 { fps 24 } else { fps 60 }",
+        "outputs": {
+          "project": {
+            "returncode": 0,
+            "fps": 24.0,
+            "frames": [
+              [
+                -4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ],
+              [
+                -9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ]
+            ]
+          },
+          "reference": {
+            "returncode": 0,
+            "fps": 24.0,
+            "frames": [
+              [
+                -4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ],
+              [
+                -9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ]
+            ]
+          }
+        },
+        "max_pose_error": 0.0,
+        "status": "match"
+      },
+      {
+        "name": "reverse",
+        "command": "reverse",
+        "outputs": {
+          "project": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                -4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ],
+              [
+                -9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ]
+            ]
+          },
+          "reference": {
+            "returncode": 0,
+            "fps": 30.0,
+            "frames": [
+              [
+                -4.996246,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ],
+              [
+                -9.996399,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                -1.2e-05
+              ]
+            ]
+          }
+        },
+        "max_pose_error": 0.0,
+        "status": "match"
+      }
+    ]
+  },
+  "facial_differential": {
+    "ce": {
+      "schema": 1,
+      "cases": [
+        {
+          "name": "bones",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "jiggle",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 5
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 5
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "ik_lod",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 1,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 1,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "face",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "Smile"
+              ],
+              "controllers": [
+                [
+                  "strength",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "Smile",
+                  [
+                    [
+                      2,
+                      "strength"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "Smile"
+              ],
+              "controllers": [
+                [
+                  "strength",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "Smile",
+                  [
+                    [
+                      2,
+                      "strength"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "eyelid",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 5,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "upper",
+                "upper_lowerer",
+                "upper_neutral",
+                "upper_raiser",
+                "dummy_eyelid"
+              ],
+              "controllers": [
+                [
+                  "lid",
+                  -1.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "upper",
+                  [
+                    [
+                      2,
+                      "lid"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": [
+                [
+                  "",
+                  0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0,
+                  2.0,
+                  "upper",
+                  "upper_lowerer",
+                  "upper_neutral",
+                  "upper_raiser",
+                  "dummy_eyelid",
+                  "dummy_eyelid",
+                  5.605193857299268e-45,
+                  -0.20000000298023224,
+                  0.0,
+                  0.20000000298023224,
+                  -1.0,
+                  0.0
+                ]
+              ]
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 5,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "upper",
+                "upper_lowerer",
+                "upper_neutral",
+                "upper_raiser",
+                "dummy_eyelid"
+              ],
+              "controllers": [
+                [
+                  "lid",
+                  -1.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "upper",
+                  [
+                    [
+                      2,
+                      "lid"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": [
+                [
+                  "",
+                  0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0,
+                  2.0,
+                  "upper",
+                  "upper_lowerer",
+                  "upper_neutral",
+                  "upper_raiser",
+                  "dummy_eyelid",
+                  "dummy_eyelid",
+                  5.605193857299268e-45,
+                  -0.20000000298023224,
+                  0.0,
+                  0.20000000298023224,
+                  -1.0,
+                  0.0
+                ]
+              ]
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "dmx",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": [
+            "rules"
+          ]
+        },
+        {
+          "name": "dmx_explicit",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "dmx_multi",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 2,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ],
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": [
+            "flexcontrollers",
+            "controllers",
+            "rules"
+          ]
+        },
+        {
+          "name": "rig_combined",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 5
+                }
+              ],
+              "ikchains": 1,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 5
+                }
+              ],
+              "ikchains": 1,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "face_stereo",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 2,
+              "flexcontrollers": 2,
+              "descriptors": [
+                "SmileL",
+                "SmileR"
+              ],
+              "controllers": [
+                [
+                  "left",
+                  0.0,
+                  1.0
+                ],
+                [
+                  "right",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "SmileL",
+                  [
+                    [
+                      2,
+                      "left"
+                    ]
+                  ]
+                ],
+                [
+                  "SmileR",
+                  [
+                    [
+                      2,
+                      "right"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.4000000059604645,
+                    0.19999998807907104,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 2,
+              "flexcontrollers": 2,
+              "descriptors": [
+                "SmileR",
+                "SmileL"
+              ],
+              "controllers": [
+                [
+                  "left",
+                  0.0,
+                  1.0
+                ],
+                [
+                  "right",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "SmileL",
+                  [
+                    [
+                      2,
+                      "left"
+                    ]
+                  ]
+                ],
+                [
+                  "SmileR",
+                  [
+                    [
+                      2,
+                      "right"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            }
+          },
+          "differences": []
+        }
+      ]
+    },
+    "neko": {
+      "schema": 1,
+      "cases": [
+        {
+          "name": "bones",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "jiggle",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 5
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 5
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "ik_lod",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 1,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 1,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "face",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "Smile"
+              ],
+              "controllers": [
+                [
+                  "strength",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "Smile",
+                  [
+                    [
+                      2,
+                      "strength"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "Smile"
+              ],
+              "controllers": [
+                [
+                  "strength",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "Smile",
+                  [
+                    [
+                      2,
+                      "strength"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "eyelid",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 5,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "upper",
+                "upper_lowerer",
+                "upper_neutral",
+                "upper_raiser",
+                "dummy_eyelid"
+              ],
+              "controllers": [
+                [
+                  "lid",
+                  -1.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "upper",
+                  [
+                    [
+                      2,
+                      "lid"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": [
+                [
+                  "",
+                  0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0,
+                  2.0,
+                  "upper",
+                  "upper_lowerer",
+                  "upper_neutral",
+                  "upper_raiser",
+                  "dummy_eyelid",
+                  "dummy_eyelid",
+                  5.605193857299268e-45,
+                  -0.20000000298023224,
+                  0.0,
+                  0.20000000298023224,
+                  -1.0,
+                  0.0
+                ]
+              ]
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 5,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "upper",
+                "upper_lowerer",
+                "upper_neutral",
+                "upper_raiser",
+                "dummy_eyelid"
+              ],
+              "controllers": [
+                [
+                  "lid",
+                  -1.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "upper",
+                  [
+                    [
+                      2,
+                      "lid"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": [
+                [
+                  "",
+                  0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0,
+                  2.0,
+                  "upper",
+                  "upper_lowerer",
+                  "upper_neutral",
+                  "upper_raiser",
+                  "dummy_eyelid",
+                  "dummy_eyelid",
+                  5.605193857299268e-45,
+                  -0.20000000298023224,
+                  0.0,
+                  0.20000000298023224,
+                  -1.0,
+                  0.0
+                ]
+              ]
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "dmx",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "dmx_explicit",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ],
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            }
+          },
+          "differences": [
+            "rules"
+          ]
+        },
+        {
+          "name": "dmx_multi",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 1,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 1,
+              "flexcontrollers": 2,
+              "descriptors": [
+                "smile"
+              ],
+              "controllers": [
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ],
+                [
+                  "smile",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ],
+                [
+                  "smile",
+                  [
+                    [
+                      2,
+                      "smile"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            }
+          },
+          "differences": [
+            "flexcontrollers",
+            "controllers",
+            "rules"
+          ]
+        },
+        {
+          "name": "rig_combined",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 5
+                }
+              ],
+              "ikchains": 1,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 5
+                }
+              ],
+              "ikchains": 1,
+              "flexdescs": 0,
+              "flexcontrollers": 0,
+              "descriptors": [],
+              "controllers": [],
+              "rules": [],
+              "eyes": []
+            }
+          },
+          "differences": []
+        },
+        {
+          "name": "face_stereo",
+          "outputs": {
+            "project": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 2,
+              "flexcontrollers": 2,
+              "descriptors": [
+                "SmileL",
+                "SmileR"
+              ],
+              "controllers": [
+                [
+                  "left",
+                  0.0,
+                  1.0
+                ],
+                [
+                  "right",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "SmileL",
+                  [
+                    [
+                      2,
+                      "left"
+                    ]
+                  ]
+                ],
+                [
+                  "SmileR",
+                  [
+                    [
+                      2,
+                      "right"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            },
+            "reference": {
+              "bones": [
+                {
+                  "name": "root",
+                  "parent": -1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "upper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "hand",
+                  "parent": 1,
+                  "position": [
+                    0.0,
+                    0.0,
+                    2.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    -0.0,
+                    0.0
+                  ],
+                  "procedural": 0
+                },
+                {
+                  "name": "helper",
+                  "parent": 0,
+                  "position": [
+                    0.0,
+                    2.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.3999999761581421,
+                    0.19999997317790985,
+                    0.29999998211860657
+                  ],
+                  "procedural": 0
+                }
+              ],
+              "ikchains": 0,
+              "flexdescs": 2,
+              "flexcontrollers": 2,
+              "descriptors": [
+                "SmileR",
+                "SmileL"
+              ],
+              "controllers": [
+                [
+                  "left",
+                  0.0,
+                  1.0
+                ],
+                [
+                  "right",
+                  0.0,
+                  1.0
+                ]
+              ],
+              "rules": [
+                [
+                  "SmileL",
+                  [
+                    [
+                      2,
+                      "left"
+                    ]
+                  ]
+                ],
+                [
+                  "SmileR",
+                  [
+                    [
+                      2,
+                      "right"
+                    ]
+                  ]
+                ]
+              ],
+              "eyes": []
+            }
+          },
+          "differences": []
+        }
+      ]
+    }
+  },
+  "sampling_benchmark": {
+    "before": {
+      "qc": "self-authored 64-channel, 3000-keyframe glTF",
+      "samples": [
+        {
+          "schema": 1,
+          "version": "1.2.5",
+          "load_ms": 11078.9,
+          "compile_ms": 10.5501,
+          "write_ms": 8.8412,
+          "total_ms": 11098.3,
+          "peak_working_set_bytes": 27348992,
+          "bones": 1,
+          "vertices": 6,
+          "wall_seconds": 11.75
+        },
+        {
+          "schema": 1,
+          "version": "1.2.5",
+          "load_ms": 11186.2,
+          "compile_ms": 10.9715,
+          "write_ms": 4.824,
+          "total_ms": 11202,
+          "peak_working_set_bytes": 26673152,
+          "bones": 1,
+          "vertices": 6,
+          "wall_seconds": 11.218999999997322
+        },
+        {
+          "schema": 1,
+          "version": "1.2.5",
+          "load_ms": 11092.9,
+          "compile_ms": 10.3183,
+          "write_ms": 4.468,
+          "total_ms": 11107.7,
+          "peak_working_set_bytes": 26685440,
+          "bones": 1,
+          "vertices": 6,
+          "wall_seconds": 11.125
+        }
+      ],
+      "median_total_ms": 11107.7,
+      "median_peak_bytes": 26685440,
+      "output_sha256": {
+        "sampling.dx80.vtx": "e3d2b9c385531dae8d48ebbae59aa10c0aee9ba225f5c215126a236c26a3165b",
+        "sampling.dx90.vtx": "d613a26f7b237056991c908e86e06da746e1ccccf19bf5fe9c6b6e2bb04640b3",
+        "sampling.mdl": "b44fea04416fbd54ce127b21a9541a6a209639c882759019509e184ebe718834",
+        "sampling.vvd": "0a10b5b86a3939936a4ceff5d2f121203dcd645cc651280517f0bdb067a62127"
+      }
+    },
+    "after": {
+      "qc": "self-authored 64-channel, 3000-keyframe glTF",
+      "samples": [
+        {
+          "schema": 1,
+          "version": "1.2.6",
+          "load_ms": 1939.61,
+          "compile_ms": 10.635,
+          "write_ms": 8.5072,
+          "total_ms": 1958.75,
+          "peak_working_set_bytes": 27148288,
+          "bones": 1,
+          "vertices": 6,
+          "wall_seconds": 1.9690000000009604
+        },
+        {
+          "schema": 1,
+          "version": "1.2.6",
+          "load_ms": 1900.03,
+          "compile_ms": 10.3987,
+          "write_ms": 3.8609,
+          "total_ms": 1914.29,
+          "peak_working_set_bytes": 27213824,
+          "bones": 1,
+          "vertices": 6,
+          "wall_seconds": 1.9379999999982829
+        },
+        {
+          "schema": 1,
+          "version": "1.2.6",
+          "load_ms": 1901.05,
+          "compile_ms": 10.0995,
+          "write_ms": 3.9371,
+          "total_ms": 1915.09,
+          "peak_working_set_bytes": 27209728,
+          "bones": 1,
+          "vertices": 6,
+          "wall_seconds": 1.9209999999984575
+        }
+      ],
+      "median_total_ms": 1915.09,
+      "median_peak_bytes": 27209728,
+      "output_sha256": {
+        "sampling.dx80.vtx": "e3d2b9c385531dae8d48ebbae59aa10c0aee9ba225f5c215126a236c26a3165b",
+        "sampling.dx90.vtx": "d613a26f7b237056991c908e86e06da746e1ccccf19bf5fe9c6b6e2bb04640b3",
+        "sampling.mdl": "b44fea04416fbd54ce127b21a9541a6a209639c882759019509e184ebe718834",
+        "sampling.vvd": "0a10b5b86a3939936a4ceff5d2f121203dcd645cc651280517f0bdb067a62127"
+      }
+    }
+  },
+  "production_benchmark": {
+    "schema": 1,
+    "cases": [
+      {
+        "qc": "provided complete player Hair QC",
+        "samples": [
+          {
+            "schema": 1,
+            "version": "1.2.6",
+            "load_ms": 2917.39,
+            "compile_ms": 1294.91,
+            "write_ms": 1642.82,
+            "total_ms": 5855.12,
+            "peak_working_set_bytes": 649379840,
+            "bones": 126,
+            "vertices": 572277,
+            "wall_seconds": 5.937000000001717
+          },
+          {
+            "schema": 1,
+            "version": "1.2.6",
+            "load_ms": 2856.85,
+            "compile_ms": 1299.23,
+            "write_ms": 1614.44,
+            "total_ms": 5770.52,
+            "peak_working_set_bytes": 650907648,
+            "bones": 126,
+            "vertices": 572277,
+            "wall_seconds": 5.843000000000757
+          },
+          {
+            "schema": 1,
+            "version": "1.2.6",
+            "load_ms": 2855.24,
+            "compile_ms": 1294.14,
+            "write_ms": 1622.52,
+            "total_ms": 5771.89,
+            "peak_working_set_bytes": 652668928,
+            "bones": 126,
+            "vertices": 572277,
+            "wall_seconds": 5.843000000000757
+          }
+        ],
+        "median_total_ms": 5771.89,
+        "median_peak_bytes": 650907648,
+        "output_sha256": {
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.dx80.vtx": "6784b09aa4eac5f9aaa4df96aa86af5bdd4408096c538c80a241cdaf195bb659",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.dx90.vtx": "ffa801201c8e609eb896cbb378c3db6cc06274883f03bcfc88c04d3d76750d6b",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.mdl": "be50d63fb1270a51b343824c424c964c3f3c576e89982c1648c26f9f0ea6e5fb",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.phy": "ffedc0c0d357acc745781b039b31e55cd2f33d0cc61305220d3292d4728fbcdf",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.vvd": "af4fa2ec5a9e9c4d101e676dd3dfed80f7abdaf8e019e5be0d1194678fee49ac"
+        }
+      },
+      {
+        "qc": "provided complete NPC Hair QC",
+        "samples": [
+          {
+            "schema": 1,
+            "version": "1.2.6",
+            "load_ms": 2756.43,
+            "compile_ms": 572.205,
+            "write_ms": 1625.51,
+            "total_ms": 4954.15,
+            "peak_working_set_bytes": 645332992,
+            "bones": 124,
+            "vertices": 572277,
+            "wall_seconds": 5.03099999999904
+          },
+          {
+            "schema": 1,
+            "version": "1.2.6",
+            "load_ms": 2759.29,
+            "compile_ms": 553.353,
+            "write_ms": 1624.09,
+            "total_ms": 4936.72,
+            "peak_working_set_bytes": 646967296,
+            "bones": 124,
+            "vertices": 572277,
+            "wall_seconds": 5.014999999999418
+          },
+          {
+            "schema": 1,
+            "version": "1.2.6",
+            "load_ms": 2752.5,
+            "compile_ms": 550.945,
+            "write_ms": 1622.48,
+            "total_ms": 4925.93,
+            "peak_working_set_bytes": 645808128,
+            "bones": 124,
+            "vertices": 572277,
+            "wall_seconds": 5.0
+          }
+        ],
+        "median_total_ms": 4936.72,
+        "median_peak_bytes": 645808128,
+        "output_sha256": {
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.dx80.vtx": "678bf975a5ffaa394b50a5806bb00b477389d9f5aefe9b8987dfd5610a91472f",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.dx90.vtx": "b405364b9e8f9960f72466eda512c8e8acbb034947a1f59bdde21f3156a7c85d",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.mdl": "f0066a45274c06f9a62a97b77280f180417f6798044c2438c3ab0fa1c0eabc41",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.phy": "d4d0d3b51f40de90e01c520748f7c4d1d2db10234bd1f992ae26c8912c084af9",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.vvd": "8dadb464fef06e023a343ac5879796280617a2131bf031deb9b69295e77495b1"
+        }
+      }
+    ]
+  },
+  "physics_before_fix": {
+    "body_count": 21,
+    "max_drift_player": 3236.028076171875,
+    "max_drift_npc": 2275.683349609375
+  }
+}

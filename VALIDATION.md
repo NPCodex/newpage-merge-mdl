@@ -1,3 +1,7 @@
+# v1.2.6 当前验证
+
+137 项兼容回归、20 项自动化回归；七项新结果及未完成范围见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。历史验证记录保留如下。
+
 # v1.2.5 编译修复验证 / Compilation regression fix
 
 128 项兼容回归、16 项自动化回归通过。用户原始 player 和 NPC Hair QC 分别输出 126 / 124 根骨骼、572277 顶点；两份均在隔离输出目录通过编译。报告：`tests/reports/v1.2.5-validation.json`。原始 QC、QCI 和 DMX 未修改。

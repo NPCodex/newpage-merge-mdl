@@ -228,7 +228,7 @@ def prepare(args):
                 raise ValueError('Controller target escapes candidate')
             shutil.rmtree(target)
         shutil.copytree(ROOT / name, candidate / name, dirs_exist_ok=True)
-    for name in ('README.md', 'README.en.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', '.gitignore'):
+    for name in ('README.md', 'README.en.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', '.gitignore'):
         shutil.copy2(ROOT / name, candidate / name)
     stamp_version(candidate, base_version, state['project_version'])
     run(sys.executable, candidate / '.github/scripts/refresh_overlay.py', '--base-repository', candidate)
@@ -253,7 +253,7 @@ def prepare(args):
         'Includes checked body/skin capacity, synchronized global clamping, local-hierarchy retention, DMX corner validation and opt-in concave collision decomposition. '
         'Includes model-scoped material merging, meshopt glTF decoding and static unskinned GPU instance expansion. '
         'see RESEARCH.md for measured performance and validation scope.\n\n'
-        'Fixes overly strict bodygroup validation that blocked complete Hair QCs. Includes ordered AppID/VPK resource mounting, direct Draco glTF import, '
+        'Fixes procedural ragdoll collision bodies and adds explicit copy weightlists, include diagnostics, long-scene sampling optimization and packaged-binary regression gates. Includes ordered AppID/VPK resource mounting, direct Draco glTF import, '
         'sampled scale/morph-weight vertex animation with a GMod Lua playback helper, '
         'per-bone ragdoll decomposition, expanded reference differentials, actual GMod '
         'geometry/LOD/facial/physics checks and phase/memory benchmark reports. '
@@ -285,7 +285,7 @@ def package(args):
         for path in sorted(dist.rglob('*')):
             if path.is_file():
                 archive.write(path, Path('NewPageMergeMDL') / path.relative_to(dist))
-        for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md'):
+        for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md'):
             archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         for path in sorted((Path(args.source) / 'integration').rglob('*')):
