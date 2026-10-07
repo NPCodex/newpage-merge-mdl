@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..506b903 100644
+index fed7eaf..a695342 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..506b903 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.7 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.8 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -602653,7 +602653,7 @@ index 0000000..dcf70a5
 +std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights=false);
 +}
 diff --git a/mdlcompiler/main.cpp b/mdlcompiler/main.cpp
-index 710c49b..e1c91f3 100644
+index 710c49b..50a83f8 100644
 --- a/mdlcompiler/main.cpp
 +++ b/mdlcompiler/main.cpp
 @@ -4,6 +4,10 @@
@@ -602683,7 +602683,7 @@ index 710c49b..e1c91f3 100644
  
  #ifdef _WIN32
  #include <fcntl.h>
-@@ -35,23 +48,34 @@ using pulse::fatal::Fail;
+@@ -35,23 +48,36 @@ using pulse::fatal::Fail;
  static const char*& g_stage = pulse::fatal::g_stage;
  
  static void PrintHeader() {
@@ -602721,11 +602721,13 @@ index 710c49b..e1c91f3 100644
 +    std::printf("  -maxbones N  set final output bone limit (1..256)\n");
 +    std::printf("  -Dname value pin a QC variable (NekoMDL syntax)\n");
 +    std::printf("  -playbeep    play a completion/error tone\n");
++    std::printf("  -DontDestroy CE alias for default error-output preservation (no cleanup)\n");
++    std::printf("  -nvtristrip / -usenvtristrip  use the legacy NvTriStrip backend\n");
 +    std::printf("  -reloadhlmv  refresh the matching HLMV window after writing (Windows)\n");
      std::printf("                dx80 is only written when the vtx format is 0\n");
      std::printf("  -includesearchdir <dir>\n");
      std::printf("                extra fallback dir for $include, searched after any\n");
-@@ -64,6 +88,9 @@ static int Usage() {
+@@ -64,6 +90,9 @@ static int Usage() {
      std::printf("                define a .pulseqc script variable ($name$) before the\n");
      std::printf("                script runs; repeatable. The script cannot override it\n");
      std::printf("  -striplods    ignore all $lod and $shadowlod commands\n");
@@ -602735,7 +602737,7 @@ index 710c49b..e1c91f3 100644
      std::printf("  -forcewritevertexdata\n");
      std::printf("                save .vvd/.vtx even when the model has no geometry;\n");
      std::printf("                same as $forcewritevertexdata in the script\n");
-@@ -83,6 +110,8 @@ static int Usage() {
+@@ -83,6 +112,8 @@ static int Usage() {
      std::printf("                @dep <script|include|source> <fnv1a-64 hex> <absolute path>\n");
      std::printf("  -pause        wait for a keypress before exiting (drag-and-drop runs)\n");
      std::printf("  -perfmetrics  print wall time in ms for each stage of the compile\n");
@@ -602744,7 +602746,7 @@ index 710c49b..e1c91f3 100644
      return 1;
  }
  
-@@ -197,9 +226,12 @@ static int RunCompile(int argc, char** argv) {
+@@ -197,9 +228,12 @@ static int RunCompile(int argc, char** argv) {
      g_stage = "command line";
      const char* script = nullptr;
      std::string outdir;
@@ -602757,7 +602759,7 @@ index 710c49b..e1c91f3 100644
      int launchMinLod = -1;
      bool stripLods = false;
      bool forceWriteVertexData = false;
-@@ -209,19 +241,58 @@ static int RunCompile(int argc, char** argv) {
+@@ -209,19 +243,58 @@ static int RunCompile(int argc, char** argv) {
      bool dumpProcedural = false;
      bool scriptFromStdin = false;
      bool dumpDependencies = false;
@@ -602776,7 +602778,7 @@ index 710c49b..e1c91f3 100644
 +            "ignoreeyeballscaling","ignoreeyeballirisscale","ignoredefaultflexkey","collisionbindtoonebone",
 +            "allowcollapsevertexbone","hboxignorechild","computewrinkles","computedeltanormals",
 +            "computenormalsandwrinkles","remapflextoglobal","mostlyopaque","cebonerules",
-+            "uselegacyclampmethod","uselegacystripify"};
++            "uselegacyclampmethod","uselegacystripify","dontdestroy"};
 +        std::string ceName=option.size()>1 && option[0]=='-' ? option.substr(1) : "";
 +        if(std::find(ceFlags.begin(),ceFlags.end(),ceName)!=ceFlags.end()) {
 +            if(ceName=="mostlyopaque") mostlyOpaque=true;
@@ -602816,13 +602818,13 @@ index 710c49b..e1c91f3 100644
          } else if (std::strcmp(argv[i], "-defvar") == 0) {
              // a .pulseqc $definevariable, set from the launch line and pinned
              if (i + 2 >= argc)
-@@ -255,6 +326,24 @@ static int RunCompile(int argc, char** argv) {
+@@ -255,6 +328,24 @@ static int RunCompile(int argc, char** argv) {
                  return Fail("bad option", "-minlod needs a non-negative LOD index, got \"" +
                                                value + "\"");
              }
 +        } else if (std::strcmp(argv[i], "-cullanims") == 0) {
 +            cullAnims = true;
-+        } else if (std::strcmp(argv[i],"-nvtristrip")==0) {
++        } else if (option=="-nvtristrip" || option=="-usenvtristrip") {
 +            cePrelude += "$UseLegacyStripify\n";
 +        } else if (std::strcmp(argv[i],"-reloadhlmv")==0) {
 +            reloadHlmv=true;
@@ -602841,7 +602843,7 @@ index 710c49b..e1c91f3 100644
          } else if (std::strcmp(argv[i], "-nodx80") == 0) {
              noDx80 = true;
          } else if (std::strcmp(argv[i], "-striplods") == 0) {
-@@ -274,6 +363,9 @@ static int RunCompile(int argc, char** argv) {
+@@ -274,6 +365,9 @@ static int RunCompile(int argc, char** argv) {
              pulse::dependencies::g_enabled = true;
          } else if (std::strcmp(argv[i], "-dumpmaterials") == 0) {
              dumpMaterials = true;
@@ -602851,7 +602853,7 @@ index 710c49b..e1c91f3 100644
          } else if (std::strcmp(argv[i], "-perfmetrics") == 0) {
              pulse::perf::g_enabled = true;
          } else if (std::strcmp(argv[i], "-pause") == 0) {
-@@ -307,16 +399,34 @@ static int RunCompile(int argc, char** argv) {
+@@ -307,16 +401,34 @@ static int RunCompile(int argc, char** argv) {
                      std::string(script) + ": only .pulseqc/.qc compile scripts are supported");
  
      std::string err;
@@ -602886,7 +602888,7 @@ index 710c49b..e1c91f3 100644
      if (forceWriteVertexData)
          input.forceWriteVertexData = true;
      if (stripLods)
-@@ -362,6 +472,11 @@ static int RunCompile(int argc, char** argv) {
+@@ -362,6 +474,11 @@ static int RunCompile(int argc, char** argv) {
      }
  
      if (!verify) {
@@ -602898,7 +602900,7 @@ index 710c49b..e1c91f3 100644
          g_stage = "write";
          // dx80 only ships with the legacy archetype; Alien Swarm+ (archetype 1)
          // dropped DirectX 8, and $nodx80 / -nodx80 opt out explicitly.
-@@ -374,6 +489,18 @@ static int RunCompile(int argc, char** argv) {
+@@ -374,6 +491,18 @@ static int RunCompile(int argc, char** argv) {
          pulse::dependencies::Print();
      auto tWrite = Clock::now();
      g_stage = "done";
@@ -602917,7 +602919,7 @@ index 710c49b..e1c91f3 100644
  
      // lodFlag is a bit per LOD. The pool is shared, so a decimated LOD adds no
      // verts to it - only a replacemodel LOD does. Per-LOD = verts it draws.
-@@ -398,6 +525,24 @@ static int RunCompile(int argc, char** argv) {
+@@ -398,6 +527,24 @@ static int RunCompile(int argc, char** argv) {
          pulse::perf::Record("total", "whole compile", ms(t0, tWrite));
          pulse::perf::Report();
      }
@@ -602942,7 +602944,7 @@ index 710c49b..e1c91f3 100644
      return 0;
  }
  
-@@ -430,6 +575,14 @@ int main(int argc, char** argv) {
+@@ -430,6 +577,14 @@ int main(int argc, char** argv) {
      } catch (...) {
          rc = Fail("internal error", "unknown C++ exception");
      }
@@ -603112,7 +603114,7 @@ index d460e13..cca5a2a 100644
              // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
              if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index 4ef35e3..6bef468 100644
+index 4ef35e3..21f8610 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
 @@ -29,7 +29,9 @@
@@ -604260,11 +604262,14 @@ index 4ef35e3..6bef468 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,19 +9342,84 @@ struct Command {
+@@ -8859,19 +9342,101 @@ struct Command {
      bool (*fn)(Ctx&, const Token&);
  };
  
 +bool CmdCeOption(Ctx& c, const Token& cmd) {
++    // CE crash-cleanup suppression is already the project default. Accept the
++    // spelling without changing write limits or promising atomic mid-write recovery.
++    if (Lower(cmd.text) == "$dontdestroy") return true;
 +    const std::string name=Lower(cmd.text.substr(1));
 +    if(name=="dmxcompatibility") {
 +        std::string mode;
@@ -604319,6 +604324,17 @@ index 4ef35e3..6bef468 100644
 +    return true;
 +}
 +
++// Older Neko QCs retain these directives. Neko 2.3.0 accepts both as
++// warning-only directives: FBX is automatic and capsule generation is skipped.
++// Consume no arguments so a following command on the same line stays intact.
++bool CmdNekoLegacyDirective(Ctx& c, const Token& cmd) {
++    const bool capsules = Lower(cmd.text) == "$forcecapsules";
++    std::fprintf(stderr, "warning: %s(%d): %s %s\n", c.file.c_str(), cmd.line,
++                 cmd.text.c_str(), capsules ? "is not supported; skipping (Neko compatibility)"
++                                           : "is deprecated; FBX import is automatic");
++    return true;
++}
++
  constexpr Command kCommands[] = {
      {"$break", CmdBreak},
      {"$assert", CmdAssert},
@@ -604329,6 +604345,9 @@ index 4ef35e3..6bef468 100644
 +    {"$prerenamematerial", CmdPreRenameMaterial},
 +    {"$discardvertexanimationnormals", CmdDiscardVertexAnimationNormals},
 +    {"$nofastgltf", CmdNoFastGltf},
++    {"$dontdestroy", CmdCeOption},
++    {"$prefer_fbx", CmdNekoLegacyDirective},
++    {"$forcecapsules", CmdNekoLegacyDirective},
      {"$definevariable", CmdDefineVariable},
      {"$redefinevariable", CmdRedefineVariable},
 +    {"$setvariable", CmdSetVariable},
@@ -604345,7 +604364,7 @@ index 4ef35e3..6bef468 100644
      {"$else", CmdElifOutside},
      {"$switch", CmdSwitch},
      {"$case", CmdCaseOutside},
-@@ -8887,6 +9435,7 @@ constexpr Command kCommands[] = {
+@@ -8887,6 +9452,7 @@ constexpr Command kCommands[] = {
      {"$body", CmdLegacyBody},
      {"$bodygroup", CmdLegacyBody},
      {"$model", CmdModel},
@@ -604353,7 +604372,7 @@ index 4ef35e3..6bef468 100644
      {"$modelgrouppreset", CmdModelGroupPreset},
      {"$bodygrouppreset", CmdModelGroupPreset},
      {"$datamodeljoints", CmdDataModelJoints},
-@@ -8905,6 +9454,7 @@ constexpr Command kCommands[] = {
+@@ -8905,6 +9471,7 @@ constexpr Command kCommands[] = {
      {"$includemodel", CmdIncludeModel},
      {"$cmdlist", CmdCmdList},
      {"$defaultfps", CmdDefaultFps},
@@ -604361,7 +604380,7 @@ index 4ef35e3..6bef468 100644
      {"$motionrollback", CmdMotionRollback},
      {"$nosequence", CmdNoSequence},
      {"$defaultfadein", CmdDefaultFadeIn},
-@@ -8927,11 +9477,44 @@ constexpr Command kCommands[] = {
+@@ -8927,11 +9494,44 @@ constexpr Command kCommands[] = {
      {"$vtxformat", CmdVtxFormat},
      {"$nodx80", CmdNoDx80},
      {"$modelbudget", CmdModelBudget},
@@ -604406,7 +604425,7 @@ index 4ef35e3..6bef468 100644
      {"$surfaceprop", CmdSurfaceProp},
      {"$contents", CmdContents},
      {"$jointcontents", CmdJointContents},
-@@ -8977,6 +9560,7 @@ constexpr Command kCommands[] = {
+@@ -8977,6 +9577,7 @@ constexpr Command kCommands[] = {
      {"$jigglebone", CmdJiggleBone},
      {"$culljigglebones", CmdCullJiggleBones},
      {"$driverbone", CmdDriverBone},
@@ -604414,7 +604433,7 @@ index 4ef35e3..6bef468 100644
      {"$driveraimat", CmdDriverAimAt},
      {"$proceduralbones", CmdProceduralBones},
      {"$realignbones", CmdRealignBones},
-@@ -8989,6 +9573,7 @@ constexpr Command kCommands[] = {
+@@ -8989,6 +9590,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},
@@ -604422,7 +604441,7 @@ index 4ef35e3..6bef468 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
-@@ -9039,7 +9624,11 @@ bool RunCommands(Ctx& c) {
+@@ -9039,7 +9641,11 @@ bool RunCommands(Ctx& c) {
          if (!ExpandCommandVars(c))
              return false;
  
@@ -604434,7 +604453,7 @@ index 4ef35e3..6bef468 100644
          if (cmd.quoted || cmd.text[0] != '$')
              return c.Fail(cmd.line, "expected a $command, got \"" + cmd.text + "\"");
          c.pos++;
-@@ -9140,9 +9729,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9140,9 +9746,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      seedDirs(includeDirs, c.launchIncludeDirs);
      seedDirs(fileDirs, c.launchSearchDirs);
  
@@ -604447,7 +604466,7 @@ index 4ef35e3..6bef468 100644
      // the root of the $include cycle check
      std::error_code ec;
      const fs::path canon = fs::weakly_canonical(path, ec);
-@@ -9170,6 +9762,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9170,6 +9779,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      out.upAxisY = source::DmxUpAxisY();
  
      // $renamemorph: before anything below resolves a morph by name

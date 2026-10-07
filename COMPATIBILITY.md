@@ -13,6 +13,8 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
+Current source-by-source status and priorities: [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Historical investigation sections are not current TODOs.
+
 ## Implemented and tested
 
 | Feature | Behavior |
@@ -60,7 +62,7 @@ into unconditional `$alwayscollapse` and protects vertex bones unless
 | Area | Remaining work / needed specification |
 | --- | --- |
 | Tools++ syntax parity | The self-authored animation extensions have documented semantics and passing tests, but their syntax and output are not certified identical to StudioMDL++. |
-| `gameinfo.txt` appid mounting | Search-path rules and installed-game fixtures. |
+| `gameinfo.txt` appid mounting | Ordered search paths, Steam library/AppID resolution and VPK loading are implemented; see resources.cpp and current fixtures. |
 | Bone collapse rules | `$CEBoneRules` is opt-in; full skeletal/procedural/LOD parity still needs larger fixtures. |
 | Bounding-box warnings / cmdlist checks | Diagnostic parity and extreme-input fixtures; dynamic vectors already avoid fixed-array overflow. |
 | CE face/flex extensions | Implemented below; arbitrary corrective rigs, custom normals, eyelid setup and engine rendering are not certified identical. |
@@ -78,13 +80,12 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 127 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 150 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
 Synthetic DMX tests cover smooth normals, wrinkle switches and changed bind-pose
-remapping. Engine loading, large-model stress tests and general whole-file binary
-parity with closed-source compilers remain unverified. There are also 16 automation
+remapping. GMod samples and large-model stress inputs have bounded validation; see IMPROVEMENTS.md. General whole-file binary parity with closed-source compilers is not claimed. There are also 20 automation
 unit tests. The user-provided Alyx QC was recompiled successfully (113 bones,
 27571 VVD vertices) with outputs isolated from the game directory.
 
@@ -136,6 +137,7 @@ before QC commands. `$PUSHDProcedural` is a QC command only.
 
 | Commands / options | Implemented behavior |
 | --- | --- |
+| `$DontDestroy`, `-DontDestroy` | Accepts the project's default no-cleanup-on-error policy. Parsing/preflight failures retain prior output; this does not promise atomic recovery from a mid-write OS failure. |
 | `$OverrideFlexControllers` | Reuses an existing controller index and replaces its type and range. |
 | `$AllowDuplicationFlexControllers` | Retains distinct controller table entries with the same name. |
 | `$AddInvStudioFlexes`, model-block `InvertControllers` | Adds `_Inv` morphs, negative vertex deltas and negative flex rules, including stereo descriptors. Referenced ordinary controllers use range -1..1. Complex DMX controller remaps need further parity testing. |
@@ -144,13 +146,13 @@ before QC commands. `$PUSHDProcedural` is a QC command only.
 | `$DefaqScale`, `$IgnoreDMXDefaq`, flex `fscale value` | Multiplies flex position and normal deltas by 10; DMX can opt out. Per-VTA-key `fscale` overrides the global multiplier and supports negative values. |
 | `$IgnoreDefaultFlexKey` | Opts out of baking a nonzero `defaultflex` into the mesh. Otherwise default deltas become the basis and other flexes are rebased. Frame 0 uses the original mesh. |
 | `$EyeballScale positive`, `$IgnoreEyeballScaling`, `$IgnoreEyeballIrisScale` | Controls eye origin scale and independent iris scaling. CE eye switches preserve the authored eye radius. Without these switches existing PulseModel radius scaling remains. Eyeballs authored inside a model/bodygroup block stay scoped to that mesh. |
-| `$IgnoreEyelid` | Skips automatic eyelid-to-eye binding while keeping flex descriptors, keys and manual rules. Full engine eyelid behavior remains unverified. |
+| `$IgnoreEyelid` | Skips automatic eyelid-to-eye binding while keeping flex descriptors, keys and manual rules. Bounded GMod eyelid cases are tested; other rigs need specific checks. |
 | `$ComputeDeltaNormals`, `$ComputeWrinkles`, `$ComputeNormalsAndWrinkles` | Computes smooth base/morph normals and wrinkles from DMX combo wrinkle scales. Normal changes include stationary vertices. |
 | Per-model `ComputeDeltaNormals`, `ComputeWrinkles`, `ComputeNormalsAndWrinkles` and `Ignore...` forms | Overrides global computation for that source. Disabling wrinkle computation preserves authored wrinkle fields. |
 | `$RemapFlexToGlobal` | Re-skins DMX posed vertices/normals to compiled bind space, then subtracts the transformed base. A root bind rotation test matches CE's (0,-0.25,0) result. |
 | `NoAutoDMXRulesLegacy` | Clears previous automatic rigs and controller declarations. Deltas stay loaded; unreferenced flexes can still be culled. Existing `NoAutoDMXRules` keeps PulseModel's per-source suppression semantics. CE instead suppresses previous auto rules in the observed two-model case; this difference is intentional to preserve existing scripts. |
 | `BindToOneBone`, `$CollisionBindToOneBone` | Uses each vertex's first imported influence at weight 1. The collision option applies to collision source loads; the per-model option changes the private render source. |
-| `RenameMat old new`, `RenameMatByPrefix prefix` | Renames materials only on the private source for that body choice. Many-to-one material merges fail explicitly to avoid overlapping mesh ranges. |
+| `RenameMat old new`, `RenameMatByPrefix prefix` | Renames materials only on the private source for that body choice. Many-to-one merges remap geometry, morphs and face ranges; split/LOD regressions cover this path. |
 | `$body` / `$bodygroup studio` face blocks | Accepts model face/flex blocks and per-reference options; each studio entry loads a private source. |
 | `$CEBoneRules`, `$AllowCollapseVertexBone` | Explicit CE/++ retention mode protects weighted bones by default; force collapse wins over keep/definebone. AllowCollapseVertexBone selects aggressive culling and permits vertex-bone collapse, retaining animation/IK/attachment/procedural dependencies. |
 | `$HBoxIgnoreChild` | Omits child origins from autogenerated hitbox bounds. |
@@ -172,6 +174,9 @@ is a behavioral reference, not bundled or called by this compiler.
 | Entry | Implemented behavior |
 | --- | --- |
 | glTF / GLB / VRM | cgltf fast parser, scene transforms, skins, named morph targets, optional UVs/morph normals; missing base normals are generated. Assimp 6.0.4 imports additional supported scene formats. Existing ufbx FBX import remains. |
+| `$RenameMorph old new` | Existing source morph rename support; missing names currently error rather than matching Neko's permissive no-match behavior. |
+| `$prefer_fbx`, `$forcecapsules` | v1.2.8 accepts both with warnings and no arguments. FBX import is automatic; capsules are not generated. |
+| `-usenvtristrip` | v1.2.8 historical alias for `-nvtristrip`, selecting NvTriStrip. |
 | `$NoFastGltf` | Uses Assimp instead of cgltf for subsequent glTF references. Parsed scene geometry is shared between private InNode loads. |
 | `studio file InNode name` | Selects meshes on that scene node and descendants; a missing node is an error. Supported by body/model/bodygroup and NekoModel; available for FBX too. |
 | `$FPS N`, `Pick name`, `SampleRate N` | FPS sets subsequent default animation playback and scene sampling. Pick aliases blockname. SampleRate changes import sampling, independently of playback FPS. Default clip is the first non-BindPose animation. Rates must be finite, positive and at most 1000. FBX keeps its original scene rate unless FPS/SampleRate explicitly overrides it. |

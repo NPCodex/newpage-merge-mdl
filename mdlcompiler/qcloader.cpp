@@ -9343,6 +9343,9 @@ struct Command {
 };
 
 bool CmdCeOption(Ctx& c, const Token& cmd) {
+    // CE crash-cleanup suppression is already the project default. Accept the
+    // spelling without changing write limits or promising atomic mid-write recovery.
+    if (Lower(cmd.text) == "$dontdestroy") return true;
     const std::string name=Lower(cmd.text.substr(1));
     if(name=="dmxcompatibility") {
         std::string mode;
@@ -9397,6 +9400,17 @@ bool CmdCeOption(Ctx& c, const Token& cmd) {
     return true;
 }
 
+// Older Neko QCs retain these directives. Neko 2.3.0 accepts both as
+// warning-only directives: FBX is automatic and capsule generation is skipped.
+// Consume no arguments so a following command on the same line stays intact.
+bool CmdNekoLegacyDirective(Ctx& c, const Token& cmd) {
+    const bool capsules = Lower(cmd.text) == "$forcecapsules";
+    std::fprintf(stderr, "warning: %s(%d): %s %s\n", c.file.c_str(), cmd.line,
+                 cmd.text.c_str(), capsules ? "is not supported; skipping (Neko compatibility)"
+                                           : "is deprecated; FBX import is automatic");
+    return true;
+}
+
 constexpr Command kCommands[] = {
     {"$break", CmdBreak},
     {"$assert", CmdAssert},
@@ -9407,6 +9421,9 @@ constexpr Command kCommands[] = {
     {"$prerenamematerial", CmdPreRenameMaterial},
     {"$discardvertexanimationnormals", CmdDiscardVertexAnimationNormals},
     {"$nofastgltf", CmdNoFastGltf},
+    {"$dontdestroy", CmdCeOption},
+    {"$prefer_fbx", CmdNekoLegacyDirective},
+    {"$forcecapsules", CmdNekoLegacyDirective},
     {"$definevariable", CmdDefineVariable},
     {"$redefinevariable", CmdRedefineVariable},
     {"$setvariable", CmdSetVariable},

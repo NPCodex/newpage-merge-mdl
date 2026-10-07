@@ -1,3 +1,25 @@
+# Current integration status (v1.2.8)
+
+The investigations below are historical evidence. Current status is tracked in
+FEATURE_MATRIX.md and COMPATIBILITY.md. AppID mounts, explicit bone retention,
+NvTriStrip/global clamping and seven StudioMDL++ animation cases now have
+implementations/validation; earlier unresolved lists are not current TODOs.
+
+New Neko 2.3.0 probes confirm prefer_fbx warns that it is deprecated and
+forcecapsules warns and skips. v1.2.8 accepts those directives without changing
+geometry and supports the historical usenvtristrip spelling. Three Neko regressions
+check unchanged serialized geometry and existing FBX/strip behavior.
+
+CE's log advertises a replacemesh repair, but candidate one/two-argument LOD
+probes fail while the corresponding replacemodel fixture succeeds. No ASCII
+case-insensitive replacemesh string was found in the supplied executable. This
+is unresolved evidence, not proof of a particular syntax or implementation.
+
+The two 2012/2013 package executables have the same SHA256. Track them as one
+compiler with separate game dependencies; see RESEARCH.md.
+
+---
+
 # StudioMDL++ compatibility investigation
 
 The user supplied a local executable on 2026-10-06. It identifies itself as

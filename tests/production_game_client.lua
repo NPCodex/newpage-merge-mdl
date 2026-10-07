@@ -73,7 +73,9 @@ local function nextCase()
     current.triangles=0
     for _,mesh in ipairs(meshes or {}) do current.triangles=current.triangles+#mesh.triangles/3 end
     current.bones=model:GetBoneCount();current.flexes=model:GetFlexNum();current.skin=model:GetSkin()
-    ready=RealTime()+.2
+    -- Large production materials may still upload after Material():IsError().
+    -- Warm the first view before capturing it; later cases reuse loaded textures.
+    ready=RealTime()+(current.name=="neutral" and 2 or .2)
 end
 hook.Add("RenderScene","newpage_production_validation",function()
     if not IsValid(model) then return end

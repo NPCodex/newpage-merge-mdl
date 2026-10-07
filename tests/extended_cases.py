@@ -2,6 +2,39 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def test_ce_dontdestroy_acceptance_and_failed_compile_preserve_outputs(self):
+  qc='$modelname preserved\n$body m mesh.smd\n'
+  self.scene_qc(qc);baseline={p.name:p.read_bytes() for p in (self.root/'models').glob('preserved.*')}
+  for directive,flags in [('$DontDestroy\n',()),('',('-DontDestroy',)),('',('-dontdestroy',))]:
+   output=self.scene_qc(directive+qc,*flags)
+   self.assertNotIn('ignoring unknown option',output)
+   self.scene_qc(directive+qc+'$scale invalid\n',*flags,success=False)
+   for name,data in baseline.items():self.assertEqual((self.root/'models'/name).read_bytes(),data)
+
+ def test_neko_legacy_directives_keep_geometry_and_same_line_commands(self):
+  qc='$modelname legacy\n$body m mesh.smd\n$sequence idle mesh.smd\n'
+  self.scene_qc(qc);baseline={p.name:p.read_bytes() for p in (self.root/'models').glob('legacy.*')}
+  for directives in ('$forcecapsules\n','$prefer_fbx\n','$FORCECAPSULES $PREFER_FBX\n'):
+   output=self.scene_qc(directives+qc)
+   self.assertIn('warning:',output)
+   for name,data in baseline.items():self.assertEqual((self.root/'models'/name).read_bytes(),data)
+
+ def test_neko_deprecated_fbx_directive_still_imports_fbx(self):
+  self.write('hierarchy.fbx',(Path(__file__).parent/'fixtures/hierarchy.fbx').read_text())
+  qc='$modelname legacy_fbx\n$body m hierarchy.fbx\n'
+  self.scene_qc(qc);data=(self.root/'models/legacy_fbx.vvd').read_bytes()
+  output=self.scene_qc('$prefer_fbx\n'+qc)
+  self.assertIn('FBX import is automatic',output)
+  self.assertEqual((self.root/'models/legacy_fbx.vvd').read_bytes(),data)
+
+ def test_old_neko_strip_option_matches_current_backend(self):
+  qc='$modelname legacy_strip\n$body m mesh.smd\n'
+  self.scene_qc(qc,'-nvtristrip');data=(self.root/'models/legacy_strip.dx90.vtx').read_bytes()
+  for flag in ('-usenvtristrip','-UseNvTriStrip'):
+   output=self.scene_qc(qc,flag)
+   self.assertNotIn('ignoring unknown option',output)
+   self.assertEqual((self.root/'models/legacy_strip.dx90.vtx').read_bytes(),data)
+
  def test_output_validator_rejects_truncation_offsets_and_checksum_mismatch(self):
   from validate_outputs import validate
   self.scene_qc('$modelname integrity\n$body m mesh.smd\n')

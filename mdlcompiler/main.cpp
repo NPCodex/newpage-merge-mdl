@@ -75,6 +75,8 @@ static int Usage() {
     std::printf("  -maxbones N  set final output bone limit (1..256)\n");
     std::printf("  -Dname value pin a QC variable (NekoMDL syntax)\n");
     std::printf("  -playbeep    play a completion/error tone\n");
+    std::printf("  -DontDestroy CE alias for default error-output preservation (no cleanup)\n");
+    std::printf("  -nvtristrip / -usenvtristrip  use the legacy NvTriStrip backend\n");
     std::printf("  -reloadhlmv  refresh the matching HLMV window after writing (Windows)\n");
     std::printf("                dx80 is only written when the vtx format is 0\n");
     std::printf("  -includesearchdir <dir>\n");
@@ -256,7 +258,7 @@ static int RunCompile(int argc, char** argv) {
             "ignoreeyeballscaling","ignoreeyeballirisscale","ignoredefaultflexkey","collisionbindtoonebone",
             "allowcollapsevertexbone","hboxignorechild","computewrinkles","computedeltanormals",
             "computenormalsandwrinkles","remapflextoglobal","mostlyopaque","cebonerules",
-            "uselegacyclampmethod","uselegacystripify"};
+            "uselegacyclampmethod","uselegacystripify","dontdestroy"};
         std::string ceName=option.size()>1 && option[0]=='-' ? option.substr(1) : "";
         if(std::find(ceFlags.begin(),ceFlags.end(),ceName)!=ceFlags.end()) {
             if(ceName=="mostlyopaque") mostlyOpaque=true;
@@ -328,7 +330,7 @@ static int RunCompile(int argc, char** argv) {
             }
         } else if (std::strcmp(argv[i], "-cullanims") == 0) {
             cullAnims = true;
-        } else if (std::strcmp(argv[i],"-nvtristrip")==0) {
+        } else if (option=="-nvtristrip" || option=="-usenvtristrip") {
             cePrelude += "$UseLegacyStripify\n";
         } else if (std::strcmp(argv[i],"-reloadhlmv")==0) {
             reloadHlmv=true;

@@ -37,7 +37,10 @@ models=[]
 for i,qc in enumerate(a.qc):
     qc=Path(qc).resolve();name=a.name+('_player' if i==0 else '_npc' if i==1 else '_'+str(i))
     text=qc.read_text(encoding='utf-8-sig')+'\n$modelname newpage_production_validation/'+name+'.mdl\n$OutDir "'+game.as_posix()+'"\n'
-    if a.material_dir:text=text.replace(a.material_prefix,destination_prefix)
+    if a.material_dir:
+        # Included QCIs may declare their material paths outside the root text.
+        # Search the isolated namespace first without changing the original QCI.
+        text='$cdmaterials "'+destination_prefix+'"\n'+text.replace(a.material_prefix,destination_prefix)
     if a.test_lod_factor is not None:text+='\n$lod 20 { decimateallmodel '+str(a.test_lod_factor)+' }\n'
     result=subprocess.run([str(Path(a.compiler).resolve()),str(qc),'-stdin','-game',str(game)],input=text,text=True,capture_output=True,errors='replace')
     (work/(name+'.log')).write_text(result.stdout+result.stderr,encoding='utf-8')

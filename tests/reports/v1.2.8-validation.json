@@ -1,0 +1,327 @@
+{
+  "schema": 1,
+  "version": "1.2.8",
+  "compatibility_tests": 150,
+  "automation_tests": 20,
+  "compiler_sha256": "7a47b823072a4ace24d06dfc70478e797c43a1bcf7f9bf546778b38ae06ba108",
+  "production_model": "Plum playermodel_f_compile2_hair.qc",
+  "compile": {
+    "schema": 1,
+    "version": "1.2.8",
+    "load_ms": 3531.38,
+    "compile_ms": 1307.62,
+    "write_ms": 1612.61,
+    "total_ms": 6451.61,
+    "peak_working_set_bytes": 652288000,
+    "bones": 126,
+    "vertices": 572277,
+    "stages": [
+      {
+        "tag": "load",
+        "name": "dmx parse",
+        "ms": 1209.51,
+        "calls": 58
+      },
+      {
+        "tag": "mesh",
+        "name": "NormalizeDmxNormals",
+        "ms": 13.8136,
+        "calls": 57
+      },
+      {
+        "tag": "mesh",
+        "name": "DefineUniqueVertices",
+        "ms": 281.184,
+        "calls": 56
+      },
+      {
+        "tag": "mesh",
+        "name": "LoadVertices",
+        "ms": 102.709,
+        "calls": 57
+      },
+      {
+        "tag": "mesh",
+        "name": "faceSets",
+        "ms": 235.368,
+        "calls": 57
+      },
+      {
+        "tag": "build",
+        "name": "UnifyIndices",
+        "ms": 46.4464,
+        "calls": 57
+      },
+      {
+        "tag": "build",
+        "name": "sort verts/faces",
+        "ms": 157.177,
+        "calls": 57
+      },
+      {
+        "tag": "build",
+        "name": "CalcModelTangentSpaces",
+        "ms": 198.449,
+        "calls": 57
+      },
+      {
+        "tag": "load",
+        "name": "BuildIndividualMeshes",
+        "ms": 535.857,
+        "calls": 57
+      },
+      {
+        "tag": "load",
+        "name": "LoadMeshes",
+        "ms": 1664.55,
+        "calls": 57
+      },
+      {
+        "tag": "load",
+        "name": "dmx -> source",
+        "ms": 1752.14,
+        "calls": 58
+      },
+      {
+        "tag": "mesh",
+        "name": "CollapseBaseNormals",
+        "ms": 397.878,
+        "calls": 56
+      },
+      {
+        "tag": "pass",
+        "name": "CullAnimations",
+        "ms": 0.0943,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "LoadLodSources",
+        "ms": 0.0114,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "ApplyBindPoseBake",
+        "ms": 0.0011,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "TagUsedBones",
+        "ms": 30.4713,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "BuildGlobalBonetable",
+        "ms": 9.7179,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "CollapseBones",
+        "ms": 3.7619,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "RebuildLocalPose",
+        "ms": 0.0238,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "MapSources",
+        "ms": 22.6195,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "RealignBones",
+        "ms": 0.0332,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "RemapVertices",
+        "ms": 60.598,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "UnifyLods",
+        "ms": 122.686,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "BuildCollisionModel",
+        "ms": 7.202,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "RemapAnimations",
+        "ms": 15.0407,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "ProcessAnimations",
+        "ms": 0.4395,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "RemapVertexAnimations",
+        "ms": 32.2267,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "LockBoneLengths",
+        "ms": 0.0001,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "CullFlex",
+        "ms": 0.2136,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "BuildOutputMeshes",
+        "ms": 165.152,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "SetupHitBoxes",
+        "ms": 0.0671,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "CompressAnimations",
+        "ms": 13.416,
+        "calls": 1
+      },
+      {
+        "tag": "pass",
+        "name": "CalcSequenceBoundingBoxes",
+        "ms": 814.001,
+        "calls": 1
+      },
+      {
+        "tag": "write",
+        "name": "BuildVvd",
+        "ms": 19.9633,
+        "calls": 1
+      },
+      {
+        "tag": "vtx",
+        "name": "strip build",
+        "ms": 338.645,
+        "calls": 2
+      },
+      {
+        "tag": "vtx",
+        "name": "serialize",
+        "ms": 81.2072,
+        "calls": 2
+      },
+      {
+        "tag": "write",
+        "name": "BuildVtx",
+        "ms": 893.299,
+        "calls": 1
+      },
+      {
+        "tag": "write",
+        "name": "FixupBuffers",
+        "ms": 441.055,
+        "calls": 1
+      },
+      {
+        "tag": "total",
+        "name": "script load",
+        "ms": 3531.38,
+        "calls": 1
+      },
+      {
+        "tag": "total",
+        "name": "compile",
+        "ms": 1307.62,
+        "calls": 1
+      },
+      {
+        "tag": "total",
+        "name": "write",
+        "ms": 1612.61,
+        "calls": 1
+      },
+      {
+        "tag": "total",
+        "name": "whole compile",
+        "ms": 6451.61,
+        "calls": 1
+      }
+    ]
+  },
+  "game": {
+    "schema": 1,
+    "engine": "GarrysMod x64",
+    "render_cases": 28,
+    "face_differences": [
+      {
+        "model": "models/newpage_production_validation/plum_v128_player.mdl",
+        "noise_pixels": 0,
+        "expression_pixels": 21773
+      }
+    ],
+    "lod_reduction_required": false,
+    "geometry_and_selection_verified": true,
+    "full_material_rendering_verified": true,
+    "material_probes": [
+      {
+        "missing": [],
+        "model": "models/newpage_production_validation/plum_v128_player.mdl"
+      }
+    ],
+    "physics": [
+      {
+        "model": "models/newpage_production_validation/plum_v128_player.mdl",
+        "bodies": 18,
+        "max_horizontal_drift": 40.9664306640625,
+        "max_final_speed": 0
+      }
+    ]
+  },
+  "supplied_material_files": {
+    "vmt": 93,
+    "vtf": 94
+  },
+  "new_features": [
+    "Neko prefer_fbx warning-only directive",
+    "Neko forcecapsules warning-only directive",
+    "Historical usenvtristrip alias",
+    "CE DontDestroy default-preservation alias"
+  ],
+  "remaining_integration": [
+    "CE replacemesh reference syntax/behavior",
+    "Neko missing RenameMorph tolerance and complex driver parent parity",
+    "Assimp format and interpolation parity",
+    "Mid-write file-set recovery"
+  ],
+  "test_scope": "One supplied Plum player model, 28 rendering states, default geometry with no added generated LOD; jiggle enabled. No claim of complete format/game parity.",
+  "game_outputs_sha256": {
+    "plum_v128_player.dx80.vtx": "6e8553614a1815209a46151bcc9936685bbc97648d9a39b2eef729905dd7ad20",
+    "plum_v128_player.dx90.vtx": "352f69f155e6605bea0d16f2a94a3f6c38c223440a732a069a5bde36ce2fe490",
+    "plum_v128_player.mdl": "495a2b48e2c596d154e466cc20dcd3c4689ac72ed02b55c42f21ff3069eced38",
+    "plum_v128_player.phy": "e911d20cbea1ed3e99903f73f0cbbf1e1f63342ea058e6f4e8590d5fa49cb961",
+    "plum_v128_player.vvd": "303901c89c3a86569d57a19de9a32d20ab8e5a0d841b840e4e29a886268ca765"
+  },
+  "game_outputs_match_final_compiler": true
+}

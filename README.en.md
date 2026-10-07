@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.7
+# NewPageMergeMDL v1.2.8
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.7.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.8.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -12,6 +12,12 @@ The compiler is `NewPageMergeMDL.exe`; the decompiler is
 `NewPageMergeMDL-Decompiler.exe`. Windows x64 and Linux builds are verified by
 GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
+
+The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+
+## v1.2.8: five-compiler integration focus
+
+Restores warning-only acceptance of older Neko `$prefer_fbx` and `$forcecapsules` directives, matching Neko 2.3.0 without changing import or generating capsules. `-usenvtristrip` selects the existing legacy backend. CE `$DontDestroy` / `-DontDestroy` accepts the default output-preservation policy. All 150 compatibility tests pass. The two StudioMDL 2013 archives count as one compiler with different dependencies.
 
 ## v1.2.7: reference flex policies and production validation
 
@@ -134,16 +140,18 @@ See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESE
 
 ## Unfinished features and known issues
 
-This list reflects v1.2.7 implementation and validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
+This list reflects v1.2.8 implementation and existing validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
 
 | Area | Current status and remaining work |
 | --- | --- |
-| Skinned instances and mesh swaps | Skinned `EXT_mesh_gpu_instancing` and animated mesh swaps remain unsupported. Static unskinned instances are supported. |
-| VRM runtime behavior | Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
+| Integration gaps | CE replacemesh semantics remain unconfirmed. The DontDestroy interface accepts default preservation; file-set protection on mid-write failures still needs work. Neko missing RenameMorph tolerance and complex driver parents need comparisons. See FEATURE_MATRIX.md. |
+| Extra extension: skinned instances and mesh swaps | These are not prerequisites for five-compiler integration. Skinned `EXT_mesh_gpu_instancing` and animated mesh swaps remain unsupported. Static unskinned instances are supported. |
+| Extra extension: VRM runtime behavior | These are not prerequisites for five-compiler integration. Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
 | Import format and interpolation coverage | cgltf and Assimp 6.0.4 imports are implemented, but not every Assimp format, complex FBX/VRM hierarchy or fallback interpolation path has been tested. |
 | Complex rig and collision coverage | IK, jiggle, drivers, correctives, eyelids, combined facial rigs and per-bone VHACD have regressions. Arbitrary complex hierarchies, hard edges, authored normals, controller remapping and complex collisions still need model-specific checks. Single-bone weighting remains experimental. |
-| Hair material validation | The supplied player/NPC Hair models pass compilation, output consistency and GMod geometry/physics checks. Their material assets are currently missing, so complete shading remains unverified. Claudia has real-material face, eyelid, generated test-LOD and ragdoll validation; this does not replace Hair material testing. |
 | Cross-game and reference coverage | Specific GMod samples are tested. Other games and shaders need independent checks; not all reference compiler syntax edge cases, diagnostic text or performance scenarios are covered. |
+
+v1.2.8 production validation uses Plum. Its original Hair QC and serialized output checks pass. Supplied materials load in GMod without missing entries; 28 captures cover bodygroups, skins and facial changes, and all 18 ragdoll bodies settle stably. The initial capture was retested with material warm-up. Future production validation uses Plum rather than Claudia. See the [v1.2.8 validation record](tests/reports/v1.2.8-validation.json).
 
 Removed from the issue list: Draco/meshopt decoding, sampled scale/morph-weight baking, NvTriStrip and cross-material partitioning, large-translation animation bounds fixes, phase timings and output integrity checks. Explicit CE/Neko facial profiles pass 28 reference comparisons. `copy animation weightlist`, `match pos/rot`, conditionals and `reverse` pass seven StudioMDL++ pose/FPS cases. See [IMPROVEMENTS.md](IMPROVEMENTS.md) and the [v1.2.7 validation record](tests/reports/v1.2.7-validation.json) for coverage.
 

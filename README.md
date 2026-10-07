@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.7
+# NewPageMergeMDL v1.2.8
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.7**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.8**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -10,6 +10,12 @@
 
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
+
+目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态和后续顺序见 [五编译器功能清单](FEATURE_MATRIX.md)。
+
+## v1.2.8：回归五编译器整合主线
+
+补齐 Neko 历史 QC 指令 `$prefer_fbx`、`$forcecapsules` 的警告式接受，以及旧参数 `-usenvtristrip`。CE `$DontDestroy` / `-DontDestroy` 接入默认保留输出策略。前两者不改变导入或生成胶囊，符合 Neko 2.3.0 当前行为；旧 QC 不再因这些指令中断。150 项兼容回归通过。StudioMDL 2013 两包按同一编译器、不同依赖配置记录。
 
 ## v1.2.7：参考面部模式与生产模型验证
 
@@ -132,16 +138,18 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 
 ## 未完成与已知问题
 
-以下按 v1.2.7 的实现与验证记录整理；“未验证”表示测试覆盖不足，不表示该功能尚未实现。
+以下按 v1.2.8 的实现及已有验证记录整理；“未验证”表示测试覆盖不足，不表示该功能尚未实现。
 
 | 内容 | 当前状态与剩余工作 |
 | --- | --- |
-| 蒙皮实例与网格切换 | 尚未支持蒙皮网格的 `EXT_mesh_gpu_instancing`，也未支持动画中的网格切换；静态非蒙皮实例已支持。 |
-| VRM 运行时行为 | 完整弹簧骨和专有表情映射的运行时语义尚未实现；已有 VRM 导入与默认形态键权重回归不代表完整 VRM 行为兼容。 |
+| 五者整合缺口 | CE replacemesh 参考语义尚未确认；DontDestroy 同名接口已接入默认保留策略，写盘中途失败的文件集保护仍需完善；Neko 缺失 RenameMorph 容错及复杂驱动骨需继续对照。详见 FEATURE_MATRIX.md。 |
+| 额外扩展：蒙皮实例与网格切换 | 不作为五者整合的先决条件；尚未支持蒙皮网格的 `EXT_mesh_gpu_instancing`，也未支持动画中的网格切换；静态非蒙皮实例已支持。 |
+| 额外扩展：VRM 运行时行为 | 不作为五者整合的先决条件；完整弹簧骨和专有表情映射的运行时语义尚未实现；已有 VRM 导入与默认形态键权重回归不代表完整 VRM 行为兼容。 |
 | 导入格式与插值覆盖 | cgltf 与 Assimp 6.0.4 导入已实现，但尚未逐一验证所有 Assimp 格式、复杂 FBX/VRM 层级及后备路径插值。 |
 | 复杂 rig 与碰撞覆盖 | 已有 IK、jiggle、驱动骨、corrective、眼睑、联合面部 rig 和按骨骼 VHACD 回归；任意复杂层级、硬边、自定义法线、控制器重映射和复杂碰撞仍需具体模型验证。单骨权重仍属实验功能。 |
-| Hair 模型材质验证 | 用户提供的玩家/NPC Hair 模型已通过编译、输出一致性及 GMod 几何/物理验证；当前缺少其材质资源，完整着色尚未验证。Claudia 已使用真实材质验证表情、眼睑、生成测试 LOD 和布娃娃物理，不能替代 Hair 的材质验证。 |
 | 跨游戏与参考覆盖 | 已验证指定 GMod 样例，其他游戏和材质着色仍需独立测试；尚未覆盖所有参考编译器的语法边界、诊断文本和性能场景。 |
+
+v1.2.8 生产验证改用 Plum：原始 Hair QC 编译及文件结构检查通过；新增材质在 GMod 加载无缺失，28 个截图状态包含身体组、皮肤和表情，18 个布娃娃刚体稳定。首帧增加材质预热后复测通过。后续不再使用 Claudia 作为生产测试模型。详见 [v1.2.8 验证记录](tests/reports/v1.2.8-validation.json)。
 
 已从问题清单移除：Draco/meshopt 解码、采样式缩放/形态键权重烘焙、NvTriStrip 与跨材质分割、动画大位移边界框修复、阶段耗时与输出完整性检查。显式 CE/Neko 面部模式已通过 28 项参考对照；`copy animation weightlist`、`match pos/rot`、条件语句和 `reverse` 已通过七个 StudioMDL++ 姿态/FPS 样例。验证范围见 [IMPROVEMENTS.md](IMPROVEMENTS.md) 和 [v1.2.7 验证记录](tests/reports/v1.2.7-validation.json)。
 
