@@ -9,6 +9,7 @@
 #include "pathcompat.h"
 
 #include "writer.h"
+#include "outputfiles.h"
 #include "perf.h"
 
 #include <algorithm>
@@ -2820,23 +2821,6 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
     return true;
 }
 
-bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, std::string* err) {
-    std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    FILE* f = nullptr;
-#ifdef _WIN32
-    fopen_s(&f, path.string().c_str(), "wb");
-#else
-    f = fopen(path.string().c_str(), "wb");
-#endif
-    if (!f) {
-        if (err) *err = "cannot open for write: " + path.string();
-        return false;
-    }
-    fwrite(data, 1, len, f);
-    fclose(f);
-    return true;
-}
 
 } // namespace
 
@@ -3196,17 +3180,18 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
         return path;
     };
 
-    if(!vertexAnimation.empty()&&!SaveFile(stem.string()+".vertexanim.json",vertexAnimation.data(),vertexAnimation.size(),err))return false;
+    std::vector<PendingOutput> outputs;
+    if (!vertexAnimation.empty()) outputs.push_back({stem.string()+".vertexanim.json", vertexAnimation.data(), vertexAnimation.size()});
     std::string mdlPath = announce(".mdl");
     FlushReport(g_mdlReport);
     std::printf("total      %7zu\n", mdlBuf.size());
-    if (!SaveFile(mdlPath, mdlBuf.data(), mdlBuf.size(), err)) return false;
+    outputs.push_back({mdlPath, mdlBuf.data(), mdlBuf.size()});
 
     std::string vvdPath, vtxPath, vtxPath80;
     if (hasGeometry) {
         vvdPath = announce(".vvd");
         FlushReport(g_vvdReport);
-        if (!SaveFile(vvdPath, vvdBuf.data(), vvdBuf.size(), err)) return false;
+        outputs.push_back({vvdPath, vvdBuf.data(), vvdBuf.size()});
 
         // which strip layout went out. SFM reads the Alien Swarm/CS:GO 35-byte
         // strips and crashes on the legacy ones, so make the format explicit.
@@ -3215,14 +3200,14 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
         vtxPath = announce(".dx90.vtx");
         FlushReport(vtxReport);
         std::printf("everything (%zu bytes)\n", vtxBuf.size());
-        if (!SaveFile(vtxPath, vtxBuf.data(), vtxBuf.size(), err)) return false;
+        outputs.push_back({vtxPath, vtxBuf.data(), vtxBuf.size()});
 
         // .dx80.vtx: DirectX 8 variant, same layout as the dx90 file
         if (!vtxBuf80.empty()) {
             vtxPath80 = announce(".dx80.vtx");
             FlushReport(vtxReport80);
             std::printf("everything (%zu bytes)\n", vtxBuf80.size());
-            if (!SaveFile(vtxPath80, vtxBuf80.data(), vtxBuf80.size(), err)) return false;
+            outputs.push_back({vtxPath80, vtxBuf80.data(), vtxBuf80.size()});
         }
     }
 
@@ -3235,8 +3220,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
         aniPath = announce(".ani");
         std::printf("blocks     %7zu\n", g_animblocks.count ? g_animblocks.count - 1 : 0);
         std::printf("total      %7zu\n", blockBuf->cur);
-        if (!SaveFile(aniPath, blockBuf->start(), blockBuf->pos, err))
-            return false;
+        outputs.push_back({aniPath, blockBuf->start(), blockBuf->pos});
     }
 
     if (!phyBuf.empty()) {
@@ -3261,8 +3245,10 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
         else if (!m.physCollisionPairs.empty())
             std::printf("pairs      %7zu\n", m.physCollisionPairs.size());
         std::printf("total      %7zu\n", phyBuf.size());
-        if (!SaveFile(phyPath, phyBuf.data(), phyBuf.size(), err)) return false;
+        outputs.push_back({phyPath, phyBuf.data(), phyBuf.size()});
     }
+
+    if (!SaveOutputSet(outputs, err)) return false;
 
     // footer: the shared output dir once, then each file by name with its
     // checksum (mstudiohdr_t::checksum, mdl.h - shared by .mdl/.vvd/

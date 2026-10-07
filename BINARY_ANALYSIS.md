@@ -131,3 +131,7 @@ the reference executable. Assimp's poly2tri header has one portability fix:
 an explicit iosfwd include. Remaining differences are listed in both READMEs
 and COMPATIBILITY.md, including dynamic buffers, mesh splitting, defaults,
 fallback interpolation and complex rig/engine verification.
+
+## v1.2.9 follow-up
+
+Nine self-authored glTF reference cases establish Neko exact-name import mapping, ignored missing names, non-chaining, unchanged QC declarations and named-key selection. The explicit neko profile now follows these rules. Checked output staging and rollback handle write/replacement failures; Windows sharing-lock and directory-collision regressions preserve existing output bytes. These checks do not establish reference crash/power-loss recovery semantics.

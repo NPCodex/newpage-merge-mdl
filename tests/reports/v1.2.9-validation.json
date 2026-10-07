@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "version": "1.2.9",
+  "compatibility_tests": 153,
+  "automation_tests": 20,
+  "compiler_sha256": "50d0f141cc08071566349f8dea870125dd564fb2bdc50b8d208febc1a2c261c5",
+  "production_model": "Plum playermodel_f_compile2_hair.qc",
+  "game": {
+    "schema": 1,
+    "engine": "GarrysMod x64",
+    "render_cases": 28,
+    "face_differences": [
+      {
+        "model": "models/newpage_production_validation/plum_v129_player.mdl",
+        "noise_pixels": 0,
+        "expression_pixels": 23674
+      }
+    ],
+    "lod_reduction_required": false,
+    "geometry_and_selection_verified": true,
+    "full_material_rendering_verified": true,
+    "material_probes": [
+      {
+        "missing": [],
+        "model": "models/newpage_production_validation/plum_v129_player.mdl"
+      }
+    ],
+    "physics": [
+      {
+        "model": "models/newpage_production_validation/plum_v129_player.mdl",
+        "bodies": 18,
+        "max_horizontal_drift": 40.966060638427734,
+        "max_final_speed": 0
+      }
+    ]
+  },
+  "game_outputs_sha256": {
+    "plum_v129_player.dx80.vtx": "4a709f16017d35d920655ac9bae77fde8c24aa72ad74fab8f2235b1ce8276a18",
+    "plum_v129_player.dx90.vtx": "d92944c26ac9b569bdd59db0015cbc3fd15cd15188e4d1d7514ee47b70f98c78",
+    "plum_v129_player.mdl": "a9fca3ec67aff92fc907334c3db827e2ffa16dcd63c0092dde5c946d0d4bbb4e",
+    "plum_v129_player.phy": "c6ecf35a8318869866664c98fbe4ee6af44257062008f59c99f2792456ff4a34",
+    "plum_v129_player.vvd": "792ce87a3898dbe0ba8dfee29d27c03fb5056b2ae966a2350ef7cd47538825c2"
+  },
+  "game_outputs_match_final_compiler": true,
+  "reference_cases": {
+    "compiler": "NekoMDL 2.3.0",
+    "validated_cases": 9,
+    "scope": "Self-authored glTF raw morph-name mapping, missing names, case sensitivity, non-chaining, named flex declarations"
+  },
+  "new_features": [
+    "Explicit Neko import-time RenameMorph policy and named flex selection",
+    "Checked output staging and handled-failure rollback"
+  ],
+  "remaining_integration": [
+    "CE replacemesh reference syntax/behavior",
+    "Neko complex driver parent parity",
+    "Assimp format and interpolation parity",
+    "Recovery after forced termination/power loss"
+  ],
+  "test_scope": "One supplied Plum player model, 28 rendering states, no newly generated LOD; real supplied materials and jiggle enabled. No claim of complete five-compiler parity."
+}

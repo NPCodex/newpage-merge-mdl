@@ -295,6 +295,7 @@ struct Ctx {
         std::string from;
         std::string to;
         int line = 0;
+        bool sourceOnly = false; // Neko: exact raw-name mapping at import time
     };
     std::vector<MorphRename> morphRenames;
 
@@ -602,7 +603,10 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
         kind == source::LoadKind::Collision ? c.physMats : c.in.mats;
 
     const source::SceneOptions& scene = sceneOptions ? *sceneOptions : (edit ? edit->sceneOptions : c.sceneOptions);
-    const std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate);
+    std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate);
+    for (const auto& rename : c.morphRenames) if (rename.sourceOnly)
+        key += "|morph:" + std::to_string(rename.from.size()) + ":" + rename.from +
+               ":" + std::to_string(rename.to.size()) + ":" + rename.to;
     if (!priv) {
         auto it = c.sourceCache.find(key);
         if (it != c.sourceCache.end() && it->second->kind >= kind)
@@ -733,6 +737,29 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                     return nullptr;
                 }
         }
+    }
+
+    // Neko's RenameMorph is a raw FBX/glTF-name map, not a rewrite of QC
+    // declarations. Apply the latest definition once, before named flex lookup.
+    // A later mapping never renames a previously loaded private body choice.
+    if (IsFbxPath(filename) || IsScenePath(filename)) {
+        auto mapped = [&](const std::string& original) {
+            for (auto it = c.morphRenames.rbegin(); it != c.morphRenames.rend(); ++it)
+                if (it->sourceOnly && it->from == original) return it->to;
+            return original;
+        };
+        std::set<std::string> targets;
+        bool changed = false;
+        for (const auto& morph : src->morphs) changed |= mapped(morph.name) != morph.name;
+        for (auto& morph : src->morphs) {
+            std::string name = mapped(morph.name);
+            if (!targets.insert(Lower(name)).second && changed) {
+                c.Fail(line, "Neko $RenameMorph creates duplicate target \"" + name + "\" in " + filename);
+                return nullptr;
+            }
+            morph.name = std::move(name);
+        }
+        for (auto& flex : src->flexkeys) flex.name = mapped(flex.name);
     }
 
     if (edit)
@@ -2046,6 +2073,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
     int vtaLine = 0, vcaLine = 0;
     bool invertControllers=false;
     bool autoControllers=false;
+    std::set<std::string> declaredSceneMorphs;
     std::string autoType; float autoMin=0,autoMax=1;
 
     auto atEnd = [&] { return c.Eof() || (!c.Cur().quoted && c.Cur().text == "}"); };
@@ -2214,6 +2242,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         if (o == "flex" || o == "flexpair" || o == "defaultflex") {
             if(flexfile.empty() && !IsSmdPath(file) && o!="defaultflex") {
                 std::string name; if(!c.Want("a morph name",t,name)) return false;
+                declaredSceneMorphs.insert(Lower(name));
                 auto key=std::find_if(src->flexkeys.begin(),src->flexkeys.end(),[&](const source::SrcFlexKey& k){return _stricmp(k.name.c_str(),name.c_str())==0;});
                 if(key==src->flexkeys.end()) {
                     std::fprintf(stderr,"warning: %s(%d): declared morph %s has no vertex data in %s\n",c.file.c_str(),t.line,name.c_str(),file.c_str());
@@ -2500,6 +2529,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
             src->flexkeys.erase(std::remove_if(src->flexkeys.begin(),src->flexkeys.end(),
                 [](const source::SrcFlexKey& key){return key.defaultPose;}),src->flexkeys.end());
         }
+    }
+    if (c.in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Neko &&
+        !declaredSceneMorphs.empty() && (IsScenePath(file) || IsFbxPath(file))) {
+        // Neko's named flex block selects raw source keys; declarations do not
+        // rename or implicitly retain unselected imported keys.
+        src->flexkeys.erase(std::remove_if(src->flexkeys.begin(), src->flexkeys.end(),
+            [&](const source::SrcFlexKey& key) { return !declaredSceneMorphs.count(Lower(key.name)); }),
+            src->flexkeys.end());
     }
     if (!vcaFile.empty()) {
         std::vector<fs::path> tried;
@@ -4184,9 +4221,10 @@ bool CmdMorphSplitStereo(Ctx& c, const Token& cmd) {
 bool CmdRenameMorph(Ctx& c, const Token& cmd) {
     Ctx::MorphRename rn;
     rn.line = cmd.line;
+    rn.sourceOnly = c.in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Neko;
     if (!c.Want("a morph name", cmd, rn.from) || !c.Want("a new morph name", cmd, rn.to))
         return false;
-    if (_stricmp(rn.from.c_str(), rn.to.c_str()) != 0)
+    if (rn.sourceOnly || _stricmp(rn.from.c_str(), rn.to.c_str()) != 0)
         c.morphRenames.push_back(std::move(rn));
     return true;
 }
@@ -4219,6 +4257,7 @@ std::string RenameExprMorph(const std::string& expr, const std::string& from,
 // pass after parsing. Renames apply in script order, so chains work.
 bool ApplyMorphRenames(Ctx& c) {
     for (const Ctx::MorphRename& rn : c.morphRenames) {
+        if (rn.sourceOnly) continue; // already applied during scene import
         auto swapName = [&](std::string& s) {
             if (_stricmp(s.c_str(), rn.from.c_str()) == 0)
                 s = rn.to;

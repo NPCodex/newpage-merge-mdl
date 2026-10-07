@@ -80,7 +80,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 150 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 153 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -137,7 +137,7 @@ before QC commands. `$PUSHDProcedural` is a QC command only.
 
 | Commands / options | Implemented behavior |
 | --- | --- |
-| `$DontDestroy`, `-DontDestroy` | Accepts the project's default no-cleanup-on-error policy. Parsing/preflight failures retain prior output; this does not promise atomic recovery from a mid-write OS failure. |
+| `$DontDestroy`, `-DontDestroy` | Accepts the project's default no-cleanup-on-error policy. v1.2.9 stages checked writes and rolls back handled replacement failures. Power loss and forced termination are not covered. |
 | `$OverrideFlexControllers` | Reuses an existing controller index and replaces its type and range. |
 | `$AllowDuplicationFlexControllers` | Retains distinct controller table entries with the same name. |
 | `$AddInvStudioFlexes`, model-block `InvertControllers` | Adds `_Inv` morphs, negative vertex deltas and negative flex rules, including stereo descriptors. Referenced ordinary controllers use range -1..1. Complex DMX controller remaps need further parity testing. |
@@ -174,7 +174,7 @@ is a behavioral reference, not bundled or called by this compiler.
 | Entry | Implemented behavior |
 | --- | --- |
 | glTF / GLB / VRM | cgltf fast parser, scene transforms, skins, named morph targets, optional UVs/morph normals; missing base normals are generated. Assimp 6.0.4 imports additional supported scene formats. Existing ufbx FBX import remains. |
-| `$RenameMorph old new` | Existing source morph rename support; missing names currently error rather than matching Neko's permissive no-match behavior. |
+| `$RenameMorph old new` | Native mode retains strict global renaming. With preceding `$dmxcompatibility neko`, maps exact FBX/glTF names once, ignores missing names, uses the latest definition and preserves QC declarations. Named flex blocks select keys. Ambiguous destinations fail explicitly. |
 | `$prefer_fbx`, `$forcecapsules` | v1.2.8 accepts both with warnings and no arguments. FBX import is automatic; capsules are not generated. |
 | `-usenvtristrip` | v1.2.8 historical alias for `-nvtristrip`, selecting NvTriStrip. |
 | `$NoFastGltf` | Uses Assimp instead of cgltf for subsequent glTF references. Parsed scene geometry is shared between private InNode loads. |

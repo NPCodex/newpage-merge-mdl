@@ -2,6 +2,51 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def test_neko_rename_morph_import_mapping(self):
+  self.scene_fixture()
+  cases=[('', 'Smile', 3), ('$RenameMorph Missing New', 'Smile', 3),
+   ('$RenameMorph Smile New', 'New', 3), ('$RenameMorph Smile New', 'Smile', 0),
+   ('$RenameMorph Smile Mid\n$RenameMorph Mid New', 'New', 0),
+   ('$RenameMorph smile New', 'New', 0),
+   ('$RenameMorph Smile New\n$RenameMorph Smile Smile', 'Smile', 3),
+   ('$RenameMorph Smile Wrong\n$RenameMorph Smile New', 'New', 3)]
+  for commands, name, count in cases:
+   with self.subTest(commands=commands,name=name):
+    qc=f'$dmxcompatibility neko\n{commands}\n$modelname morphmap\n$NekoModel m {{\nstudio scene.gltf InNode MeshA\nflex {name}\nflexcontroller test strength\n%{name} = strength\n}}\n$sequence idle scene.gltf\n'
+    self.scene_qc(qc)
+    data=self.ce_data('morphmap')
+    self.assertEqual(sum(len(key['vertices']) for key in data[1]),count)
+
+ def test_output_directory_collision_preserves_previous_set(self):
+  qc='$modelname preserve_set\n$body m mesh.smd\n'
+  self.scene_qc(qc)
+  root=self.root/'models'
+  baseline={p.name:p.read_bytes() for p in root.glob('preserve_set.*')}
+  target=root/'preserve_set.vvd';target.unlink();target.mkdir()
+  self.scene_qc('$scale 2\n'+qc,success=False)
+  self.assertTrue(target.is_dir())
+  for name,data in baseline.items():
+   if name!=target.name:self.assertEqual((root/name).read_bytes(),data)
+  self.assertFalse(list(root.glob('*.npmdl-*')))
+
+ def test_locked_output_rolls_back_previous_set(self):
+  if sys.platform!='win32':self.skipTest('Windows file sharing lock')
+  import ctypes
+  from ctypes import wintypes
+  qc='$modelname locked_set\n$body m mesh.smd\n'
+  self.scene_qc(qc);root=self.root/'models'
+  baseline={p.name:p.read_bytes() for p in root.glob('locked_set.*')}
+  kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+  kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+  kernel.CreateFileW.restype=wintypes.HANDLE
+  kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+  handle=kernel.CreateFileW(str(root/'locked_set.dx90.vtx'),0x80000000,1,None,3,0,None)
+  self.assertNotEqual(handle,ctypes.c_void_p(-1).value)
+  try:self.scene_qc('$scale 2\n'+qc,success=False)
+  finally:kernel.CloseHandle(handle)
+  for name,data in baseline.items():self.assertEqual((root/name).read_bytes(),data)
+  self.assertFalse(list(root.glob('*.npmdl-*')))
+
  def test_ce_dontdestroy_acceptance_and_failed_compile_preserve_outputs(self):
   qc='$modelname preserved\n$body m mesh.smd\n'
   self.scene_qc(qc);baseline={p.name:p.read_bytes() for p in (self.root/'models').glob('preserved.*')}

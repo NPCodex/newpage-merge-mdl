@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..a695342 100644
+index fed7eaf..c2a6f40 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..a695342 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.8 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.9 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -600481,7 +600481,7 @@ index 0000000..5696816
 +
 +#endif
 diff --git a/mdlcompiler/CMakeLists.txt b/mdlcompiler/CMakeLists.txt
-index fcff31d..e43442b 100644
+index fcff31d..f190108 100644
 --- a/mdlcompiler/CMakeLists.txt
 +++ b/mdlcompiler/CMakeLists.txt
 @@ -1,15 +1,16 @@
@@ -600489,8 +600489,9 @@ index fcff31d..e43442b 100644
  
  add_executable(mdlcompiler main.cpp dmxloader.cpp dmxrig.cpp smdloader.cpp
 -               fbxloader.cpp meshedit.cpp compile.cpp facemarkup.cpp
+-               flexreg.cpp qcloader.cpp writemdl.cpp writevtx.cpp writephy.cpp)
 +               fbxloader.cpp sceneloader.cpp gltfscene.cpp resources.cpp meshedit.cpp compile.cpp facemarkup.cpp
-                flexreg.cpp qcloader.cpp writemdl.cpp writevtx.cpp writephy.cpp)
++               flexreg.cpp qcloader.cpp writemdl.cpp outputfiles.cpp writevtx.cpp writephy.cpp)
  # Each tool owns its own version; there is no project-wide one.
  set(TOOL_VERSION 0.34.0)
  string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
@@ -603093,6 +603094,150 @@ index b3c6ca1..ccabe1f 100644
  
  // meshoptimizer decimation to `factor` (0,1] of each mesh's index count.
  // dst may alias src - faces are rebuilt only after every mesh is simplified.
+diff --git a/mdlcompiler/outputfiles.cpp b/mdlcompiler/outputfiles.cpp
+new file mode 100644
+index 0000000..2677153
+--- /dev/null
++++ b/mdlcompiler/outputfiles.cpp
+@@ -0,0 +1,120 @@
++#include "outputfiles.h"
++#include <chrono>
++#include <cstdio>
++#include <set>
++
++namespace {
++struct Entry {
++    PendingOutput output;
++    std::filesystem::path stage, backup;
++    bool staged = false, backed = false, installed = false;
++};
++struct Transaction {
++    std::vector<Entry> entries;
++    bool committed = false;
++    std::string rollback() {
++        std::string failures;
++        for (auto it = entries.rbegin(); it != entries.rend(); ++it) {
++            std::error_code ec;
++            if (it->installed) {
++                std::filesystem::remove(it->output.path, ec);
++                if (!ec) it->installed = false;
++            }
++            if (it->backed && !it->installed) {
++                ec.clear();
++                std::filesystem::rename(it->backup, it->output.path, ec);
++                if (!ec) it->backed = false;
++            }
++            if (it->backed) failures += " recovery backup: " + it->backup.string();
++            if (it->staged) {
++                ec.clear();
++                std::filesystem::remove(it->stage, ec);
++                if (!ec) it->staged = false;
++            }
++        }
++        return failures;
++    }
++    ~Transaction() {
++        if (!committed) { try { rollback(); } catch (...) {} }
++    }
++};
++}
++
++bool SaveOutputSet(const std::vector<PendingOutput>& outputs, std::string* error) {
++    Transaction transaction;
++    auto fail = [&](const std::string& message) {
++        auto recovery = transaction.rollback();
++        if (error) *error = message + recovery;
++        return false;
++    };
++    try {
++        std::set<std::filesystem::path> paths;
++        const auto nonce = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
++        for (const auto& output : outputs) {
++            if (!paths.insert(std::filesystem::absolute(output.path).lexically_normal()).second)
++                return fail("duplicate output path: " + output.path.string());
++            std::error_code ec;
++            if (!output.path.parent_path().empty())
++                std::filesystem::create_directories(output.path.parent_path(), ec);
++            if (ec) return fail("cannot create output directory: " + ec.message());
++            const auto status = std::filesystem::symlink_status(output.path, ec);
++            if (ec && ec != std::errc::no_such_file_or_directory)
++                return fail("cannot inspect output: " + output.path.string() + ": " + ec.message());
++            if (std::filesystem::exists(status)) {
++                if (!std::filesystem::is_regular_file(status))
++                    return fail("output is not a regular file: " + output.path.string());
++                auto writes = std::filesystem::perms::owner_write | std::filesystem::perms::group_write | std::filesystem::perms::others_write;
++                if ((status.permissions() & writes) == std::filesystem::perms::none)
++                    return fail("output is read-only: " + output.path.string());
++            }
++            const auto suffix = ".npmdl-" + nonce + "-" + std::to_string(transaction.entries.size());
++            Entry entry{output, output.path.string() + suffix + ".stage", output.path.string() + suffix + ".backup"};
++            ec.clear();
++            if (std::filesystem::exists(entry.backup, ec) || ec)
++                return fail("cannot reserve output backup: " + entry.backup.string());
++            transaction.entries.push_back(std::move(entry));
++        }
++        for (auto& entry : transaction.entries) {
++            FILE* file = nullptr;
++#ifdef _WIN32
++            _wfopen_s(&file, entry.stage.c_str(), L"wbx");
++#else
++            file = std::fopen(entry.stage.c_str(), "wbx");
++#endif
++            if (!file) return fail("cannot stage output: " + entry.output.path.string());
++            entry.staged = true;
++            bool ok = std::fwrite(entry.output.data, 1, entry.output.size, file) == entry.output.size;
++            if (std::fflush(file) != 0) ok = false;
++            if (std::fclose(file) != 0) ok = false;
++            if (!ok) return fail("incomplete output write: " + entry.output.path.string());
++        }
++        for (auto& entry : transaction.entries) {
++            std::error_code ec;
++            if (!std::filesystem::exists(entry.output.path, ec)) {
++                if (ec) return fail("cannot inspect output: " + ec.message());
++                continue;
++            }
++            std::filesystem::rename(entry.output.path, entry.backup, ec);
++            if (ec) return fail("cannot preserve existing output: " + entry.output.path.string() + ": " + ec.message());
++            entry.backed = true;
++        }
++        // Publish the MDL last so its companion files are installed first.
++        for (int pass = 0; pass < 2; ++pass) for (auto& entry : transaction.entries) {
++            if ((entry.output.path.extension() == ".mdl") != (pass == 1)) continue;
++            std::error_code ec;
++            std::filesystem::rename(entry.stage, entry.output.path, ec);
++            if (ec) return fail("cannot install output: " + entry.output.path.string() + ": " + ec.message());
++            entry.staged = false;
++            entry.installed = true;
++        }
++        transaction.committed = true;
++        for (auto& entry : transaction.entries) if (entry.backed) {
++            std::error_code ec;
++            std::filesystem::remove(entry.backup, ec);
++            if (ec) std::fprintf(stderr, "warning: retained output backup %s: %s\n", entry.backup.string().c_str(), ec.message().c_str());
++        }
++        return true;
++    } catch (const std::exception& exception) {
++        return fail(std::string("output transaction: ") + exception.what());
++    }
++}
+diff --git a/mdlcompiler/outputfiles.h b/mdlcompiler/outputfiles.h
+new file mode 100644
+index 0000000..10c235f
+--- /dev/null
++++ b/mdlcompiler/outputfiles.h
+@@ -0,0 +1,12 @@
++#pragma once
++#include <filesystem>
++#include <string>
++#include <vector>
++
++struct PendingOutput {
++    std::filesystem::path path;
++    const void* data;
++    size_t size;
++};
++// Checked staging and rollback for handled failures, not crash-safe atomicity.
++bool SaveOutputSet(const std::vector<PendingOutput>& outputs, std::string* error);
 diff --git a/mdlcompiler/pulseloader.cpp b/mdlcompiler/pulseloader.cpp
 index d460e13..cca5a2a 100644
 --- a/mdlcompiler/pulseloader.cpp
@@ -603114,7 +603259,7 @@ index d460e13..cca5a2a 100644
              // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
              if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index 4ef35e3..21f8610 100644
+index 4ef35e3..8d5cf43 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
 @@ -29,7 +29,9 @@
@@ -603212,7 +603357,15 @@ index 4ef35e3..21f8610 100644
      float defaultMotionRollback = 0.3f; // seed for a new anim's motionrollback
      float defaultFadeIn = 0.2f;
      float defaultFadeOut = 0.2f;
-@@ -288,7 +330,12 @@ struct Ctx {
+@@ -253,6 +295,7 @@ struct Ctx {
+         std::string from;
+         std::string to;
+         int line = 0;
++        bool sourceOnly = false; // Neko: exact raw-name mapping at import time
+     };
+     std::vector<MorphRename> morphRenames;
+ 
+@@ -288,7 +331,12 @@ struct Ctx {
  
      bool Fail(int line, const std::string& msg) {
          if (abortErr) return false; // keep the first $include error, not a cascade
@@ -603226,7 +603379,7 @@ index 4ef35e3..21f8610 100644
          return false;
      }
  
-@@ -315,8 +362,8 @@ struct Ctx {
+@@ -315,8 +363,8 @@ struct Ctx {
          try {
              size_t used = 0;
              const float v = std::stof(s, &used);
@@ -603237,7 +603390,7 @@ index 4ef35e3..21f8610 100644
              value = v;
          } catch (const std::exception&) {
              return Fail(cmd.line, cmd.text + " expects " + what + ", got \"" + s + "\"");
-@@ -409,6 +456,7 @@ fs::path FindSourceFile(const Ctx& c, const std::string& filename,
+@@ -409,6 +457,7 @@ fs::path FindSourceFile(const Ctx& c, const std::string& filename,
              return p;
      }
      if (tried) *tried = std::move(cands);
@@ -603245,7 +603398,7 @@ index 4ef35e3..21f8610 100644
      return {};
  }
  
-@@ -453,7 +501,7 @@ std::string WithDmxExtension(const std::string& s) {
+@@ -453,7 +502,7 @@ std::string WithDmxExtension(const std::string& s) {
  std::string WithSourceExtension(const Ctx& c, const std::string& s) {
      if (HasExtension(s))
          return s;
@@ -603254,7 +603407,7 @@ index 4ef35e3..21f8610 100644
          if (!FindSourceFile(c, s + ext, nullptr).empty())
              return s + ext;
      return s + ".dmx";
-@@ -477,13 +525,19 @@ bool IsFbxPath(const std::string& s) {
+@@ -477,13 +526,19 @@ bool IsFbxPath(const std::string& s) {
  }
  
  // The edits one $rendermesh { } body asks for (meshedit.h).
@@ -603274,7 +603427,7 @@ index 4ef35e3..21f8610 100644
      bool noMorph = false;
      // $inflate <amount> [material|mesh <name>...] in script order; tag 0 = no mesh scope
      struct Inflate {
-@@ -537,7 +591,8 @@ std::shared_ptr<pulse::dmx::Datamodel> LoadDmxCached(Ctx& c, const fs::path& ful
+@@ -537,7 +592,8 @@ std::shared_ptr<pulse::dmx::Datamodel> LoadDmxCached(Ctx& c, const fs::path& ful
  
  source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                             bool morphSource = false, MeshEdit* edit = nullptr,
@@ -603284,17 +603437,20 @@ index 4ef35e3..21f8610 100644
      const bool priv = edit != nullptr;
      const bool animOnly = kind == source::LoadKind::Animation;
      // a collision hull is never drawn, so keep its materials out of the model's
-@@ -546,7 +601,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -546,7 +602,11 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
      source::MaterialTable& mats =
          kind == source::LoadKind::Collision ? c.physMats : c.in.mats;
  
 -    const std::string key = Lower(filename);
 +    const source::SceneOptions& scene = sceneOptions ? *sceneOptions : (edit ? edit->sceneOptions : c.sceneOptions);
-+    const std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate);
++    std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate);
++    for (const auto& rename : c.morphRenames) if (rename.sourceOnly)
++        key += "|morph:" + std::to_string(rename.from.size()) + ":" + rename.from +
++               ":" + std::to_string(rename.to.size()) + ":" + rename.to;
      if (!priv) {
          auto it = c.sourceCache.find(key);
          if (it != c.sourceCache.end() && it->second->kind >= kind)
-@@ -578,6 +634,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -578,6 +638,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
      // and the SMD path derives cdtextures from it
      src->filename = filename;
      src->kind = kind;
@@ -603302,7 +603458,7 @@ index 4ef35e3..21f8610 100644
  
      if (IsSmdPath(filename)) {
          std::printf("%s\n", head.c_str());
-@@ -611,7 +668,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -611,7 +672,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
              return nullptr;
          }
          if (!source::LoadFbxSource(full.string(), *src, mats, c.in.scale, &loadErr, morphSource,
@@ -603311,7 +603467,7 @@ index 4ef35e3..21f8610 100644
              c.Fail(line, "cannot load \"" + full.string() + "\": " + loadErr);
              return nullptr;
          }
-@@ -635,6 +692,13 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -635,6 +696,13 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                      return nullptr;
                  }
          }
@@ -603325,7 +603481,7 @@ index 4ef35e3..21f8610 100644
      } else {
          auto dm = LoadDmxCached(c, full, &loadErr);
          if (!dm) {
-@@ -645,7 +709,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -645,7 +713,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                      dm->encoding.c_str(), dm->encoding_version);
          PULSE_PERF("load", "dmx -> source");
          if (!source::LoadDmxSource(*dm, *src, mats, c.in.scale, &loadErr, morphSource,
@@ -603334,7 +603490,37 @@ index 4ef35e3..21f8610 100644
              c.Fail(line, "cannot parse \"" + full.string() + "\": " + loadErr);
              return nullptr;
          }
-@@ -690,6 +754,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -671,6 +739,29 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+         }
+     }
+ 
++    // Neko's RenameMorph is a raw FBX/glTF-name map, not a rewrite of QC
++    // declarations. Apply the latest definition once, before named flex lookup.
++    // A later mapping never renames a previously loaded private body choice.
++    if (IsFbxPath(filename) || IsScenePath(filename)) {
++        auto mapped = [&](const std::string& original) {
++            for (auto it = c.morphRenames.rbegin(); it != c.morphRenames.rend(); ++it)
++                if (it->sourceOnly && it->from == original) return it->to;
++            return original;
++        };
++        std::set<std::string> targets;
++        bool changed = false;
++        for (const auto& morph : src->morphs) changed |= mapped(morph.name) != morph.name;
++        for (auto& morph : src->morphs) {
++            std::string name = mapped(morph.name);
++            if (!targets.insert(Lower(name)).second && changed) {
++                c.Fail(line, "Neko $RenameMorph creates duplicate target \"" + name + "\" in " + filename);
++                return nullptr;
++            }
++            morph.name = std::move(name);
++        }
++        for (auto& flex : src->flexkeys) flex.name = mapped(flex.name);
++    }
++
+     if (edit)
+         for (const source::MeshFilter::RemoveEntry& e : edit->filter.removeNames)
+             if (!e.matched) {
+@@ -690,6 +781,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
          source::CullUnskinnedBones(*src, edit->boneCull);
      }
  
@@ -603343,7 +603529,7 @@ index 4ef35e3..21f8610 100644
      c.in.sources.push_back(std::move(src));
      source::Source* loaded = c.in.sources.back().get();
      if (!priv) {
-@@ -740,7 +806,7 @@ bool CmdRenderMesh(Ctx& c, const Token& cmd) {
+@@ -740,7 +833,7 @@ bool CmdRenderMesh(Ctx& c, const Token& cmd) {
      if (c.rendermeshes.count(name))
          return c.Fail(cmd.line, "duplicate $rendermesh \"" + name + "\"");
  
@@ -603352,7 +603538,7 @@ index 4ef35e3..21f8610 100644
      edit.name = name;
      if (!c.Eof() && !c.Cur().quoted && c.Cur().text == "{") {
          ++c.pos;
-@@ -1221,6 +1287,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
+@@ -1221,6 +1314,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
              return c.Fail(cmd.line, "$modelgroup \"" + name + "\" already exists");
      const std::string where = "$modelgroup \"" + name + "\"";
      cm::CompileInput::InBodyPart part;
@@ -603360,7 +603546,7 @@ index 4ef35e3..21f8610 100644
      part.name = name;
  
      // One choice: the $rendermesh names to the end of `line`, plus the optional
-@@ -1264,7 +1331,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
+@@ -1264,7 +1358,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
              if (!src && (ext == ".dmx" || ext == ".smd" || ext == ".fbx")) {
                  if (std::find(refNames.begin(), refNames.end(), r.text) != refNames.end())
                      return c.Fail(r.line, where + ": mesh \"" + r.text + "\" is listed twice");
@@ -603369,7 +603555,7 @@ index 4ef35e3..21f8610 100644
                  edit.name = r.text;
                  src = LoadSource(c, r.text, r.line, /*morphSource=*/true, &edit);
                  if (!src)
-@@ -1536,7 +1603,7 @@ bool CmdDataModelJoints(Ctx& c, const Token& cmd) {
+@@ -1536,7 +1630,7 @@ bool CmdDataModelJoints(Ctx& c, const Token& cmd) {
          return false;
  
      bool jiggle = false, procedural = false, hitboxes = false, attachments = false;
@@ -603378,7 +603564,7 @@ index 4ef35e3..21f8610 100644
          const Token t = c.toks[c.pos++];
          const std::string o = Lower(t.text);
          if (o == "jigglebones")
-@@ -1741,10 +1808,12 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
+@@ -1741,10 +1835,12 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
  // (legacy noautodmxrules) - the morph deltas stay on the Source either way.
  // `file` must already be extension-resolved. null return = failure (reported).
  source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& file,
@@ -603393,7 +603579,7 @@ index 4ef35e3..21f8610 100644
      const float defaultScale = c.in.scale;
      c.in.scale = importScale;
      source::Source* src = LoadSource(c, file, entry.line, /*morphSource=*/true, &edit);
-@@ -1753,7 +1822,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
+@@ -1753,7 +1849,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
          return nullptr;
      if (flip)
          source::FlipNormals(*src);
@@ -603402,7 +603588,7 @@ index 4ef35e3..21f8610 100644
          auto dm = LoadRigDmx(c, entry, file, "studio rig");
          if (!dm)
              return nullptr;
-@@ -1771,8 +1840,10 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
+@@ -1771,8 +1867,10 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
  }
  
  // $body and $bodygroup load private, file-only choices with automatic DMX rig imports.
@@ -603413,7 +603599,7 @@ index 4ef35e3..21f8610 100644
      if (!c.Want("a name", cmd, part.name))
          return false;
      const std::string where = cmd.text + " \"" + part.name + "\"";
-@@ -1781,37 +1852,16 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
+@@ -1781,37 +1879,16 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
              return c.Fail(cmd.line, where + " already exists");
  
      auto studio = [&](const Token& entry, bool inlineBody) -> bool {
@@ -603461,7 +603647,7 @@ index 4ef35e3..21f8610 100644
          part.models.push_back(std::move(model));
          return true;
      };
-@@ -1859,6 +1909,7 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
+@@ -1859,6 +1936,7 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
  // frame-addressed eyelid) are SMD-only; a DMX carries its own delta states.
  bool CmdModel(Ctx& c, const Token& cmd) {
      cm::CompileInput::InBodyPart part;
@@ -603469,7 +603655,7 @@ index 4ef35e3..21f8610 100644
      if (!c.Want("a name", cmd, part.name))
          return false;
      const std::string where = cmd.text + " \"" + part.name + "\"";
-@@ -1874,7 +1925,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1874,7 +1952,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
      // inline studio flags up to the '{' or the next command
      bool flip = false;
      float importScale = c.in.scale;
@@ -603485,7 +603671,7 @@ index 4ef35e3..21f8610 100644
          const Token option = *c.Next();
          const std::string o = Lower(option.text);
          if (option.quoted) {
-@@ -1886,6 +1944,26 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1886,6 +1971,26 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                  return false;
              if (!std::isfinite(importScale) || importScale <= 0.0f)
                  return c.Fail(option.line, where + ": scale must be finite and greater than 0");
@@ -603512,7 +603698,7 @@ index 4ef35e3..21f8610 100644
          } else if (o == "subd") {
              // no quad subdivision in this compiler (matches importqc); accepted
          } else if (o == "faces") {
-@@ -1917,16 +1995,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1917,16 +2022,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              } else if (t.text == "}") {
                  if (--depth == 0)
                      break;
@@ -603555,17 +603741,18 @@ index 4ef35e3..21f8610 100644
      cm::CompileInput::InModel model;
      model.name = part.name;
      model.source = src;
-@@ -1942,6 +2044,9 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1942,6 +2071,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
      std::map<std::string, std::vector<source::VtaFlexOption>> vtaByFile; // file -> shapes
      std::string vcaFile, vcaName;
      int vtaLine = 0, vcaLine = 0;
 +    bool invertControllers=false;
 +    bool autoControllers=false;
++    std::set<std::string> declaredSceneMorphs;
 +    std::string autoType; float autoMin=0,autoMax=1;
  
      auto atEnd = [&] { return c.Eof() || (!c.Cur().quoted && c.Cur().text == "}"); };
      auto sameLine = [&](int line) { return !atEnd() && c.Cur().line == line; };
-@@ -1950,7 +2055,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1950,7 +2083,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          return lo == "eyeball" || lo == "eyelid" || lo == "dmxeyelid" || lo == "flexfile" ||
                 lo == "flex" || lo == "flexpair" || lo == "defaultflex" || lo == "vcafile" ||
                 lo == "localvar" || lo == "mouth" || lo == "flexcontroller" ||
@@ -603575,7 +603762,7 @@ index 4ef35e3..21f8610 100644
      };
      // A `%name =` at the cursor starts a NEW rule; a bare `%name` is a fetch
      // operand, so a rule expression reads across lines until the next statement.
-@@ -2009,6 +2115,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2009,6 +2143,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          if (o == "eyeball") {
              FaceMarkup::Entry e;
              e.kind = FaceMarkup::Kind::Eyeball;
@@ -603588,7 +603775,7 @@ index 4ef35e3..21f8610 100644
              std::string iris;
              if (!c.Want("an eyeball name", t, e.eyeball.name) ||
                  !c.Want("a bone name", t, e.eyeball.bonename) ||
-@@ -2081,6 +2193,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2081,6 +2221,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              continue;
          }
  
@@ -603603,12 +603790,13 @@ index 4ef35e3..21f8610 100644
          // flexfile <file> - the VTA the following flex/flexpair/defaultflex read
          if (o == "flexfile") {
              if (!c.Want("a .vta filename", t, flexfile))
-@@ -2092,9 +2212,23 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2092,9 +2240,24 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          // flex/flexpair/defaultflex <name> [<split>] frame <N> [position f] [decay f]
          // Each names one VTA frame; a split routes to the stereo-split machinery.
          if (o == "flex" || o == "flexpair" || o == "defaultflex") {
 +            if(flexfile.empty() && !IsSmdPath(file) && o!="defaultflex") {
 +                std::string name; if(!c.Want("a morph name",t,name)) return false;
++                declaredSceneMorphs.insert(Lower(name));
 +                auto key=std::find_if(src->flexkeys.begin(),src->flexkeys.end(),[&](const source::SrcFlexKey& k){return _stricmp(k.name.c_str(),name.c_str())==0;});
 +                if(key==src->flexkeys.end()) {
 +                    std::fprintf(stderr,"warning: %s(%d): declared morph %s has no vertex data in %s\n",c.file.c_str(),t.line,name.c_str(),file.c_str());
@@ -603627,7 +603815,7 @@ index 4ef35e3..21f8610 100644
              float split = 0.0f;
              bool hasSplit = false;
              if (o == "defaultflex") {
-@@ -2123,6 +2257,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2123,6 +2286,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                      ++c.pos;
                      if (!c.WantFloat("a decay", t, fo.decay))
                          return false;
@@ -603638,7 +603826,7 @@ index 4ef35e3..21f8610 100644
                  } else if (k == "split") {
                      ++c.pos;
                      if (!c.WantFloat("a split", t, split))
-@@ -2135,6 +2273,15 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2135,6 +2302,15 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              if (!sawFrame)
                  return c.Fail(t.line, where + ": " + o + " \"" + fo.name +
                                            "\" needs a frame <N> - a .vta names nothing");
@@ -603654,7 +603842,7 @@ index 4ef35e3..21f8610 100644
              if (fo.frame == 0)
                  continue; // frame 0 is the VTA basis (the rest pose), not a delta
              if (hasSplit && split != 0.0f)
-@@ -2168,6 +2315,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2168,6 +2344,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                  return false;
              FaceMarkup::Entry e;
              e.kind = FaceMarkup::Kind::Eyelid;
@@ -603662,7 +603850,7 @@ index 4ef35e3..21f8610 100644
              const char dtc = type.empty() ? '?' : static_cast<char>(std::tolower(type[0]));
              if (dtc == 'u')      e.eyelid.upper = true;
              else if (dtc == 'l') e.eyelid.upper = false;
-@@ -2186,6 +2334,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2186,6 +2363,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                      if (e.eyelid.delta[slot] == "-")
                          e.eyelid.delta[slot].clear();
                      e.eyelid.target[slot] *= c.in.scale;
@@ -603670,7 +603858,7 @@ index 4ef35e3..21f8610 100644
                      haveSlot[slot] = true;
                  } else if (ko == "split") {
                      if (!c.WantFloat("a split distance", t, e.eyelid.split)) return false;
-@@ -2270,6 +2419,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2270,6 +2448,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                  source::VtaFlexOption fo;
                  fo.name = e.eyelid.basedesc + "_lid_" + kLidSlot[i];
                  fo.frame = frame[i];
@@ -603678,7 +603866,7 @@ index 4ef35e3..21f8610 100644
                  e.eyelid.delta[i] = fo.name;
                  vtaByFile[vtafile].push_back(std::move(fo));
              }
-@@ -2277,6 +2427,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2277,6 +2456,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              continue;
          }
  
@@ -603693,7 +603881,7 @@ index 4ef35e3..21f8610 100644
          if (o == "noautodmxrules")
              continue; // handled by the pre-scan above
          if (o == "attachment")
-@@ -2309,6 +2467,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2309,6 +2496,48 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          if (!source::LoadVtaMorphs(full.string(), *src, importScale, kv.second, &err))
              return c.Fail(vtaLine, "cannot load \"" + full.string() + "\": " + err);
      }
@@ -603731,10 +603919,18 @@ index 4ef35e3..21f8610 100644
 +                [](const source::SrcFlexKey& key){return key.defaultPose;}),src->flexkeys.end());
 +        }
 +    }
++    if (c.in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Neko &&
++        !declaredSceneMorphs.empty() && (IsScenePath(file) || IsFbxPath(file))) {
++        // Neko's named flex block selects raw source keys; declarations do not
++        // rename or implicitly retain unselected imported keys.
++        src->flexkeys.erase(std::remove_if(src->flexkeys.begin(), src->flexkeys.end(),
++            [&](const source::SrcFlexKey& key) { return !declaredSceneMorphs.count(Lower(key.name)); }),
++            src->flexkeys.end());
++    }
      if (!vcaFile.empty()) {
          std::vector<fs::path> tried;
          const fs::path full = FindSourceFile(c, vcaFile, &tried);
-@@ -2358,6 +2550,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
+@@ -2358,6 +2587,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
  //    1 - consumed as an option
  //    0 - not an animation option (caller treats it as a filename / seq ref)
  //   -1 - error, c.err set (includes a known-but-unsupported option)
@@ -603743,7 +603939,7 @@ index 4ef35e3..21f8610 100644
  int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
      if (t.quoted)
          return 0; // a quoted token is always a filename
-@@ -2589,7 +2783,21 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2589,7 +2820,21 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
      // blockname <name>: sample a specific clip out of a multi-clip source. The
      // reference also resets the frame range to that clip's, which the compile
      // stage does by clamping to whichever clip is picked.
@@ -603766,7 +603962,7 @@ index 4ef35e3..21f8610 100644
          if (!c.Want("a source clip name", t, a.blockname))
              return -1;
          return 1;
-@@ -2744,13 +2952,56 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2744,13 +2989,56 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
              return 1;
          }
      }
@@ -603824,7 +604020,7 @@ index 4ef35e3..21f8610 100644
          a.cmds.push_back(std::move(cmd));
          return 1;
      }
-@@ -3168,21 +3419,70 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
+@@ -3168,21 +3456,70 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
      if (bindpose) {
          a.bindpose = true;
          a.endframe = 0; // one frame unless `numframes` says otherwise
@@ -603903,7 +604099,7 @@ index 4ef35e3..21f8610 100644
  bool CmdAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, false); }
  bool CmdBindPoseAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, true); }
  
-@@ -3225,6 +3525,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
+@@ -3225,6 +3562,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
      std::string name;
      if (!c.Want("a compiled .mdl path", cmd, name))
          return false;
@@ -603914,7 +604110,27 @@ index 4ef35e3..21f8610 100644
      // must name a .mdl - a source .dmx/.smd or a bare name would compile fine
      // and leave a reference the engine silently fails to resolve
      if (name.size() < 4 || _stricmp(name.c_str() + name.size() - 4, ".mdl") != 0)
-@@ -4120,6 +4424,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
+@@ -3880,9 +4221,10 @@ bool CmdMorphSplitStereo(Ctx& c, const Token& cmd) {
+ bool CmdRenameMorph(Ctx& c, const Token& cmd) {
+     Ctx::MorphRename rn;
+     rn.line = cmd.line;
++    rn.sourceOnly = c.in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Neko;
+     if (!c.Want("a morph name", cmd, rn.from) || !c.Want("a new morph name", cmd, rn.to))
+         return false;
+-    if (_stricmp(rn.from.c_str(), rn.to.c_str()) != 0)
++    if (rn.sourceOnly || _stricmp(rn.from.c_str(), rn.to.c_str()) != 0)
+         c.morphRenames.push_back(std::move(rn));
+     return true;
+ }
+@@ -3915,6 +4257,7 @@ std::string RenameExprMorph(const std::string& expr, const std::string& from,
+ // pass after parsing. Renames apply in script order, so chains work.
+ bool ApplyMorphRenames(Ctx& c) {
+     for (const Ctx::MorphRename& rn : c.morphRenames) {
++        if (rn.sourceOnly) continue; // already applied during scene import
+         auto swapName = [&](std::string& s) {
+             if (_stricmp(s.c_str(), rn.from.c_str()) == 0)
+                 s = rn.to;
+@@ -4120,6 +4463,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
              if (_stricmp(o.c_str(), "autoplay") == 0) { seq.flags |= kStudioAutoplay; continue; }
              if (_stricmp(o.c_str(), "hidden") == 0) { seq.flags |= kStudioHidden; continue; }
              if (_stricmp(o.c_str(), "realtime") == 0) { seq.flags |= kStudioRealtime; continue; }
@@ -603922,7 +604138,7 @@ index 4ef35e3..21f8610 100644
              if (_stricmp(o.c_str(), "post") == 0) { seq.flags |= kStudioPost; continue; }
              if (_stricmp(o.c_str(), "delta") == 0) {
                  seq.flags |= kStudioDelta | kStudioPost;
-@@ -4557,6 +4862,37 @@ bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
+@@ -4557,6 +4901,37 @@ bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
  // $modelbudget { bones <n> materials <n> } - set the compile ceilings for this
  // model. Braces are optional for a single field. The pulselimits.h value is the
  // cap; bones default to 255 and must be raised here to go past it.
@@ -603960,7 +604176,7 @@ index 4ef35e3..21f8610 100644
  bool CmdModelBudget(Ctx& c, const Token& cmd) {
      const bool braced = !c.Eof() && !c.Cur().quoted && c.Cur().text == "{";
      if (braced)
-@@ -4852,6 +5188,12 @@ bool CmdUpAxis(Ctx& c, const Token& cmd) {
+@@ -4852,6 +5227,12 @@ bool CmdUpAxis(Ctx& c, const Token& cmd) {
      if (!c.Want("an axis", cmd, axis))
          return false;
  
@@ -603973,7 +604189,7 @@ index 4ef35e3..21f8610 100644
      pm::RadianEuler r{0.0f, 0.0f, pm::kPiF / 2.0f};
      if (_stricmp(axis.c_str(), "x") == 0)
          r.y = pm::kPiF / 2.0f; // 90 about y moves x into z
-@@ -5398,6 +5740,16 @@ bool CmdCullJiggleBones(Ctx& c, const Token&) {
+@@ -5398,6 +5779,16 @@ bool CmdCullJiggleBones(Ctx& c, const Token&) {
      return true;
  }
  
@@ -603990,7 +604206,7 @@ index 4ef35e3..21f8610 100644
  // $hierarchy <child> <parent> (Cmd_ForcedHierarchy, "$heirarchy" is stock's own
  // misspelling and works too): reparent a bone. Applied once the global bone
  // table exists, so it can join two source skeletons that were exported apart.
-@@ -5830,6 +6182,29 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
+@@ -5830,6 +6221,29 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
  // attachment name if one matches and otherwise a bone name. The inline form of
  // a VRD <aimconstraint>; the parent and the base position both come from the
  // skeleton, so neither is asked for.
@@ -604020,7 +604236,7 @@ index 4ef35e3..21f8610 100644
  bool CmdDriverAimAt(Ctx& c, const Token& cmd) {
      cm::AimAtBone ab;
      ab.autobasepos = true;
-@@ -5887,7 +6262,10 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
+@@ -5887,7 +6301,10 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
                                  filename + "\"");
  
      std::vector<fs::path> tried;
@@ -604031,7 +604247,7 @@ index 4ef35e3..21f8610 100644
      if (full.empty())
          return c.Fail(cmd.line, "cannot find \"" + filename + "\" - looked in:" +
                                  LookedIn(tried));
-@@ -7117,9 +7495,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
+@@ -7117,9 +7534,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
      float fps = 0.0f;
      if (!c.WantFloat("a frame rate", cmd, fps))
          return false;
@@ -604045,7 +604261,7 @@ index 4ef35e3..21f8610 100644
      return true;
  }
  
-@@ -7782,6 +8162,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
+@@ -7782,6 +8201,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
              if (!c.WantFloat("a position epsilon", sub, c.in.physWeldPosition)) return false;
          } else if (o == "$weldnormal") {
              if (!c.WantFloat("a normal epsilon", sub, c.in.physWeldNormal)) return false;
@@ -604055,7 +604271,7 @@ index 4ef35e3..21f8610 100644
          } else if (o == "$concave") {
              c.in.physLegacyConcave = true;
          } else if (o == "$convexhullcountoverride") {
-@@ -8076,8 +8459,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
+@@ -8076,8 +8498,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
      }
  
      std::string expectedText;
@@ -604066,7 +604282,7 @@ index 4ef35e3..21f8610 100644
      bool expected = false;
      if (_stricmp(expectedText.c_str(), "true") == 0)
          expected = true;
-@@ -8145,6 +8528,8 @@ bool ExpandVars(Ctx& c, Token& t) {
+@@ -8145,6 +8567,8 @@ bool ExpandVars(Ctx& c, Token& t) {
  // an included file - source filenames, $proceduralbones - stays relative to the
  // ROOT script's directory, matching how stock keeps cddir pinned to the top.
  bool SpliceInclude(Ctx& c) {
@@ -604075,7 +604291,7 @@ index 4ef35e3..21f8610 100644
      const Token cmd = c.toks[c.pos]; // the $include token
      size_t p = c.pos + 1;
      if (p >= c.toks.size() || (!c.toks[p].quoted && c.toks[p].text[0] == '$'))
-@@ -8153,7 +8538,12 @@ bool SpliceInclude(Ctx& c) {
+@@ -8153,7 +8577,12 @@ bool SpliceInclude(Ctx& c) {
      Token pathTok = c.toks[p++];
      if (!pathTok.expanded && !ExpandVars(c, pathTok))
          return false;
@@ -604089,7 +604305,7 @@ index 4ef35e3..21f8610 100644
  
      bool localDir = false, optional = false;
      while (p < c.toks.size() && !c.toks[p].quoted && c.toks[p].line == cmd.line &&
-@@ -8161,7 +8551,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8161,7 +8590,7 @@ bool SpliceInclude(Ctx& c) {
          const std::string& o = c.toks[p].text;
          if (_stricmp(o.c_str(), "localdir") == 0)
              localDir = true;
@@ -604098,7 +604314,7 @@ index 4ef35e3..21f8610 100644
              optional = true;
          else
              return c.Fail(c.toks[p].line, "$include: unknown parameter \"" + o +
-@@ -8177,7 +8567,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8177,7 +8606,7 @@ bool SpliceInclude(Ctx& c) {
      if (relPath.is_absolute()) {
          tries.push_back(relPath);
      } else {
@@ -604107,7 +604323,7 @@ index 4ef35e3..21f8610 100644
          // stock resolves every $include against the root script's dir, so a
          // nested one often carries the whole path down from there
          if (c.curDir != c.scriptDir)
-@@ -8202,6 +8592,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8202,6 +8631,7 @@ bool SpliceInclude(Ctx& c) {
              break;
          }
      }
@@ -604115,7 +604331,7 @@ index 4ef35e3..21f8610 100644
      if (full.empty()) {
          c.toks.erase(c.toks.begin() + c.pos, c.toks.begin() + directiveEnd);
          for (Ctx::IncludeFrame& f : c.includeFrames)
-@@ -8397,9 +8788,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
+@@ -8397,9 +8827,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
          return false;
      if (PinnedByDefVar(c, cmd, name))
          return true;
@@ -604131,7 +604347,7 @@ index 4ef35e3..21f8610 100644
      c.variables[name] = value;
      return true;
  }
-@@ -8420,6 +8814,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
+@@ -8420,6 +8853,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
      return true;
  }
  
@@ -604185,7 +604401,7 @@ index 4ef35e3..21f8610 100644
  bool IsCommandName(const std::string& name); // the kCommands lookup, below
  
  // $definemacro <name> [<param>[=<default>] ...] <body> $endmacro.
-@@ -8441,6 +8882,7 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
+@@ -8441,6 +8921,7 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
                                  "built-in $" + name + " - pick another name");
  
      Ctx::Macro m;
@@ -604193,7 +604409,7 @@ index 4ef35e3..21f8610 100644
      while (!c.AtCommand()) {
          const std::string declaration = c.toks[c.pos++].text;
          const size_t equal = declaration.find('=');
-@@ -8513,8 +8955,12 @@ bool ExpandMacro(Ctx& c, const Token& cmd, const Ctx::Macro& m) {
+@@ -8513,8 +8994,12 @@ bool ExpandMacro(Ctx& c, const Token& cmd, const Ctx::Macro& m) {
          args.push_back(std::move(a));
      }
      std::vector<Token> body = m.body;
@@ -604207,7 +604423,7 @@ index 4ef35e3..21f8610 100644
      c.SpliceAt(c.pos, body);
      return true;
  }
-@@ -8757,9 +9203,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8757,9 +9242,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
              taken = true;
              chosen = std::move(body);
          }
@@ -604219,7 +604435,7 @@ index 4ef35e3..21f8610 100644
      }
      if (!c.Eof() && !c.Cur().quoted && _stricmp(c.Cur().text.c_str(), "$else") == 0) {
          const Token els = c.toks[c.pos++];
-@@ -8774,6 +9221,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8774,6 +9260,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
  }
  
  bool CmdIf(Ctx& c, const Token& cmd) { return IfChain(c, cmd, false); }
@@ -604262,7 +604478,7 @@ index 4ef35e3..21f8610 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,19 +9342,101 @@ struct Command {
+@@ -8859,19 +9381,101 @@ struct Command {
      bool (*fn)(Ctx&, const Token&);
  };
  
@@ -604364,7 +604580,7 @@ index 4ef35e3..21f8610 100644
      {"$else", CmdElifOutside},
      {"$switch", CmdSwitch},
      {"$case", CmdCaseOutside},
-@@ -8887,6 +9452,7 @@ constexpr Command kCommands[] = {
+@@ -8887,6 +9491,7 @@ constexpr Command kCommands[] = {
      {"$body", CmdLegacyBody},
      {"$bodygroup", CmdLegacyBody},
      {"$model", CmdModel},
@@ -604372,7 +604588,7 @@ index 4ef35e3..21f8610 100644
      {"$modelgrouppreset", CmdModelGroupPreset},
      {"$bodygrouppreset", CmdModelGroupPreset},
      {"$datamodeljoints", CmdDataModelJoints},
-@@ -8905,6 +9471,7 @@ constexpr Command kCommands[] = {
+@@ -8905,6 +9510,7 @@ constexpr Command kCommands[] = {
      {"$includemodel", CmdIncludeModel},
      {"$cmdlist", CmdCmdList},
      {"$defaultfps", CmdDefaultFps},
@@ -604380,7 +604596,7 @@ index 4ef35e3..21f8610 100644
      {"$motionrollback", CmdMotionRollback},
      {"$nosequence", CmdNoSequence},
      {"$defaultfadein", CmdDefaultFadeIn},
-@@ -8927,11 +9494,44 @@ constexpr Command kCommands[] = {
+@@ -8927,11 +9533,44 @@ constexpr Command kCommands[] = {
      {"$vtxformat", CmdVtxFormat},
      {"$nodx80", CmdNoDx80},
      {"$modelbudget", CmdModelBudget},
@@ -604425,7 +604641,7 @@ index 4ef35e3..21f8610 100644
      {"$surfaceprop", CmdSurfaceProp},
      {"$contents", CmdContents},
      {"$jointcontents", CmdJointContents},
-@@ -8977,6 +9577,7 @@ constexpr Command kCommands[] = {
+@@ -8977,6 +9616,7 @@ constexpr Command kCommands[] = {
      {"$jigglebone", CmdJiggleBone},
      {"$culljigglebones", CmdCullJiggleBones},
      {"$driverbone", CmdDriverBone},
@@ -604433,7 +604649,7 @@ index 4ef35e3..21f8610 100644
      {"$driveraimat", CmdDriverAimAt},
      {"$proceduralbones", CmdProceduralBones},
      {"$realignbones", CmdRealignBones},
-@@ -8989,6 +9590,7 @@ constexpr Command kCommands[] = {
+@@ -8989,6 +9629,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},
@@ -604441,7 +604657,7 @@ index 4ef35e3..21f8610 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
-@@ -9039,7 +9641,11 @@ bool RunCommands(Ctx& c) {
+@@ -9039,7 +9680,11 @@ bool RunCommands(Ctx& c) {
          if (!ExpandCommandVars(c))
              return false;
  
@@ -604453,7 +604669,7 @@ index 4ef35e3..21f8610 100644
          if (cmd.quoted || cmd.text[0] != '$')
              return c.Fail(cmd.line, "expected a $command, got \"" + cmd.text + "\"");
          c.pos++;
-@@ -9140,9 +9746,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9140,9 +9785,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      seedDirs(includeDirs, c.launchIncludeDirs);
      seedDirs(fileDirs, c.launchSearchDirs);
  
@@ -604466,7 +604682,7 @@ index 4ef35e3..21f8610 100644
      // the root of the $include cycle check
      std::error_code ec;
      const fs::path canon = fs::weakly_canonical(path, ec);
-@@ -9170,6 +9779,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9170,6 +9818,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      out.upAxisY = source::DmxUpAxisY();
  
      // $renamemorph: before anything below resolves a morph by name
@@ -605339,10 +605555,18 @@ index 59b9b29..ba6f374 100644
      }
      BLOCK "VarFileInfo"
 diff --git a/mdlcompiler/writemdl.cpp b/mdlcompiler/writemdl.cpp
-index 3288136..98d756a 100644
+index 3288136..41ded09 100644
 --- a/mdlcompiler/writemdl.cpp
 +++ b/mdlcompiler/writemdl.cpp
-@@ -20,6 +20,9 @@
+@@ -9,6 +9,7 @@
+ #include "pathcompat.h"
+ 
+ #include "writer.h"
++#include "outputfiles.h"
+ #include "perf.h"
+ 
+ #include <algorithm>
+@@ -20,6 +21,9 @@
  #include <cstring>
  #include <filesystem>
  #include <memory>
@@ -605352,7 +605576,7 @@ index 3288136..98d756a 100644
  #include <unordered_map>
  
  #ifdef _WIN32
-@@ -530,6 +533,35 @@ void WriteBoneInfo(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
+@@ -530,6 +534,35 @@ void WriteBoneInfo(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
      buf.Align4();
  }
  
@@ -605388,7 +605612,7 @@ index 3288136..98d756a 100644
  // ---------------------------------------------------------------------------
  // WriteRLEAnimationData
  // ---------------------------------------------------------------------------
-@@ -655,6 +687,12 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
+@@ -655,6 +688,12 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
  
      for (int j = 0; j < numbones; j++) {
          const cm::AnimChannels& psrcdata = srcanim.anim[w][j];
@@ -605401,7 +605625,7 @@ index 3288136..98d756a 100644
  
          if (psrcdata.num[3] == 0 && psrcdata.num[4] == 0 && psrcdata.num[5] == 0) {
              // no rotation on this bone in this section
-@@ -674,7 +712,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
+@@ -674,7 +713,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
          if (psrcdata.num[0] == 0 && psrcdata.num[1] == 0 && psrcdata.num[2] == 0) {
              // no translation on this bone in this section
          } else if (psrcdata.num[0] <= 2 && psrcdata.num[1] <= 2 && psrcdata.num[2] <= 2) {
@@ -605410,7 +605634,7 @@ index 3288136..98d756a 100644
                  flag[j] |= fmt::STUDIO_FRAME_CONST_POS2;
                  CopyV3(*reinterpret_cast<fmt::Vector3*>(buf.p()), srcanim.sanim[iFrame][j].pos);
                  buf.pos += sizeof(fmt::Vector3);
-@@ -686,7 +724,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
+@@ -686,7 +725,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
                  buf.pos += sizeof(v48);
              }
          } else {
@@ -605419,7 +605643,7 @@ index 3288136..98d756a 100644
                  flag[j] |= fmt::STUDIO_FRAME_ANIM_POS2;
                  framelength += static_cast<int>(sizeof(fmt::Vector3));
              } else {
-@@ -797,7 +835,7 @@ void WriteIkErrors(cm::Anim& srcanim, Buf& buf) {
+@@ -797,7 +836,7 @@ void WriteIkErrors(cm::Anim& srcanim, Buf& buf) {
          for (k = 0; k < 6; k++) {
              pCompressed->scale[k] = rule.errorData.scale[k];
              pCompressed->offset[k] =
@@ -605428,7 +605652,7 @@ index 3288136..98d756a 100644
              size_t size = rule.errorData.numanim[k] * sizeof(uint16_t);
              if (size)
                  memcpy(buf.p(), rule.errorData.data[k].data(), size);
-@@ -865,7 +903,7 @@ void WriteLocalHierarchy(cm::Anim& srcanim, Buf& buf) {
+@@ -865,7 +904,7 @@ void WriteLocalHierarchy(cm::Anim& srcanim, Buf& buf) {
          for (k = 0; k < 6; k++) {
              pCompressed->scale[k] = rule.localData.scale[k];
              pCompressed->offset[k] =
@@ -605437,7 +605661,7 @@ index 3288136..98d756a 100644
              size_t size = rule.localData.numanim[k] * sizeof(uint16_t);
              if (size)
                  memcpy(buf.p(), rule.localData.data[k].data(), size);
-@@ -885,6 +923,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
+@@ -885,6 +924,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
                          fmt::mstudioanimdesc_t* destanimdesc, size_t destanimOff, Buf& local,
                          Buf* ext, fmt::mstudioanimsections_t* pSections) {
      const int animblocksize = m.animblocksize;
@@ -605445,7 +605669,7 @@ index 3288136..98d756a 100644
  
      for (int w = 0; w < srcanim.numsections; w++) {
          bool bUseExtData = false;
-@@ -901,7 +940,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
+@@ -901,7 +941,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
  
          // a demand-loaded model uses the frame-major encoding throughout -
          // including the clips that stayed local
@@ -605454,7 +605678,29 @@ index 3288136..98d756a 100644
              srcanim.flags |= fmt::STUDIO_FRAMEANIM;
              destanimdesc->flags |= fmt::STUDIO_FRAMEANIM;
          }
-@@ -2803,6 +2842,91 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
+@@ -2781,28 +2821,96 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
+     return true;
+ }
+ 
+-bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, std::string* err) {
+-    std::error_code ec;
+-    std::filesystem::create_directories(path.parent_path(), ec);
+-    FILE* f = nullptr;
+-#ifdef _WIN32
+-    fopen_s(&f, path.string().c_str(), "wb");
+-#else
+-    f = fopen(path.string().c_str(), "wb");
+-#endif
+-    if (!f) {
+-        if (err) *err = "cannot open for write: " + path.string();
+-        return false;
+-    }
+-    fwrite(data, 1, len, f);
+-    fclose(f);
+-    return true;
+-}
+ 
+ } // namespace
  
  bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legacyVtx,
                       bool writeDx80, std::string* err) {
@@ -605546,7 +605792,7 @@ index 3288136..98d756a 100644
      Buf buf(kFileBuffer);
  
      fmt::studiohdr_t* phdr = buf.Reserve<fmt::studiohdr_t>();
-@@ -3028,6 +3152,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3028,6 +3136,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::vector<uint8_t> phyBuf =
          BuildPhy(m, reinterpret_cast<fmt::studiohdr_t*>(mdlBuf.data())->checksum);
  
@@ -605576,14 +605822,67 @@ index 3288136..98d756a 100644
      // save. Reference hardcodes a "models/" root in the disk path (not in the
      // header name), so $modelname stays prefix-free and the .mdl bytes match.
      std::filesystem::path base =
-@@ -3049,6 +3196,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3049,16 +3180,18 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          return path;
      };
  
-+    if(!vertexAnimation.empty()&&!SaveFile(stem.string()+".vertexanim.json",vertexAnimation.data(),vertexAnimation.size(),err))return false;
++    std::vector<PendingOutput> outputs;
++    if (!vertexAnimation.empty()) outputs.push_back({stem.string()+".vertexanim.json", vertexAnimation.data(), vertexAnimation.size()});
      std::string mdlPath = announce(".mdl");
      FlushReport(g_mdlReport);
      std::printf("total      %7zu\n", mdlBuf.size());
+-    if (!SaveFile(mdlPath, mdlBuf.data(), mdlBuf.size(), err)) return false;
++    outputs.push_back({mdlPath, mdlBuf.data(), mdlBuf.size()});
+ 
+     std::string vvdPath, vtxPath, vtxPath80;
+     if (hasGeometry) {
+         vvdPath = announce(".vvd");
+         FlushReport(g_vvdReport);
+-        if (!SaveFile(vvdPath, vvdBuf.data(), vvdBuf.size(), err)) return false;
++        outputs.push_back({vvdPath, vvdBuf.data(), vvdBuf.size()});
+ 
+         // which strip layout went out. SFM reads the Alien Swarm/CS:GO 35-byte
+         // strips and crashes on the legacy ones, so make the format explicit.
+@@ -3067,14 +3200,14 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+         vtxPath = announce(".dx90.vtx");
+         FlushReport(vtxReport);
+         std::printf("everything (%zu bytes)\n", vtxBuf.size());
+-        if (!SaveFile(vtxPath, vtxBuf.data(), vtxBuf.size(), err)) return false;
++        outputs.push_back({vtxPath, vtxBuf.data(), vtxBuf.size()});
+ 
+         // .dx80.vtx: DirectX 8 variant, same layout as the dx90 file
+         if (!vtxBuf80.empty()) {
+             vtxPath80 = announce(".dx80.vtx");
+             FlushReport(vtxReport80);
+             std::printf("everything (%zu bytes)\n", vtxBuf80.size());
+-            if (!SaveFile(vtxPath80, vtxBuf80.data(), vtxBuf80.size(), err)) return false;
++            outputs.push_back({vtxPath80, vtxBuf80.data(), vtxBuf80.size()});
+         }
+     }
+ 
+@@ -3087,8 +3220,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+         aniPath = announce(".ani");
+         std::printf("blocks     %7zu\n", g_animblocks.count ? g_animblocks.count - 1 : 0);
+         std::printf("total      %7zu\n", blockBuf->cur);
+-        if (!SaveFile(aniPath, blockBuf->start(), blockBuf->pos, err))
+-            return false;
++        outputs.push_back({aniPath, blockBuf->start(), blockBuf->pos});
+     }
+ 
+     if (!phyBuf.empty()) {
+@@ -3113,9 +3245,11 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+         else if (!m.physCollisionPairs.empty())
+             std::printf("pairs      %7zu\n", m.physCollisionPairs.size());
+         std::printf("total      %7zu\n", phyBuf.size());
+-        if (!SaveFile(phyPath, phyBuf.data(), phyBuf.size(), err)) return false;
++        outputs.push_back({phyPath, phyBuf.data(), phyBuf.size()});
+     }
+ 
++    if (!SaveOutputSet(outputs, err)) return false;
++
+     // footer: the shared output dir once, then each file by name with its
+     // checksum (mstudiohdr_t::checksum, mdl.h - shared by .mdl/.vvd/
+     // .dx90.vtx/.phy; the .ani header does not carry one) and size
 diff --git a/mdlcompiler/writephy.cpp b/mdlcompiler/writephy.cpp
 index 1034afa..4bd4e64 100644
 --- a/mdlcompiler/writephy.cpp

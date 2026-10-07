@@ -60,7 +60,7 @@
 | 输出路径/缓冲上限、pushd include/procedural | 已实现；采用动态缓冲而非固定预分配。 |
 | NvTriStrip 与全局分割 | 已实现；全局分割作用于统一 LOD 字典，非参考源文件预拆分逐字复现。 |
 | `$lod replacemesh` | **待确认**：日志列为修复，但提供的 0.3.0 二进制未识别本轮候选用法，且未找到命令字符串。不能猜成 replacemodel 别名。现有 replacemodel/replacematerial 不受影响。 |
-| `$DontDestroy` / `-DontDestroy` | **v1.2.8 接入**默认不清理输出策略；编译/预检失败保留既有输出。写盘中途失败的文件集事务行为另需完善，不能宣称完全等同。 |
+| `$DontDestroy` / `-DontDestroy` | **v1.2.8 接入**默认不清理输出策略；编译/预检失败保留既有输出。v1.2.9 增加检查写入及可处理故障回滚，目录冲突/Windows 文件锁回归通过；不保证断电或强制终止恢复。 |
 | 历史 VTA/DMX、分割、LOD、缩放缺陷修复 | 多 VTA、默认姿态、flex 重映射等有对应实现/回归；其余历史修复仍按具体输入核对，不仅检查开关存在。 |
 
 ## NekoMDL：按中文日志核对
@@ -71,7 +71,7 @@
 | 场景节点、蒙皮、形态键、动画、LOD | 已实现；InNode、Pick、SampleRate、FPS、按后端 UpAxis 与缓存已接入。 |
 | `$NekoModel`、named flex/flexpair、眼球/眼睑 | 已实现；多 studio 面部作用域与显式 Neko 面部策略已测试。 |
 | `$NekoDriverBone`、jiggle 轴向、NoBoneRealign/AppendScale | 已实现；复杂父级驱动骨仍需具体参考输出。 |
-| `$RenameMorph`、`$PreRenameMaterial`、舍弃形态键法线 | 已实现；RenameMorph 早于本轮已在基线源码中存在，旧表漏记。缺失名称的容错行为并非完全一致。 |
+| `$RenameMorph`、`$PreRenameMaterial`、舍弃形态键法线 | 已实现；RenameMorph 早于本轮已在基线源码中存在，旧表漏记。v1.2.9 在显式 neko 模式补齐导入原名映射、缺失忽略、大小写敏感、不连续映射及命名 flex 筛选；native 行为保留，目标重名明确拒绝。 |
 | 顶点/flex/材质/skin 容量、MaxVerts/MaxBones/FileBufferSize | 已实现动态容器与预算；部分默认值/裁剪阶段不同，见 COMPATIBILITY.md。 |
 | 行条件、变量、可选 include、assert、消息 | 已实现 `$if/$ifdef/$elif/$eldef/$else/$endif`、UndefineVariable、`-D`、iffileexists 等。 |
 | 便携输出、modelname/outdir、序列顺序、HLMV/beep | 已实现；默认序列顺序保留策略与 Neko 不同，`-noremap` 可选择 QC 顺序。 |
@@ -89,7 +89,7 @@
 
 ## 后续工作顺序 / Next integration work
 
-1. **实际 QC 兼容缺口**：CE replacemesh 的真实语义、写盘中途失败的文件集保留行为；Neko RenameMorph 容错与复杂驱动骨父级行为。每项先取得参考输出，再接入统一管线。
+1. **实际 QC 兼容缺口**：CE replacemesh 的真实语义；Neko 复杂驱动骨父级行为。每项先取得参考输出，再接入统一管线。
 2. **导入覆盖**：对 Neko 明确列出的 Assimp 场景格式优先验证真实几何/蒙皮/形态键/动画组合；明确当前后备插值差异并修正可复现案例。
 3. **已实现功能组合**：验证面部块、材质重命名、网格分割与 LOD 同时使用；必要的回归用于证明移植功能，不新增无关测试体系课题。
 4. **参考环境**：按游戏依赖恢复 StudioMDL 2013 对照，复核页面公开能力；两包只计一个功能来源。
@@ -103,3 +103,5 @@ extensions. Existing implementations, intentional differences and unresolved
 reference evidence are not interchangeable. The first v1.2.8 integration batch
 restores legacy Neko script acceptance, its old strip switch and CE DontDestroy acceptance; it does not claim
 complete five-compiler parity. The two 2012/2013 archives count as one compiler.
+
+The v1.2.9 batch adds explicit Neko morph mapping and checked output staging/rollback. Power loss and forced termination recovery are not guaranteed.

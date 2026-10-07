@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.8
+# NewPageMergeMDL v1.2.9
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.8**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.9**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -12,6 +12,12 @@
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态和后续顺序见 [五编译器功能清单](FEATURE_MATRIX.md)。
+
+## v1.2.9：Neko 形态键与输出故障保留
+
+在 `$dmxcompatibility neko` 模式下，`$RenameMorph` 按 FBX/glTF 导入原名映射：区分大小写、缺失忽略、同名定义后者覆盖、不连续映射、不改写 QC 声明；命名 flex 块只保留声明的源键。native 全局重命名行为保留。多个源键映射到同名时明确报错。
+
+输出先全部暂存，检查写入、刷新及关闭，再备份并替换文件集；可处理的故障回滚。目录冲突和 Windows VTX 锁定测试确认旧文件不变；不保证断电或强制终止恢复。153 项兼容、20 项自动化回归通过。
 
 ## v1.2.8：回归五编译器整合主线
 
@@ -142,7 +148,7 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 
 | 内容 | 当前状态与剩余工作 |
 | --- | --- |
-| 五者整合缺口 | CE replacemesh 参考语义尚未确认；DontDestroy 同名接口已接入默认保留策略，写盘中途失败的文件集保护仍需完善；Neko 缺失 RenameMorph 容错及复杂驱动骨需继续对照。详见 FEATURE_MATRIX.md。 |
+| 五者整合缺口 | CE replacemesh 参考语义及 Neko 复杂驱动骨父级仍需对照；RenameMorph 容错和可处理写盘故障回滚已补齐，断电/强制终止恢复未实现。详见 FEATURE_MATRIX.md。 |
 | 额外扩展：蒙皮实例与网格切换 | 不作为五者整合的先决条件；尚未支持蒙皮网格的 `EXT_mesh_gpu_instancing`，也未支持动画中的网格切换；静态非蒙皮实例已支持。 |
 | 额外扩展：VRM 运行时行为 | 不作为五者整合的先决条件；完整弹簧骨和专有表情映射的运行时语义尚未实现；已有 VRM 导入与默认形态键权重回归不代表完整 VRM 行为兼容。 |
 | 导入格式与插值覆盖 | cgltf 与 Assimp 6.0.4 导入已实现，但尚未逐一验证所有 Assimp 格式、复杂 FBX/VRM 层级及后备路径插值。 |

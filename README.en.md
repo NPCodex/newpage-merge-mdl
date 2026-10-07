@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.8
+# NewPageMergeMDL v1.2.9
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.8.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.9.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -14,6 +14,12 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+
+## v1.2.9: Neko morph mapping and output preservation
+
+With `$dmxcompatibility neko`, `$RenameMorph` maps exact imported FBX/glTF names once: missing names are ignored, the latest definition wins, mappings do not chain, and QC declarations remain unchanged. Named flex blocks retain declared keys. Native global renaming is preserved; ambiguous target names are rejected.
+
+Output files are staged with checked writes, flushes and closes, then backed up and replaced. Handled failures roll back the set. Directory conflicts and Windows VTX sharing locks preserve prior bytes in tests. Power loss and forced termination recovery are not guaranteed. All 153 compatibility and 20 automation tests pass.
 
 ## v1.2.8: five-compiler integration focus
 
@@ -144,7 +150,7 @@ This list reflects v1.2.8 implementation and existing validation records. “Unv
 
 | Area | Current status and remaining work |
 | --- | --- |
-| Integration gaps | CE replacemesh semantics remain unconfirmed. The DontDestroy interface accepts default preservation; file-set protection on mid-write failures still needs work. Neko missing RenameMorph tolerance and complex driver parents need comparisons. See FEATURE_MATRIX.md. |
+| Integration gaps | CE replacemesh semantics and complex Neko driver parents still need evidence. RenameMorph tolerance and handled output failure rollback are implemented; power-loss/forced termination recovery remains incomplete. See FEATURE_MATRIX.md. |
 | Extra extension: skinned instances and mesh swaps | These are not prerequisites for five-compiler integration. Skinned `EXT_mesh_gpu_instancing` and animated mesh swaps remain unsupported. Static unskinned instances are supported. |
 | Extra extension: VRM runtime behavior | These are not prerequisites for five-compiler integration. Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
 | Import format and interpolation coverage | cgltf and Assimp 6.0.4 imports are implemented, but not every Assimp format, complex FBX/VRM hierarchy or fallback interpolation path has been tested. |
