@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.11
+# NewPageMergeMDL v1.2.12
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.11**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.12**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -12,6 +12,12 @@
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态和后续顺序见 [五编译器功能清单](FEATURE_MATRIX.md)。
+
+## v1.2.12：反向分析补齐 CE LOD 选项
+
+通过 CE x64 LOD 解析器的静态反汇编与自制模型对照，补齐 `$lod { replacemodel 原模型 替换模型 reverse }`。`reverse` 大小写不敏感，在命令同一行使用；仅翻转替换 LOD 的三角形绕序，保留导入法线，并隔离共享网格，避免影响其他 LOD。普通、reverse、混合大小写三组 CE 输出确认行为，DX80/DX90 回归检查后续普通 LOD 不被翻转。当前 158 项兼容、20 项自动化回归通过。
+
+CE 日志中的 `replacemesh` 仍未确认：提供的 x86/x64 程序未找到该入口；x64 实际解析分支为 replacemodel/replacematerial/removemesh。不能把本轮补齐的 reverse 选项当作该日志条目已经实现。
 
 ## v1.2.11：Assimp 路径的 glTF 动画插值
 

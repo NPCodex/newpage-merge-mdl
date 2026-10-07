@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..0c1132e 100644
+index fed7eaf..21645ca 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..0c1132e 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.11 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.12 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -603289,7 +603289,7 @@ index d460e13..cca5a2a 100644
              // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
              if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index 4ef35e3..9deb36f 100644
+index 4ef35e3..b310953 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
 @@ -29,7 +29,9 @@
@@ -604381,7 +604381,33 @@ index 4ef35e3..9deb36f 100644
      if (full.empty())
          return c.Fail(cmd.line, "cannot find \"" + filename + "\" - looked in:" +
                                  LookedIn(tried));
-@@ -7117,9 +7579,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
+@@ -6337,6 +6799,9 @@ bool ParseReplaceModel(Ctx& c, const Token& cmd, cm::ScriptLod& lod) {
+     if (!c.Want("a model name", cmd, r.src) ||
+         !c.Want("a replacement mesh", cmd, r.dst))
+         return false;
++    const bool reverse = !c.Eof() && c.Cur().line == cmd.line &&
++                         Lower(c.Cur().text) == "reverse";
++    if (reverse) ++c.pos;
+ 
+     // "blank" means the LOD system was told to replace nothing - forget the
+     // entry entirely (reference Cmd_ReplaceModel)
+@@ -6354,6 +6819,15 @@ bool ParseReplaceModel(Ctx& c, const Token& cmd, cm::ScriptLod& lod) {
+     if (!r.source)
+         return false;
+ 
++    if (reverse) {
++        // CE's replacemodel reverse flips LOD winding. Preserve imported
++        // normals and keep cached files/rendermesh aliases private to this LOD.
++        auto privateSource = std::make_unique<source::Source>(*r.source);
++        for (auto& face : privateSource->face) std::swap(face.b, face.c);
++        r.source = privateSource.get();
++        c.in.sources.push_back(std::move(privateSource));
++    }
++
+     lod.modelReplacements.push_back(std::move(r));
+     return true;
+ }
+@@ -7117,9 +7591,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
      float fps = 0.0f;
      if (!c.WantFloat("a frame rate", cmd, fps))
          return false;
@@ -604395,7 +604421,7 @@ index 4ef35e3..9deb36f 100644
      return true;
  }
  
-@@ -7782,6 +8246,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
+@@ -7782,6 +8258,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
              if (!c.WantFloat("a position epsilon", sub, c.in.physWeldPosition)) return false;
          } else if (o == "$weldnormal") {
              if (!c.WantFloat("a normal epsilon", sub, c.in.physWeldNormal)) return false;
@@ -604405,7 +604431,7 @@ index 4ef35e3..9deb36f 100644
          } else if (o == "$concave") {
              c.in.physLegacyConcave = true;
          } else if (o == "$convexhullcountoverride") {
-@@ -8076,8 +8543,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
+@@ -8076,8 +8555,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
      }
  
      std::string expectedText;
@@ -604416,7 +604442,7 @@ index 4ef35e3..9deb36f 100644
      bool expected = false;
      if (_stricmp(expectedText.c_str(), "true") == 0)
          expected = true;
-@@ -8145,6 +8612,8 @@ bool ExpandVars(Ctx& c, Token& t) {
+@@ -8145,6 +8624,8 @@ bool ExpandVars(Ctx& c, Token& t) {
  // an included file - source filenames, $proceduralbones - stays relative to the
  // ROOT script's directory, matching how stock keeps cddir pinned to the top.
  bool SpliceInclude(Ctx& c) {
@@ -604425,7 +604451,7 @@ index 4ef35e3..9deb36f 100644
      const Token cmd = c.toks[c.pos]; // the $include token
      size_t p = c.pos + 1;
      if (p >= c.toks.size() || (!c.toks[p].quoted && c.toks[p].text[0] == '$'))
-@@ -8153,7 +8622,12 @@ bool SpliceInclude(Ctx& c) {
+@@ -8153,7 +8634,12 @@ bool SpliceInclude(Ctx& c) {
      Token pathTok = c.toks[p++];
      if (!pathTok.expanded && !ExpandVars(c, pathTok))
          return false;
@@ -604439,7 +604465,7 @@ index 4ef35e3..9deb36f 100644
  
      bool localDir = false, optional = false;
      while (p < c.toks.size() && !c.toks[p].quoted && c.toks[p].line == cmd.line &&
-@@ -8161,7 +8635,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8161,7 +8647,7 @@ bool SpliceInclude(Ctx& c) {
          const std::string& o = c.toks[p].text;
          if (_stricmp(o.c_str(), "localdir") == 0)
              localDir = true;
@@ -604448,7 +604474,7 @@ index 4ef35e3..9deb36f 100644
              optional = true;
          else
              return c.Fail(c.toks[p].line, "$include: unknown parameter \"" + o +
-@@ -8177,7 +8651,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8177,7 +8663,7 @@ bool SpliceInclude(Ctx& c) {
      if (relPath.is_absolute()) {
          tries.push_back(relPath);
      } else {
@@ -604457,7 +604483,7 @@ index 4ef35e3..9deb36f 100644
          // stock resolves every $include against the root script's dir, so a
          // nested one often carries the whole path down from there
          if (c.curDir != c.scriptDir)
-@@ -8202,6 +8676,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8202,6 +8688,7 @@ bool SpliceInclude(Ctx& c) {
              break;
          }
      }
@@ -604465,7 +604491,7 @@ index 4ef35e3..9deb36f 100644
      if (full.empty()) {
          c.toks.erase(c.toks.begin() + c.pos, c.toks.begin() + directiveEnd);
          for (Ctx::IncludeFrame& f : c.includeFrames)
-@@ -8397,9 +8872,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
+@@ -8397,9 +8884,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
          return false;
      if (PinnedByDefVar(c, cmd, name))
          return true;
@@ -604481,7 +604507,7 @@ index 4ef35e3..9deb36f 100644
      c.variables[name] = value;
      return true;
  }
-@@ -8420,6 +8898,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
+@@ -8420,6 +8910,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
      return true;
  }
  
@@ -604535,7 +604561,7 @@ index 4ef35e3..9deb36f 100644
  bool IsCommandName(const std::string& name); // the kCommands lookup, below
  
  // $definemacro <name> [<param>[=<default>] ...] <body> $endmacro.
-@@ -8441,6 +8966,7 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
+@@ -8441,6 +8978,7 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
                                  "built-in $" + name + " - pick another name");
  
      Ctx::Macro m;
@@ -604543,7 +604569,7 @@ index 4ef35e3..9deb36f 100644
      while (!c.AtCommand()) {
          const std::string declaration = c.toks[c.pos++].text;
          const size_t equal = declaration.find('=');
-@@ -8513,8 +9039,12 @@ bool ExpandMacro(Ctx& c, const Token& cmd, const Ctx::Macro& m) {
+@@ -8513,8 +9051,12 @@ bool ExpandMacro(Ctx& c, const Token& cmd, const Ctx::Macro& m) {
          args.push_back(std::move(a));
      }
      std::vector<Token> body = m.body;
@@ -604557,7 +604583,7 @@ index 4ef35e3..9deb36f 100644
      c.SpliceAt(c.pos, body);
      return true;
  }
-@@ -8757,9 +9287,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8757,9 +9299,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
              taken = true;
              chosen = std::move(body);
          }
@@ -604569,7 +604595,7 @@ index 4ef35e3..9deb36f 100644
      }
      if (!c.Eof() && !c.Cur().quoted && _stricmp(c.Cur().text.c_str(), "$else") == 0) {
          const Token els = c.toks[c.pos++];
-@@ -8774,6 +9305,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8774,6 +9317,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
  }
  
  bool CmdIf(Ctx& c, const Token& cmd) { return IfChain(c, cmd, false); }
@@ -604612,7 +604638,7 @@ index 4ef35e3..9deb36f 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,19 +9426,101 @@ struct Command {
+@@ -8859,19 +9438,101 @@ struct Command {
      bool (*fn)(Ctx&, const Token&);
  };
  
@@ -604714,7 +604740,7 @@ index 4ef35e3..9deb36f 100644
      {"$else", CmdElifOutside},
      {"$switch", CmdSwitch},
      {"$case", CmdCaseOutside},
-@@ -8887,6 +9536,7 @@ constexpr Command kCommands[] = {
+@@ -8887,6 +9548,7 @@ constexpr Command kCommands[] = {
      {"$body", CmdLegacyBody},
      {"$bodygroup", CmdLegacyBody},
      {"$model", CmdModel},
@@ -604722,7 +604748,7 @@ index 4ef35e3..9deb36f 100644
      {"$modelgrouppreset", CmdModelGroupPreset},
      {"$bodygrouppreset", CmdModelGroupPreset},
      {"$datamodeljoints", CmdDataModelJoints},
-@@ -8905,6 +9555,7 @@ constexpr Command kCommands[] = {
+@@ -8905,6 +9567,7 @@ constexpr Command kCommands[] = {
      {"$includemodel", CmdIncludeModel},
      {"$cmdlist", CmdCmdList},
      {"$defaultfps", CmdDefaultFps},
@@ -604730,7 +604756,7 @@ index 4ef35e3..9deb36f 100644
      {"$motionrollback", CmdMotionRollback},
      {"$nosequence", CmdNoSequence},
      {"$defaultfadein", CmdDefaultFadeIn},
-@@ -8927,11 +9578,44 @@ constexpr Command kCommands[] = {
+@@ -8927,11 +9590,44 @@ constexpr Command kCommands[] = {
      {"$vtxformat", CmdVtxFormat},
      {"$nodx80", CmdNoDx80},
      {"$modelbudget", CmdModelBudget},
@@ -604775,7 +604801,7 @@ index 4ef35e3..9deb36f 100644
      {"$surfaceprop", CmdSurfaceProp},
      {"$contents", CmdContents},
      {"$jointcontents", CmdJointContents},
-@@ -8977,6 +9661,7 @@ constexpr Command kCommands[] = {
+@@ -8977,6 +9673,7 @@ constexpr Command kCommands[] = {
      {"$jigglebone", CmdJiggleBone},
      {"$culljigglebones", CmdCullJiggleBones},
      {"$driverbone", CmdDriverBone},
@@ -604783,7 +604809,7 @@ index 4ef35e3..9deb36f 100644
      {"$driveraimat", CmdDriverAimAt},
      {"$proceduralbones", CmdProceduralBones},
      {"$realignbones", CmdRealignBones},
-@@ -8989,6 +9674,7 @@ constexpr Command kCommands[] = {
+@@ -8989,6 +9686,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},
@@ -604791,7 +604817,7 @@ index 4ef35e3..9deb36f 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
-@@ -9039,7 +9725,11 @@ bool RunCommands(Ctx& c) {
+@@ -9039,7 +9737,11 @@ bool RunCommands(Ctx& c) {
          if (!ExpandCommandVars(c))
              return false;
  
@@ -604803,7 +604829,7 @@ index 4ef35e3..9deb36f 100644
          if (cmd.quoted || cmd.text[0] != '$')
              return c.Fail(cmd.line, "expected a $command, got \"" + cmd.text + "\"");
          c.pos++;
-@@ -9140,9 +9830,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9140,9 +9842,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      seedDirs(includeDirs, c.launchIncludeDirs);
      seedDirs(fileDirs, c.launchSearchDirs);
  
@@ -604816,7 +604842,7 @@ index 4ef35e3..9deb36f 100644
      // the root of the $include cycle check
      std::error_code ec;
      const fs::path canon = fs::weakly_canonical(path, ec);
-@@ -9170,6 +9863,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9170,6 +9875,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      out.upAxisY = source::DmxUpAxisY();
  
      // $renamemorph: before anything below resolves a morph by name

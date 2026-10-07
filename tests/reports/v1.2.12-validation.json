@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "version": "1.2.12",
+  "compatibility_tests": 158,
+  "automation_tests": 20,
+  "compiler_sha256": "a59389e831320552c558ccbbbbc3e8224a5681de1056bce4a4ebc63584dc96bd",
+  "production_model": "Plum playermodel_f_compile2_hair.qc",
+  "game": {
+    "schema": 1,
+    "engine": "GarrysMod x64",
+    "render_cases": 28,
+    "face_differences": [
+      {
+        "model": "models/newpage_production_validation/plum_v1212_player.mdl",
+        "noise_pixels": 0,
+        "expression_pixels": 23674
+      }
+    ],
+    "lod_reduction_required": false,
+    "geometry_and_selection_verified": true,
+    "full_material_rendering_verified": true,
+    "material_probes": [
+      {
+        "missing": [],
+        "model": "models/newpage_production_validation/plum_v1212_player.mdl"
+      }
+    ],
+    "physics": [
+      {
+        "model": "models/newpage_production_validation/plum_v1212_player.mdl",
+        "bodies": 18,
+        "max_horizontal_drift": 40.9664306640625,
+        "max_final_speed": 0
+      }
+    ]
+  },
+  "game_outputs_sha256": {
+    "plum_v1212_player.dx80.vtx": "f148d295aaff3ef50e3daa3032f0fae3d2de4ba184e2a104882f9bba847a5f13",
+    "plum_v1212_player.dx90.vtx": "cbd90cedd44eec6a89a7d94638d214fd1aabb59ae3a9d1e19ec7fa14b93b3218",
+    "plum_v1212_player.mdl": "628136a81af336bc23a94386356484b19507885c1c57d4fde6f3190a1fe66291",
+    "plum_v1212_player.phy": "486716934b46ba3656d6131376c02e1f525581144b1eaacf7478fa34807460ba",
+    "plum_v1212_player.vvd": "40c8362222473bea1c0aa224475122490e7901f44d29a1047c11c39bf3db13f7"
+  },
+  "binary_analysis": {
+    "compiler": "StudioMDL-CE supplied x64",
+    "sha256": "bc5cbbcb1444d539d35a36afdc7a84b7419839fd1b15674e2d0ec6ffc37e0758",
+    "lod_dispatch": "0x140084d6a",
+    "replacemodel_parser": "0x1400844a0",
+    "reverse_comparison": "0x1400845fa",
+    "reference_cases": [
+      "ordinary",
+      "reverse",
+      "mixed case reverse"
+    ],
+    "ordinary_lod_indices": [
+      0,
+      2,
+      1
+    ],
+    "reversed_lod_indices": [
+      0,
+      1,
+      2
+    ],
+    "normal_direction_preserved": true,
+    "regression_scope": "DX80/DX90 reversed replacement followed by ordinary replacement of the same source"
+  },
+  "new_features": [
+    "CE LOD replacemodel reverse, private winding swap preserving cached sources"
+  ],
+  "remaining_integration": [
+    "Changelog-only CE replacemesh entry remains unconfirmed by supplied binaries",
+    "Other import formats and interpolation",
+    "Complex rig/function combinations outside tested cases",
+    "StudioMDL 2013 reference game dependencies"
+  ],
+  "test_scope": "Self-authored CE triangle references and one supplied Plum model; no claim of full CE parity or actual engine testing of the self-authored reverse LOD fixture."
+}

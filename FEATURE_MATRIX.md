@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.11。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.12。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
@@ -59,7 +59,8 @@
 | 骨骼前缀折叠、保留策略、hitbox 子骨排除 | 已实现。 |
 | 输出路径/缓冲上限、pushd include/procedural | 已实现；采用动态缓冲而非固定预分配。 |
 | NvTriStrip 与全局分割 | 已实现；全局分割作用于统一 LOD 字典，非参考源文件预拆分逐字复现。 |
-| `$lod replacemesh` | **待确认**：日志列为修复，但提供的 0.3.0 二进制未识别本轮候选用法，且未找到命令字符串。不能猜成 replacemodel 别名。现有 replacemodel/replacematerial 不受影响。 |
+| `$lod replacemodel ... reverse` | **v1.2.12 补齐**：静态控制流及三组 CE 输出确认，反转替换 LOD 绕序、保留法线、隔离共享源。 |
+| `$lod replacemesh` | **待确认**：日志列为修复，但提供的 0.3.0 二进制未识别本轮候选用法，x86/x64 均未找到命令字符串，x64 LOD 分支已反汇编核对。不能猜成 replacemodel 别名。现有 replacemodel/replacematerial 不受影响。 |
 | `$DontDestroy` / `-DontDestroy` | **v1.2.8 接入**默认不清理输出策略；编译/预检失败保留既有输出。v1.2.9 增加检查写入及可处理故障回滚，目录冲突/Windows 文件锁回归通过；不保证断电或强制终止恢复。 |
 | 历史 VTA/DMX、分割、LOD、缩放缺陷修复 | 多 VTA、默认姿态、flex 重映射等有对应实现/回归；其余历史修复仍按具体输入核对，不仅检查开关存在。 |
 
@@ -109,3 +110,5 @@ The v1.2.9 batch adds explicit Neko morph mapping and checked output staging/rol
 The v1.2.10 batch resolves sampled Neko driver/helper world poses against model bind parents and isolates pose-only skeleton ownership. Six reference cases pass; this is bounded rig evidence, not universal parity.
 
 The v1.2.11 batch retains Assimp geometry while sampling original glTF animations; STEP and CUBICSPLINE loss is fixed. Other-format interpolation and complex hierarchy coverage remain open.
+
+The v1.2.12 batch recovers and implements CE replacemodel reverse from binary control flow and actual reference outputs; the separately advertised replacemesh entry remains unresolved.

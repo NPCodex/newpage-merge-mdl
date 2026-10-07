@@ -80,7 +80,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 157 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 158 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -273,3 +273,7 @@ See [VALIDATION.md](VALIDATION.md) for mounts, Draco, vertex-cache QC/playback, 
 `$dmxcompatibility native|ce|neko` selects flex registration behavior. Native is the default and retains controller/rule deduplication and automatic DMX rules. CE preserves per-body controllers and omits automatic combination rules; Neko preserves per-body controllers and repeated rules. Explicit QC expressions remain supported. Generated scene-baking playback rules are retained in all modes. Selecting a reference mode sets `$flexcullmethod none`; a later explicit `$flexcullmethod` can override that choice. Use this command before model declarations for clarity. It does not claim complete byte-level reference parity. Twenty-eight bounded reference comparisons cover DMX, VTA, stereo, descriptor dependencies, eyelids, IK, LOD, attachments and jiggle combinations.
 
 Scene import merges repeated influences of the same joint before weight selection and rejects negative/non-finite glTF weights. `-perfjson` retains schema 1 and adds `stages` entries with `tag`, `name`, `ms` and `calls`; stage scopes can overlap and must not be summed as exclusive timings. Macro errors show the definition file/line and expansion call chain. Writer preflight rejects invalid geometry, bone hierarchies, bodygroup/LOD/flex indices before output files are touched.
+
+### CE LOD replacement winding (v1.2.12)
+
+`$lod 10 {` followed by `replacemodel mesh.smd low.smd reverse` on its own line reverses the replacement triangle winding. The option is case-insensitive; normals and cached geometry for ordinary replacements are preserved. Three CE reference compiles and DX80/DX90 regressions confirm bounded behavior. The changelog-only replacemesh command remains unconfirmed.

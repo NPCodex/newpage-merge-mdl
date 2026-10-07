@@ -6799,6 +6799,9 @@ bool ParseReplaceModel(Ctx& c, const Token& cmd, cm::ScriptLod& lod) {
     if (!c.Want("a model name", cmd, r.src) ||
         !c.Want("a replacement mesh", cmd, r.dst))
         return false;
+    const bool reverse = !c.Eof() && c.Cur().line == cmd.line &&
+                         Lower(c.Cur().text) == "reverse";
+    if (reverse) ++c.pos;
 
     // "blank" means the LOD system was told to replace nothing - forget the
     // entry entirely (reference Cmd_ReplaceModel)
@@ -6815,6 +6818,15 @@ bool ParseReplaceModel(Ctx& c, const Token& cmd, cm::ScriptLod& lod) {
                    : LoadSource(c, WithSourceExtension(c, r.dst), cmd.line, /*morphSource=*/true);
     if (!r.source)
         return false;
+
+    if (reverse) {
+        // CE's replacemodel reverse flips LOD winding. Preserve imported
+        // normals and keep cached files/rendermesh aliases private to this LOD.
+        auto privateSource = std::make_unique<source::Source>(*r.source);
+        for (auto& face : privateSource->face) std::swap(face.b, face.c);
+        r.source = privateSource.get();
+        c.in.sources.push_back(std::move(privateSource));
+    }
 
     lod.modelReplacements.push_back(std::move(r));
     return true;

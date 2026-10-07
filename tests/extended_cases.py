@@ -2,6 +2,26 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def test_ce_lod_replacemodel_reverse_is_private_and_case_insensitive(self):
+  self.write('low.smd',(self.root/'mesh.smd').read_text())
+  for option in ('reverse','ReVeRsE'):
+   qc='$modelname reversed_lod\n$body m mesh.smd\n$lod 10 {\nreplacemodel mesh.smd low.smd '+option+'\n}\n$lod 20 {\nreplacemodel mesh.smd low.smd\n}\n'
+   self.scene_qc(qc)
+   for extension in ('dx80','dx90'):
+    original=self.vtx_triangles('reversed_lod',extension,lod=0)
+    flipped=self.vtx_triangles('reversed_lod',extension,lod=1)
+    later=self.vtx_triangles('reversed_lod',extension,lod=2)
+    self.assertEqual(original,later)
+    self.assertNotEqual(original,flipped)
+    self.assertEqual(sum(original.values()),sum(flipped.values()))
+    restored={}
+    for (mesh,tri),count in flipped.items():
+     tri=(tri[0],tri[2],tri[1]);restored[(mesh,min(tri,tri[1:]+tri[:1],tri[2:]+tri[:2]))]=count
+    self.assertEqual(dict(original),restored)
+   data=(self.root/'models/reversed_lod.vvd').read_bytes();count=struct.unpack_from('<i',data,16)[0];start=struct.unpack_from('<i',data,56)[0]
+   self.assertEqual(count,3)
+   for i in range(count):self.assertGreater(struct.unpack_from('<f',data,start+i*48+36)[0],.99)
+
  def scene_bone_animation(self,model,clip,bone):
   import re
   import __main__

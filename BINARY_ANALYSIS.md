@@ -1,4 +1,4 @@
-# Current integration status (v1.2.8)
+# Current integration status (v1.2.12)
 
 The investigations below are historical evidence. Current status is tracked in
 FEATURE_MATRIX.md and COMPATIBILITY.md. AppID mounts, explicit bone retention,
@@ -143,3 +143,9 @@ Self-authored SMD cases expose a real NekoDriverBone mismatch: animated ancestor
 ## v1.2.11 glTF fallback interpolation
 
 The vendored Assimp glTF2 importer keeps cubic center values but discards tangents and STEP interpolation metadata. Self-authored output comparisons show v1.2.10 produces linear translation samples for both STEP and CUBICSPLINE. The maintained fallback now keeps Assimp geometry/skin import while sampling original glTF accessors with the existing evaluator, without a duplicate mesh allocation. Authored-value regressions cover three container types, three translation modes, quaternion STEP/cubic, unnamed nodes/clips and scale/morph baking. This improves authored glTF behavior; it is not evidence that the Neko binary preserves these modes identically.
+
+## v1.2.12 CE LOD parser control flow
+
+Both supplied CE binaries lack ASCII/UTF-16 replacemesh tokens. The x64 parser refers to replacemodel at 0x140084d6a and removemesh at 0x140085061. The replacemodel branch calls 0x1400844a0; its same-line optional-token comparison at 0x1400845fa references reverse at 0x14029c9e8. Independent implementation accepts that option and privately copies replacement faces before swapping winding.
+
+Self-authored triangle compiles confirm ordinary/reverse/mixed-case behavior: ordinary LOD indices [0,2,1], reversed [0,1,2]; emitted normal directions remain positive Z. DX80/DX90 regression verifies a later normal LOD still uses original winding. This supplies a real missing option, not recovered original source or a guessed replacemesh alias. Raw disassembly and reference executables remain outside the repository.

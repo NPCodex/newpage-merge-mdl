@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.11
+# NewPageMergeMDL v1.2.12
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.11.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.12.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -14,6 +14,12 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+
+## v1.2.12: CE LOD option recovered through binary analysis
+
+Static analysis of the CE x64 LOD parser and three self-authored reference compiles confirm `replacemodel source replacement reverse`. The case-insensitive option belongs on the same command line and reverses replacement LOD winding. Imported normals and shared sources remain unchanged. DX80/DX90 regression checks cover reversed and later ordinary LODs. All 158 compatibility and 20 automation tests pass.
+
+The changelog's `replacemesh` remains unresolved: neither supplied x86 nor x64 binary contains that token, and the inspected x64 parser exposes replacemodel/replacematerial/removemesh. This recovered reverse option is not treated as proof of that changelog entry.
 
 ## v1.2.11: glTF animation interpolation on the Assimp path
 
