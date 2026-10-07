@@ -15,6 +15,7 @@
 #include "draco/io/ply_reader.h"
 
 #include <array>
+#include <algorithm>
 #include <regex>
 
 #include "draco/core/status.h"

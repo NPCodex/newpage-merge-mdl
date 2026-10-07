@@ -10,11 +10,12 @@ import sys
 import tempfile
 import unittest
 from scene_fixtures import scene_bytes,skinned_scene_bytes
+from extended_cases import ExtendedCases
 
 COMPILER = str(Path(sys.argv.pop(1)).resolve())
 
 
-class Compatibility(unittest.TestCase):
+class Compatibility(ExtendedCases,unittest.TestCase):
     def test_merged_materials_keep_geometry_flexes_and_lods(self):
         import json,copy
         doc=json.loads(scene_bytes());doc['materials'].append({'name':'Second'})

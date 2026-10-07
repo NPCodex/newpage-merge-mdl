@@ -78,7 +78,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 112 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 127 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -193,12 +193,10 @@ is a behavioral reference, not bundled or called by this compiler.
 | `-checksequenceorder` | Enables existing-model ordering; already the project's default. `-noremap` selects QC order. |
 | `-playbeep`, `-reloadhlmv` | Completion/error tone; Windows HLMV notification using mx_class / WM_COMMAND 1017, sent only after successful file output. |
 
-Static node scale is baked into geometry. Animated scene scale cannot be encoded
-as MDL bone TRS and fails explicitly; bake it into vertex animation first.
+Static node scale is baked into geometry. Animated scene scale is supported via opt-in sampled vertex-cache baking; see VALIDATION.md. Native MDL bone-scale tracks are not emitted.
 
 Unimplemented or unverified: complete historical source-clamp
-algorithm parity, all scene formats/complex rigs, animated morph weights/mesh
-swaps, Draco-compressed glTF, skinned instancing, and engine integration. Assimp fallback can
+algorithm parity, all scene formats/complex rigs, mesh swaps, skinned instancing, and engine integration beyond the bounded GMod validation. Assimp fallback can
 lose glTF STEP/CUBICSPLINE interpolation semantics. No claim of whole-file or
 performance equality is made. PulseModel updates retain these maintained source
 changes through the overlay; Neko reference updates are reviewed manually.
@@ -250,7 +248,7 @@ Body combination capacity is 2^31, with signed nonnegative body values; integer 
 
 `localhierarchy` references retain their unweighted bones and new parents under ordinary culling/collapse; self-parenting fails. DMX corner streams require matching lengths and valid indices before normal and flex processing. Empty optional streams retain existing fallback behavior.
 
-`$collisionmodel file { $decomposeconcave $maxconvexpieces 4 }` opts into VHACD decomposition of closed connected meshes. It uses a 100000-voxel budget, 0.01 volume-error tolerance, depth 10 and the requested positive piece cap. It does not affect ordinary `$concave`, and rejects ragdoll use. Collision mass uses double intermediate arithmetic; nonpositive mass bias or non-finite volume fails. Geometry decomposition is approximate and game physics remains unverified.
+`$collisionmodel file { $decomposeconcave $maxconvexpieces 4 }` opts into VHACD decomposition of closed connected meshes. It uses a 100000-voxel budget, 0.01 volume-error tolerance, depth 10 and the requested positive piece cap. It does not affect ordinary `$concave`, and supports per-bone ragdoll decomposition via `$collisionjoints`. Collision mass uses double intermediate arithmetic; nonpositive mass bias or non-finite volume fails. Geometry decomposition is approximate and authored two-body physics and ground contact have GMod verification; arbitrary production collision rigs remain unverified.
 
 The supplied extreme QC now fails at Shoes: 2774532096 body combinations exceed capacity. Its source files are unchanged. Isolated Hair1 geometry passes global clamping, and complete Alyx/Neko examples pass. See RESEARCH.md for tests and remaining work.
 
@@ -260,4 +258,8 @@ Model-scoped `RenameMat` can merge several material IDs into one name. Vertex an
 
 The fast glTF/GLB/VRM path decodes meshopt compressed buffer views using the bundled meshoptimizer v1.1 codecs. Supported modes: ATTRIBUTES, TRIANGLES, INDICES; filters: NONE, OCTAHEDRAL, QUATERNION, EXPONENTIAL, COLOR. EXPONENTIAL and both index modes have dedicated fixture comparisons; other filters use the dependency decoder but lack dedicated output fixtures. Quantization filters need not reproduce the original floats bit-for-bit. Buffer range, decoded size and stream failures are checked before output.
 
-`EXT_mesh_gpu_instancing` expands unskinned meshes into generated child nodes sharing imported mesh data. Node/ancestor transforms compose with instance translation/rotation/scale. Morph deltas remain attached to each instance. `InNode` includes generated children. Singular scales, zero/non-finite quaternions and malformed accessor types fail explicitly. Generated names avoid collisions; the expanded scene is still subject to the source bone/node limit. Draco, animated scale/morph weights, skinned instances and game validation remain unresolved.
+`EXT_mesh_gpu_instancing` expands unskinned meshes into generated child nodes sharing imported mesh data. Node/ancestor transforms compose with instance translation/rotation/scale. Morph deltas remain attached to each instance. `InNode` includes generated children. Singular scales, zero/non-finite quaternions and malformed accessor types fail explicitly. Generated names avoid collisions; the expanded scene is still subject to the source bone/node limit. Draco and sampled scale/morph-weight baking are implemented and bounded GMod verification is available. Skinned instances remain unsupported.
+
+## v1.2.4 resources and baking
+
+See [VALIDATION.md](VALIDATION.md) for mounts, Draco, vertex-cache QC/playback, ragdolls, reference differentials and repeatable performance reports. VTA eyelid poses no longer create an orphan generic descriptor before their actual eyelid registration.

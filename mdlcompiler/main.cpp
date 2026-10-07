@@ -6,6 +6,7 @@
 #include <cctype>
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -26,8 +27,12 @@
 #include "writer.h"
 #include "branding.h"
 #include "sequence_remap.h"
+#include "resources.h"
 #ifdef _WIN32
 #include <windows.h>
+#include <psapi.h>
+#else
+#include <sys/resource.h>
 #endif
 
 #ifdef _WIN32
@@ -104,6 +109,8 @@ static int Usage() {
     std::printf("                @dep <script|include|source> <fnv1a-64 hex> <absolute path>\n");
     std::printf("  -pause        wait for a keypress before exiting (drag-and-drop runs)\n");
     std::printf("  -perfmetrics  print wall time in ms for each stage of the compile\n");
+    std::printf("  -perfjson <file> write stage timings and peak working set as JSON\n");
+    std::printf("  -steamdir <dir> override Steam root for gameinfo AppID mounts\n");
     return 1;
 }
 
@@ -218,6 +225,8 @@ static int RunCompile(int argc, char** argv) {
     g_stage = "command line";
     const char* script = nullptr;
     std::string outdir;
+    std::string gameDirectory,steamDirectory;
+    std::string perfJson;
     std::string modelname; // -modelname: overrides the script's $modelname
     int vtxFormat = -1; // unset; otherwise wins over the script's $vtxformat
     bool noDx80 = false; // -nodx80: force-skip .dx80.vtx, overriding the script
@@ -271,6 +280,9 @@ static int RunCompile(int argc, char** argv) {
         if ((std::strcmp(argv[i], "-game") == 0 || std::strcmp(argv[i], "-outdir") == 0) &&
             i + 1 < argc) {
             outdir = argv[++i];
+            if(std::strcmp(argv[i-1],"-game")==0)gameDirectory=outdir;
+        } else if(std::strcmp(argv[i],"-steamdir")==0 && i+1<argc) {
+            steamDirectory=argv[++i];
         } else if (std::strcmp(argv[i], "-modelname") == 0) {
             if (i + 1 >= argc)
                 return Fail("bad option", "-modelname needs a model path");
@@ -350,6 +362,8 @@ static int RunCompile(int argc, char** argv) {
             pulse::dependencies::g_enabled = true;
         } else if (std::strcmp(argv[i], "-dumpmaterials") == 0) {
             dumpMaterials = true;
+        } else if(std::strcmp(argv[i],"-perfjson")==0 && i+1<argc) {
+            perfJson=argv[++i];
         } else if (std::strcmp(argv[i], "-perfmetrics") == 0) {
             pulse::perf::g_enabled = true;
         } else if (std::strcmp(argv[i], "-pause") == 0) {
@@ -383,6 +397,11 @@ static int RunCompile(int argc, char** argv) {
                     std::string(script) + ": only .pulseqc/.qc compile scripts are supported");
 
     std::string err;
+    std::ofstream metrics;
+    if(!perfJson.empty()){auto path=pulse::FilePath(perfJson);if(path.has_parent_path())std::filesystem::create_directories(path.parent_path());
+        metrics.open(path);if(!metrics)return Fail("metrics error","cannot create performance JSON");}
+    if(!pulse::resources::Initialize(gameDirectory,steamDirectory,&err))return Fail("mount error",err);
+    pulse::resources::Print();
     pulse::compile::CompileInput input;
     // pre-seeded so a script without $modelname still loads under -modelname
     input.outname = modelname;
@@ -503,6 +522,17 @@ static int RunCompile(int argc, char** argv) {
         pulse::perf::Record("total", "write", ms(tCompile, tWrite));
         pulse::perf::Record("total", "whole compile", ms(t0, tWrite));
         pulse::perf::Report();
+    }
+    if(metrics) {
+        uint64_t peak=0;
+#ifdef _WIN32
+        PROCESS_MEMORY_COUNTERS info{};info.cb=sizeof(info);if(GetProcessMemoryInfo(GetCurrentProcess(),&info,sizeof(info)))peak=info.PeakWorkingSetSize;
+#else
+        rusage info{};if(getrusage(RUSAGE_SELF,&info)==0)peak=uint64_t(info.ru_maxrss)*1024;
+#endif
+        metrics<<"{\"schema\":1,\"version\":\""<<PULSEMODEL_VERSION<<"\",\"load_ms\":"<<ms(t0,tLoad)
+               <<",\"compile_ms\":"<<ms(tLoad,tCompile)<<",\"write_ms\":"<<ms(tCompile,tWrite)<<",\"total_ms\":"<<ms(t0,tWrite)
+               <<",\"peak_working_set_bytes\":"<<peak<<",\"bones\":"<<model.bones.size()<<",\"vertices\":"<<vertsPool<<"}\n";
     }
     return 0;
 }

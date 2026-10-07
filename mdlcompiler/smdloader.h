@@ -53,6 +53,7 @@ struct VtaFlexOption {
     float strength = 1.0f;
     bool inverted = false;
     bool defaultPose = false;
+    bool registerFlex = true; // eyelid poses are registered by face markup
 };
 
 // Import the named .vta frames onto an already-loaded SMD render mesh as delta

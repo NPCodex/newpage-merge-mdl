@@ -31,6 +31,7 @@
 #include "fbxloader.h"
 #include "sceneloader.h"
 #include "dependencies.h"
+#include "resources.h"
 #include "smdloader.h"
 
 namespace pulse::loader {
@@ -444,6 +445,7 @@ fs::path FindSourceFile(const Ctx& c, const std::string& filename,
             return p;
     }
     if (tried) *tried = std::move(cands);
+    if(auto mounted=pulse::resources::Find(rel);!mounted.empty())return mounted;
     return {};
 }
 
@@ -1930,6 +1932,11 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                 return c.Fail(option.line, where + ": scale must be finite and greater than 0");
         } else if(o=="innode") {
             if(!c.Want("a scene node",option,scene.node)) return false;
+        } else if(o=="bakesceneanimation") {
+            if(!c.Want("a scene animation name",option,scene.bakeAnimation))return false;
+        } else if(o=="scenesamplerate") {
+            if(!c.WantFloat("a scene sample rate",option,scene.sampleRate))return false;
+            scene.explicitSampleRate=true;
         } else if(o=="computedeltanormals" || o=="computenormalsandwrinkles") {
             processing.computeNormals=true; if(o=="computenormalsandwrinkles") processing.computeWrinkles=true;
         } else if(o=="computewrinkles") { processing.computeWrinkles=true; processing.ignoreWrinkles=false;
@@ -2398,6 +2405,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                 source::VtaFlexOption fo;
                 fo.name = e.eyelid.basedesc + "_lid_" + kLidSlot[i];
                 fo.frame = frame[i];
+                fo.registerFlex = false;
                 e.eyelid.delta[i] = fo.name;
                 vtaByFile[vtafile].push_back(std::move(fo));
             }
@@ -8564,6 +8572,7 @@ bool SpliceInclude(Ctx& c) {
             break;
         }
     }
+    if(full.empty()&&!localDir)full=pulse::resources::Find(relPath);
     if (full.empty()) {
         c.toks.erase(c.toks.begin() + c.pos, c.toks.begin() + directiveEnd);
         for (Ctx::IncludeFrame& f : c.includeFrames)

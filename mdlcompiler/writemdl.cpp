@@ -20,6 +20,7 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <map>
 #include <cmath>
 #include <stdexcept>
 #include <unordered_map>
@@ -3120,6 +3121,20 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
                        vtxBuf80.size()>m.fileLimit || phyBuf.size()>m.fileLimit || (blockBuf && blockBuf->pos>m.fileLimit))) {
         if(err) *err="FileBufferSize output limit exceeded; increase $FileBufferSize (MB)"; return false;
     }
+    std::string vertexAnimation;
+    std::map<std::string,std::vector<float>> bakedClips;
+    for(const auto& model:m.models)if(model.source&&!model.source->bakedTimes.empty()) {
+        auto added=bakedClips.emplace(model.source->bakedController,model.source->bakedTimes);
+        if(!added.second&&added.first->second!=model.source->bakedTimes){if(err)*err="baked animations sharing a controller must have identical sample times";return false;}
+    }
+    if(!bakedClips.empty()) {
+        vertexAnimation="{\"schema\":1,\"clips\":[";bool first=true;
+        for(const auto& clip:bakedClips){if(!first)vertexAnimation+=",";first=false;
+            vertexAnimation+="{\"controller\":\""+clip.first+"\",\"position_controller\":\"multi_"+clip.first+"\",\"times\":[";
+            for(size_t i=0;i<clip.second.size();++i){if(i)vertexAnimation+=",";vertexAnimation+=std::to_string(clip.second[i]);}
+            vertexAnimation+="]}";
+        }vertexAnimation+="]}\n";
+    }
     // save. Reference hardcodes a "models/" root in the disk path (not in the
     // header name), so $modelname stays prefix-free and the .mdl bytes match.
     std::filesystem::path base =
@@ -3141,6 +3156,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
         return path;
     };
 
+    if(!vertexAnimation.empty()&&!SaveFile(stem.string()+".vertexanim.json",vertexAnimation.data(),vertexAnimation.size(),err))return false;
     std::string mdlPath = announce(".mdl");
     FlushReport(g_mdlReport);
     std::printf("total      %7zu\n", mdlBuf.size());

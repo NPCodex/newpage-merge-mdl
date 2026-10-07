@@ -760,6 +760,10 @@ ELSE()
         ENDIF()
       ENDIF()
 
+      # Bundled Draco exports draco_static on Windows as well.
+      IF(ASSIMP_BUILD_DRACO_STATIC AND TARGET draco_static)
+        SET(draco_LIBRARIES "draco_static")
+      ENDIF()
       # Don't build the draco command-line tools by default
       set_target_properties(draco_encoder draco_decoder PROPERTIES
         EXCLUDE_FROM_ALL TRUE
@@ -776,7 +780,7 @@ ELSE()
       TARGET_USE_COMMON_OUTPUT_DIRECTORY(draco_encoder)
       TARGET_USE_COMMON_OUTPUT_DIRECTORY(draco_decoder)
 
-      SET(draco_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/contrib/draco/src")
+      SET(draco_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/contrib/draco/src" "${CMAKE_BINARY_DIR}")
 
       # This is probably wrong
       IF (ASSIMP_INSTALL)

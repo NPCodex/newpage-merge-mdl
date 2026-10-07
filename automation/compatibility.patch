@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..afd9e28 100644
+index fed7eaf..6e1953c 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..afd9e28 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.3 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.4 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -34,7 +34,7 @@ index fed7eaf..afd9e28 100644
  
  # Layout (kept shallow):
 diff --git a/libs/CMakeLists.txt b/libs/CMakeLists.txt
-index 43b2a1d..514e13f 100644
+index 43b2a1d..3e7d954 100644
 --- a/libs/CMakeLists.txt
 +++ b/libs/CMakeLists.txt
 @@ -18,6 +18,9 @@ add_library(pulse_meshopt STATIC
@@ -47,7 +47,7 @@ index 43b2a1d..514e13f 100644
  )
  target_include_directories(pulse_meshopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/meshoptimizer)
  
-@@ -48,6 +51,20 @@ add_library(pulse_ufbx STATIC
+@@ -48,6 +51,21 @@ add_library(pulse_ufbx STATIC
  )
  target_include_directories(pulse_ufbx PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/ufbx)
  
@@ -58,7 +58,8 @@ index 43b2a1d..514e13f 100644
 +set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 +set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
 +set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
-+set(ASSIMP_BUILD_DRACO OFF CACHE BOOL "" FORCE)
++set(ASSIMP_BUILD_DRACO ON CACHE BOOL "" FORCE)
++set(ASSIMP_BUILD_DRACO_STATIC ON CACHE BOOL "" FORCE)
 +set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 +set(BUILD_SHARED_LIBS OFF)
 +add_subdirectory(assimp EXCLUDE_FROM_ALL)
@@ -68,7 +69,7 @@ index 43b2a1d..514e13f 100644
  # DMX reader (clean-room port of Datamodel.NET's format logic).
  add_library(pulse_dmx STATIC
      dmx/dmx.cpp
-@@ -63,3 +80,7 @@ add_library(pulse_drlibs STATIC
+@@ -63,3 +81,7 @@ add_library(pulse_drlibs STATIC
      drlibs/drlibs_impl.c
  )
  target_include_directories(pulse_drlibs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/drlibs)
@@ -198,10 +199,10 @@ index 0000000..7baca6d
 +Just check [itch.io](https://kimkulling.itch.io/the-asset-importer-lib)
 diff --git a/libs/assimp/CMakeLists.txt b/libs/assimp/CMakeLists.txt
 new file mode 100644
-index 0000000..b603b2e
+index 0000000..699504e
 --- /dev/null
 +++ b/libs/assimp/CMakeLists.txt
-@@ -0,0 +1,945 @@
+@@ -0,0 +1,949 @@
 +# Open Asset Import Library (assimp)
 +# ----------------------------------------------------------------------
 +# Copyright (c) 2006-2026, assimp team
@@ -964,6 +965,10 @@ index 0000000..b603b2e
 +        ENDIF()
 +      ENDIF()
 +
++      # Bundled Draco exports draco_static on Windows as well.
++      IF(ASSIMP_BUILD_DRACO_STATIC AND TARGET draco_static)
++        SET(draco_LIBRARIES "draco_static")
++      ENDIF()
 +      # Don't build the draco command-line tools by default
 +      set_target_properties(draco_encoder draco_decoder PROPERTIES
 +        EXCLUDE_FROM_ALL TRUE
@@ -980,7 +985,7 @@ index 0000000..b603b2e
 +      TARGET_USE_COMMON_OUTPUT_DIRECTORY(draco_encoder)
 +      TARGET_USE_COMMON_OUTPUT_DIRECTORY(draco_decoder)
 +
-+      SET(draco_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/contrib/draco/src")
++      SET(draco_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/contrib/draco/src" "${CMAKE_BINARY_DIR}")
 +
 +      # This is probably wrong
 +      IF (ASSIMP_INSTALL)
@@ -260811,10 +260816,10 @@ index 0000000..317430f
 +}  // namespace draco
 diff --git a/libs/assimp/contrib/draco/src/draco/compression/point_cloud/algorithms/float_points_tree_encoder.h b/libs/assimp/contrib/draco/src/draco/compression/point_cloud/algorithms/float_points_tree_encoder.h
 new file mode 100644
-index 0000000..44c1b3d
+index 0000000..2504530
 --- /dev/null
 +++ b/libs/assimp/contrib/draco/src/draco/compression/point_cloud/algorithms/float_points_tree_encoder.h
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,127 @@
 +// Copyright 2016 The Draco Authors.
 +//
 +// Licensed under the Apache License, Version 2.0 (the "License");
@@ -260831,6 +260836,7 @@ index 0000000..44c1b3d
 +//
 +#ifndef DRACO_COMPRESSION_POINT_CLOUD_ALGORITHMS_FLOAT_POINTS_TREE_ENCODER_H_
 +#define DRACO_COMPRESSION_POINT_CLOUD_ALGORITHMS_FLOAT_POINTS_TREE_ENCODER_H_
++#include <iterator>
 +
 +#include <memory>
 +#include <vector>
@@ -285414,10 +285420,10 @@ index 0000000..4f243b2
 +#endif  // DRACO_IO_PLY_PROPERTY_WRITER_H_
 diff --git a/libs/assimp/contrib/draco/src/draco/io/ply_reader.cc b/libs/assimp/contrib/draco/src/draco/io/ply_reader.cc
 new file mode 100644
-index 0000000..ea7f268
+index 0000000..83cd5a4
 --- /dev/null
 +++ b/libs/assimp/contrib/draco/src/draco/io/ply_reader.cc
-@@ -0,0 +1,312 @@
+@@ -0,0 +1,313 @@
 +// Copyright 2016 The Draco Authors.
 +//
 +// Licensed under the Apache License, Version 2.0 (the "License");
@@ -285435,6 +285441,7 @@ index 0000000..ea7f268
 +#include "draco/io/ply_reader.h"
 +
 +#include <array>
++#include <algorithm>
 +#include <regex>
 +
 +#include "draco/core/status.h"
@@ -586379,10 +586386,10 @@ index 0000000..d3d1da9
 +https://github.com/jkuhlmann/cgltf
 diff --git a/libs/cgltf/cgltf.h b/libs/cgltf/cgltf.h
 new file mode 100644
-index 0000000..316a11d
+index 0000000..ac36b4f
 --- /dev/null
 +++ b/libs/cgltf/cgltf.h
-@@ -0,0 +1,7240 @@
+@@ -0,0 +1,7241 @@
 +/**
 + * cgltf - a single-file glTF 2.0 parser written in C99.
 + *
@@ -593096,7 +593103,8 @@ index 0000000..316a11d
 +				CGLTF_PTRFIXUP_REQ(data->meshes[i].primitives[j].draco_mesh_compression.buffer_view, data->buffer_views, data->buffer_views_count);
 +				for (cgltf_size m = 0; m < data->meshes[i].primitives[j].draco_mesh_compression.attributes_count; ++m)
 +				{
-+					CGLTF_PTRFIXUP_REQ(data->meshes[i].primitives[j].draco_mesh_compression.attributes[m].data, data->accessors, data->accessors_count);
++					/* Draco values are unique attribute IDs, encoded as ID+1 by
++					 * the parser, not indices into the glTF accessor array. */
 +				}
 +			}
 +
@@ -600473,7 +600481,7 @@ index 0000000..5696816
 +
 +#endif
 diff --git a/mdlcompiler/CMakeLists.txt b/mdlcompiler/CMakeLists.txt
-index fcff31d..418f3a2 100644
+index fcff31d..e43442b 100644
 --- a/mdlcompiler/CMakeLists.txt
 +++ b/mdlcompiler/CMakeLists.txt
 @@ -1,15 +1,16 @@
@@ -600481,7 +600489,7 @@ index fcff31d..418f3a2 100644
  
  add_executable(mdlcompiler main.cpp dmxloader.cpp dmxrig.cpp smdloader.cpp
 -               fbxloader.cpp meshedit.cpp compile.cpp facemarkup.cpp
-+               fbxloader.cpp sceneloader.cpp gltfscene.cpp meshedit.cpp compile.cpp facemarkup.cpp
++               fbxloader.cpp sceneloader.cpp gltfscene.cpp resources.cpp meshedit.cpp compile.cpp facemarkup.cpp
                 flexreg.cpp qcloader.cpp writemdl.cpp writevtx.cpp writephy.cpp)
  # Each tool owns its own version; there is no project-wide one.
  set(TOOL_VERSION 0.34.0)
@@ -600491,20 +600499,22 @@ index fcff31d..418f3a2 100644
  
  # Explorer's Details tab (file description, product name/version, copyright).
  if(WIN32)
-+    target_link_libraries(mdlcompiler PRIVATE user32)
++    target_link_libraries(mdlcompiler PRIVATE user32 advapi32 psapi)
      configure_file(version.rc.in "${CMAKE_CURRENT_BINARY_DIR}/version.rc" @ONLY)
      target_sources(mdlcompiler PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
                                         "${CMAKE_SOURCE_DIR}/utf8.manifest")
-@@ -18,4 +19,6 @@ endif()
+@@ -17,5 +18,8 @@ endif()
+ # pulse_vhacd is named directly (not just via pulse_phys) because the compile
  # stage calls the decomposition API for PhysicsShapeFromRender.
  find_package(Threads REQUIRED)
++target_include_directories(mdlcompiler PRIVATE ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/libs/assimp/contrib/draco/src)
  target_link_libraries(mdlcompiler PRIVATE pulse_libs pulse_dmx pulse_math pulse_meshopt
 -                                          pulse_phys pulse_vhacd pulse_ufbx Threads::Threads)
-+                                          pulse_nvtristrip pulse_phys pulse_vhacd pulse_ufbx assimp pulse_cgltf Threads::Threads)
++                                          pulse_nvtristrip pulse_phys pulse_vhacd pulse_ufbx assimp pulse_cgltf draco::draco Threads::Threads)
 +
 +set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")
 diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
-index bdb0c90..85bc87f 100644
+index bdb0c90..561f276 100644
 --- a/mdlcompiler/compile.cpp
 +++ b/mdlcompiler/compile.cpp
 @@ -1,6 +1,7 @@
@@ -600977,19 +600987,66 @@ index bdb0c90..85bc87f 100644
  // ---------------------------------------------------------------------------
  // Collision model (reference ProcessSingleBody / CreateCollide /
  // BuildConvexListForFaceList)
-@@ -4526,6 +4694,11 @@ bool ConvexesFromGenerated(const GeneratedShape& gen, const matrix3x4* poseToBon
+@@ -4524,8 +4692,29 @@ bool ConvexesFromGenerated(const GeneratedShape& gen, const matrix3x4* poseToBon
+     return true;
+ }
  
++bool DecomposeBoneFaces(const std::vector<phys::Vec3>& vertices,const std::vector<SrcTri>& faces,
++                        const PhysicsShape& shape,unsigned gameData,std::vector<phys::Convex*>& convexes,std::string* err) {
++    if(shape.maxConvex<=0){if(err)*err="$decomposeconcave requires a positive $maxconvexpieces";return false;}
++    std::vector<float> points;std::vector<int> triangles;std::map<int,int> remap;
++    for(const auto& f:faces)for(int v:{f.a,f.b,f.c}){
++        auto entry=remap.emplace(v,static_cast<int>(remap.size()));
++        if(entry.second){const auto& p=vertices.at(v);points.insert(points.end(),{p.x,p.y,p.z});}
++        triangles.push_back(entry.first->second);
++    }
++    std::vector<VHACDHull::DecomposedHull> hulls;
++    if(!VHACDHull::DecomposeConvex(points.data(),static_cast<int>(points.size()/3),triangles.data(),static_cast<int>(faces.size()),
++                                  .01f,shape.maxConvex,1.0f,hulls,100000,10)||hulls.empty()){
++        if(err)*err="failed to decompose ragdoll collision '"+shape.name+"'";return false;}
++    std::vector<phys::Vec3> decomposed;std::vector<std::vector<int>> groups;
++    for(const auto& hull:hulls){groups.emplace_back();for(size_t i=0;i+2<hull.vertices.size();i+=3){
++        groups.back().push_back(static_cast<int>(decomposed.size()));decomposed.push_back({hull.vertices[i],hull.vertices[i+1],hull.vertices[i+2]});}}
++    std::printf("Decomposed ragdoll '%s' bone %u: %zu convex pieces\n",shape.name.c_str(),gameData,hulls.size());
++    return BuildConvexesForGroups(groups,decomposed,shape.name.c_str(),shape.remove2d,gameData,convexes,err);
++}
++
  bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generated,
                             std::string* err) {
-+    if (ctx.in->physDecomposeConcave) {
-+        if (err) *err = "$decomposeconcave currently requires a single-body $collisionmodel";
-+        return false;
-+    }
 +
      CompiledModel& m = *ctx.out;
      const CompileInput& in = *ctx.in;
  
-@@ -5160,6 +5333,35 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -4686,9 +4875,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+                 BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
+ 
+             std::vector<phys::Convex*> convexes;
+-            if (!BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(), shape.remove2d,
+-                                        static_cast<unsigned int>(globalBone) + 1,
+-                                        convexes, err)) {
++            if (!(in.physDecomposeConcave
++                  ? DecomposeBoneFaces(boneVerts,allFaces,shape,static_cast<unsigned int>(globalBone)+1,convexes,err)
++                  : BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(), shape.remove2d,
++                                        static_cast<unsigned int>(globalBone) + 1,convexes, err))) {
+                 for (phys::Convex* c : convexes)
+                     phys::ConvexFree(c);
+                 freeBodies();
+@@ -4781,10 +4971,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+             std::vector<phys::Convex*> convexes;
+             // gameData is the 1-based global bone, which is how vphysics maps a
+             // hull back to the bone it drives (0 is reserved for a single body).
+-            if (!BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(),
+-                                        shape.remove2d,
+-                                        static_cast<unsigned int>(globalBone) + 1,
+-                                        convexes, err)) {
++            if (!(in.physDecomposeConcave
++                  ? DecomposeBoneFaces(boneVerts,faceList,shape,static_cast<unsigned int>(globalBone)+1,convexes,err)
++                  : BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(),shape.remove2d,
++                                        static_cast<unsigned int>(globalBone) + 1,convexes, err))) {
+                 for (phys::Convex* c : convexes)
+                     phys::ConvexFree(c);
+                 freeBodies();
+@@ -5160,6 +5350,35 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
          anyConcave = anyConcave || shape.concave;
          maxConvexPieces = std::max(maxConvexPieces, shape.maxConvex);
  
@@ -601025,7 +601082,7 @@ index bdb0c90..85bc87f 100644
          // one piece per disjoint island when concave, otherwise one hull for
          // the whole shape
          std::vector<std::vector<int>> islands;
-@@ -5180,6 +5382,7 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5180,6 +5399,7 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
              freeConvexes();
              return false;
          }
@@ -601033,7 +601090,7 @@ index bdb0c90..85bc87f 100644
      }
  
      if (static_cast<int>(convexes.size()) > maxConvexPieces) {
-@@ -6301,9 +6504,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6301,9 +6521,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
              }
              case AnimCmd::Match: {
                  // processMatch: rotate every frame by the
@@ -601046,7 +601103,7 @@ index bdb0c90..85bc87f 100644
                  std::vector<Quaternion> deltaQ(m.bones.size());
                  for (size_t k = 0; k < m.bones.size(); k++) {
                      Quaternion qd, qs;
-@@ -6313,11 +6517,41 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6313,11 +6534,41 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
                  }
                  for (int j = 0; j < panim.numframes; j++) {
                      for (size_t k = 0; k < m.bones.size(); k++) {
@@ -601090,7 +601147,7 @@ index bdb0c90..85bc87f 100644
                      }
                  }
                  break;
-@@ -6899,6 +7133,11 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6899,6 +7150,11 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
                      }
                  }
  
@@ -601102,7 +601159,7 @@ index bdb0c90..85bc87f 100644
                  int numerror = rule.end - rule.start + 1;
                  if (rule.end >= panim.numframes)
                      numerror += 2;
-@@ -7180,68 +7419,56 @@ void CompressAnimations(Ctx& ctx) {
+@@ -7180,68 +7436,56 @@ void CompressAnimations(Ctx& ctx) {
      CompiledModel& m = *ctx.out;
      int numbones = static_cast<int>(m.bones.size());
  
@@ -601216,7 +601273,7 @@ index bdb0c90..85bc87f 100644
  
      // reduce animations
      for (Anim& panim : m.anims) {
-@@ -7494,8 +7721,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
+@@ -7494,8 +7738,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -601227,7 +601284,36 @@ index bdb0c90..85bc87f 100644
          int j = m.bones[k].parent;
          if (j != -1) {
              const Vector3& p = m.bones[k].pos;
-@@ -8737,8 +8964,8 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8693,6 +8937,28 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+     for (size_t k = 0; k < m.bones.size(); k++)
+         poseToBone[k] = pm::MatrixInvert(m.bones[k].boneToPose);
+ 
++    // Vertex-cache clips can move far beyond the bind mesh. Include every
++    // sampled target in bone-local render bounds so engine frustum culling
++    // remains conservative during playback and between adjacent samples.
++    for (const FlexKey& key : m.flexkeys) {
++        if (!key.source || key.source->bakedTimes.empty() || key.imodel < 0 ||
++            key.imodel >= static_cast<int>(m.models.size())) continue;
++        Model& model = m.models[key.imodel];
++        for (const src::SrcVertAnim& va : key.vanim) {
++            if (va.vertex < 0 || va.vertex >= static_cast<int>(model.vertices.size())) continue;
++            const LodVertex& vertex = model.vertices[va.vertex];
++            const Vector3 target{vertex.position.x + va.pos.x, vertex.position.y + va.pos.y,
++                                 vertex.position.z + va.pos.z};
++            model.boundingradius = std::max(model.boundingradius, VectorLength(target));
++            for (int i = 0; i < vertex.boneweight.numbones; ++i) {
++                const int bone = vertex.boneweight.bone[i];
++                const Vector3 local = pm::VectorTransform(target, poseToBone[bone]);
++                boundsMin[bone] = VecMin(boundsMin[bone], local);
++                boundsMax[bone] = VecMax(boundsMax[bone], local);
++            }
++        }
++    }
++
+     // Seam/LOD copies skin to the same bits, and VecMin/VecMax keep the
+     // accumulator on a tie, so dropping later duplicates leaves the boxes exact.
+     struct SkinVert {
+@@ -8737,8 +9003,8 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
      // Cost is frames x vertices, so animations run in parallel; min/max is
      // order-independent, so the boxes match a serial run bit for bit.
      auto calcAnim = [&](Anim& panim) {
@@ -601238,7 +601324,7 @@ index bdb0c90..85bc87f 100644
  
          std::vector<matrix3x4> bonetransform;
          std::vector<matrix3x4> posetransform(m.bones.size());
-@@ -8803,14 +9030,16 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8803,14 +9069,16 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                           "max (%g, %g, %g) exceeds coordinate range [%g, %g]; clamping\n",
                           panim.name.c_str(), bmin.x, bmin.y, bmin.z,
                           bmax.x, bmax.y, bmax.z, -kMaxCoord, kMaxCoord);
@@ -601259,7 +601345,7 @@ index bdb0c90..85bc87f 100644
          for (int a : seq.animIndices) {
              if (a < 0) continue;
              bmin = VecMin(m.anims[a].bmin, bmin);
-@@ -9066,6 +9295,13 @@ struct FlexSortEntry {
+@@ -9066,6 +9334,13 @@ struct FlexSortEntry {
      int sourceOrder;
  };
  
@@ -601273,7 +601359,7 @@ index bdb0c90..85bc87f 100644
  int FlexKeysSortFunc(const void* pv1, const void* pv2) {
      const FlexSortEntry* k1 = static_cast<const FlexSortEntry*>(pv1);
      const FlexSortEntry* k2 = static_cast<const FlexSortEntry*>(pv2);
-@@ -9107,7 +9343,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9107,7 +9382,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
          FlexKey* pFlexKey = sorted[i].key;
          src::Source* pVSource = pFlexKey->source;
          src::SrcMorphAnim* pVSourceAnim =
@@ -601282,7 +601368,7 @@ index bdb0c90..85bc87f 100644
          if (!pVSourceAnim)
              continue;
  
-@@ -9144,7 +9380,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9144,7 +9419,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
      std::vector<uint8_t> pDoesMove(nMaxModelVerts, 0);
  
      for (FlexKey& key : m.flexkeys) {
@@ -601291,7 +601377,7 @@ index bdb0c90..85bc87f 100644
          if (!pVSourceAnim)
              continue;
          auto it = morphMaps.find(pVSourceAnim);
-@@ -9345,7 +9581,7 @@ void CullDuplicateFlex(Ctx& ctx) {
+@@ -9345,7 +9620,7 @@ void CullDuplicateFlex(Ctx& ctx) {
      std::vector<FlexController> kept;
      for (size_t c = 0; c < m.flexcontrollers.size(); ++c) {
          int survivor = -1;
@@ -601300,7 +601386,7 @@ index bdb0c90..85bc87f 100644
              if (_stricmp(kept[k].name.c_str(), m.flexcontrollers[c].name.c_str()) == 0) {
                  survivor = static_cast<int>(k);
                  break;
-@@ -9453,7 +9689,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
+@@ -9453,7 +9728,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
      std::vector<FlexKey> kept;
      kept.reserve(m.flexkeys.size());
      for (FlexKey& key : m.flexkeys) {
@@ -601309,7 +601395,7 @@ index bdb0c90..85bc87f 100644
              (key.flexdesc >= 0 && key.flexdesc < static_cast<int>(usedDesc.size()) &&
               usedDesc[key.flexdesc]) ||
              (key.flexpair > 0 && key.flexpair < static_cast<int>(usedDesc.size()) &&
-@@ -9792,6 +10028,7 @@ static std::string AnimSignature(const Anim& a) {
+@@ -9792,6 +10067,7 @@ static std::string AnimSignature(const Anim& a) {
      SigVal(s, a.looprestartpercent);
      SigVal(s, a.isBindPose);
      SigVal(s, a.noAutoIK);
@@ -601317,7 +601403,7 @@ index bdb0c90..85bc87f 100644
      SigVal(s, a.ignoreTransformAngles);
      SigVal(s, a.ignoreTransformPosition);
      SigVal(s, a.motionrollback);
-@@ -10310,6 +10547,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10310,6 +10586,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                    : RadianEuler{0.0f, 0.0f, static_cast<float>(kPiD / 2.0)};
  
      out.outname = input.outname;
@@ -601325,7 +601411,7 @@ index bdb0c90..85bc87f 100644
      out.forceWriteVertexData = input.forceWriteVertexData;
      out.mats = &input.mats;
      // gamedatalist. CompiledModel already defaults surfaceprop to "default";
-@@ -10328,6 +10566,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10328,6 +10605,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      out.zeroFramesHighres = input.zeroFramesHighres;
      out.minZeroFramePosDelta = input.minZeroFramePosDelta;
      out.boneSaveFrames = input.boneSaveFrames;
@@ -601333,7 +601419,7 @@ index bdb0c90..85bc87f 100644
      out.bbox[0] = input.bbox[0];
      out.bbox[1] = input.bbox[1];
      out.bboxset = input.bboxSet;
-@@ -10400,12 +10639,25 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10400,12 +10678,25 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      }
  
      // ---- build models/bodyparts + anims/sequences from the script input ----
@@ -601362,7 +601448,7 @@ index bdb0c90..85bc87f 100644
          for (const auto& im : bp.models) {
              Model model;
              model.name = im.source ? im.name : "blank";
-@@ -10441,6 +10693,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10441,6 +10732,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             ch.first + "\" (" + std::to_string(nummodels) + " choices)";
                  return false;
              }
@@ -601370,7 +601456,7 @@ index bdb0c90..85bc87f 100644
              const int cur = (preset.value / bp->base) % nummodels;
              preset.value = preset.value - cur * bp->base + ch.second * bp->base;
              const int curMask = (preset.mask / bp->base) % nummodels;
-@@ -10467,6 +10720,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10467,6 +10759,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          a.fudgeloop = ia.fudgeloop;
          a.noAutoIK = ia.noAutoIK;
          a.nocull = ia.nocull;
@@ -601378,7 +601464,7 @@ index bdb0c90..85bc87f 100644
          a.ignoreTransformAngles = ia.ignoreTransformAngles;
          a.ignoreTransformPosition = ia.ignoreTransformPosition;
          a.motiontype = ia.motiontype;
-@@ -10703,6 +10957,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10703,6 +10996,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  cmd.forceRot = ic.forceRot;
                  break;
              case InCmd::RefMotion:
@@ -601386,7 +601472,7 @@ index bdb0c90..85bc87f 100644
              case InCmd::AppendAnim:
              case InCmd::WorldspaceBlend:
              case InCmd::MatchBlend:
-@@ -10714,7 +10969,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10714,7 +11008,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                      "\" in " + a.name;
                      return false;
                  }
@@ -601400,7 +601486,7 @@ index bdb0c90..85bc87f 100644
                             : (ic.kind == InCmd::Match)      ? AnimCmd::Match
                             : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
                             : (ic.kind == InCmd::WorldspaceBlend)
-@@ -10722,6 +10983,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10722,6 +11022,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
                                                             : AnimCmd::AppendAnim;
                  cmd.matchPre = ic.matchPre;
@@ -601409,7 +601495,7 @@ index bdb0c90..85bc87f 100644
                  cmd.matchPost = ic.matchPost;
                  cmd.worldLoops = ic.worldLoops;
                  cmd.motiontype = ic.motiontype;
-@@ -11161,7 +11424,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11161,7 +11463,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // resulting replacebone chains are flattened before any vertex is remapped
      // (reference: after RealignBones)
      ExpandLodBoneCollapses(ctx);
@@ -601418,7 +601504,7 @@ index bdb0c90..85bc87f 100644
  
      { PULSE_TIME_PASS("RemapVertices"); RemapVertices(ctx); }
      if (!input.bboxMeshes.empty()) {
-@@ -11256,7 +11519,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11256,7 +11558,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // (RemapVertexAnimations, GenerateVertexAveragedAttachments, CullFlex) has
      // to have had its say first. What follows only ever takes min/max over all
      // vertices, which duplication cannot change.
@@ -601427,7 +601513,7 @@ index bdb0c90..85bc87f 100644
  
      { PULSE_TIME_PASS("SetupHitBoxes"); if (!SetupHitBoxes(ctx, err)) return false; }
      { PULSE_TIME_PASS("CompressAnimations"); CompressAnimations(ctx); }
-@@ -11575,6 +11838,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11575,6 +11877,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          return false;
      }
      out.numskinref = nummaterials;
@@ -601889,7 +601975,7 @@ index 0dc82de..aadfead 100644
  } // namespace pulse::source
  
 diff --git a/mdlcompiler/flexreg.cpp b/mdlcompiler/flexreg.cpp
-index fe77451..25c2788 100644
+index fe77451..15354c0 100644
 --- a/mdlcompiler/flexreg.cpp
 +++ b/mdlcompiler/flexreg.cpp
 @@ -20,6 +20,7 @@
@@ -601932,6 +602018,15 @@ index fe77451..25c2788 100644
          if (key.stereo) {
              int descL = AddFlexdesc(in, key.name + "L", err);
              int descR = AddFlexdesc(in, key.name + "R", err);
+@@ -716,7 +740,7 @@ void AddBodyFlexFetchRule(source::Source* src, cm::FlexRule& rule, int rawIndex,
+ 
+         case source::RemapType::NWay: {
+             int nRemapCount = static_cast<int>(remap.rawControls.size());
+-            float flStep = (nRemapCount > 2) ? 2.0f / (nRemapCount - 1) : 0.0f;
++            float flStep = (nRemapCount > 1) ? 2.0f / (nRemapCount - 1) : 0.0f;
+             if (remapLocalIndex == 0) {
+                 pushConst(-11.0f);
+                 pushConst(-10.0f);
 @@ -830,7 +854,13 @@ bool RegisterManualLists(cm::CompileInput& in, const ManualFlex& manual, std::st
      for (const ManualFlex::Controller& mc : manual.controllers) {
          // QC Option_Flexcontroller reuses an existing name with a warning and
@@ -602037,10 +602132,10 @@ index 3b9da38..4f1fa56 100644
  // RegisterFlex(); nothing in here is format-specific.
 diff --git a/mdlcompiler/gltfscene.cpp b/mdlcompiler/gltfscene.cpp
 new file mode 100644
-index 0000000..a3da5f9
+index 0000000..deea602
 --- /dev/null
 +++ b/mdlcompiler/gltfscene.cpp
-@@ -0,0 +1,277 @@
+@@ -0,0 +1,355 @@
 +#include "gltfscene.h"
 +#include "cgltf.h"
 +#include "assimp/scene.h"
@@ -602049,6 +602144,10 @@ index 0000000..a3da5f9
 +#include "dependencies.h"
 +#include "pathcompat.h"
 +#include "meshoptimizer.h"
++#include "resources.h"
++#include "draco/compression/decode.h"
++#include "draco/core/decoder_buffer.h"
++#include "draco/mesh/mesh.h"
 +#include <algorithm>
 +#include <cmath>
 +#include <functional>
@@ -602060,11 +602159,13 @@ index 0000000..a3da5f9
 +#include <cstdlib>
 +#include <limits>
 +#include <set>
++#include <deque>
 +
 +namespace pulse::source {
 +namespace {
 +cgltf_result ReadFile(const cgltf_memory_options* memory,const cgltf_file_options*,const char* path,cgltf_size* size,void** data) {
 +    std::ifstream f(pulse::FilePath(path),std::ios::binary|std::ios::ate);
++    if(!f) {auto mounted=pulse::resources::Find(pulse::FilePath(path));if(!mounted.empty())f.open(mounted,std::ios::binary|std::ios::ate);}
 +    if(!f) return cgltf_result_file_not_found;
 +    const auto length=f.tellg(); if(length<0) return cgltf_result_io_error;
 +    cgltf_size bytes=*size ? *size : cgltf_size(length);
@@ -602118,11 +602219,64 @@ index 0000000..a3da5f9
 +        else if(c.filter==cgltf_meshopt_compression_filter_color) meshopt_decodeFilterColor(view.data,c.count,c.stride);
 +    }
 +}
++struct DracoViews {
++    std::deque<cgltf_buffer_view> views;
++    std::deque<std::vector<unsigned char>> buffers;
++    void Assign(cgltf_accessor& a, size_t count, size_t stride) {
++        if(count!=a.count) throw std::runtime_error("Draco accessor count does not match decoded mesh");
++        buffers.emplace_back(count*stride);views.emplace_back();
++        views.back().data=buffers.back().data();views.back().size=buffers.back().size();views.back().stride=stride;
++        a.buffer_view=&views.back();a.offset=0;a.stride=stride;
++    }
++};
++template<class T> void CopyDraco(const draco::Mesh& mesh,const draco::PointAttribute& attribute,void* destination) {
++    T* out=static_cast<T*>(destination);
++    for(draco::PointIndex p(0);p<mesh.num_points();++p)
++        if(!attribute.ConvertValue<T>(attribute.mapped_index(p),attribute.num_components(),out+p.value()*attribute.num_components()))
++            throw std::runtime_error("cannot convert Draco attribute");
++}
++void DecodeDraco(cgltf_data* data,DracoViews& storage) {
++    for(size_t m=0;m<data->meshes_count;++m) for(size_t p=0;p<data->meshes[m].primitives_count;++p) {
++        auto& primitive=data->meshes[m].primitives[p];if(!primitive.has_draco_mesh_compression) continue;
++        const auto& compression=primitive.draco_mesh_compression;
++        const auto* view=compression.buffer_view;
++        const auto* bytes=cgltf_buffer_view_data(view);
++        if(!bytes || primitive.type!=cgltf_primitive_type_triangles) throw std::runtime_error("invalid Draco triangle buffer");
++        draco::DecoderBuffer buffer;buffer.Init(reinterpret_cast<const char*>(bytes),view->size);
++        draco::Decoder decoder;auto result=decoder.DecodeMeshFromBuffer(&buffer);
++        if(!result.ok()) throw std::runtime_error("invalid Draco compressed stream: "+result.status().error_msg_string());
++        auto mesh=std::move(result).value();
++        for(size_t k=0;k<compression.attributes_count;++k) {
++            const auto& mapping=compression.attributes[k];
++            auto accessor=const_cast<cgltf_accessor*>(Attribute(primitive.attributes,primitive.attributes_count,mapping.type,mapping.index));
++            const auto* attr=mesh->GetAttributeByUniqueId(uint32_t(reinterpret_cast<uintptr_t>(mapping.data)-1));
++            if(!accessor || !attr || cgltf_num_components(accessor->type)!=size_t(attr->num_components()))
++                throw std::runtime_error("invalid Draco attribute mapping");
++            size_t stride=cgltf_calc_size(accessor->type,accessor->component_type);
++            storage.Assign(*accessor,mesh->num_points(),stride);
++            void* destination=accessor->buffer_view->data;
++            switch(accessor->component_type) {
++            case cgltf_component_type_r_8:CopyDraco<int8_t>(*mesh,*attr,destination);break;
++            case cgltf_component_type_r_8u:CopyDraco<uint8_t>(*mesh,*attr,destination);break;
++            case cgltf_component_type_r_16:CopyDraco<int16_t>(*mesh,*attr,destination);break;
++            case cgltf_component_type_r_16u:CopyDraco<uint16_t>(*mesh,*attr,destination);break;
++            case cgltf_component_type_r_32u:CopyDraco<uint32_t>(*mesh,*attr,destination);break;
++            case cgltf_component_type_r_32f:CopyDraco<float>(*mesh,*attr,destination);break;
++            default:throw std::runtime_error("unsupported Draco attribute component type");
++            }
++        }
++        if(!primitive.indices) throw std::runtime_error("Draco mesh requires an index accessor");
++        auto& indices=*primitive.indices;indices.component_type=cgltf_component_type_r_32u;
++        storage.Assign(indices,size_t(mesh->num_faces())*3,4);
++        auto* out=static_cast<uint32_t*>(indices.buffer_view->data);
++        for(draco::FaceIndex f(0);f<mesh->num_faces();++f) for(int c=0;c<3;++c) out[f.value()*3+c]=mesh->face(f)[c].value();
++    }
++}
 +aiVector3D V(const std::vector<float>& x,size_t k) { return {x[k*3],x[k*3+1],x[k*3+2]}; }
 +// Evaluate glTF samplers before handing a regular frame grid to the shared
 +// converter. This retains STEP and CUBICSPLINE semantics (including tangents).
 +std::vector<float> Evaluate(const cgltf_animation_sampler& s,double time,int width,bool rotation) {
-+    auto times=Values(s.input,1), values=Values(s.output,width);
++    auto times=Values(s.input,1), values=Values(s.output,s.output->type==cgltf_type_scalar?1:width);
 +    if(times.empty()) throw std::runtime_error("empty glTF animation sampler");
 +    const bool cubic=s.interpolation==cgltf_interpolation_type_cubic_spline;
 +    if(values.size()!=times.size()*width*(cubic?3:1)) throw std::runtime_error("invalid glTF animation sample count");
@@ -602146,7 +602300,7 @@ index 0000000..a3da5f9
 +    return result;
 +}
 +}
-+std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate) {
++std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights) {
 +    cgltf_options options{}; cgltf_data* raw=nullptr;
 +    options.file.read=ReadFile; options.file.release=ReleaseFile;
 +    if(cgltf_parse_file(&options,path.c_str(),&raw)!=cgltf_result_success) throw std::runtime_error("cannot parse glTF/GLB");
@@ -602154,6 +602308,7 @@ index 0000000..a3da5f9
 +    if(cgltf_load_buffers(&options,raw,path.c_str())!=cgltf_result_success || cgltf_validate(raw)!=cgltf_result_success)
 +        throw std::runtime_error("invalid glTF buffers or accessors; compressed extensions may require $NoFastGltf");
 +    DecodeMeshopt(raw);
++    DracoViews dracoStorage;DecodeDraco(raw,dracoStorage);
 +    if(!std::isfinite(sampleRate) || sampleRate<=0 || sampleRate>1000) throw std::runtime_error("invalid glTF sample rate");
 +    auto scene=std::make_shared<aiScene>();
 +    scene->mRootNode=new aiNode("gltf_scene_root");
@@ -602176,7 +602331,6 @@ index 0000000..a3da5f9
 +            out->mNumMeshes=unsigned(n->mesh->primitives_count); out->mMeshes=new unsigned[out->mNumMeshes]{};
 +            for(unsigned p=0;p<out->mNumMeshes;++p) {
 +                auto& primitive=n->mesh->primitives[p];
-+                if(primitive.has_draco_mesh_compression) throw std::runtime_error("Draco-compressed glTF requires an expanded source");
 +                auto position=Attribute(primitive.attributes,primitive.attributes_count,cgltf_attribute_type_position);
 +                if(!position) throw std::runtime_error("glTF mesh has no POSITION");
 +                std::unique_ptr<aiMesh> mesh(new aiMesh()); out->mMeshes[p]=unsigned(meshes.size());
@@ -602224,6 +602378,7 @@ index 0000000..a3da5f9
 +                for(unsigned m=0;m<mesh->mNumAnimMeshes;++m) {
 +                    auto target=mesh->mAnimMeshes[m]=new aiAnimMesh(); target->mNumVertices=mesh->mNumVertices;
 +                    target->mName=aiString(m<n->mesh->target_names_count?n->mesh->target_names[m]: ("morph_"+std::to_string(m)).c_str());
++                    target->mWeight=m<n->weights_count?n->weights[m]:(m<n->mesh->weights_count?n->mesh->weights[m]:0);
 +                    auto& shape=primitive.targets[m]; auto delta=Values(Attribute(shape.attributes,shape.attributes_count,cgltf_attribute_type_position),3);
 +                    auto normal=Values(Attribute(shape.attributes,shape.attributes_count,cgltf_attribute_type_normal),3);
 +                    if(!delta.empty()) { target->mVertices=new aiVector3D[mesh->mNumVertices]; for(unsigned v=0;v<mesh->mNumVertices;++v) target->mVertices[v]=mesh->mVertices[v]+V(delta,v); }
@@ -602288,16 +602443,34 @@ index 0000000..a3da5f9
 +        auto& animation=raw->animations[a]; auto result=scene->mAnimations[a]=new aiAnimation(); result->mTicksPerSecond=1;
 +        result->mName=aiString(animation.name?animation.name:("animation_"+std::to_string(a)).c_str());
 +        std::map<const cgltf_node*,std::vector<const cgltf_animation_channel*>> channels;
++        std::vector<const cgltf_animation_channel*> morphChannels;
 +        double duration=0;
 +        for(size_t c=0;c<animation.channels_count;++c) {
 +            auto& channel=animation.channels[c]; auto times=Values(channel.sampler->input,1);
 +            if(!times.empty()) duration=std::max(duration,double(times.back()));
-+            if(channel.target_path==cgltf_animation_path_type_weights) throw std::runtime_error("animated glTF morph weights require QC flex controllers");
++            if(channel.target_path==cgltf_animation_path_type_weights) {
++                if(!bakeWeights)throw std::runtime_error("animated glTF morph weights require QC flex controllers or BakeSceneAnimation");
++                morphChannels.push_back(&channel);continue;
++            }
 +            channels[channel.target_node].push_back(&channel);
 +        }
 +        if(!std::isfinite(duration) || duration<0 || duration*sampleRate>=limits::kMaxAnimFrames) throw std::runtime_error("glTF animation exceeds frame limit");
 +        result->mDuration=duration; result->mNumChannels=unsigned(channels.size()); result->mChannels=new aiNodeAnim*[channels.size()]{};
 +        unsigned ch=0; unsigned frames=1+unsigned(std::lround(duration*sampleRate));
++        if(bakeWeights)frames=1+unsigned(std::ceil(duration*sampleRate));
++        result->mNumMorphMeshChannels=unsigned(morphChannels.size());
++        result->mMorphMeshChannels=new aiMeshMorphAnim*[morphChannels.size()]{};
++        for(size_t k=0;k<morphChannels.size();++k) {
++            auto channel=morphChannels[k];const auto* node=channel->target_node;
++            if(!node||!node->mesh||!node->mesh->primitives_count)throw std::runtime_error("invalid glTF morph animation target");
++            size_t width=node->mesh->primitives[0].targets_count;
++            if(!width)throw std::runtime_error("glTF morph animation has no targets");
++            auto dst=result->mMorphMeshChannels[k]=new aiMeshMorphAnim();dst->mName=aiString(names.at(node));dst->mNumKeys=frames;dst->mKeys=new aiMeshMorphKey[frames];
++            for(unsigned f=0;f<frames;++f){double time=std::min(duration,double(f)/sampleRate);auto weights=Evaluate(*channel->sampler,time,int(width),false);
++                auto& key=dst->mKeys[f];key.mTime=time;key.mNumValuesAndWeights=unsigned(width);key.mValues=new unsigned[width];key.mWeights=new double[width];
++                for(size_t m=0;m<width;++m){if(!std::isfinite(weights[m]))throw std::runtime_error("non-finite glTF morph weight");key.mValues[m]=unsigned(m);key.mWeights[m]=weights[m];}
++            }
++        }
 +        for(const auto& entry:channels) {
 +            auto dst=result->mChannels[ch++]=new aiNodeAnim(); dst->mNodeName=aiString(names.at(entry.first));
 +            dst->mNumPositionKeys=dst->mNumRotationKeys=dst->mNumScalingKeys=frames;
@@ -602320,7 +602493,7 @@ index 0000000..a3da5f9
 +}
 diff --git a/mdlcompiler/gltfscene.h b/mdlcompiler/gltfscene.h
 new file mode 100644
-index 0000000..ff79408
+index 0000000..dcf70a5
 --- /dev/null
 +++ b/mdlcompiler/gltfscene.h
 @@ -0,0 +1,7 @@
@@ -602329,34 +602502,39 @@ index 0000000..ff79408
 +#include <string>
 +struct aiScene;
 +namespace pulse::source {
-+std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate);
++std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights=false);
 +}
 diff --git a/mdlcompiler/main.cpp b/mdlcompiler/main.cpp
-index 710c49b..735f4e6 100644
+index 710c49b..f4d3c40 100644
 --- a/mdlcompiler/main.cpp
 +++ b/mdlcompiler/main.cpp
-@@ -4,6 +4,8 @@
+@@ -4,6 +4,9 @@
  //   mdlcompiler <file.pulseqc> [-game <dir>] [-pause]
  
  #include <cctype>
 +#include <algorithm>
 +#include <filesystem>
++#include <fstream>
  #include <chrono>
  #include <cstdio>
  #include <cstdlib>
-@@ -22,6 +24,11 @@
+@@ -22,6 +25,15 @@
  #include "pulselimits.h"
  #include "qcloader.h"
  #include "writer.h"
 +#include "branding.h"
 +#include "sequence_remap.h"
++#include "resources.h"
 +#ifdef _WIN32
 +#include <windows.h>
++#include <psapi.h>
++#else
++#include <sys/resource.h>
 +#endif
  
  #ifdef _WIN32
  #include <fcntl.h>
-@@ -35,23 +42,34 @@ using pulse::fatal::Fail;
+@@ -35,23 +47,34 @@ using pulse::fatal::Fail;
  static const char*& g_stage = pulse::fatal::g_stage;
  
  static void PrintHeader() {
@@ -602398,7 +602576,7 @@ index 710c49b..735f4e6 100644
      std::printf("                dx80 is only written when the vtx format is 0\n");
      std::printf("  -includesearchdir <dir>\n");
      std::printf("                extra fallback dir for $include, searched after any\n");
-@@ -64,6 +82,9 @@ static int Usage() {
+@@ -64,6 +87,9 @@ static int Usage() {
      std::printf("                define a .pulseqc script variable ($name$) before the\n");
      std::printf("                script runs; repeatable. The script cannot override it\n");
      std::printf("  -striplods    ignore all $lod and $shadowlod commands\n");
@@ -602408,7 +602586,21 @@ index 710c49b..735f4e6 100644
      std::printf("  -forcewritevertexdata\n");
      std::printf("                save .vvd/.vtx even when the model has no geometry;\n");
      std::printf("                same as $forcewritevertexdata in the script\n");
-@@ -200,6 +221,7 @@ static int RunCompile(int argc, char** argv) {
+@@ -83,6 +109,8 @@ static int Usage() {
+     std::printf("                @dep <script|include|source> <fnv1a-64 hex> <absolute path>\n");
+     std::printf("  -pause        wait for a keypress before exiting (drag-and-drop runs)\n");
+     std::printf("  -perfmetrics  print wall time in ms for each stage of the compile\n");
++    std::printf("  -perfjson <file> write stage timings and peak working set as JSON\n");
++    std::printf("  -steamdir <dir> override Steam root for gameinfo AppID mounts\n");
+     return 1;
+ }
+ 
+@@ -197,9 +225,12 @@ static int RunCompile(int argc, char** argv) {
+     g_stage = "command line";
+     const char* script = nullptr;
+     std::string outdir;
++    std::string gameDirectory,steamDirectory;
++    std::string perfJson;
      std::string modelname; // -modelname: overrides the script's $modelname
      int vtxFormat = -1; // unset; otherwise wins over the script's $vtxformat
      bool noDx80 = false; // -nodx80: force-skip .dx80.vtx, overriding the script
@@ -602416,7 +602608,7 @@ index 710c49b..735f4e6 100644
      int launchMinLod = -1;
      bool stripLods = false;
      bool forceWriteVertexData = false;
-@@ -209,9 +231,40 @@ static int RunCompile(int argc, char** argv) {
+@@ -209,19 +240,58 @@ static int RunCompile(int argc, char** argv) {
      bool dumpProcedural = false;
      bool scriptFromStdin = false;
      bool dumpDependencies = false;
@@ -602457,7 +602649,13 @@ index 710c49b..735f4e6 100644
          // -game is studiomdl's name for it: the mod dir the model installs
          // into. The writer already roots output at <dir>/models, so it is the
          // same value as -outdir.
-@@ -222,6 +275,11 @@ static int RunCompile(int argc, char** argv) {
+         if ((std::strcmp(argv[i], "-game") == 0 || std::strcmp(argv[i], "-outdir") == 0) &&
+             i + 1 < argc) {
+             outdir = argv[++i];
++            if(std::strcmp(argv[i-1],"-game")==0)gameDirectory=outdir;
++        } else if(std::strcmp(argv[i],"-steamdir")==0 && i+1<argc) {
++            steamDirectory=argv[++i];
+         } else if (std::strcmp(argv[i], "-modelname") == 0) {
              if (i + 1 >= argc)
                  return Fail("bad option", "-modelname needs a model path");
              modelname = argv[++i];
@@ -602469,7 +602667,7 @@ index 710c49b..735f4e6 100644
          } else if (std::strcmp(argv[i], "-defvar") == 0) {
              // a .pulseqc $definevariable, set from the launch line and pinned
              if (i + 2 >= argc)
-@@ -255,6 +313,24 @@ static int RunCompile(int argc, char** argv) {
+@@ -255,6 +325,24 @@ static int RunCompile(int argc, char** argv) {
                  return Fail("bad option", "-minlod needs a non-negative LOD index, got \"" +
                                                value + "\"");
              }
@@ -602494,7 +602692,24 @@ index 710c49b..735f4e6 100644
          } else if (std::strcmp(argv[i], "-nodx80") == 0) {
              noDx80 = true;
          } else if (std::strcmp(argv[i], "-striplods") == 0) {
-@@ -310,13 +386,26 @@ static int RunCompile(int argc, char** argv) {
+@@ -274,6 +362,8 @@ static int RunCompile(int argc, char** argv) {
+             pulse::dependencies::g_enabled = true;
+         } else if (std::strcmp(argv[i], "-dumpmaterials") == 0) {
+             dumpMaterials = true;
++        } else if(std::strcmp(argv[i],"-perfjson")==0 && i+1<argc) {
++            perfJson=argv[++i];
+         } else if (std::strcmp(argv[i], "-perfmetrics") == 0) {
+             pulse::perf::g_enabled = true;
+         } else if (std::strcmp(argv[i], "-pause") == 0) {
+@@ -307,16 +397,34 @@ static int RunCompile(int argc, char** argv) {
+                     std::string(script) + ": only .pulseqc/.qc compile scripts are supported");
+ 
+     std::string err;
++    std::ofstream metrics;
++    if(!perfJson.empty()){auto path=pulse::FilePath(perfJson);if(path.has_parent_path())std::filesystem::create_directories(path.parent_path());
++        metrics.open(path);if(!metrics)return Fail("metrics error","cannot create performance JSON");}
++    if(!pulse::resources::Initialize(gameDirectory,steamDirectory,&err))return Fail("mount error",err);
++    pulse::resources::Print();
      pulse::compile::CompileInput input;
      // pre-seeded so a script without $modelname still loads under -modelname
      input.outname = modelname;
@@ -602521,7 +602736,7 @@ index 710c49b..735f4e6 100644
      if (forceWriteVertexData)
          input.forceWriteVertexData = true;
      if (stripLods)
-@@ -362,6 +451,11 @@ static int RunCompile(int argc, char** argv) {
+@@ -362,6 +470,11 @@ static int RunCompile(int argc, char** argv) {
      }
  
      if (!verify) {
@@ -602533,7 +602748,7 @@ index 710c49b..735f4e6 100644
          g_stage = "write";
          // dx80 only ships with the legacy archetype; Alien Swarm+ (archetype 1)
          // dropped DirectX 8, and $nodx80 / -nodx80 opt out explicitly.
-@@ -374,6 +468,18 @@ static int RunCompile(int argc, char** argv) {
+@@ -374,6 +487,18 @@ static int RunCompile(int argc, char** argv) {
          pulse::dependencies::Print();
      auto tWrite = Clock::now();
      g_stage = "done";
@@ -602552,7 +602767,25 @@ index 710c49b..735f4e6 100644
  
      // lodFlag is a bit per LOD. The pool is shared, so a decimated LOD adds no
      // verts to it - only a replacemodel LOD does. Per-LOD = verts it draws.
-@@ -430,6 +536,14 @@ int main(int argc, char** argv) {
+@@ -398,6 +523,17 @@ static int RunCompile(int argc, char** argv) {
+         pulse::perf::Record("total", "whole compile", ms(t0, tWrite));
+         pulse::perf::Report();
+     }
++    if(metrics) {
++        uint64_t peak=0;
++#ifdef _WIN32
++        PROCESS_MEMORY_COUNTERS info{};info.cb=sizeof(info);if(GetProcessMemoryInfo(GetCurrentProcess(),&info,sizeof(info)))peak=info.PeakWorkingSetSize;
++#else
++        rusage info{};if(getrusage(RUSAGE_SELF,&info)==0)peak=uint64_t(info.ru_maxrss)*1024;
++#endif
++        metrics<<"{\"schema\":1,\"version\":\""<<PULSEMODEL_VERSION<<"\",\"load_ms\":"<<ms(t0,tLoad)
++               <<",\"compile_ms\":"<<ms(tLoad,tCompile)<<",\"write_ms\":"<<ms(tCompile,tWrite)<<",\"total_ms\":"<<ms(t0,tWrite)
++               <<",\"peak_working_set_bytes\":"<<peak<<",\"bones\":"<<model.bones.size()<<",\"vertices\":"<<vertsPool<<"}\n";
++    }
+     return 0;
+ }
+ 
+@@ -430,6 +566,14 @@ int main(int argc, char** argv) {
      } catch (...) {
          rc = Fail("internal error", "unknown C++ exception");
      }
@@ -602722,18 +602955,20 @@ index d460e13..cca5a2a 100644
              // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
              if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index 4ef35e3..1b59a64 100644
+index 4ef35e3..3b372ee 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
-@@ -29,6 +29,7 @@
+@@ -29,7 +29,9 @@
  #include "flexreg.h"
  #include "meshedit.h"
  #include "fbxloader.h"
 +#include "sceneloader.h"
  #include "dependencies.h"
++#include "resources.h"
  #include "smdloader.h"
  
-@@ -48,6 +49,7 @@ constexpr int kStudioDelta = 0x0004;
+ namespace pulse::loader {
+@@ -48,6 +50,7 @@ constexpr int kStudioDelta = 0x0004;
  constexpr int kStudioAutoplay = 0x0008;
  constexpr int kStudioPost = 0x0010;
  constexpr int kStudioRealtime = 0x0100;
@@ -602741,7 +602976,7 @@ index 4ef35e3..1b59a64 100644
  constexpr int kStudioLocal = 0x0200;
  constexpr int kStudioHidden = 0x0400;
  constexpr int kStudioOverride = 0x0800;
-@@ -153,6 +155,33 @@ bool Tokenize(const std::string& s, const std::string& file,
+@@ -153,6 +156,33 @@ bool Tokenize(const std::string& s, const std::string& file,
          }
          out.push_back(std::move(t));
      }
@@ -602775,7 +603010,7 @@ index 4ef35e3..1b59a64 100644
      return true;
  }
  
-@@ -215,9 +244,15 @@ struct Ctx {
+@@ -215,9 +245,15 @@ struct Ctx {
      std::map<std::string, Macro> macros; // keyed lowercased
      int macroExpansions = 0; // runaway-recursion guard
      std::vector<std::string> lockedVars; // -defvar names; locked against $definevariable
@@ -602791,7 +603026,7 @@ index 4ef35e3..1b59a64 100644
      float defaultMotionRollback = 0.3f; // seed for a new anim's motionrollback
      float defaultFadeIn = 0.2f;
      float defaultFadeOut = 0.2f;
-@@ -315,8 +350,8 @@ struct Ctx {
+@@ -315,8 +351,8 @@ struct Ctx {
          try {
              size_t used = 0;
              const float v = std::stof(s, &used);
@@ -602802,7 +603037,15 @@ index 4ef35e3..1b59a64 100644
              value = v;
          } catch (const std::exception&) {
              return Fail(cmd.line, cmd.text + " expects " + what + ", got \"" + s + "\"");
-@@ -453,7 +488,7 @@ std::string WithDmxExtension(const std::string& s) {
+@@ -409,6 +445,7 @@ fs::path FindSourceFile(const Ctx& c, const std::string& filename,
+             return p;
+     }
+     if (tried) *tried = std::move(cands);
++    if(auto mounted=pulse::resources::Find(rel);!mounted.empty())return mounted;
+     return {};
+ }
+ 
+@@ -453,7 +490,7 @@ std::string WithDmxExtension(const std::string& s) {
  std::string WithSourceExtension(const Ctx& c, const std::string& s) {
      if (HasExtension(s))
          return s;
@@ -602811,7 +603054,7 @@ index 4ef35e3..1b59a64 100644
          if (!FindSourceFile(c, s + ext, nullptr).empty())
              return s + ext;
      return s + ".dmx";
-@@ -477,13 +512,19 @@ bool IsFbxPath(const std::string& s) {
+@@ -477,13 +514,19 @@ bool IsFbxPath(const std::string& s) {
  }
  
  // The edits one $rendermesh { } body asks for (meshedit.h).
@@ -602831,7 +603074,7 @@ index 4ef35e3..1b59a64 100644
      bool noMorph = false;
      // $inflate <amount> [material|mesh <name>...] in script order; tag 0 = no mesh scope
      struct Inflate {
-@@ -537,7 +578,8 @@ std::shared_ptr<pulse::dmx::Datamodel> LoadDmxCached(Ctx& c, const fs::path& ful
+@@ -537,7 +580,8 @@ std::shared_ptr<pulse::dmx::Datamodel> LoadDmxCached(Ctx& c, const fs::path& ful
  
  source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                             bool morphSource = false, MeshEdit* edit = nullptr,
@@ -602841,7 +603084,7 @@ index 4ef35e3..1b59a64 100644
      const bool priv = edit != nullptr;
      const bool animOnly = kind == source::LoadKind::Animation;
      // a collision hull is never drawn, so keep its materials out of the model's
-@@ -546,7 +588,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -546,7 +590,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
      source::MaterialTable& mats =
          kind == source::LoadKind::Collision ? c.physMats : c.in.mats;
  
@@ -602851,7 +603094,7 @@ index 4ef35e3..1b59a64 100644
      if (!priv) {
          auto it = c.sourceCache.find(key);
          if (it != c.sourceCache.end() && it->second->kind >= kind)
-@@ -578,6 +621,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -578,6 +623,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
      // and the SMD path derives cdtextures from it
      src->filename = filename;
      src->kind = kind;
@@ -602859,7 +603102,7 @@ index 4ef35e3..1b59a64 100644
  
      if (IsSmdPath(filename)) {
          std::printf("%s\n", head.c_str());
-@@ -611,7 +655,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -611,7 +657,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
              return nullptr;
          }
          if (!source::LoadFbxSource(full.string(), *src, mats, c.in.scale, &loadErr, morphSource,
@@ -602868,7 +603111,7 @@ index 4ef35e3..1b59a64 100644
              c.Fail(line, "cannot load \"" + full.string() + "\": " + loadErr);
              return nullptr;
          }
-@@ -635,6 +679,13 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -635,6 +681,13 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                      return nullptr;
                  }
          }
@@ -602882,7 +603125,7 @@ index 4ef35e3..1b59a64 100644
      } else {
          auto dm = LoadDmxCached(c, full, &loadErr);
          if (!dm) {
-@@ -645,7 +696,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -645,7 +698,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                      dm->encoding.c_str(), dm->encoding_version);
          PULSE_PERF("load", "dmx -> source");
          if (!source::LoadDmxSource(*dm, *src, mats, c.in.scale, &loadErr, morphSource,
@@ -602891,7 +603134,7 @@ index 4ef35e3..1b59a64 100644
              c.Fail(line, "cannot parse \"" + full.string() + "\": " + loadErr);
              return nullptr;
          }
-@@ -690,6 +741,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -690,6 +743,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
          source::CullUnskinnedBones(*src, edit->boneCull);
      }
  
@@ -602900,7 +603143,7 @@ index 4ef35e3..1b59a64 100644
      c.in.sources.push_back(std::move(src));
      source::Source* loaded = c.in.sources.back().get();
      if (!priv) {
-@@ -740,7 +793,7 @@ bool CmdRenderMesh(Ctx& c, const Token& cmd) {
+@@ -740,7 +795,7 @@ bool CmdRenderMesh(Ctx& c, const Token& cmd) {
      if (c.rendermeshes.count(name))
          return c.Fail(cmd.line, "duplicate $rendermesh \"" + name + "\"");
  
@@ -602909,7 +603152,7 @@ index 4ef35e3..1b59a64 100644
      edit.name = name;
      if (!c.Eof() && !c.Cur().quoted && c.Cur().text == "{") {
          ++c.pos;
-@@ -1264,7 +1317,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
+@@ -1264,7 +1319,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
              if (!src && (ext == ".dmx" || ext == ".smd" || ext == ".fbx")) {
                  if (std::find(refNames.begin(), refNames.end(), r.text) != refNames.end())
                      return c.Fail(r.line, where + ": mesh \"" + r.text + "\" is listed twice");
@@ -602918,7 +603161,7 @@ index 4ef35e3..1b59a64 100644
                  edit.name = r.text;
                  src = LoadSource(c, r.text, r.line, /*morphSource=*/true, &edit);
                  if (!src)
-@@ -1536,7 +1589,7 @@ bool CmdDataModelJoints(Ctx& c, const Token& cmd) {
+@@ -1536,7 +1591,7 @@ bool CmdDataModelJoints(Ctx& c, const Token& cmd) {
          return false;
  
      bool jiggle = false, procedural = false, hitboxes = false, attachments = false;
@@ -602927,7 +603170,7 @@ index 4ef35e3..1b59a64 100644
          const Token t = c.toks[c.pos++];
          const std::string o = Lower(t.text);
          if (o == "jigglebones")
-@@ -1741,10 +1794,12 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
+@@ -1741,10 +1796,12 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
  // (legacy noautodmxrules) - the morph deltas stay on the Source either way.
  // `file` must already be extension-resolved. null return = failure (reported).
  source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& file,
@@ -602942,7 +603185,7 @@ index 4ef35e3..1b59a64 100644
      const float defaultScale = c.in.scale;
      c.in.scale = importScale;
      source::Source* src = LoadSource(c, file, entry.line, /*morphSource=*/true, &edit);
-@@ -1753,7 +1808,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
+@@ -1753,7 +1810,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
          return nullptr;
      if (flip)
          source::FlipNormals(*src);
@@ -602951,7 +603194,7 @@ index 4ef35e3..1b59a64 100644
          auto dm = LoadRigDmx(c, entry, file, "studio rig");
          if (!dm)
              return nullptr;
-@@ -1771,6 +1826,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
+@@ -1771,6 +1828,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
  }
  
  // $body and $bodygroup load private, file-only choices with automatic DMX rig imports.
@@ -602959,7 +603202,7 @@ index 4ef35e3..1b59a64 100644
  bool CmdLegacyBody(Ctx& c, const Token& cmd) {
      cm::CompileInput::InBodyPart part;
      if (!c.Want("a name", cmd, part.name))
-@@ -1781,37 +1837,16 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
+@@ -1781,37 +1839,16 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
              return c.Fail(cmd.line, where + " already exists");
  
      auto studio = [&](const Token& entry, bool inlineBody) -> bool {
@@ -603007,7 +603250,7 @@ index 4ef35e3..1b59a64 100644
          part.models.push_back(std::move(model));
          return true;
      };
-@@ -1874,7 +1909,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1874,7 +1911,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
      // inline studio flags up to the '{' or the next command
      bool flip = false;
      float importScale = c.in.scale;
@@ -603023,12 +603266,17 @@ index 4ef35e3..1b59a64 100644
          const Token option = *c.Next();
          const std::string o = Lower(option.text);
          if (option.quoted) {
-@@ -1886,6 +1928,21 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1886,6 +1930,26 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                  return false;
              if (!std::isfinite(importScale) || importScale <= 0.0f)
                  return c.Fail(option.line, where + ": scale must be finite and greater than 0");
 +        } else if(o=="innode") {
 +            if(!c.Want("a scene node",option,scene.node)) return false;
++        } else if(o=="bakesceneanimation") {
++            if(!c.Want("a scene animation name",option,scene.bakeAnimation))return false;
++        } else if(o=="scenesamplerate") {
++            if(!c.WantFloat("a scene sample rate",option,scene.sampleRate))return false;
++            scene.explicitSampleRate=true;
 +        } else if(o=="computedeltanormals" || o=="computenormalsandwrinkles") {
 +            processing.computeNormals=true; if(o=="computenormalsandwrinkles") processing.computeWrinkles=true;
 +        } else if(o=="computewrinkles") { processing.computeWrinkles=true; processing.ignoreWrinkles=false;
@@ -603045,7 +603293,7 @@ index 4ef35e3..1b59a64 100644
          } else if (o == "subd") {
              // no quad subdivision in this compiler (matches importqc); accepted
          } else if (o == "faces") {
-@@ -1917,16 +1974,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1917,16 +1981,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              } else if (t.text == "}") {
                  if (--depth == 0)
                      break;
@@ -603088,7 +603336,7 @@ index 4ef35e3..1b59a64 100644
      cm::CompileInput::InModel model;
      model.name = part.name;
      model.source = src;
-@@ -1942,6 +2023,9 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1942,6 +2030,9 @@ bool CmdModel(Ctx& c, const Token& cmd) {
      std::map<std::string, std::vector<source::VtaFlexOption>> vtaByFile; // file -> shapes
      std::string vcaFile, vcaName;
      int vtaLine = 0, vcaLine = 0;
@@ -603098,7 +603346,7 @@ index 4ef35e3..1b59a64 100644
  
      auto atEnd = [&] { return c.Eof() || (!c.Cur().quoted && c.Cur().text == "}"); };
      auto sameLine = [&](int line) { return !atEnd() && c.Cur().line == line; };
-@@ -1950,7 +2034,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1950,7 +2041,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          return lo == "eyeball" || lo == "eyelid" || lo == "dmxeyelid" || lo == "flexfile" ||
                 lo == "flex" || lo == "flexpair" || lo == "defaultflex" || lo == "vcafile" ||
                 lo == "localvar" || lo == "mouth" || lo == "flexcontroller" ||
@@ -603108,7 +603356,7 @@ index 4ef35e3..1b59a64 100644
      };
      // A `%name =` at the cursor starts a NEW rule; a bare `%name` is a fetch
      // operand, so a rule expression reads across lines until the next statement.
-@@ -2009,6 +2094,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2009,6 +2101,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          if (o == "eyeball") {
              FaceMarkup::Entry e;
              e.kind = FaceMarkup::Kind::Eyeball;
@@ -603121,7 +603369,7 @@ index 4ef35e3..1b59a64 100644
              std::string iris;
              if (!c.Want("an eyeball name", t, e.eyeball.name) ||
                  !c.Want("a bone name", t, e.eyeball.bonename) ||
-@@ -2081,6 +2172,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2081,6 +2179,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              continue;
          }
  
@@ -603136,7 +603384,7 @@ index 4ef35e3..1b59a64 100644
          // flexfile <file> - the VTA the following flex/flexpair/defaultflex read
          if (o == "flexfile") {
              if (!c.Want("a .vta filename", t, flexfile))
-@@ -2092,9 +2191,23 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2092,9 +2198,23 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          // flex/flexpair/defaultflex <name> [<split>] frame <N> [position f] [decay f]
          // Each names one VTA frame; a split routes to the stereo-split machinery.
          if (o == "flex" || o == "flexpair" || o == "defaultflex") {
@@ -603160,7 +603408,7 @@ index 4ef35e3..1b59a64 100644
              float split = 0.0f;
              bool hasSplit = false;
              if (o == "defaultflex") {
-@@ -2123,6 +2236,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2123,6 +2243,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                      ++c.pos;
                      if (!c.WantFloat("a decay", t, fo.decay))
                          return false;
@@ -603171,7 +603419,7 @@ index 4ef35e3..1b59a64 100644
                  } else if (k == "split") {
                      ++c.pos;
                      if (!c.WantFloat("a split", t, split))
-@@ -2135,6 +2252,15 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2135,6 +2259,15 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              if (!sawFrame)
                  return c.Fail(t.line, where + ": " + o + " \"" + fo.name +
                                            "\" needs a frame <N> - a .vta names nothing");
@@ -603187,7 +603435,7 @@ index 4ef35e3..1b59a64 100644
              if (fo.frame == 0)
                  continue; // frame 0 is the VTA basis (the rest pose), not a delta
              if (hasSplit && split != 0.0f)
-@@ -2168,6 +2294,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2168,6 +2301,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                  return false;
              FaceMarkup::Entry e;
              e.kind = FaceMarkup::Kind::Eyelid;
@@ -603195,7 +603443,7 @@ index 4ef35e3..1b59a64 100644
              const char dtc = type.empty() ? '?' : static_cast<char>(std::tolower(type[0]));
              if (dtc == 'u')      e.eyelid.upper = true;
              else if (dtc == 'l') e.eyelid.upper = false;
-@@ -2186,6 +2313,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2186,6 +2320,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                      if (e.eyelid.delta[slot] == "-")
                          e.eyelid.delta[slot].clear();
                      e.eyelid.target[slot] *= c.in.scale;
@@ -603203,7 +603451,15 @@ index 4ef35e3..1b59a64 100644
                      haveSlot[slot] = true;
                  } else if (ko == "split") {
                      if (!c.WantFloat("a split distance", t, e.eyelid.split)) return false;
-@@ -2277,6 +2405,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2270,6 +2405,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+                 source::VtaFlexOption fo;
+                 fo.name = e.eyelid.basedesc + "_lid_" + kLidSlot[i];
+                 fo.frame = frame[i];
++                fo.registerFlex = false;
+                 e.eyelid.delta[i] = fo.name;
+                 vtaByFile[vtafile].push_back(std::move(fo));
+             }
+@@ -2277,6 +2413,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              continue;
          }
  
@@ -603218,7 +603474,7 @@ index 4ef35e3..1b59a64 100644
          if (o == "noautodmxrules")
              continue; // handled by the pre-scan above
          if (o == "attachment")
-@@ -2309,6 +2445,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2309,6 +2453,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          if (!source::LoadVtaMorphs(full.string(), *src, importScale, kv.second, &err))
              return c.Fail(vtaLine, "cannot load \"" + full.string() + "\": " + err);
      }
@@ -603259,7 +603515,7 @@ index 4ef35e3..1b59a64 100644
      if (!vcaFile.empty()) {
          std::vector<fs::path> tried;
          const fs::path full = FindSourceFile(c, vcaFile, &tried);
-@@ -2358,6 +2528,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
+@@ -2358,6 +2536,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
  //    1 - consumed as an option
  //    0 - not an animation option (caller treats it as a filename / seq ref)
  //   -1 - error, c.err set (includes a known-but-unsupported option)
@@ -603268,7 +603524,7 @@ index 4ef35e3..1b59a64 100644
  int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
      if (t.quoted)
          return 0; // a quoted token is always a filename
-@@ -2589,7 +2761,21 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2589,7 +2769,21 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
      // blockname <name>: sample a specific clip out of a multi-clip source. The
      // reference also resets the frame range to that clip's, which the compile
      // stage does by clamping to whichever clip is picked.
@@ -603291,7 +603547,7 @@ index 4ef35e3..1b59a64 100644
          if (!c.Want("a source clip name", t, a.blockname))
              return -1;
          return 1;
-@@ -2744,13 +2930,52 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2744,13 +2938,52 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
              return 1;
          }
      }
@@ -603345,7 +603601,7 @@ index 4ef35e3..1b59a64 100644
          a.cmds.push_back(std::move(cmd));
          return 1;
      }
-@@ -3168,21 +3393,70 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
+@@ -3168,21 +3401,70 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
      if (bindpose) {
          a.bindpose = true;
          a.endframe = 0; // one frame unless `numframes` says otherwise
@@ -603424,7 +603680,7 @@ index 4ef35e3..1b59a64 100644
  bool CmdAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, false); }
  bool CmdBindPoseAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, true); }
  
-@@ -3225,6 +3499,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
+@@ -3225,6 +3507,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
      std::string name;
      if (!c.Want("a compiled .mdl path", cmd, name))
          return false;
@@ -603435,7 +603691,7 @@ index 4ef35e3..1b59a64 100644
      // must name a .mdl - a source .dmx/.smd or a bare name would compile fine
      // and leave a reference the engine silently fails to resolve
      if (name.size() < 4 || _stricmp(name.c_str() + name.size() - 4, ".mdl") != 0)
-@@ -4120,6 +4398,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
+@@ -4120,6 +4406,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
              if (_stricmp(o.c_str(), "autoplay") == 0) { seq.flags |= kStudioAutoplay; continue; }
              if (_stricmp(o.c_str(), "hidden") == 0) { seq.flags |= kStudioHidden; continue; }
              if (_stricmp(o.c_str(), "realtime") == 0) { seq.flags |= kStudioRealtime; continue; }
@@ -603443,7 +603699,7 @@ index 4ef35e3..1b59a64 100644
              if (_stricmp(o.c_str(), "post") == 0) { seq.flags |= kStudioPost; continue; }
              if (_stricmp(o.c_str(), "delta") == 0) {
                  seq.flags |= kStudioDelta | kStudioPost;
-@@ -4557,6 +4836,37 @@ bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
+@@ -4557,6 +4844,37 @@ bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
  // $modelbudget { bones <n> materials <n> } - set the compile ceilings for this
  // model. Braces are optional for a single field. The pulselimits.h value is the
  // cap; bones default to 255 and must be raised here to go past it.
@@ -603481,7 +603737,7 @@ index 4ef35e3..1b59a64 100644
  bool CmdModelBudget(Ctx& c, const Token& cmd) {
      const bool braced = !c.Eof() && !c.Cur().quoted && c.Cur().text == "{";
      if (braced)
-@@ -4852,6 +5162,12 @@ bool CmdUpAxis(Ctx& c, const Token& cmd) {
+@@ -4852,6 +5170,12 @@ bool CmdUpAxis(Ctx& c, const Token& cmd) {
      if (!c.Want("an axis", cmd, axis))
          return false;
  
@@ -603494,7 +603750,7 @@ index 4ef35e3..1b59a64 100644
      pm::RadianEuler r{0.0f, 0.0f, pm::kPiF / 2.0f};
      if (_stricmp(axis.c_str(), "x") == 0)
          r.y = pm::kPiF / 2.0f; // 90 about y moves x into z
-@@ -5398,6 +5714,16 @@ bool CmdCullJiggleBones(Ctx& c, const Token&) {
+@@ -5398,6 +5722,16 @@ bool CmdCullJiggleBones(Ctx& c, const Token&) {
      return true;
  }
  
@@ -603511,7 +603767,7 @@ index 4ef35e3..1b59a64 100644
  // $hierarchy <child> <parent> (Cmd_ForcedHierarchy, "$heirarchy" is stock's own
  // misspelling and works too): reparent a bone. Applied once the global bone
  // table exists, so it can join two source skeletons that were exported apart.
-@@ -5830,6 +6156,29 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
+@@ -5830,6 +6164,29 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
  // attachment name if one matches and otherwise a bone name. The inline form of
  // a VRD <aimconstraint>; the parent and the base position both come from the
  // skeleton, so neither is asked for.
@@ -603541,7 +603797,7 @@ index 4ef35e3..1b59a64 100644
  bool CmdDriverAimAt(Ctx& c, const Token& cmd) {
      cm::AimAtBone ab;
      ab.autobasepos = true;
-@@ -5887,7 +6236,10 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
+@@ -5887,7 +6244,10 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
                                  filename + "\"");
  
      std::vector<fs::path> tried;
@@ -603552,7 +603808,7 @@ index 4ef35e3..1b59a64 100644
      if (full.empty())
          return c.Fail(cmd.line, "cannot find \"" + filename + "\" - looked in:" +
                                  LookedIn(tried));
-@@ -7117,9 +7469,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
+@@ -7117,9 +7477,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
      float fps = 0.0f;
      if (!c.WantFloat("a frame rate", cmd, fps))
          return false;
@@ -603566,7 +603822,7 @@ index 4ef35e3..1b59a64 100644
      return true;
  }
  
-@@ -7782,6 +8136,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
+@@ -7782,6 +8144,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
              if (!c.WantFloat("a position epsilon", sub, c.in.physWeldPosition)) return false;
          } else if (o == "$weldnormal") {
              if (!c.WantFloat("a normal epsilon", sub, c.in.physWeldNormal)) return false;
@@ -603576,7 +603832,7 @@ index 4ef35e3..1b59a64 100644
          } else if (o == "$concave") {
              c.in.physLegacyConcave = true;
          } else if (o == "$convexhullcountoverride") {
-@@ -8076,8 +8433,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
+@@ -8076,8 +8441,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
      }
  
      std::string expectedText;
@@ -603587,7 +603843,7 @@ index 4ef35e3..1b59a64 100644
      bool expected = false;
      if (_stricmp(expectedText.c_str(), "true") == 0)
          expected = true;
-@@ -8153,7 +8510,12 @@ bool SpliceInclude(Ctx& c) {
+@@ -8153,7 +8518,12 @@ bool SpliceInclude(Ctx& c) {
      Token pathTok = c.toks[p++];
      if (!pathTok.expanded && !ExpandVars(c, pathTok))
          return false;
@@ -603601,7 +603857,7 @@ index 4ef35e3..1b59a64 100644
  
      bool localDir = false, optional = false;
      while (p < c.toks.size() && !c.toks[p].quoted && c.toks[p].line == cmd.line &&
-@@ -8161,7 +8523,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8161,7 +8531,7 @@ bool SpliceInclude(Ctx& c) {
          const std::string& o = c.toks[p].text;
          if (_stricmp(o.c_str(), "localdir") == 0)
              localDir = true;
@@ -603610,7 +603866,7 @@ index 4ef35e3..1b59a64 100644
              optional = true;
          else
              return c.Fail(c.toks[p].line, "$include: unknown parameter \"" + o +
-@@ -8177,7 +8539,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8177,7 +8547,7 @@ bool SpliceInclude(Ctx& c) {
      if (relPath.is_absolute()) {
          tries.push_back(relPath);
      } else {
@@ -603619,7 +603875,15 @@ index 4ef35e3..1b59a64 100644
          // stock resolves every $include against the root script's dir, so a
          // nested one often carries the whole path down from there
          if (c.curDir != c.scriptDir)
-@@ -8397,9 +8759,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
+@@ -8202,6 +8572,7 @@ bool SpliceInclude(Ctx& c) {
+             break;
+         }
+     }
++    if(full.empty()&&!localDir)full=pulse::resources::Find(relPath);
+     if (full.empty()) {
+         c.toks.erase(c.toks.begin() + c.pos, c.toks.begin() + directiveEnd);
+         for (Ctx::IncludeFrame& f : c.includeFrames)
+@@ -8397,9 +8768,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
          return false;
      if (PinnedByDefVar(c, cmd, name))
          return true;
@@ -603635,7 +603899,7 @@ index 4ef35e3..1b59a64 100644
      c.variables[name] = value;
      return true;
  }
-@@ -8420,6 +8785,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
+@@ -8420,6 +8794,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
      return true;
  }
  
@@ -603689,7 +603953,7 @@ index 4ef35e3..1b59a64 100644
  bool IsCommandName(const std::string& name); // the kCommands lookup, below
  
  // $definemacro <name> [<param>[=<default>] ...] <body> $endmacro.
-@@ -8757,9 +9169,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8757,9 +9178,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
              taken = true;
              chosen = std::move(body);
          }
@@ -603701,7 +603965,7 @@ index 4ef35e3..1b59a64 100644
      }
      if (!c.Eof() && !c.Cur().quoted && _stricmp(c.Cur().text.c_str(), "$else") == 0) {
          const Token els = c.toks[c.pos++];
-@@ -8774,6 +9187,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8774,6 +9196,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
  }
  
  bool CmdIf(Ctx& c, const Token& cmd) { return IfChain(c, cmd, false); }
@@ -603744,7 +604008,7 @@ index 4ef35e3..1b59a64 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,19 +9308,73 @@ struct Command {
+@@ -8859,19 +9317,73 @@ struct Command {
      bool (*fn)(Ctx&, const Token&);
  };
  
@@ -603818,7 +604082,7 @@ index 4ef35e3..1b59a64 100644
      {"$else", CmdElifOutside},
      {"$switch", CmdSwitch},
      {"$case", CmdCaseOutside},
-@@ -8887,6 +9390,7 @@ constexpr Command kCommands[] = {
+@@ -8887,6 +9399,7 @@ constexpr Command kCommands[] = {
      {"$body", CmdLegacyBody},
      {"$bodygroup", CmdLegacyBody},
      {"$model", CmdModel},
@@ -603826,7 +604090,7 @@ index 4ef35e3..1b59a64 100644
      {"$modelgrouppreset", CmdModelGroupPreset},
      {"$bodygrouppreset", CmdModelGroupPreset},
      {"$datamodeljoints", CmdDataModelJoints},
-@@ -8905,6 +9409,7 @@ constexpr Command kCommands[] = {
+@@ -8905,6 +9418,7 @@ constexpr Command kCommands[] = {
      {"$includemodel", CmdIncludeModel},
      {"$cmdlist", CmdCmdList},
      {"$defaultfps", CmdDefaultFps},
@@ -603834,7 +604098,7 @@ index 4ef35e3..1b59a64 100644
      {"$motionrollback", CmdMotionRollback},
      {"$nosequence", CmdNoSequence},
      {"$defaultfadein", CmdDefaultFadeIn},
-@@ -8927,11 +9432,43 @@ constexpr Command kCommands[] = {
+@@ -8927,11 +9441,43 @@ constexpr Command kCommands[] = {
      {"$vtxformat", CmdVtxFormat},
      {"$nodx80", CmdNoDx80},
      {"$modelbudget", CmdModelBudget},
@@ -603878,7 +604142,7 @@ index 4ef35e3..1b59a64 100644
      {"$surfaceprop", CmdSurfaceProp},
      {"$contents", CmdContents},
      {"$jointcontents", CmdJointContents},
-@@ -8977,6 +9514,7 @@ constexpr Command kCommands[] = {
+@@ -8977,6 +9523,7 @@ constexpr Command kCommands[] = {
      {"$jigglebone", CmdJiggleBone},
      {"$culljigglebones", CmdCullJiggleBones},
      {"$driverbone", CmdDriverBone},
@@ -603886,7 +604150,7 @@ index 4ef35e3..1b59a64 100644
      {"$driveraimat", CmdDriverAimAt},
      {"$proceduralbones", CmdProceduralBones},
      {"$realignbones", CmdRealignBones},
-@@ -8989,6 +9527,7 @@ constexpr Command kCommands[] = {
+@@ -8989,6 +9536,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},
@@ -603894,7 +604158,7 @@ index 4ef35e3..1b59a64 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
-@@ -9140,9 +9679,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9140,9 +9688,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      seedDirs(includeDirs, c.launchIncludeDirs);
      seedDirs(fileDirs, c.launchSearchDirs);
  
@@ -603907,7 +604171,7 @@ index 4ef35e3..1b59a64 100644
      // the root of the $include cycle check
      std::error_code ec;
      const fs::path canon = fs::weakly_canonical(path, ec);
-@@ -9170,6 +9712,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9170,6 +9721,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      out.upAxisY = source::DmxUpAxisY();
  
      // $renamemorph: before anything below resolves a morph by name
@@ -603921,12 +604185,196 @@ index 4ef35e3..1b59a64 100644
      if (!ApplyMorphRenames(c))
          return false;
  
+diff --git a/mdlcompiler/resources.cpp b/mdlcompiler/resources.cpp
+new file mode 100644
+index 0000000..3bb4762
+--- /dev/null
++++ b/mdlcompiler/resources.cpp
+@@ -0,0 +1,164 @@
++#include "resources.h"
++#include "pathcompat.h"
++#include "dependencies.h"
++#include <algorithm>
++#include <chrono>
++#include <cctype>
++#include <cstdlib>
++#include <cstdio>
++#include <cstring>
++#include <fstream>
++#include <map>
++#include <set>
++#include <sstream>
++#include <stdexcept>
++#include <vector>
++#ifdef _WIN32
++#define WIN32_LEAN_AND_MEAN
++#define NOMINMAX
++#include <windows.h>
++#endif
++namespace pulse::resources {
++namespace {
++namespace fs=std::filesystem;
++std::string Lower(std::string s){for(char& c:s)c=char(std::tolower(static_cast<unsigned char>(c)));return s;}
++struct KV {std::string key,value;std::vector<KV> children;};
++std::vector<std::string> Tokens(const std::string& text) {
++ std::vector<std::string> out;size_t i=0;
++ while(i<text.size()) {
++  if(std::isspace(static_cast<unsigned char>(text[i]))){++i;continue;}
++  if(text.compare(i,2,"//")==0){while(i<text.size()&&text[i]!='\n')++i;continue;}
++  if(text[i]=='{'||text[i]=='}'){out.push_back(text.substr(i++,1));continue;}
++  std::string s;
++  if(text[i]=='"'){++i;while(i<text.size()&&text[i]!='"'){
++   if(text[i]=='\\'&&i+1<text.size()&&(text[i+1]=='\\'||text[i+1]=='"'))++i;
++   s+=text[i++];}if(i==text.size())throw std::runtime_error("unterminated KeyValues string");++i;
++  }else{while(i<text.size()&&!std::isspace(static_cast<unsigned char>(text[i]))&&text[i]!='{'&&text[i]!='}')s+=text[i++];}
++  out.push_back(std::move(s));
++ }return out;
++}
++std::vector<KV> Parse(const std::vector<std::string>& ts,size_t& i,bool nested=false,int depth=0) {
++ if(depth>64)throw std::runtime_error("KeyValues nesting limit exceeded");std::vector<KV> out;
++ while(i<ts.size()&&ts[i]!="}") {
++  KV n;n.key=ts[i++];if(i==ts.size())throw std::runtime_error("missing KeyValues value");
++  if(ts[i]=="{"){++i;n.children=Parse(ts,i,true,depth+1);}else n.value=ts[i++];
++  bool enabled=true;
++  if(i<ts.size()&&!ts[i].empty()&&ts[i][0]=='['){const auto condition=Lower(ts[i++]);
++#ifdef _WIN32
++   enabled=condition!="[$linux]"&&condition!="[$posix]";
++#else
++   enabled=condition!="[$win32]"&&condition!="[$windows]";
++#endif
++  }if(enabled)out.push_back(std::move(n));
++ }if(nested){if(i==ts.size())throw std::runtime_error("missing KeyValues closing brace");++i;}return out;
++}
++std::vector<KV> ReadKV(const fs::path& path) {
++ std::ifstream f(path,std::ios::binary);if(!f)return {};std::ostringstream s;s<<f.rdbuf();
++ auto text=s.str();if(text.size()>=3&&uint8_t(text[0])==0xef&&uint8_t(text[1])==0xbb&&uint8_t(text[2])==0xbf)text.erase(0,3);
++ auto ts=Tokens(text);size_t i=0;auto out=Parse(ts,i);if(i!=ts.size())throw std::runtime_error("unexpected KeyValues closing brace");
++ dependencies::Note(path.string());return out;
++}
++const KV* Child(const std::vector<KV>& nodes,const std::string& name){for(const auto& n:nodes)if(Lower(n.key)==Lower(name))return &n;return nullptr;}
++struct Entry {uint16_t archive=0;uint32_t offset=0,length=0;std::vector<char> preload;};
++struct Mount {fs::path path;bool loaded=false;uint64_t dataStart=0;std::map<std::string,Entry> entries;};
++struct State {
++ std::vector<Mount> mounts;fs::path cache;
++ ~State(){if(!cache.empty()){std::error_code ec;auto parent=fs::temp_directory_path(ec).lexically_normal();
++  if(!ec&&cache.parent_path()==parent&&cache.filename().string().rfind("newpage-mount-",0)==0)fs::remove_all(cache,ec);}}
++} state;
++uint16_t U16(const std::vector<char>& b,size_t& i){if(i+2>b.size())throw std::runtime_error("truncated VPK entry");uint16_t x=uint8_t(b[i])|(uint16_t(uint8_t(b[i+1]))<<8);i+=2;return x;}
++uint32_t U32(const std::vector<char>& b,size_t& i){uint32_t lo=U16(b,i),hi=U16(b,i);return lo|(hi<<16);}
++std::string CString(const std::vector<char>& b,size_t& i){size_t start=i;while(i<b.size()&&b[i])++i;if(i==b.size())throw std::runtime_error("truncated VPK string");std::string s(b.data()+start,i-start);++i;return s;}
++bool SafeRelative(const fs::path& p){if(p.empty()||p.is_absolute()||p.has_root_name())return false;for(const auto& part:p)if(part=="..")return false;return true;}
++void Index(Mount& m) {
++ if(m.loaded)return;m.loaded=true;std::ifstream f(m.path,std::ios::binary);
++ std::vector<char> header(12);f.read(header.data(),12);size_t h=0;
++ if(!f||U32(header,h)!=0x55aa1234)throw std::runtime_error("invalid VPK signature: "+m.path.string());
++ uint32_t version=U32(header,h),size=U32(header,h);
++ if(version!=1&&version!=2)throw std::runtime_error("unsupported VPK version");
++ if(size>256*1024*1024)throw std::runtime_error("VPK directory exceeds 256 MiB");
++ m.dataStart=(version==1?12:28)+uint64_t(size);f.seekg(version==1?12:28);
++ std::vector<char> tree(size);f.read(tree.data(),size);if(!f)throw std::runtime_error("truncated VPK directory");size_t i=0;
++ for(std::string ext=CString(tree,i);!ext.empty();ext=CString(tree,i))
++  for(std::string dir=CString(tree,i);!dir.empty();dir=CString(tree,i))
++   for(std::string name=CString(tree,i);!name.empty();name=CString(tree,i)) {
++    U32(tree,i);uint16_t preload=U16(tree,i);Entry e;e.archive=U16(tree,i);e.offset=U32(tree,i);e.length=U32(tree,i);
++    if(U16(tree,i)!=0xffff||preload>tree.size()-i)throw std::runtime_error("invalid VPK entry");
++    e.preload.assign(tree.begin()+i,tree.begin()+i+preload);i+=preload;
++    auto p=FilePath((dir==" "?"":dir+"/")+name+(ext==" "?"":"."+ext)).lexically_normal();
++    if(!SafeRelative(p))throw std::runtime_error("unsafe VPK path");m.entries.emplace(Lower(p.generic_string()),std::move(e));
++   }
++ dependencies::Note(m.path.string());
++}
++void Add(fs::path p) {
++ p=p.lexically_normal();std::error_code ec;
++ if(p.filename()=="*"){std::vector<fs::path> paths;for(fs::directory_iterator it(p.parent_path(),ec),end;!ec&&it!=end;it.increment(ec))if(it->is_directory())paths.push_back(it->path());
++  std::sort(paths.begin(),paths.end());for(auto& x:paths)Add(x);return;}
++ if(!fs::exists(p,ec)&&p.extension()==".vpk"){auto s=p.string();s.resize(s.size()-4);p=FilePath(s+"_dir.vpk");}
++ if(!fs::exists(p,ec))return;for(const auto& m:state.mounts)if(m.path==p)return;state.mounts.push_back({p});
++ if(fs::is_directory(p,ec)){
++  std::vector<fs::path> archives;for(fs::directory_iterator it(p,ec),end;!ec&&it!=end;it.increment(ec))if(it->path().extension()==".vpk"){
++   auto name=it->path().stem().string();bool chunk=name.size()>4&&name[name.size()-4]=='_'&&name.substr(name.size()-3).find_first_not_of("0123456789")==std::string::npos;
++   if(!chunk)archives.push_back(it->path());}
++  std::sort(archives.begin(),archives.end());for(const auto& archive:archives)Add(archive);
++ }
++}
++fs::path SteamRoot(const std::string& overridePath) {
++ if(!overridePath.empty())return fs::absolute(FilePath(overridePath));
++ if(const char* p=std::getenv("NEWPAGE_STEAM_PATH"))return fs::absolute(FilePath(p));
++#ifdef _WIN32
++ wchar_t value[32768];DWORD bytes=sizeof(value);
++ if(RegGetValueW(HKEY_CURRENT_USER,L"Software\\Valve\\Steam",L"SteamPath",RRF_RT_REG_SZ,nullptr,value,&bytes)==ERROR_SUCCESS)return fs::path(value);
++#else
++ if(const char* p=std::getenv("HOME")){auto root=fs::path(p)/".steam/steam";if(fs::exists(root))return root;return fs::path(p)/".local/share/Steam";}
++#endif
++ return {};
++}
++fs::path AppDirectory(const fs::path& steam,const std::string& id) {
++ if(steam.empty()||id.empty()||id.find_first_not_of("0123456789")!=std::string::npos)return {};
++ std::vector<fs::path> libs{steam};auto folders=ReadKV(steam/"steamapps/libraryfolders.vdf");
++ if(auto root=Child(folders,"libraryfolders"))for(const auto& n:root->children){if(auto p=Child(n.children,"path"))libs.push_back(FilePath(p->value));else if(!n.value.empty()&&n.key.find_first_not_of("0123456789")==std::string::npos)libs.push_back(FilePath(n.value));}
++ for(const auto& lib:libs){auto manifest=ReadKV(lib/"steamapps"/("appmanifest_"+id+".acf"));auto app=Child(manifest,"appstate");if(!app)continue;
++  auto install=Child(app->children,"installdir");if(install){auto relative=FilePath(install->value);if(!SafeRelative(relative))throw std::runtime_error("unsafe Steam install directory");return lib/"steamapps/common"/relative;}}
++ return {};
++}
++}
++bool Initialize(const std::string& gameDirectory,const std::string& steamDirectory,std::string* err) {
++ try {
++  state.mounts.clear();if(gameDirectory.empty())return true;
++  fs::path game=fs::absolute(FilePath(gameDirectory));auto kv=ReadKV(game/"gameinfo.txt");if(kv.empty())return true;
++  const auto root=Child(kv,"gameinfo");const auto system=root?Child(root->children,"filesystem"):nullptr;
++  const auto search=system?Child(system->children,"searchpaths"):nullptr;if(!search)return true;
++  auto steam=SteamRoot(steamDirectory);std::map<std::string,fs::path> apps;
++  for(const auto& n:search->children){auto key=Lower(n.key);if(key.find("game")==std::string::npos&&key.find("mod")==std::string::npos&&key!="content")continue;
++   std::string value=n.value;bool prefixed=value.rfind("|",0)==0;fs::path base=game.parent_path();
++   if(value.rfind("|gameinfo_path|",0)==0){base=game;value.erase(0,15);}
++   else if(value.rfind("|all_source_engine_paths|",0)==0){value.erase(0,25);}
++   else if(value.rfind("|appid_",0)==0){auto end=value.find('|',1);if(end==std::string::npos)throw std::runtime_error("unterminated AppID search path");auto id=value.substr(7,end-7);
++    auto found=apps.find(id);if(found==apps.end())found=apps.emplace(id,AppDirectory(steam,id)).first;
++    if(found->second.empty()){std::fprintf(stderr,"warning: mounted AppID %s is not installed\n",id.c_str());continue;}
++    base=found->second;value.erase(0,end+1);}
++   if(prefixed)while(!value.empty()&&(value[0]=='/'||value[0]=='\\'))value.erase(0,1);
++   auto p=FilePath(value);Add(p.is_absolute()?p:base/p);
++  }return true;
++ }catch(const std::exception& e){if(err)*err="resource mount: "+std::string(e.what());return false;}
++}
++fs::path Find(const fs::path& input) {
++ fs::path relative=input;
++ if(input.is_absolute()){if(state.cache.empty())return {};relative=input.lexically_relative(state.cache);}
++ relative=relative.lexically_normal();if(!SafeRelative(relative))return {};
++ for(auto& m:state.mounts){std::error_code ec;if(fs::is_directory(m.path,ec)){auto p=m.path/relative;if(fs::is_regular_file(p,ec))return p;continue;}
++  if(m.path.extension()!=".vpk")continue;Index(m);auto found=m.entries.find(Lower(relative.generic_string()));if(found==m.entries.end())continue;
++  if(state.cache.empty()){auto root=fs::temp_directory_path().lexically_normal();state.cache=root/("newpage-mount-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));if(!fs::create_directory(state.cache))throw std::runtime_error("cannot create resource cache");}
++  auto output=state.cache/relative;fs::create_directories(output.parent_path());const auto& e=found->second;
++  auto archive=m.path;uint64_t offset=m.dataStart+e.offset;
++  if(e.archive!=0x7fff){auto name=m.path.stem().string();if(name.size()>4&&name.substr(name.size()-4)=="_dir")name.resize(name.size()-4);
++   char index[16];std::snprintf(index,sizeof(index),"_%03u.vpk",e.archive);archive=m.path.parent_path()/(name+index);offset=e.offset;}
++  std::ifstream f(archive,std::ios::binary|std::ios::ate);auto length=f.tellg();if(!f||length<0||offset>uint64_t(length)||e.length>uint64_t(length)-offset)throw std::runtime_error("VPK entry exceeds archive: "+relative.string());
++  std::ofstream out(output,std::ios::binary);out.write(e.preload.data(),e.preload.size());f.seekg(offset);
++  char buffer[65536];uint32_t left=e.length;while(left){size_t size=std::min<size_t>(left,sizeof(buffer));f.read(buffer,size);out.write(buffer,size);if(!f||!out)throw std::runtime_error("cannot extract VPK resource");left-=uint32_t(size);}
++  dependencies::Note(archive.string());return output;
++ }return {};
++}
++void Print(){for(const auto& m:state.mounts)std::printf("Mounted resource: %s\n",m.path.string().c_str());}
++}
+diff --git a/mdlcompiler/resources.h b/mdlcompiler/resources.h
+new file mode 100644
+index 0000000..d9dcfc2
+--- /dev/null
++++ b/mdlcompiler/resources.h
+@@ -0,0 +1,8 @@
++#pragma once
++#include <filesystem>
++#include <string>
++namespace pulse::resources {
++bool Initialize(const std::string& gameDirectory,const std::string& steamDirectory,std::string* err);
++std::filesystem::path Find(const std::filesystem::path& relative);
++void Print();
++}
 diff --git a/mdlcompiler/sceneloader.cpp b/mdlcompiler/sceneloader.cpp
 new file mode 100644
-index 0000000..96c8717
+index 0000000..eb053c3
 --- /dev/null
 +++ b/mdlcompiler/sceneloader.cpp
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,285 @@
 +#include "sceneloader.h"
 +#include "dependencies.h"
 +#include "gltfscene.h"
@@ -603981,11 +604429,11 @@ index 0000000..96c8717
 +        const bool gltf=ext==".gltf" || ext==".glb" || ext==".vrm";
 +        const bool fast=!options.noFastGltf && gltf;
 +        const std::string key=path+"|"+std::to_string(static_cast<long long>(std::filesystem::last_write_time(pulse::FilePath(path)).time_since_epoch().count()))+
-+                              "|"+std::to_string(fast)+"|"+std::to_string(options.sampleRate);
++                              "|"+std::to_string(fast)+"|"+std::to_string(options.sampleRate)+"|"+options.bakeAnimation;
 +        auto found=cache.find(key);
 +        if(found==cache.end()) {
 +            std::shared_ptr<aiScene> parsed;
-+            if(fast) parsed=LoadFastGltfScene(path,options.sampleRate);
++            if(fast) parsed=LoadFastGltfScene(path,options.sampleRate,!options.bakeAnimation.empty());
 +            else {
 +                Assimp::Importer importer;
 +                if(!importer.ReadFile(path,aiProcess_Triangulate|aiProcess_GenSmoothNormals)) throw std::runtime_error(importer.GetErrorString());
@@ -604043,9 +604491,13 @@ index 0000000..96c8717
 +        out.anims.push_back(std::move(bind));
 +        if(!std::isfinite(options.sampleRate) || options.sampleRate<=0 || options.sampleRate>1000)
 +            throw std::runtime_error("SampleRate must be finite and within (0, 1000]");
++        std::vector<std::vector<aiMatrix4x4>> bakedWorlds;
++        const aiAnimation* bakedAnimation=nullptr;
 +        for(unsigned a=0;a<scene->mNumAnimations;++a) {
 +            auto animation=scene->mAnimations[a];
-+            if(animation->mNumMorphMeshChannels || animation->mNumMeshChannels)
++            if(!options.bakeAnimation.empty()&&options.bakeAnimation!=animation->mName.C_Str())continue;
++            const bool bake=!options.bakeAnimation.empty();
++            if(animation->mNumMeshChannels || (!bake&&animation->mNumMorphMeshChannels))
 +                throw std::runtime_error("animated morph weights/mesh swaps require QC flex controllers");
 +            double rate=animation->mTicksPerSecond>0?animation->mTicksPerSecond:30;
 +            double duration=animation->mDuration/rate;
@@ -604054,6 +604506,8 @@ index 0000000..96c8717
 +            SourceAnim clip; clip.name=animation->mName.C_Str();
 +            if(clip.name.empty()) clip.name="animation_"+std::to_string(a);
 +            clip.numframes=1+int(std::lround(duration*options.sampleRate)); clip.endframe=clip.numframes-1;
++            if(bake){clip.numframes=1+int(std::ceil(duration*options.sampleRate));clip.endframe=clip.numframes-1;
++                if(clip.numframes>4096)throw std::runtime_error("BakeSceneAnimation exceeds 4096 sampled frames");bakedAnimation=animation;}
 +            clip.frames.resize(clip.numframes);
 +            for(int f=0;f<clip.numframes;++f) {
 +                double time=std::min(duration,double(f)/options.sampleRate)*rate;
@@ -604063,7 +604517,7 @@ index 0000000..96c8717
 +                    if(i==byName.end()) throw std::runtime_error("animation node not found");
 +                    int b=i->second; out.localBone[b].isNonSkeletal=false;
 +                    aiVector3D s,p; aiQuaternion q; locals[b].Decompose(s,q,p);
-+                    for(unsigned k=0;k<channel->mNumScalingKeys;++k)
++                    for(unsigned k=0;!bake&&k<channel->mNumScalingKeys;++k)
 +                        if((channel->mScalingKeys[k].mValue-s).SquareLength()>1e-10f)
 +                            throw std::runtime_error("animated scene scaling must be baked into vertex animation before MDL import");
 +                    auto lerp=[](aiVector3D x,aiVector3D y,float t) { return x+(y-x)*t; };
@@ -604075,13 +604529,15 @@ index 0000000..96c8717
 +                }
 +                std::vector<aiMatrix4x4> w(nodes.size());
 +                for(size_t b=0;b<nodes.size();++b) w[b]=parents[b]<0?locals[b]:w[parents[b]]*locals[b];
-+                pose(w,clip.frames[f]);
++                if(bake){bakedWorlds.push_back(std::move(w));out.bakedTimes.push_back(float(time/rate));clip.frames[f]=out.anims[0].frames[0];}
++                else pose(w,clip.frames[f]);
 +            }
 +            out.anims.push_back(std::move(clip));
 +        }
++        if(!options.bakeAnimation.empty()&&!bakedAnimation)throw std::runtime_error("BakeSceneAnimation animation not found: "+options.bakeAnimation);
 +        if(animOnly) return true;
 +        std::vector<TriInput> triangles;
-+        struct MorphMesh { const aiMesh* mesh; aiMatrix4x4 world; int base; };
++        struct MorphMesh { const aiMesh* mesh; aiMatrix4x4 world; int base,node; };
 +        std::vector<MorphMesh> morphMeshes; int vertexBase=0;
 +        for(size_t n=0;n<nodes.size();++n) if(keep(int(n))) for(unsigned j=0;j<nodes[n]->mNumMeshes;++j) {
 +            auto mesh=scene->mMeshes[nodes[n]->mMeshes[j]];
@@ -604129,11 +604585,11 @@ index 0000000..96c8717
 +                if(world.Determinant()<0) std::swap(tri.v[1],tri.v[2]);
 +                triangles.push_back(tri);
 +            }
-+            morphMeshes.push_back({mesh,world,vertexBase}); vertexBase+=int(mesh->mNumVertices);
++            morphMeshes.push_back({mesh,world,vertexBase,int(n)}); vertexBase+=int(mesh->mNumVertices);
 +        }
 +        if(triangles.empty()) throw std::runtime_error("scene contains no selected triangle meshes");
 +        std::vector<std::vector<int>> unified; BuildUnifiedMeshes(triangles,out,morphSource?&unified:nullptr);
-+        if(morphSource) for(const auto& entry:morphMeshes) for(unsigned m=0;m<entry.mesh->mNumAnimMeshes;++m) {
++        if(morphSource&&!bakedAnimation) for(const auto& entry:morphMeshes) for(unsigned m=0;m<entry.mesh->mNumAnimMeshes;++m) {
 +            const auto mesh=entry.mesh; const auto target=mesh->mAnimMeshes[m];
 +            std::string name=target->mName.length?target->mName.C_Str():"morph_"+std::to_string(m);
 +            auto found=std::find_if(out.morphs.begin(),out.morphs.end(),[&](const SrcMorphAnim& x){return x.name==name;});
@@ -604147,6 +604603,58 @@ index 0000000..96c8717
 +                if(entry.base+v>=unified.size()) continue;
 +                for(int index:unified[entry.base+v]) { SrcVertAnim va; va.vertex=index; va.speed=1; va.side=1; va.pos=Vector(delta); va.normal=Vector(ndelta); found->vanims.push_back(va); }
 +            }
++        }
++        if(bakedAnimation&&morphSource) {
++            if(uint64_t(vertexBase)*bakedWorlds.size()>16000000)throw std::runtime_error("BakeSceneAnimation exceeds 16000000 source vertex samples; reduce SceneSampleRate or split the clip");
++            out.bakedController="bake_"+options.bakeAnimation;
++            for(char& c:out.bakedController)if(!std::isalnum(static_cast<unsigned char>(c))&&c!='_')c='_';
++            ControllerRemap remap;remap.name=out.bakedController;remap.type=RemapType::NWay;
++            for(size_t f=0;f<bakedWorlds.size();++f) {
++                const std::string name=out.bakedController+"_f"+std::to_string(f);
++                SrcMorphAnim morph; morph.name=name;
++                for(const auto& entry:morphMeshes) {
++                    auto mesh=entry.mesh;std::vector<double> weights(mesh->mNumAnimMeshes);
++                    for(unsigned m=0;m<mesh->mNumAnimMeshes;++m)weights[m]=mesh->mAnimMeshes[m]->mWeight;
++                    for(unsigned ch=0;ch<bakedAnimation->mNumMorphMeshChannels;++ch) {
++                        auto channel=bakedAnimation->mMorphMeshChannels[ch];bool matches=std::string(channel->mName.C_Str())==mesh->mName.C_Str();
++                        for(int p=entry.node;p>=0;p=parents[p])matches=matches||std::string(channel->mName.C_Str())==nodes[p]->mName.C_Str();
++                        if(!matches||!channel->mNumKeys)continue;
++                        double ticks=out.bakedTimes[f]*(bakedAnimation->mTicksPerSecond>0?bakedAnimation->mTicksPerSecond:30);
++                        unsigned hi=0;while(hi+1<channel->mNumKeys&&channel->mKeys[hi+1].mTime<=ticks)++hi;
++                        unsigned next=std::min(hi+1,channel->mNumKeys-1);double span=channel->mKeys[next].mTime-channel->mKeys[hi].mTime;
++                        double t=span>0?std::clamp((ticks-channel->mKeys[hi].mTime)/span,0.0,1.0):0;
++                        auto apply=[&](const aiMeshMorphKey& key,double factor){for(unsigned k=0;k<key.mNumValuesAndWeights;++k){
++                            if(key.mValues[k]>=weights.size())throw std::runtime_error("baked morph target index out of range");weights[key.mValues[k]]+=key.mWeights[k]*factor;}};
++                        std::fill(weights.begin(),weights.end(),0);apply(channel->mKeys[hi],1-t);apply(channel->mKeys[next],t);
++                    }
++                    std::vector<aiMatrix4x4> skin(mesh->mNumBones);
++                    for(unsigned b=0;b<mesh->mNumBones;++b)skin[b]=axis*bakedWorlds[f][byName.at(mesh->mBones[b]->mName.C_Str())]*mesh->mBones[b]->mOffsetMatrix;
++                    const auto world=axis*bakedWorlds[f][entry.node];
++                    std::vector<aiVector3D> positions(mesh->mNumVertices),normals(mesh->mNumVertices);
++                    for(unsigned v=0;v<mesh->mNumVertices;++v){positions[v]=mesh->mVertices[v];normals[v]=mesh->mNormals[v];
++                        for(unsigned m=0;m<mesh->mNumAnimMeshes;++m){auto target=mesh->mAnimMeshes[m];float weight=float(weights[m]);
++                            if(!std::isfinite(weight))throw std::runtime_error("non-finite baked morph weight");
++                            if(target->HasPositions())positions[v]+=(target->mVertices[v]-mesh->mVertices[v])*weight;
++                            if(target->HasNormals())normals[v]+=(target->mNormals[v]-mesh->mNormals[v])*weight;}
++                    }
++                    std::vector<aiVector3D> transformed(mesh->mNumVertices),transformedNormals(mesh->mNumVertices);std::vector<float> total(mesh->mNumVertices);
++                    for(unsigned b=0;b<mesh->mNumBones;++b){aiMatrix3x3 normal(skin[b]);if(std::abs(normal.Determinant())<1e-12f)throw std::runtime_error("singular animated skin scale");normal.Inverse().Transpose();
++                        auto bone=mesh->mBones[b];for(unsigned k=0;k<bone->mNumWeights;++k){auto w=bone->mWeights[k];
++                            transformed[w.mVertexId]+=(skin[b]*positions[w.mVertexId])*w.mWeight;transformedNormals[w.mVertexId]+=(normal*normals[w.mVertexId])*w.mWeight;total[w.mVertexId]+=w.mWeight;}}
++                    aiMatrix3x3 normal(world);if(std::abs(normal.Determinant())<1e-12f)throw std::runtime_error("singular animated mesh scale");normal.Inverse().Transpose();
++                    aiMatrix3x3 baseNormal(entry.world);baseNormal.Inverse().Transpose();
++                    for(unsigned v=0;v<mesh->mNumVertices;++v){
++                        auto desired=total[v]>0?transformed[v]/total[v]:world*positions[v];auto desiredNormal=total[v]>0?transformedNormals[v]:normal*normals[v];desiredNormal.Normalize();
++                        auto delta=(desired-entry.world*mesh->mVertices[v])*scale;auto ndelta=desiredNormal-(baseNormal*mesh->mNormals[v]).Normalize();
++                        if(delta.SquareLength()+ndelta.SquareLength()<1e-14f)continue;
++                        for(int index:unified.at(entry.base+v)){SrcVertAnim va;va.vertex=index;va.speed=1;va.side=1;va.pos=Vector(delta);va.normal=Vector(ndelta);morph.vanims.push_back(va);}
++                    }
++                }
++                SrcFlexKey key;key.name=name;key.morphIndex=int(out.morphs.size());out.flexkeys.push_back(key);out.morphs.push_back(std::move(morph));
++                remap.rawControls.push_back(name);out.combinationControls.push_back({name});CombinationRule rule;rule.flex=int(f);rule.combination.push_back(int(f));out.combinationRules.push_back(std::move(rule));
++            }
++            out.controllerRemaps.push_back(std::move(remap));
++            std::printf("Baked scene animation '%s': %zu frames into %s / multi_%s flex controls\n",options.bakeAnimation.c_str(),bakedWorlds.size(),out.bakedController.c_str(),out.bakedController.c_str());
 +        }
 +        return true;
 +    } catch(const std::exception& e) { if(err) *err=e.what(); return false; }
@@ -604262,7 +604770,7 @@ index 0000000..42f1d4d
 +} // namespace newpage
 +#endif
 diff --git a/mdlcompiler/smdloader.cpp b/mdlcompiler/smdloader.cpp
-index 149ae76..b654004 100644
+index 149ae76..c5324ea 100644
 --- a/mdlcompiler/smdloader.cpp
 +++ b/mdlcompiler/smdloader.cpp
 @@ -67,23 +67,24 @@ bool ReadAllLines(const std::string& path, LineReader& r, std::string* err) {
@@ -604385,7 +604893,7 @@ index 149ae76..b654004 100644
      key.target1 = position;
      out.flexkeys.push_back(std::move(key));
      out.morphs.push_back(std::move(morph));
-@@ -996,13 +1034,13 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
+@@ -996,13 +1034,14 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                           opt.name.c_str(), opt.frame, path.c_str());
              continue;
          }
@@ -604402,25 +604910,27 @@ index 149ae76..b654004 100644
 +            va.pos.x *= opt.strength; va.pos.y *= opt.strength; va.pos.z *= opt.strength;
 +            va.normal.x *= opt.strength; va.normal.y *= opt.strength; va.normal.z *= opt.strength;
 +        }
++        if (!opt.registerFlex) out.flexkeys.pop_back();
          std::printf("    flex %-32s frame %-4d %6d deltas  position %.3f decay %.3f\n",
                      opt.name.c_str(), opt.frame, deltas, opt.position, opt.decay);
      }
 diff --git a/mdlcompiler/smdloader.h b/mdlcompiler/smdloader.h
-index 1a1de78..ce5af91 100644
+index 1a1de78..b9997a6 100644
 --- a/mdlcompiler/smdloader.h
 +++ b/mdlcompiler/smdloader.h
-@@ -50,6 +50,9 @@ struct VtaFlexOption {
+@@ -50,6 +50,10 @@ struct VtaFlexOption {
      int frame = 0;         // `time N` in the vertexanimation block; 0 is the basis
      float position = 1.0f; // s_flexkey_t.target1
      float decay = 1.0f;    // per-vertex morph speed falloff; 0 = flat 1.0
 +    float strength = 1.0f;
 +    bool inverted = false;
 +    bool defaultPose = false;
++    bool registerFlex = true; // eyelid poses are registered by face markup
  };
  
  // Import the named .vta frames onto an already-loaded SMD render mesh as delta
 diff --git a/mdlcompiler/source.h b/mdlcompiler/source.h
-index f4fbad9..ffc29ba 100644
+index f4fbad9..25cdbf5 100644
 --- a/mdlcompiler/source.h
 +++ b/mdlcompiler/source.h
 @@ -8,6 +8,7 @@
@@ -604431,11 +604941,12 @@ index f4fbad9..ffc29ba 100644
  
  #include "math/math.h"
  #include "pulselimits.h"
-@@ -27,6 +28,15 @@ struct SrcBoneWeight {
+@@ -27,6 +28,16 @@ struct SrcBoneWeight {
      float weight[pulse::limits::kMaxSrcBoneWeights] = {};
  };
  
 +struct SceneOptions {
++    std::string bakeAnimation;
 +    std::string node;
 +    float sampleRate = 30;
 +    bool zUp = false;
@@ -604447,7 +604958,7 @@ index f4fbad9..ffc29ba 100644
  // One unified vertex, single UV channel.
  struct SrcVertex {
      Vector3 position; // bind space, pre-scaled
-@@ -94,6 +104,9 @@ struct SrcMorphAnim {
+@@ -94,6 +105,9 @@ struct SrcMorphAnim {
  
  struct SrcFlexKey {
      std::string name;     // delta state name
@@ -604457,7 +604968,7 @@ index f4fbad9..ffc29ba 100644
      bool stereo = false;  // flexpair split signal
      float target1 = 1.0f;
  };
-@@ -171,6 +184,7 @@ struct MaterialTable {
+@@ -171,6 +185,7 @@ struct MaterialTable {
          bool relative = true;
      };
      std::vector<Texture> textures;
@@ -604465,9 +604976,12 @@ index f4fbad9..ffc29ba 100644
      std::vector<int> materialToTexture;
  
      // Find-or-add; a query matches an entry of the other `relative` class only
-@@ -194,6 +208,7 @@ enum class LoadKind {
+@@ -193,7 +208,10 @@ enum class LoadKind {
+ };
  
  struct Source {
++    std::string bakedController;
++    std::vector<float> bakedTimes;
      std::string filename;
 +    SceneOptions sceneOptions;
      LoadKind kind = LoadKind::Model; // set by the front end, the only thing
@@ -604507,19 +605021,20 @@ index 59b9b29..ba6f374 100644
      }
      BLOCK "VarFileInfo"
 diff --git a/mdlcompiler/writemdl.cpp b/mdlcompiler/writemdl.cpp
-index 3288136..4cf60aa 100644
+index 3288136..c7deae3 100644
 --- a/mdlcompiler/writemdl.cpp
 +++ b/mdlcompiler/writemdl.cpp
-@@ -20,6 +20,8 @@
+@@ -20,6 +20,9 @@
  #include <cstring>
  #include <filesystem>
  #include <memory>
++#include <map>
 +#include <cmath>
 +#include <stdexcept>
  #include <unordered_map>
  
  #ifdef _WIN32
-@@ -530,6 +532,35 @@ void WriteBoneInfo(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
+@@ -530,6 +533,35 @@ void WriteBoneInfo(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
      buf.Align4();
  }
  
@@ -604555,7 +605070,7 @@ index 3288136..4cf60aa 100644
  // ---------------------------------------------------------------------------
  // WriteRLEAnimationData
  // ---------------------------------------------------------------------------
-@@ -655,6 +686,12 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
+@@ -655,6 +687,12 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
  
      for (int j = 0; j < numbones; j++) {
          const cm::AnimChannels& psrcdata = srcanim.anim[w][j];
@@ -604568,7 +605083,7 @@ index 3288136..4cf60aa 100644
  
          if (psrcdata.num[3] == 0 && psrcdata.num[4] == 0 && psrcdata.num[5] == 0) {
              // no rotation on this bone in this section
-@@ -674,7 +711,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
+@@ -674,7 +712,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
          if (psrcdata.num[0] == 0 && psrcdata.num[1] == 0 && psrcdata.num[2] == 0) {
              // no translation on this bone in this section
          } else if (psrcdata.num[0] <= 2 && psrcdata.num[1] <= 2 && psrcdata.num[2] <= 2) {
@@ -604577,7 +605092,7 @@ index 3288136..4cf60aa 100644
                  flag[j] |= fmt::STUDIO_FRAME_CONST_POS2;
                  CopyV3(*reinterpret_cast<fmt::Vector3*>(buf.p()), srcanim.sanim[iFrame][j].pos);
                  buf.pos += sizeof(fmt::Vector3);
-@@ -686,7 +723,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
+@@ -686,7 +724,7 @@ void WriteFrameAnimationData(cm::CompiledModel& m, cm::Anim& srcanim, Buf& buf,
                  buf.pos += sizeof(v48);
              }
          } else {
@@ -604586,7 +605101,7 @@ index 3288136..4cf60aa 100644
                  flag[j] |= fmt::STUDIO_FRAME_ANIM_POS2;
                  framelength += static_cast<int>(sizeof(fmt::Vector3));
              } else {
-@@ -797,7 +834,7 @@ void WriteIkErrors(cm::Anim& srcanim, Buf& buf) {
+@@ -797,7 +835,7 @@ void WriteIkErrors(cm::Anim& srcanim, Buf& buf) {
          for (k = 0; k < 6; k++) {
              pCompressed->scale[k] = rule.errorData.scale[k];
              pCompressed->offset[k] =
@@ -604595,7 +605110,7 @@ index 3288136..4cf60aa 100644
              size_t size = rule.errorData.numanim[k] * sizeof(uint16_t);
              if (size)
                  memcpy(buf.p(), rule.errorData.data[k].data(), size);
-@@ -865,7 +902,7 @@ void WriteLocalHierarchy(cm::Anim& srcanim, Buf& buf) {
+@@ -865,7 +903,7 @@ void WriteLocalHierarchy(cm::Anim& srcanim, Buf& buf) {
          for (k = 0; k < 6; k++) {
              pCompressed->scale[k] = rule.localData.scale[k];
              pCompressed->offset[k] =
@@ -604604,7 +605119,7 @@ index 3288136..4cf60aa 100644
              size_t size = rule.localData.numanim[k] * sizeof(uint16_t);
              if (size)
                  memcpy(buf.p(), rule.localData.data[k].data(), size);
-@@ -885,6 +922,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
+@@ -885,6 +923,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
                          fmt::mstudioanimdesc_t* destanimdesc, size_t destanimOff, Buf& local,
                          Buf* ext, fmt::mstudioanimsections_t* pSections) {
      const int animblocksize = m.animblocksize;
@@ -604612,7 +605127,7 @@ index 3288136..4cf60aa 100644
  
      for (int w = 0; w < srcanim.numsections; w++) {
          bool bUseExtData = false;
-@@ -901,7 +939,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
+@@ -901,7 +940,7 @@ void WriteAnimationData(cm::CompiledModel& m, cm::Anim& srcanim,
  
          // a demand-loaded model uses the frame-major encoding throughout -
          // including the clips that stayed local
@@ -604621,7 +605136,7 @@ index 3288136..4cf60aa 100644
              srcanim.flags |= fmt::STUDIO_FRAMEANIM;
              destanimdesc->flags |= fmt::STUDIO_FRAMEANIM;
          }
-@@ -2803,6 +2841,51 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
+@@ -2803,6 +2842,51 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
  
  bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legacyVtx,
                       bool writeDx80, std::string* err) {
@@ -604673,7 +605188,7 @@ index 3288136..4cf60aa 100644
      Buf buf(kFileBuffer);
  
      fmt::studiohdr_t* phdr = buf.Reserve<fmt::studiohdr_t>();
-@@ -3028,6 +3111,15 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3028,6 +3112,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::vector<uint8_t> phyBuf =
          BuildPhy(m, reinterpret_cast<fmt::studiohdr_t*>(mdlBuf.data())->checksum);
  
@@ -604686,9 +605201,31 @@ index 3288136..4cf60aa 100644
 +                       vtxBuf80.size()>m.fileLimit || phyBuf.size()>m.fileLimit || (blockBuf && blockBuf->pos>m.fileLimit))) {
 +        if(err) *err="FileBufferSize output limit exceeded; increase $FileBufferSize (MB)"; return false;
 +    }
++    std::string vertexAnimation;
++    std::map<std::string,std::vector<float>> bakedClips;
++    for(const auto& model:m.models)if(model.source&&!model.source->bakedTimes.empty()) {
++        auto added=bakedClips.emplace(model.source->bakedController,model.source->bakedTimes);
++        if(!added.second&&added.first->second!=model.source->bakedTimes){if(err)*err="baked animations sharing a controller must have identical sample times";return false;}
++    }
++    if(!bakedClips.empty()) {
++        vertexAnimation="{\"schema\":1,\"clips\":[";bool first=true;
++        for(const auto& clip:bakedClips){if(!first)vertexAnimation+=",";first=false;
++            vertexAnimation+="{\"controller\":\""+clip.first+"\",\"position_controller\":\"multi_"+clip.first+"\",\"times\":[";
++            for(size_t i=0;i<clip.second.size();++i){if(i)vertexAnimation+=",";vertexAnimation+=std::to_string(clip.second[i]);}
++            vertexAnimation+="]}";
++        }vertexAnimation+="]}\n";
++    }
      // save. Reference hardcodes a "models/" root in the disk path (not in the
      // header name), so $modelname stays prefix-free and the .mdl bytes match.
      std::filesystem::path base =
+@@ -3049,6 +3156,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+         return path;
+     };
+ 
++    if(!vertexAnimation.empty()&&!SaveFile(stem.string()+".vertexanim.json",vertexAnimation.data(),vertexAnimation.size(),err))return false;
+     std::string mdlPath = announce(".mdl");
+     FlushReport(g_mdlReport);
+     std::printf("total      %7zu\n", mdlBuf.size());
 diff --git a/mdlcompiler/writephy.cpp b/mdlcompiler/writephy.cpp
 index 1034afa..4bd4e64 100644
 --- a/mdlcompiler/writephy.cpp

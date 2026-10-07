@@ -740,7 +740,7 @@ void AddBodyFlexFetchRule(source::Source* src, cm::FlexRule& rule, int rawIndex,
 
         case source::RemapType::NWay: {
             int nRemapCount = static_cast<int>(remap.rawControls.size());
-            float flStep = (nRemapCount > 2) ? 2.0f / (nRemapCount - 1) : 0.0f;
+            float flStep = (nRemapCount > 1) ? 2.0f / (nRemapCount - 1) : 0.0f;
             if (remapLocalIndex == 0) {
                 pushConst(-11.0f);
                 pushConst(-10.0f);

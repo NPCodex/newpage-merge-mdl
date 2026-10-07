@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.3
+# NewPageMergeMDL v1.2.4
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.3.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.4.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -12,6 +12,18 @@ The compiler is `NewPageMergeMDL.exe`; the decompiler is
 `NewPageMergeMDL-Decompiler.exe`. Windows x64 and Linux builds are verified by
 GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
+
+## v1.2.4: seven improvements
+
+- Ordered SearchPaths, AppID/Steam library discovery, directories and VPK v1/v2 with preload/split archives; `-steamdir` overrides Steam discovery.
+- Direct Draco decoding with attribute IDs, normals, UVs and uncompressed morphs; corrupt streams fail explicitly.
+- `BakeSceneAnimation <clip> SceneSampleRate <fps>` samples scale, skinning and morph weights into vertex flex frames. Emits `.vertexanim.json`, ships GMod Lua playback and includes sampled render bounds.
+- Per-bone `$collisionjoints` VHACD decomposition preserves mass, hierarchy and constraints.
+- Six CE/Neko differential fixtures check hierarchy, transforms, IK/LOD, jiggle, DMX, controllers and eyelid bindings. Fixed an orphan VTA eyelid descriptor; existing corrective/driver/normal regressions remain covered.
+- Actual GMod Alyx loading, faces/eyelids and forced LOD, plus authored vertex-animation and two-body physics/ground-contact tests. White material override isolates geometry; authored shaders are not comprehensively certified.
+- `-perfjson` phase timings/peak working set and isolated repeated production benchmarks with deterministic output checksums.
+
+**127 compatibility tests and 16 automation tests.** Usage and bounded results: [VALIDATION.md](VALIDATION.md).
 
 ## Inherited PulseModel features
 
@@ -65,9 +77,9 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 
 ### Project tooling and maintenance
 
-- Compiler, decompiler and utilities share the project naming and **v1.2.3** version; colored startup banner, plain redirected logs.
+- Compiler, decompiler and utilities share the project naming and **v1.2.4** version; colored startup banner, plain redirected logs.
 - Automatic PulseModel integration through a maintained patch, followed by Windows/Linux builds, tests and GitHub Release publication. Conflicts or failed checks stop publication. New closed-source CE/++/Neko features require manual analysis.
-- 112 compatibility tests and 16 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
+- 127 compatibility tests and 16 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
 
 ## v1.2.3: fewer incomplete features
 
@@ -75,7 +87,7 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 - The fast glTF path decodes meshopt ATTRIBUTES, TRIANGLES and INDICES streams and applies NONE/OCTAHEDRAL/QUATERNION/EXPONENTIAL/COLOR filters. EXPONENTIAL attributes and both index modes have output tests for geometry, UV, flex and decompiled animation; other filters are not individually certified. Encoding quantization remains observable. Invalid ranges and corrupt streams fail before output.
 - Static unskinned `EXT_mesh_gpu_instancing` expands shared meshes under per-instance translation, rotation and scale, retaining inherited transforms, morph targets and InNode subtree selection. Rotation, mirrored scale and invalid quaternions have tests. Expanded scenes retain the source node/bone budget.
 
-The unsupported material-merge row is removed and the glTF compression/instance limitation is narrowed. Draco, AppID mounting, animated scale/weights, complex-rig parity and engine validation remain open. There are 112 compatibility and 16 automation tests.
+The unsupported material-merge row is removed and the glTF compression/instance limitation is narrowed. Draco, AppID mounting, animated scale/weights, complex-rig parity and engine validation remain open. There are 127 compatibility and 16 automation tests.
 
 ## v1.2.2: six improvements
 
@@ -84,7 +96,7 @@ The unsupported material-merge row is removed and the glTF compression/instance 
 - **Global clamping:** `$UseLegacyClampMethod` splits across materials. `$MaxVerts limit [clamp]` controls the trigger and piece cap (at most 65536). LODs, flexes and eyeball mesh references move with vertices. Added `_clamped` bodyparts share the original base and choices, with blank alternatives for absent pieces. Conservative triangle reservation operates on the unified output dictionary, rather than reproducing all historical CE source-stage behavior.
 - **Animation:** retain bones and parents used only by `localhierarchy`; reject self-parenting. Explicit `$alwayscollapse` retains its existing precedence.
 - **DMX:** validate corner counts and index bounds before normal collapsing and flex indexing, covering positions, normals, UVs, balance and speed. Finite-number validation also covers blendweights, balance and speed.
-- **Collision:** accumulate volume-weighted mass in double precision to avoid NaN with large biases; reject nonpositive biases and unrepresentable volumes. Single-body `$collisionmodel` gains `$decomposeconcave` using bundled VHACD for closed, connected concave meshes with a positive `$maxconvexpieces`. Ordinary `$concave` retains island splitting; ragdoll decomposition through this option is unsupported.
+- **Collision:** accumulate volume-weighted mass in double precision to avoid NaN with large biases; reject nonpositive biases and unrepresentable volumes. Single-body `$collisionmodel` gains `$decomposeconcave` using bundled VHACD for closed, connected concave meshes with a positive `$maxconvexpieces`. Ordinary `$concave` retains island splitting; v1.2.4 also supports ragdoll decomposition.
 
 **Extreme-model diagnostic:** the supplied `playermodel_f_compile2_hair.qc` has 2,774,532,096 body combinations and exceeds signed 32-bit body capacity at Shoes. v1.2.2 rejects it; the original files were not edited. Earlier successful compilation did not certify every engine combination. Its isolated 22307-vertex Hair1 DMX splits into three pieces capped at 10000 vertices. The complete Alyx and Neko examples still compile.
 
@@ -113,19 +125,18 @@ See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESE
 | Area | Current status and limitations |
 | --- | --- |
 | Neko import parity | Uses cgltf and Assimp 6.0.4. Basic transforms, skins, named morphs, node filters and animation sampling are tested. Every Assimp format, complex FBX/VRM rigs and in-game behavior have not been certified. |
-| glTF animation/compression | The fast importer supports LINEAR, STEP and CUBICSPLINE translation/rotation; static scale is baked into geometry. Animated scale, morph weights and mesh swaps fail explicitly and need baking or QC flex controllers. The fast path decodes meshopt streams and expands static unskinned EXT_mesh_gpu_instancing with inherited transforms and morph targets. Draco still needs decompression before import. Assimp fallback interpolation may differ for STEP/CUBICSPLINE; prefer the fast path. |
+| glTF animation/compression | Draco, meshopt and sampled scale/morph-weight baking are implemented. Baking is capped at 4096 frames and 16 million source vertex samples; accuracy depends on sampling and playback needs controller integration. Mesh swaps and skinned instances remain unsupported; Assimp fallback interpolation is not fully certified. |
 | Neko algorithms/defaults | `$MaxVerts` splits per-material output meshes, with a real 65536 index ceiling, rather than reproducing source pre-splitting/clamping. `$FileBufferSize` caps serialized output sizes without fixed preallocation. Existing dynamic buffers, bone collapse and sequence ordering defaults remain. Use `$CEBoneRules` to retain weighted bones. |
-| Neko faces/drivers | Basic stereo balance and jiggle rotation/constraints are checked against binary output. Multi-studio faces and drivers have output tests; complex procedural/driver/IK hierarchy parity is unverified. |
+| Neko faces/drivers | Jiggle, basic IK/LOD, DMX and eyelids have reference differentials; multi-studio faces, drivers and correctives have output/numerical regressions. Arbitrary complex hierarchies need model-specific validation. |
 | Legacy mesh algorithms | NvTriStrip and cross-material global clamping (`$UseLegacyClampMethod`) are implemented. Clamping uses the unified LOD dictionary and synchronized body choices, with no guarantee of byte parity with CE source pre-splitting. Per-material splitting remains the default. |
-| `gameinfo.txt` AppID mounting | Unimplemented; AppID-based discovery of other games' resources is unavailable. |
 | Full syntax/output parity | Animation copy, channel matching and conditions use this project's documented semantics. Complete StudioMDL++ parity is unverified. Output is v49 rather than the reference compilers' v48; whole-file byte equality is not expected. |
-| Complex face/DMX rigs | Basic normals, wrinkles, inverse flexes and eyelid rules are tested. Complex corrective rigs, hard edges, authored normals, controller remaps and in-game eyelids need more verification. |
+| Complex face/DMX rigs | Normals, wrinkles, inverse flexes, corrective and eyelid rules have regressions; Alyx faces/eyelids were tested in GMod. Other complex rigs, hard edges, authored normals and remaps need specific checks. |
 | `NoAutoDMXRules` | Retains PulseModel's per-source suppression, differing from CE's observed suppression of prior auto rules in multi-model scripts. `NoAutoDMXRulesLegacy` clears previous automatic rigs/controllers. |
 | `addcontrollerbyflex` | Honors documented min/max instead of reproducing CE's range parser bug that writes both values into min. |
-| Bones, collision and large models | `$CEBoneRules` is opt-in; single-bone weighting is experimental. Complex procedural/IK/LOD rigs, collision physics and extreme models lack comprehensive parity/stress tests. Format field widths still constrain engine compatibility. |
+| Bones, collision and large models | `$CEBoneRules` is opt-in; single-bone weighting is experimental. Per-bone VHACD and authored ragdoll physics are tested, without certifying every production model. |
 | Animation bounds fix | Removes the 9999-unit accumulation sentinel that truncated large translations; clamps both endpoints to the coordinate interval. Positive/negative animations beyond 16384 units are tested. |
-| Diagnostics and performance | Bounding-box/cmdlist diagnostic parity is incomplete. No systematic performance comparison against the reference compilers has been performed. |
-| Engine loading and UTC animation | Successful compilation does not certify in-game behavior. `gmtime` requires support in the target mod. |
+| Diagnostics and performance | Phase timings, peak working set and three production inputs repeated three times with checksum checks are available. Complete reference diagnostic/performance parity is not certified. |
+| Engine loading and UTC animation | This batch tests GMod geometry, LOD, eyelids, vertex playback and physics. Other games, shaders and models need independent validation; UTC animation requires mod support. |
 | Automatic updates | PulseModel source is integrated automatically; patch conflicts or failing checks stop publication. CE/++ versions are tracked as references; new closed-source features require manual analysis and implementation. |
 | Other Tools++ tools | VBSP, VVIS, VRAD and BSPZIP are map tools outside this model compiler's scope. |
 
@@ -170,7 +181,7 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 python -m unittest discover -s tests -p test_automation.py
 ```
 
-There are 112 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
+There are 127 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
 and 16 automation tests. Tests inspect MDL/VVD data and decompile animations to
 check positions, rotations and conditions. The user-provided Alyx QC compiled
 successfully with 113 bones and 27,571 VVD vertices; this does not cover in-game

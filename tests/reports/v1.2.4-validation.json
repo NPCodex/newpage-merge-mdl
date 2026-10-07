@@ -1,0 +1,264 @@
+{
+  "schema": 1,
+  "project_version": "1.2.4",
+  "validation_date": "2026-10-07",
+  "platform": "Windows x64",
+  "local_compiler_sha256": "3dee7c4efed0b04fad9b07d0632256675ee216c5c91a079f5956a6ccb1c3f6cc",
+  "compatibility_tests": 127,
+  "automation_tests": 16,
+  "reference_differentials": {
+    "ce": {
+      "cases": [
+        {
+          "name": "bones",
+          "differences": []
+        },
+        {
+          "name": "jiggle",
+          "differences": []
+        },
+        {
+          "name": "ik_lod",
+          "differences": []
+        },
+        {
+          "name": "face",
+          "differences": []
+        },
+        {
+          "name": "eyelid",
+          "differences": []
+        },
+        {
+          "name": "dmx",
+          "differences": []
+        }
+      ],
+      "reference_sha256": "bc5cbbcb1444d539d35a36afdc7a84b7419839fd1b15674e2d0ec6ffc37e0758"
+    },
+    "neko": {
+      "cases": [
+        {
+          "name": "bones",
+          "differences": []
+        },
+        {
+          "name": "jiggle",
+          "differences": []
+        },
+        {
+          "name": "ik_lod",
+          "differences": []
+        },
+        {
+          "name": "face",
+          "differences": []
+        },
+        {
+          "name": "eyelid",
+          "differences": []
+        },
+        {
+          "name": "dmx",
+          "differences": []
+        }
+      ],
+      "reference_sha256": "36b7eaad13af84a492733a09bfe56d11b1c3b7e1d8bfe0070b99188198f9aa77"
+    }
+  },
+  "production_benchmarks": [
+    {
+      "input": "Alyx",
+      "runs": 3,
+      "median_phase_ms": {
+        "load_ms": 278.059,
+        "compile_ms": 43.4915,
+        "write_ms": 147.788,
+        "total_ms": 470.332
+      },
+      "median_peak_working_set_bytes": 46878720,
+      "output_sha256": {
+        "alyx.dx80.vtx": "b1ccaeab16e1ac6c66b2f5327a5bbc39a41f4e17c368cfa429bf2260cdb5504e",
+        "alyx.dx90.vtx": "eca5dfcf0c58a9e2131b5668361a8d997122ccc35ffc57c8cd1975c4aafe7799",
+        "alyx.mdl": "b7275e21089c9bc915901c35f1fdb4bc58fe8b2da13e27a60d8ce431eddc95b7",
+        "alyx.phy": "50a407b13241e16e786f00d6a1560ba22f04f4fbdebcd3b7b1a1ba2257356831",
+        "alyx.vvd": "a65fea8dd750d75fbd3a637a4f3262987802a9566d2a43fcae2558185b2d89d8"
+      }
+    },
+    {
+      "input": "survivor_teenangst",
+      "runs": 3,
+      "median_phase_ms": {
+        "load_ms": 160.83,
+        "compile_ms": 41.2119,
+        "write_ms": 96.9137,
+        "total_ms": 298.955
+      },
+      "median_peak_working_set_bytes": 49561600,
+      "output_sha256": {
+        "survivor_TeenAngst.dx80.vtx": "936371dd229494c48e55cc1f2db2dcbec432f2eef0516e9650a815620ba40cb8",
+        "survivor_TeenAngst.dx90.vtx": "34c58cb350ecd736ab25d907471a6a3a9381d50d0d52b30e6a127efe5bccda2a",
+        "survivor_TeenAngst.mdl": "44abe96cf2eab687f2b8e897250b91ae23143761249c8de71ffebab9b422b0d5",
+        "survivor_TeenAngst.vvd": "b93d2e243ffbc9f25e726409f29e1cd73711c12848078e9d904914efb5cc08c8"
+      }
+    },
+    {
+      "input": "isolated Hair DMX",
+      "runs": 3,
+      "median_phase_ms": {
+        "load_ms": 79.2022,
+        "compile_ms": 41.5531,
+        "write_ms": 96.3287,
+        "total_ms": 219.329
+      },
+      "median_peak_working_set_bytes": 34820096,
+      "output_sha256": {
+        "largeclamp.dx80.vtx": "706dd4299db4b650d9989450191931e4756fd0be0971cd5d2bb6e96b5d24d63a",
+        "largeclamp.dx90.vtx": "ae5f07789de151d5629de1725501349b58be5d6d290e97dedd74f01121d930c8",
+        "largeclamp.mdl": "e39de234dbdcd6d100052917852072b775545e3f4e52d9c11d8e7cff9799f8ff",
+        "largeclamp.vvd": "f1d13d6da9d207451a457288c93f62fda7e8afcf9b95bc31b670f9dab0c0c75b"
+      }
+    }
+  ],
+  "engine_validation": {
+    "schema": 1,
+    "engine": "GarrysMod x64",
+    "map": "gm_flatgrass",
+    "geometry_material_override": "models/debug/debugwhite",
+    "server": {
+      "ground_z": -12287.966796875,
+      "errors": [],
+      "schema": 1,
+      "initial": [
+        {
+          "mass": 5,
+          "volume": 3.007805347442627
+        },
+        {
+          "mass": 5,
+          "volume": 3.007805347442627
+        }
+      ],
+      "physics_count": 2,
+      "final": [
+        {
+          "y": 4.017879009246826,
+          "x": 3.304269313812256,
+          "z": -12287.5986328125
+        },
+        {
+          "y": 6.833614826202393,
+          "x": -0.8165767192840576,
+          "z": -12287.607421875
+        }
+      ]
+    },
+    "client": {
+      "cases": [
+        {
+          "weight": 0,
+          "lod": 0,
+          "flexes": 61,
+          "image_crc": "2846618968",
+          "model": "models/newpage_validation_v124/face.mdl",
+          "name": "face_neutral",
+          "bones": 113
+        },
+        {
+          "weight": 0,
+          "lod": 0,
+          "flexes": 61,
+          "image_crc": "76468620",
+          "model": "models/newpage_validation_v124/face.mdl",
+          "name": "face_neutral_repeat",
+          "bones": 113
+        },
+        {
+          "weight": 1,
+          "lod": 0,
+          "flexes": 61,
+          "image_crc": "833290590",
+          "model": "models/newpage_validation_v124/face.mdl",
+          "name": "face_expression",
+          "bones": 113
+        },
+        {
+          "weight": 1,
+          "lod": 1,
+          "flexes": 61,
+          "image_crc": "2947004599",
+          "model": "models/newpage_validation_v124/face.mdl",
+          "name": "face_lod1",
+          "bones": 113
+        },
+        {
+          "bones": 2,
+          "flexes": 0,
+          "image_crc": "3376272792",
+          "model": "models/newpage_validation_v124/ragdoll.mdl",
+          "name": "ragdoll_lod0",
+          "lod": 0
+        },
+        {
+          "bones": 2,
+          "flexes": 0,
+          "image_crc": "658520791",
+          "model": "models/newpage_validation_v124/ragdoll.mdl",
+          "name": "ragdoll_lod1",
+          "lod": 1
+        },
+        {
+          "image_crc": "1656841295",
+          "bones": 1,
+          "flexes": 2,
+          "time": 0,
+          "model": "models/newpage_validation_v124/baked.mdl",
+          "name": "bake_start",
+          "weights": [
+            1,
+            -1
+          ]
+        },
+        {
+          "image_crc": "3476589668",
+          "bones": 1,
+          "flexes": 2,
+          "time": 0.5,
+          "model": "models/newpage_validation_v124/baked.mdl",
+          "name": "bake_middle",
+          "weights": [
+            1,
+            0
+          ]
+        },
+        {
+          "image_crc": "863013695",
+          "bones": 1,
+          "flexes": 2,
+          "time": 1,
+          "model": "models/newpage_validation_v124/baked.mdl",
+          "name": "bake_end",
+          "weights": [
+            1,
+            1
+          ]
+        }
+      ],
+      "schema": 1,
+      "errors": []
+    },
+    "changed_pixels": {
+      "face_neutral -> face_expression": 3409,
+      "face_expression -> face_lod1": 306,
+      "ragdoll_lod0 -> ragdoll_lod1": 40768,
+      "bake_start -> bake_middle": 17756,
+      "bake_middle -> bake_end": 17757
+    },
+    "baked_screen_center_x": [
+      340.0,
+      519.5,
+      699.5
+    ],
+    "neutral_repeat_changed_pixels": 90
+  }
+}

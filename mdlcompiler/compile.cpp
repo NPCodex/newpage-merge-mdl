@@ -4692,12 +4692,28 @@ bool ConvexesFromGenerated(const GeneratedShape& gen, const matrix3x4* poseToBon
     return true;
 }
 
+bool DecomposeBoneFaces(const std::vector<phys::Vec3>& vertices,const std::vector<SrcTri>& faces,
+                        const PhysicsShape& shape,unsigned gameData,std::vector<phys::Convex*>& convexes,std::string* err) {
+    if(shape.maxConvex<=0){if(err)*err="$decomposeconcave requires a positive $maxconvexpieces";return false;}
+    std::vector<float> points;std::vector<int> triangles;std::map<int,int> remap;
+    for(const auto& f:faces)for(int v:{f.a,f.b,f.c}){
+        auto entry=remap.emplace(v,static_cast<int>(remap.size()));
+        if(entry.second){const auto& p=vertices.at(v);points.insert(points.end(),{p.x,p.y,p.z});}
+        triangles.push_back(entry.first->second);
+    }
+    std::vector<VHACDHull::DecomposedHull> hulls;
+    if(!VHACDHull::DecomposeConvex(points.data(),static_cast<int>(points.size()/3),triangles.data(),static_cast<int>(faces.size()),
+                                  .01f,shape.maxConvex,1.0f,hulls,100000,10)||hulls.empty()){
+        if(err)*err="failed to decompose ragdoll collision '"+shape.name+"'";return false;}
+    std::vector<phys::Vec3> decomposed;std::vector<std::vector<int>> groups;
+    for(const auto& hull:hulls){groups.emplace_back();for(size_t i=0;i+2<hull.vertices.size();i+=3){
+        groups.back().push_back(static_cast<int>(decomposed.size()));decomposed.push_back({hull.vertices[i],hull.vertices[i+1],hull.vertices[i+2]});}}
+    std::printf("Decomposed ragdoll '%s' bone %u: %zu convex pieces\n",shape.name.c_str(),gameData,hulls.size());
+    return BuildConvexesForGroups(groups,decomposed,shape.name.c_str(),shape.remove2d,gameData,convexes,err);
+}
+
 bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generated,
                            std::string* err) {
-    if (ctx.in->physDecomposeConcave) {
-        if (err) *err = "$decomposeconcave currently requires a single-body $collisionmodel";
-        return false;
-    }
 
     CompiledModel& m = *ctx.out;
     const CompileInput& in = *ctx.in;
@@ -4859,9 +4875,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
                 BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
 
             std::vector<phys::Convex*> convexes;
-            if (!BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(), shape.remove2d,
-                                        static_cast<unsigned int>(globalBone) + 1,
-                                        convexes, err)) {
+            if (!(in.physDecomposeConcave
+                  ? DecomposeBoneFaces(boneVerts,allFaces,shape,static_cast<unsigned int>(globalBone)+1,convexes,err)
+                  : BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(), shape.remove2d,
+                                        static_cast<unsigned int>(globalBone) + 1,convexes, err))) {
                 for (phys::Convex* c : convexes)
                     phys::ConvexFree(c);
                 freeBodies();
@@ -4954,10 +4971,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
             std::vector<phys::Convex*> convexes;
             // gameData is the 1-based global bone, which is how vphysics maps a
             // hull back to the bone it drives (0 is reserved for a single body).
-            if (!BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(),
-                                        shape.remove2d,
-                                        static_cast<unsigned int>(globalBone) + 1,
-                                        convexes, err)) {
+            if (!(in.physDecomposeConcave
+                  ? DecomposeBoneFaces(boneVerts,faceList,shape,static_cast<unsigned int>(globalBone)+1,convexes,err)
+                  : BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(),shape.remove2d,
+                                        static_cast<unsigned int>(globalBone) + 1,convexes, err))) {
                 for (phys::Convex* c : convexes)
                     phys::ConvexFree(c);
                 freeBodies();
@@ -8919,6 +8936,28 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
     std::vector<matrix3x4> poseToBone(m.bones.size());
     for (size_t k = 0; k < m.bones.size(); k++)
         poseToBone[k] = pm::MatrixInvert(m.bones[k].boneToPose);
+
+    // Vertex-cache clips can move far beyond the bind mesh. Include every
+    // sampled target in bone-local render bounds so engine frustum culling
+    // remains conservative during playback and between adjacent samples.
+    for (const FlexKey& key : m.flexkeys) {
+        if (!key.source || key.source->bakedTimes.empty() || key.imodel < 0 ||
+            key.imodel >= static_cast<int>(m.models.size())) continue;
+        Model& model = m.models[key.imodel];
+        for (const src::SrcVertAnim& va : key.vanim) {
+            if (va.vertex < 0 || va.vertex >= static_cast<int>(model.vertices.size())) continue;
+            const LodVertex& vertex = model.vertices[va.vertex];
+            const Vector3 target{vertex.position.x + va.pos.x, vertex.position.y + va.pos.y,
+                                 vertex.position.z + va.pos.z};
+            model.boundingradius = std::max(model.boundingradius, VectorLength(target));
+            for (int i = 0; i < vertex.boneweight.numbones; ++i) {
+                const int bone = vertex.boneweight.bone[i];
+                const Vector3 local = pm::VectorTransform(target, poseToBone[bone]);
+                boundsMin[bone] = VecMin(boundsMin[bone], local);
+                boundsMax[bone] = VecMax(boundsMax[bone], local);
+            }
+        }
+    }
 
     // Seam/LOD copies skin to the same bits, and VecMin/VecMax keep the
     // accumulator on a tie, so dropping later duplicates leaves the boxes exact.

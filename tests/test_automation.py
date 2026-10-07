@@ -145,7 +145,7 @@ class AutomationTests(unittest.TestCase):
             dist.mkdir(); source.mkdir()
             for name in ('NewPageMergeMDL.exe', 'NewPageMergeMDL-Decompiler.exe'):
                 (dist / name).write_bytes(b'binary')
-            for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md'):
+            for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md'):
                 (source / name).write_text(name)
             (source / 'libs/vendor').mkdir(parents=True)
             (source / 'libs/vendor/LICENSE').write_text('vendor notice')
@@ -156,6 +156,8 @@ class AutomationTests(unittest.TestCase):
             for name in ('LICENSE.md', 'SOURCE.md'):
                 (source / 'libs/meshoptimizer' / name).write_text('meshopt provenance')
             (root / 'manifest.json').write_text('{}')
+            (source / 'integration/gmod').mkdir(parents=True)
+            (source / 'integration/gmod/newpage_vertexanim.lua').write_text('playback helper')
             (root / 'StudioMDL-CE.exe').write_text('reference only')
             sync.package(argparse.Namespace(dist=dist, source=source, output=root / 'out.zip',
                                             platform='win64', manifest=root / 'manifest.json'))
@@ -163,6 +165,8 @@ class AutomationTests(unittest.TestCase):
                 self.assertIn('NewPageMergeMDL/upstream-manifest.json', archive.namelist())
                 self.assertIn('NewPageMergeMDL/BINARY_ANALYSIS.md', archive.namelist())
                 self.assertIn('NewPageMergeMDL/README.en.md', archive.namelist())
+                self.assertIn('NewPageMergeMDL/VALIDATION.md', archive.namelist())
+                self.assertIn('NewPageMergeMDL/integration/gmod/newpage_vertexanim.lua', archive.namelist())
                 self.assertIn('NewPageMergeMDL/libs/vendor/LICENSE', archive.namelist())
                 for name in ('README.txt', 'SOURCE.md'):
                     self.assertIn('NewPageMergeMDL/libs/nvtristrip/' + name, archive.namelist())

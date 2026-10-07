@@ -29,6 +29,7 @@ struct SrcBoneWeight {
 };
 
 struct SceneOptions {
+    std::string bakeAnimation;
     std::string node;
     float sampleRate = 30;
     bool zUp = false;
@@ -207,6 +208,8 @@ enum class LoadKind {
 };
 
 struct Source {
+    std::string bakedController;
+    std::vector<float> bakedTimes;
     std::string filename;
     SceneOptions sceneOptions;
     LoadKind kind = LoadKind::Model; // set by the front end, the only thing

@@ -6711,7 +6711,8 @@ static int cgltf_fixup_pointers(cgltf_data* data)
 				CGLTF_PTRFIXUP_REQ(data->meshes[i].primitives[j].draco_mesh_compression.buffer_view, data->buffer_views, data->buffer_views_count);
 				for (cgltf_size m = 0; m < data->meshes[i].primitives[j].draco_mesh_compression.attributes_count; ++m)
 				{
-					CGLTF_PTRFIXUP_REQ(data->meshes[i].primitives[j].draco_mesh_compression.attributes[m].data, data->accessors, data->accessors_count);
+					/* Draco values are unique attribute IDs, encoded as ID+1 by
+					 * the parser, not indices into the glTF accessor array. */
 				}
 			}
 

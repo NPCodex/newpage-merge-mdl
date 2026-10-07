@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.3
+# NewPageMergeMDL v1.2.4
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.3**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.4**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -10,6 +10,18 @@
 
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
+
+## v1.2.4：七项改进
+
+- **资源挂载**：SearchPaths 顺序、`|appid_N|`、Steam 多游戏库、目录和 VPK v1/v2（预载/分卷）；`-steamdir` 指定 Steam 路径。
+- **Draco glTF**：直接解码压缩几何及属性映射，保留 UV、法线和未压缩形态键；损坏数据明确失败。
+- **动画烘焙**：`BakeSceneAnimation <clip> SceneSampleRate <fps>` 将缩放、蒙皮和形态键权重采样为顶点表情帧；输出 `.vertexanim.json` 并附带 GMod Lua 播放器，渲染边界覆盖全部采样帧。
+- **布娃娃分解**：`$collisionjoints` 支持 `$decomposeconcave`，按骨骼分解凹形网格并保留质量、父子关系和约束。
+- **骨骼与面部验证**：CE/Neko 六组差分比较层级、变换、IK/LOD、jiggle、DMX、控制器和眼睑绑定；修复 VTA 眼睑的多余描述符。既有 corrective/驱动骨/法线数值回归继续通过。
+- **游戏实测**：GMod 验证 Alyx 加载、表情/眼睑、强制 LOD；自制样例验证顶点动画、双物理体质量和地面碰撞。白色材质覆盖用于几何检查，未认证用户材质的全部着色效果。
+- **性能诊断**：`-perfjson` 报告加载/编译/写入耗时和峰值工作集；生产模型各三次隔离编译并检查输出 SHA256 一致。
+
+当前 **127 项兼容回归、16 项自动化测试**。参数、实测范围和复现方法见 [VALIDATION.md](VALIDATION.md)。
 
 ## 原版 PulseModel 功能
 
@@ -63,9 +75,9 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 ### 本项目的工具与维护功能
 
-- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.3** 版本号；彩色启动横幅，重定向日志保持纯文本。
+- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.4** 版本号；彩色启动横幅，重定向日志保持纯文本。
 - 自动拉取 PulseModel、套用维护补丁，完成 Windows/Linux 构建与测试后发布 GitHub Release；冲突或检查失败停止发布。CE/++/Neko 的新增闭源功能仍需人工分析。
-- 112 项兼容测试及 16 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
+- 127 项兼容测试及 16 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
 
 ## v1.2.3 缩减未完成项
 
@@ -73,7 +85,7 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 - **meshopt 压缩 glTF**：快路径直接解码 ATTRIBUTES、TRIANGLES 和 INDICES 流，并应用 NONE / OCTAHEDRAL / QUATERNION / EXPONENTIAL / COLOR 滤波。实测 EXPONENTIAL 属性流及两种索引流，检查几何、UV、flex 和反编译动画；其他滤波路径尚未逐项专项验证。量化滤波会保留源编码自身的误差。损坏流或非法范围会在写入前报错。
 - **静态 GPU 实例**：展开无蒙皮的 `EXT_mesh_gpu_instancing`，共享解析后的网格；烘焙每个实例的平移、旋转和缩放，保留形态键与 InNode 子树筛选。验证旋转、镜像缩放及错误四元数；展开后的场景仍受源骨骼/节点数量上限约束。
 
-本轮将“材质重命名合并不支持”从未完成表删除，并缩小 glTF 压缩/实例限制。未认证的游戏表现、Draco、AppID 挂载、动画缩放/权重和复杂 rig 差分仍保留，未以文档修改代替实现。共 112 项兼容回归与 16 项自动发布测试。
+本轮将“材质重命名合并不支持”从未完成表删除，并缩小 glTF 压缩/实例限制。未认证的游戏表现、Draco、AppID 挂载、动画缩放/权重和复杂 rig 差分仍保留，未以文档修改代替实现。共 127 项兼容回归与 16 项自动发布测试。
 
 ## v1.2.2 六项改进
 
@@ -82,7 +94,7 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 - **全局裁剪**：`$UseLegacyClampMethod` 启用跨材质拆分，`$MaxVerts limit [clamp]` 的 limit 控制触发阈值、clamp 控制块大小（最多 65536）。每个 LOD 和 flex 增量随顶点重映射；额外 `_clamped` 身体组共享原组 base 和选项，包括缺失块的 blank，不会让隐藏选项的碎片继续显示。算法采用保守的三角形容量预留，作用于统一后的输出顶点，并非 CE 全部历史行为复刻。
 - **复杂动画**：仅被 `localhierarchy` 引用的骨骼及新父骨骼不再被未使用骨骼裁剪/普通折叠丢掉；拒绝将骨骼临时设为自己的父骨。显式 `$alwayscollapse` 仍按原有规则优先。
 - **DMX**：在法线合并和表情索引前检查位置、法线、UV、balance、speed 的角点索引数量与范围；扩展有限数值检查到 blendweights、balance、speed，输出具体错误原因。
-- **碰撞**：使用 double 累加体积加权质量，防止大 mass bias 产生 NaN；拒绝非正偏置及不可表示的碰撞体积。单刚体 `$collisionmodel` 新增 `$decomposeconcave`，使用已有 VHACD 依赖分解封闭、连通的凹形网格，遵守正值 `$maxconvexpieces`；普通 `$concave` 保持原岛分割行为，ragdoll 暂不支持此新选项。
+- **碰撞**：使用 double 累加体积加权质量，防止大 mass bias 产生 NaN；拒绝非正偏置及不可表示的碰撞体积。单刚体 `$collisionmodel` 新增 `$decomposeconcave`，使用已有 VHACD 依赖分解封闭、连通的凹形网格，遵守正值 `$maxconvexpieces`；普通 `$concave` 保持原岛分割行为，v1.2.4 已补齐 ragdoll 分解。
 
 **极限模型的新诊断**：用户提供的 `playermodel_f_compile2_hair.qc` 有 2,774,532,096 种身体组合，在 Shoes 组超出 32 位正值 body 范围，v1.2.2 会正确拒绝；原文件未修改。此前成功编译不代表所有组合可在引擎中正确选择。另取其 Hair1 DMX 作隔离裁剪测试，22307 顶点成功拆为 3 个不超过 10000 顶点的块；Alyx 和 Neko 完整示例继续通过。
 
@@ -111,19 +123,18 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 | 内容 | 当前状态与限制 |
 | --- | --- |
 | NekoMDL 导入兼容 | 使用 cgltf 快速路径和 Assimp 6.0.4 后备路径，不使用闭源编译器源码。已验证基础场景变换、蒙皮、命名形态键、节点筛选和动画采样；尚未逐一认证所有 Assimp 格式、复杂 FBX/VRM rig 与游戏内表现。 |
-| glTF 动画与压缩 | 快速路径支持位移/旋转的 LINEAR、STEP、CUBICSPLINE，静态缩放烘焙进网格。动画缩放、形态键权重和网格切换会明确报错，需要先烘焙或改用 QC flex 控制器。meshopt 压缩可直接解码，静态 `EXT_mesh_gpu_instancing` 可展开；Draco 仍需先解压。实例仅支持无蒙皮网格，保留父节点变换、平移/旋转/缩放和形态键。Assimp 后备路径可能改变 STEP/CUBICSPLINE 插值，建议优先使用快速路径。 |
+| glTF 动画与压缩 | Draco、meshopt 和采样式缩放/权重烘焙已实现。烘焙最多 4096 帧、1600 万个源顶点采样；精度取决于采样率，播放需要控制器驱动代码。网格切换和蒙皮实例仍未支持；Assimp 后备插值未全面认证。 |
 | NekoMDL 算法与默认值 | `$MaxVerts` 控制每材质输出网格的分割上限，实际不超过 65536；不复现 Neko 的源文件预拆分/裁剪算法。`$FileBufferSize` 限制各输出文件字节数，不预分配固定内存。保留本项目动态缓冲区、骨骼折叠和序列排序默认值；需要保留加权骨骼时启用 `$CEBoneRules`。 |
-| NekoMDL 面部与驱动骨 | 基础双侧权重及飘骨旋转/约束已对照二进制输出；多 studio、眼睑和驱动骨有输出测试，但复杂 driver/procedural/IK 层级尚未做全面差分。 |
+| NekoMDL 面部与驱动骨 | jiggle、基础 IK/LOD、DMX 和眼睑有参考差分；多 studio、驱动骨、corrective 有输出/数值回归。任意复杂层级仍需具体模型验证。 |
 | 旧版网格算法 | `$UseLegacyStripify` / `-nvtristrip` 已接入 NvTriStrip；`$UseLegacyClampMethod` 已支持跨材质拆分及同步身体组选项。实现基于统一后的 LOD 顶点字典，不保证与 CE 的源文件预拆分逐字节一致；默认仍为按材质分割。 |
-| `gameinfo.txt` AppID 挂载 | 尚未实现，不能依靠 AppID 自动找到其他游戏资源。 |
 | 完整语法与输出兼容 | 动画 `copy`、`match pos/rot` 和条件语句采用本项目定义的语义；尚未认证与 StudioMDL++ 完全一致。输出为 v49，不能与 CE/++ 的 v48 文件逐字节比较。 |
-| 复杂面部与 DMX | 已验证基础法线、皱纹、逆向表情和眼睑规则；复杂 corrective rig、硬边、自定义法线、控制器重映射及游戏内眼睑表现仍需更多验证。 |
+| 复杂面部与 DMX | 基础法线、皱纹、逆向表情、corrective 和眼睑已有回归；Alyx 表情/眼睑在 GMod 实测。其他复杂 rig、硬边、自定义法线及控制器重映射需逐模型验证。 |
 | `NoAutoDMXRules` | 保留 PulseModel 的单源规则禁用语义，与 CE 在多模型场景下禁用先前自动规则的行为不同；`NoAutoDMXRulesLegacy` 会清除先前自动控制器和规则。 |
 | `addcontrollerbyflex` | 按文档正确处理 min/max；不复现 CE 二进制把两者写入 min 字段的缺陷。 |
-| 骨骼、碰撞与大模型 | CE 折叠规则通过 `$CEBoneRules` 显式启用；单骨权重选项属于实验功能。复杂 procedural/IK/LOD、碰撞物理及极大模型还没有全面差分和压力测试。引擎支持范围仍受模型格式字段限制。 |
+| 骨骼、碰撞与大模型 | `$CEBoneRules` 显式启用；单骨权重仍属实验功能。按骨骼 VHACD 分解与自制布娃娃游戏物理已验证；不代表任意复杂碰撞或大型模型全面认证。 |
 | 动画边界框修复 | 修复大位移超过 9999 单位时边界框被初始值截断的问题；对越界上下界分别限幅，避免无效范围。已验证正、负方向超出 16384 单位的动画。 |
-| 诊断与性能 | 边界框和 cmdlist 诊断尚未完成全部兼容验证；没有进行各编译器之间的系统性能对比。 |
-| 游戏加载与 UTC 动画 | 编译成功不代表已在游戏内验证；`gmtime` 的 UTC 同步需要目标模组支持。 |
+| 诊断与性能 | 已提供阶段耗时、峰值工作集、三份生产输入各三次重复基准和输出一致性检查。未完成所有参考诊断逐字匹配或系统性能对比。 |
+| 游戏加载与 UTC 动画 | 本轮 GMod 几何、LOD、眼睑、顶点动画和物理专项已验证；其他游戏、材质着色和所有生产模型需独立验证。`gmtime` UTC 同步需要模组支持。 |
 | 自动更新 | 自动合并 PulseModel 源码；发生补丁冲突或测试失败时停止发布。CE/++ 仅跟踪参考版本，新闭源功能仍需手动分析和实现。 |
 | 其他 Tools++ 工具 | VBSP、VVIS、VRAD、BSPZIP 属于地图工具，不在本模型编译器的合并范围内。 |
 
@@ -164,9 +175,9 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-112 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 16 项自动发布测试。
+127 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 16 项自动发布测试。
 
-已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。这项验证不包含游戏内加载或渲染。
+已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。v1.2.4 另完成 GMod 几何、表情/眼睑与 LOD 验证。
 
 ## 来源与许可
 
