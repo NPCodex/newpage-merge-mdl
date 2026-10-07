@@ -1,6 +1,6 @@
 # v1.2.6 当前验证
 
-137 项兼容回归、20 项自动化回归；七项新结果及未完成范围见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。历史验证记录保留如下。
+138 项兼容回归、20 项自动化回归；七项新结果及未完成范围见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。历史验证记录保留如下。
 
 # v1.2.5 编译修复验证 / Compilation regression fix
 

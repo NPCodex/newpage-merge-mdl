@@ -1,8 +1,8 @@
 {
   "version": "1.2.6",
-  "compatibility_tests": 137,
+  "compatibility_tests": 138,
   "automation_tests": 20,
-  "compiler_sha256": "4214c78a0649d94433f2371c882b5bbe75485a0ef34e142b9fc83120a42235c0",
+  "compiler_sha256": "0f82c2099e7c75cd2ae69b3369214b90ba2cf7d811402994d66432bc2ae88c43",
   "production_game": {
     "schema": 1,
     "engine": "GarrysMod x64",
@@ -4216,5 +4216,8 @@
     "body_count": 21,
     "max_drift_player": 3236.028076171875,
     "max_drift_npc": 2275.683349609375
-  }
+  },
+  "production_game_compiler_sha256": "4214c78a0649d94433f2371c882b5bbe75485a0ef34e142b9fc83120a42235c0",
+  "benchmark_compiler_sha256": "4214c78a0649d94433f2371c882b5bbe75485a0ef34e142b9fc83120a42235c0",
+  "keyword_fix_production_outputs_unchanged": true
 }

@@ -13,7 +13,7 @@
 
 ## v1.2.6：兼容、物理与发布验证
 
-新增显式 copy weightlist、修复 jiggle 碰撞几何导致的布娃娃异常、改善 include 诊断和长场景动画采样性能。完整 Hair player/NPC 已在 GMod 检查；当前 137 项兼容回归、20 项自动化回归。七项结果及明确保留的问题见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。
+新增显式 copy weightlist、修复 jiggle 碰撞几何导致的布娃娃异常、改善 include 诊断和长场景动画采样性能。完整 Hair player/NPC 已在 GMod 检查；当前 138 项兼容回归、20 项自动化回归。七项结果及明确保留的问题见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。
 
 ## v1.2.5：Hair QC 编译修复
 
@@ -29,7 +29,7 @@
 - **游戏实测**：GMod 验证 Alyx 加载、表情/眼睑、强制 LOD；自制样例验证顶点动画、双物理体质量和地面碰撞。白色材质覆盖用于几何检查，未认证用户材质的全部着色效果。
 - **性能诊断**：`-perfjson` 报告加载/编译/写入耗时和峰值工作集；生产模型各三次隔离编译并检查输出 SHA256 一致。
 
-当前 **137 项兼容回归、20 项自动化测试**。参数、实测范围和复现方法见 [VALIDATION.md](VALIDATION.md)。
+当前 **138 项兼容回归、20 项自动化测试**。参数、实测范围和复现方法见 [VALIDATION.md](VALIDATION.md)。
 
 ## 原版 PulseModel 功能
 
@@ -85,7 +85,7 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 - 编译器、反编译器及辅助工具统一命名和使用 **v1.2.6** 版本号；彩色启动横幅，重定向日志保持纯文本。
 - 自动拉取 PulseModel、套用维护补丁，完成 Windows/Linux 构建与测试后发布 GitHub Release；冲突或检查失败停止发布。CE/++/Neko 的新增闭源功能仍需人工分析。
-- 137 项兼容测试及 20 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
+- 138 项兼容测试及 20 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
 
 ## v1.2.3 缩减未完成项
 
@@ -183,7 +183,7 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-137 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 20 项自动发布测试。
+138 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 20 项自动发布测试。
 
 已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。v1.2.4 另完成 GMod 几何、表情/眼睑与 LOD 验证。
 

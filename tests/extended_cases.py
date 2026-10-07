@@ -233,3 +233,11 @@ class ExtendedCases:
   count,offset=struct.unpack_from('<2i',d,model+72);self.assertGreater(count,1)
   sizes=[struct.unpack_from('<i',d,model+offset+i*116+8)[0] for i in range(count)]
   self.assertEqual(sum(sizes),90000);self.assertLessEqual(max(sizes),60000)
+
+ def test_copy_channel_keywords_remain_unambiguous_with_named_weightlists(self):
+  self.animation_fixture()
+  base='$modelname keywords\n$weightlist pos { root 0 }\n$animation source moving.smd\n'
+  self.run_qc(base+'$animation dest mesh.smd { copy source pos }\n$sequence original source\n$sequence result dest\n')
+  pose=self.animation_poses('keywords','dest')[0];self.assertAlmostEqual(pose[0],10,delta=.01);self.assertAlmostEqual(pose[5],0,delta=.01)
+  self.run_qc(base+'$animation dest mesh.smd { copy source "pos" }\n$sequence original source\n$sequence result dest\n')
+  pose=self.animation_poses('keywords','dest')[0];self.assertAlmostEqual(pose[0],0,delta=.01);self.assertAlmostEqual(pose[5],0,delta=.01)

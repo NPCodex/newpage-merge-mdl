@@ -8,7 +8,7 @@ differences are listed explicitly below.
 | --- | --- |
 | 完整生产模型 / Production models | 原始 Hair player/NPC QC 编译并进入 GMod；两份共 50 个身体组、皮肤、表情及 LOD 状态检查。材质缺失，未认证完整着色效果。Hair QC 未定义额外 LOD，强制 LOD 请求仅作加载检查；真实多 LOD 切换另有自制夹具验证。 |
 | 复杂面部与骨骼 / Facial and bone compatibility | CE/Neko 各 10 个样例，新增多 DMX、立体表情、IK/LOD/jiggle/attachment 联合场景，并比较实际规则操作。20 项对照中 16 项语义一致，4 项存在下述差异。 |
-| 动画语义 / Animation semantics | 增加 StudioMDL++ 的显式 `copy animation weightlist`；正权重作选择掩码，不插值。七个参考样例的解码姿态及 FPS 一致。原有 `copy animation [pos] [rot]` 扩展保留。 |
+| 动画语义 / Animation semantics | 增加 StudioMDL++ 的显式 `copy animation weightlist`；正权重作选择掩码，不插值。七个参考样例的解码姿态及 FPS 一致。原有 `copy animation [pos] [rot]` 扩展保留；若 weightlist 名为 pos/rot，带引号明确选择该列表。 |
 | 场景导入 / Scene import | 验证共享同一 skin 的多个 glTF/VRM 节点；拒绝冲突的共享关节 bind pose、奇异 inverse-bind 和无效时间轴。增加自制 FBX 层级、非均匀缩放和法线回归。 |
 | 诊断 / Diagnostics | 保留命令的文件来源，修复 include 末尾报错被错误归到根 QC 的问题；显示 include 祖先；bodygroup 编译阶段报错保留 QCI 行号；碰撞合并循环明确报错。 |
 | 性能 / Performance | glTF sampler 数据在一次加载中解包一次；共享转换器改用二分查找关键帧。64 通道、3000 关键帧专项三次中位数从 11.11 s 降至 1.92 s，输出 SHA256 一致。完整 Hair 模型未取得可宣称的提速。 |

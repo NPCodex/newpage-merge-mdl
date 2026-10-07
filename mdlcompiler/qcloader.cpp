@@ -2963,7 +2963,7 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
         cmd.kind = cm::CompileInput::InAnim::InCmd::CopyClip;
         if (!c.Want("an animation name", t, cmd.name))
             return -1;
-        if(!c.AtCommand() && !c.Eof()) for(const auto& list:c.in.weightlists)
+        if(!c.AtCommand() && !c.Eof() && (c.Cur().quoted || (Lower(c.Cur().text)!="pos" && Lower(c.Cur().text)!="rot"))) for(const auto& list:c.in.weightlists)
             if(_stricmp(list.name.c_str(),c.Cur().text.c_str())==0) {
                 cmd.copyWeightlist=c.Cur().text; ++c.pos; break;
             }
