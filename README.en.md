@@ -129,32 +129,36 @@ See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESE
 - Sparse mesh partition maps and ownership tracking reduce a 9000-vertex, 3-vertex-cap benchmark from 300.7 ms to 15.8 ms, with four byte-identical output files. This measures an extreme partition case, not a universal speedup.
 - A 181,271,943-byte (172.88 MiB) VTA with 2.4 million real vertex records compiles successfully. Peak working set falls from 880 MB to 376 MB with byte-identical output. Run `tests/stress_vta.py` to reproduce.
 - Tests cover 130 output materials, collapse of 512 source bones, 256 output bones and animation of bone 255. The 256-bone case uses frame animation encoding. **512 final output bones remain unsupported**: standard MDL/VVD byte-sized bone indices require rejection above 256 before writing.
-- Added multi-bone DMX morph, split flex/LOD and collision rename/parent regressions. The supplied extreme model compiles with 126 bones and 572277 VVD vertices; in-game loading remains unverified.
+- Added multi-bone DMX morph, split flex/LOD and collision rename/parent regressions. The supplied extreme model compiles with 126 bones and 572277 VVD vertices. Subsequent v1.2.6/v1.2.7 checks cover GMod geometry and physics; material validation still lacks assets.
 - Automatic releases increment patch versions and recognize existing versioned tags. See [RESEARCH.md](RESEARCH.md) for investigation results and remaining work.
 
 ## Unfinished features and known issues
 
-| Area | Current status and limitations |
-| --- | --- |
-| Neko import parity | Uses cgltf and Assimp 6.0.4. Basic transforms, skins, named morphs, node filters and animation sampling are tested. Every Assimp format, complex FBX/VRM rigs and in-game behavior have not been certified. |
-| glTF animation/compression | Draco, meshopt and sampled scale/morph-weight baking are implemented. Baking is capped at 4096 frames and 16 million source vertex samples; accuracy depends on sampling and playback needs controller integration. Mesh swaps and skinned instances remain unsupported; Assimp fallback interpolation is not fully certified. |
-| Neko algorithms/defaults | `$MaxVerts` splits per-material output meshes, with a real 65536 index ceiling, rather than reproducing source pre-splitting/clamping. `$FileBufferSize` caps serialized output sizes without fixed preallocation. Existing dynamic buffers, bone collapse and sequence ordering defaults remain. Use `$CEBoneRules` to retain weighted bones. |
-| Neko faces/drivers | Explicit CE/Neko profiles resolve recorded automatic-rule and duplicate-controller policy differences in 28 comparisons, including combined facial rigs. Multi-studio faces, drivers and correctives have output/numerical regressions. Native defaults remain unchanged; arbitrary complex hierarchies need model-specific validation. |
-| Legacy mesh algorithms | NvTriStrip and cross-material global clamping (`$UseLegacyClampMethod`) are implemented. Clamping uses the unified LOD dictionary and synchronized body choices, with no guarantee of byte parity with CE source pre-splitting. Per-material splitting remains the default. |
-| Full syntax/output parity | Animation copy, channel matching and conditions use this project's documented semantics. Complete StudioMDL++ parity is unverified. Output is v49 rather than the reference compilers' v48; whole-file byte equality is not expected. |
-| Complex face/DMX rigs | Normals, wrinkles, inverse flexes, corrective and eyelid rules have regressions; Alyx faces/eyelids were tested in GMod. Other complex rigs, hard edges, authored normals and remaps need specific checks. |
-| `NoAutoDMXRules` | Retains PulseModel's per-source suppression, differing from CE's observed suppression of prior auto rules in multi-model scripts. `NoAutoDMXRulesLegacy` clears previous automatic rigs/controllers. |
-| `addcontrollerbyflex` | Honors documented min/max instead of reproducing CE's range parser bug that writes both values into min. |
-| Bones, collision and large models | `$CEBoneRules` is opt-in; single-bone weighting is experimental. Per-bone VHACD and authored ragdoll physics are tested, without certifying every production model. |
-| Animation bounds fix | Removes the 9999-unit accumulation sentinel that truncated large translations; clamps both endpoints to the coordinate interval. Positive/negative animations beyond 16384 units are tested. |
-| Diagnostics and performance | Phase timings, peak working set and three production inputs repeated three times with checksum checks are available. Complete reference diagnostic/performance parity is not certified. |
-| Engine loading and UTC animation | This batch tests GMod geometry, LOD, eyelids, vertex playback and physics. Other games, shaders and models need independent validation; UTC animation requires mod support. |
-| Automatic updates | PulseModel source is integrated automatically; patch conflicts or failing checks stop publication. CE/++ versions are tracked as references; new closed-source features require manual analysis and implementation. |
-| Other Tools++ tools | VBSP, VVIS, VRAD and BSPZIP are map tools outside this model compiler's scope. |
+This list reflects v1.2.7 implementation and validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
 
-See [COMPATIBILITY.md](COMPATIBILITY.md) for syntax and intentional differences,
-and [BINARY_ANALYSIS.md](BINARY_ANALYSIS.md) for binary investigation evidence.
-Complete compatibility with StudioMDL-CE / StudioMDL++ is not claimed.
+| Area | Current status and remaining work |
+| --- | --- |
+| Skinned instances and mesh swaps | Skinned `EXT_mesh_gpu_instancing` and animated mesh swaps remain unsupported. Static unskinned instances are supported. |
+| VRM runtime behavior | Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
+| Import format and interpolation coverage | cgltf and Assimp 6.0.4 imports are implemented, but not every Assimp format, complex FBX/VRM hierarchy or fallback interpolation path has been tested. |
+| Complex rig and collision coverage | IK, jiggle, drivers, correctives, eyelids, combined facial rigs and per-bone VHACD have regressions. Arbitrary complex hierarchies, hard edges, authored normals, controller remapping and complex collisions still need model-specific checks. Single-bone weighting remains experimental. |
+| Hair material validation | The supplied player/NPC Hair models pass compilation, output consistency and GMod geometry/physics checks. Their material assets are currently missing, so complete shading remains unverified. Claudia has real-material face, eyelid, generated test-LOD and ragdoll validation; this does not replace Hair material testing. |
+| Cross-game and reference coverage | Specific GMod samples are tested. Other games and shaders need independent checks; not all reference compiler syntax edge cases, diagnostic text or performance scenarios are covered. |
+
+Removed from the issue list: Draco/meshopt decoding, sampled scale/morph-weight baking, NvTriStrip and cross-material partitioning, large-translation animation bounds fixes, phase timings and output integrity checks. Explicit CE/Neko facial profiles pass 28 reference comparisons. `copy animation weightlist`, `match pos/rot`, conditionals and `reverse` pass seven StudioMDL++ pose/FPS cases. See [IMPROVEMENTS.md](IMPROVEMENTS.md) and the [v1.2.7 validation record](tests/reports/v1.2.7-validation.json) for coverage.
+
+## Compatibility choices and usage requirements
+
+These are integration requirements or intentional implementation differences, rather than unresolved bugs.
+
+- Animation baking is capped at 4096 frames and 16 million source vertex samples. Accuracy depends on sampling; game playback requires controller integration. UTC synchronization through `gmtime` also requires mod support.
+- The default `native` facial behavior retains PulseModel semantics. Use `$dmxcompatibility ce|neko` for reference facial policies. `$CEBoneRules` is opt-in.
+- `$MaxVerts` controls per-material output mesh splitting, with a real ceiling of 65536. `$FileBufferSize` caps each output file's bytes. Dynamic buffers and a unified LOD vertex dictionary do not reproduce reference source pre-splitting or fixed preallocation.
+- `NoAutoDMXRules` suppresses automatic rules per source; use `NoAutoDMXRulesLegacy` to clear earlier automatic controllers and rules. `addcontrollerbyflex` honors min/max rather than reproducing the reference binary's range parsing defect.
+- Output is v49, while the reference CE/++ compilers emit v48. Whole-file byte equality is not promised. Existing `copy pos/rot` is a project extension.
+- PulseModel source is integrated automatically; conflicts or failing checks stop publication. CE/++ updates supplied by the user require manual analysis and implementation. VBSP, VVIS, VRAD and BSPZIP map tools are outside this project's scope.
+
+See [COMPATIBILITY.md](COMPATIBILITY.md) for syntax and differences, and [BINARY_ANALYSIS.md](BINARY_ANALYSIS.md) for binary investigation evidence.
 
 ## Build from source
 
