@@ -39,7 +39,7 @@ inline void PrintBanner(const char* role, const char* version, const char* forma
     if (color) std::printf("\033[0m");
 #endif
     std::printf("   NewPageMergeMDL | %s | v%s | MDL %s\n", role, version, format);
-    std::printf("   Based on PulseModel by Toppi | Community compatibility extensions\n\n");
+    std::printf("   Based on PulseModel | Community compatibility extensions\n\n");
     std::fflush(stdout);
 }
 } // namespace newpage

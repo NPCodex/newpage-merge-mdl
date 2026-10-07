@@ -586314,7 +586314,7 @@ index 0000000..bc6bf4d
 +
 diff --git a/libs/branding.h b/libs/branding.h
 new file mode 100644
-index 0000000..4e04268
+index 0000000..a489af2
 --- /dev/null
 +++ b/libs/branding.h
 @@ -0,0 +1,45 @@
@@ -586359,7 +586359,7 @@ index 0000000..4e04268
 +    if (color) std::printf("\033[0m");
 +#endif
 +    std::printf("   NewPageMergeMDL | %s | v%s | MDL %s\n", role, version, format);
-+    std::printf("   Based on PulseModel by Toppi | Community compatibility extensions\n\n");
++    std::printf("   Based on PulseModel | Community compatibility extensions\n\n");
 +    std::fflush(stdout);
 +}
 +} // namespace newpage
