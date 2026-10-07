@@ -80,7 +80,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 154 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 157 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -177,7 +177,7 @@ is a behavioral reference, not bundled or called by this compiler.
 | `$RenameMorph old new` | Native mode retains strict global renaming. With preceding `$dmxcompatibility neko`, maps exact FBX/glTF names once, ignores missing names, uses the latest definition and preserves QC declarations. Named flex blocks select keys. Ambiguous destinations fail explicitly. |
 | `$prefer_fbx`, `$forcecapsules` | v1.2.8 accepts both with warnings and no arguments. FBX import is automatic; capsules are not generated. |
 | `-usenvtristrip` | v1.2.8 historical alias for `-nvtristrip`, selecting NvTriStrip. |
-| `$NoFastGltf` | Uses Assimp instead of cgltf for subsequent glTF references. Parsed scene geometry is shared between private InNode loads. |
+| `$NoFastGltf` | Uses Assimp for subsequent glTF geometry/skin references. Since v1.2.11, original glTF animation accessors are sampled separately to retain LINEAR/STEP/CUBICSPLINE semantics, including quaternions and bake tracks. Parsed scene geometry is shared between private InNode loads. |
 | `studio file InNode name` | Selects meshes on that scene node and descendants; a missing node is an error. Supported by body/model/bodygroup and NekoModel; available for FBX too. |
 | `$FPS N`, `Pick name`, `SampleRate N` | FPS sets subsequent default animation playback and scene sampling. Pick aliases blockname. SampleRate changes import sampling, independently of playback FPS. Default clip is the first non-BindPose animation. Rates must be finite, positive and at most 1000. FBX keeps its original scene rate unless FPS/SampleRate explicitly overrides it. |
 | `$UpAxis y\|z gltf`, `$UpAxis y\|z assimp` | Independent scene import axes, default Y-up. A bare UpAxis retains existing model-wide behavior. ufbx FBX retains its native coordinate conversion. |
@@ -201,8 +201,7 @@ is a behavioral reference, not bundled or called by this compiler.
 Static node scale is baked into geometry. Animated scene scale is supported via opt-in sampled vertex-cache baking; see VALIDATION.md. Native MDL bone-scale tracks are not emitted.
 
 Unimplemented or unverified: complete historical source-clamp
-algorithm parity, all scene formats/complex rigs, mesh swaps, skinned instancing, and engine integration beyond the bounded GMod validation. Assimp fallback can
-lose glTF STEP/CUBICSPLINE interpolation semantics. No claim of whole-file or
+algorithm parity, all scene formats/complex rigs, mesh swaps, skinned instancing, and engine integration beyond the bounded GMod validation. v1.2.11 fixes lost STEP/CUBICSPLINE semantics on the glTF Assimp path; interpolation in other formats remains unverified. No claim of whole-file or
 performance equality is made. PulseModel updates retain these maintained source
 changes through the overlay; Neko reference updates are reviewed manually.
 

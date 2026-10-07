@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.10。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.11。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
@@ -67,7 +67,7 @@
 
 | 功能组 | 状态 / 当前路径 |
 | --- | --- |
-| glTF/GLB/VRM、FBX 与 Assimp 场景格式 | 已实现导入，含无 UV/形态键法线；尚未逐格式验证所有 Assimp 格式。FBX 使用 ufbx，glTF 使用 cgltf 或 Assimp。 |
+| glTF/GLB/VRM、FBX 与 Assimp 场景格式 | 已实现导入，含无 UV/形态键法线；尚未逐格式验证所有 Assimp 格式。FBX 使用 ufbx；v1.2.11 保留 Assimp glTF 几何导入并用原始采样器修复 STEP/CUBICSPLINE，glTF/GLB/VRM 双后端数值检查通过。 |
 | 场景节点、蒙皮、形态键、动画、LOD | 已实现；InNode、Pick、SampleRate、FPS、按后端 UpAxis 与缓存已接入。 |
 | `$NekoModel`、named flex/flexpair、眼球/眼睑 | 已实现；多 studio 面部作用域与显式 Neko 面部策略已测试。 |
 | `$NekoDriverBone`、jiggle 轴向、NoBoneRealign/AppendScale | 已实现；v1.2.10 修复动画父级及不同姿态层级，6 组参考数值对照和 12 组命令顺序回归通过；任意 rig 全面一致不作保证。 |
@@ -90,7 +90,7 @@
 ## 后续工作顺序 / Next integration work
 
 1. **实际 QC 兼容缺口**：CE replacemesh 的真实语义；超出已验证案例的导入/骨骼差异。每项先取得参考输出，再接入统一管线。
-2. **导入覆盖**：对 Neko 明确列出的 Assimp 场景格式优先验证真实几何/蒙皮/形态键/动画组合；明确当前后备插值差异并修正可复现案例。
+2. **导入覆盖**：对 Neko 明确列出的 Assimp 场景格式优先验证真实几何/蒙皮/形态键/动画组合；glTF 后备 STEP/CUBICSPLINE 差异已修复；继续核对其他格式的可复现插值差异。
 3. **已实现功能组合**：验证面部块、材质重命名、网格分割与 LOD 同时使用；必要的回归用于证明移植功能，不新增无关测试体系课题。
 4. **参考环境**：按游戏依赖恢复 StudioMDL 2013 对照，复核页面公开能力；两包只计一个功能来源。
 
@@ -107,3 +107,5 @@ complete five-compiler parity. The two 2012/2013 archives count as one compiler.
 The v1.2.9 batch adds explicit Neko morph mapping and checked output staging/rollback. Power loss and forced termination recovery are not guaranteed.
 
 The v1.2.10 batch resolves sampled Neko driver/helper world poses against model bind parents and isolates pose-only skeleton ownership. Six reference cases pass; this is bounded rig evidence, not universal parity.
+
+The v1.2.11 batch retains Assimp geometry while sampling original glTF animations; STEP and CUBICSPLINE loss is fixed. Other-format interpolation and complex hierarchy coverage remain open.

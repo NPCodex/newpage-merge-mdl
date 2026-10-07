@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "version": "1.2.11",
+  "compatibility_tests": 157,
+  "automation_tests": 20,
+  "compiler_sha256": "f303619a7f05423025fbcc284915f57bfdc547b5d303fd6207c80c9fa75ad7a6",
+  "production_model": "Plum playermodel_f_compile2_hair.qc",
+  "game": {
+    "schema": 1,
+    "engine": "GarrysMod x64",
+    "render_cases": 28,
+    "face_differences": [
+      {
+        "model": "models/newpage_production_validation/plum_v1211_player.mdl",
+        "noise_pixels": 0,
+        "expression_pixels": 23674
+      }
+    ],
+    "lod_reduction_required": false,
+    "geometry_and_selection_verified": true,
+    "full_material_rendering_verified": true,
+    "material_probes": [
+      {
+        "missing": [],
+        "model": "models/newpage_production_validation/plum_v1211_player.mdl"
+      }
+    ],
+    "physics": [
+      {
+        "model": "models/newpage_production_validation/plum_v1211_player.mdl",
+        "bodies": 18,
+        "max_horizontal_drift": 40.9664306640625,
+        "max_final_speed": 0
+      }
+    ]
+  },
+  "game_outputs_sha256": {
+    "plum_v1211_player.dx80.vtx": "a8a5b9ebccc78f5346381d1e6f2867afaeec06cafe86e2db4dd962b6d78b7a75",
+    "plum_v1211_player.dx90.vtx": "f78e185fede05828490e1fca21a6ee7cc668e39ed26c69948a6a1670e4de6c76",
+    "plum_v1211_player.mdl": "b3abb350194039d929daa9e4f8051f675c93407c04c5090c4f484b6ed40e8c92",
+    "plum_v1211_player.phy": "03f2a978d27d5a2dc3162783d76405d9769acdf3b545035d969d099a1425449f",
+    "plum_v1211_player.vvd": "c4f6af19e0a2b2c7743be6c52863bf298ab89e68f9198f6484c52dd4d79b1d2f"
+  },
+  "game_outputs_compiler": "Final v1.2.11 build, no code changes after preparation",
+  "interpolation_validation": {
+    "translation_cases": 18,
+    "containers": [
+      "gltf",
+      "glb",
+      "vrm"
+    ],
+    "modes": [
+      "LINEAR",
+      "STEP",
+      "CUBICSPLINE"
+    ],
+    "backends": [
+      "cgltf geometry",
+      "Assimp geometry + original glTF animation"
+    ],
+    "quaternion_cases": 4,
+    "unnamed_node_and_clip": true,
+    "scale_and_morph_baking_both_backends": true,
+    "expected_step_translation": [
+      2,
+      2,
+      2,
+      2,
+      6
+    ],
+    "expected_cubic_translation": [
+      2,
+      3.75,
+      5,
+      5.75,
+      6
+    ],
+    "serialized_position_tolerance": 0.01
+  },
+  "new_features": [
+    "Assimp glTF fallback preserves STEP and CUBICSPLINE original animation sampling without copying geometry"
+  ],
+  "remaining_integration": [
+    "CE replacemesh reference syntax/behavior",
+    "Other Assimp formats and their interpolation behavior",
+    "Rig combinations beyond tested cases",
+    "StudioMDL 2013 reference game dependency environment"
+  ],
+  "test_scope": "Authored glTF animation sample values and one supplied Plum model with 28 GMod render states and 18 physics bodies; no claim of complete Assimp format or Neko binary parity."
+}

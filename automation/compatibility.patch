@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..5790e73 100644
+index fed7eaf..0c1132e 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..5790e73 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.10 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.11 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -602296,10 +602296,10 @@ index 3b9da38..4f1fa56 100644
  // RegisterFlex(); nothing in here is format-specific.
 diff --git a/mdlcompiler/gltfscene.cpp b/mdlcompiler/gltfscene.cpp
 new file mode 100644
-index 0000000..25d5d92
+index 0000000..ae42d4a
 --- /dev/null
 +++ b/mdlcompiler/gltfscene.cpp
-@@ -0,0 +1,367 @@
+@@ -0,0 +1,369 @@
 +#include "gltfscene.h"
 +#include "cgltf.h"
 +#include "assimp/scene.h"
@@ -602475,20 +602475,22 @@ index 0000000..25d5d92
 +    return result;
 +}
 +}
-+std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights) {
++std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights,bool animationsOnly) {
 +    cgltf_options options{}; cgltf_data* raw=nullptr;
 +    options.file.read=ReadFile; options.file.release=ReleaseFile;
 +    if(cgltf_parse_file(&options,path.c_str(),&raw)!=cgltf_result_success) throw std::runtime_error("cannot parse glTF/GLB");
 +    std::unique_ptr<cgltf_data,decltype(&cgltf_free)> data(raw,cgltf_free);
 +    if(cgltf_load_buffers(&options,raw,path.c_str())!=cgltf_result_success || cgltf_validate(raw)!=cgltf_result_success)
 +        throw std::runtime_error("invalid glTF buffers or accessors; compressed extensions may require $NoFastGltf");
-+    DecodeMeshopt(raw);
-+    DracoViews dracoStorage;DecodeDraco(raw,dracoStorage);
++    if (!animationsOnly) DecodeMeshopt(raw);
++    DracoViews dracoStorage;
++    if (!animationsOnly) DecodeDraco(raw,dracoStorage);
 +    if(!std::isfinite(sampleRate) || sampleRate<=0 || sampleRate>1000) throw std::runtime_error("invalid glTF sample rate");
 +    auto scene=std::make_shared<aiScene>();
 +    scene->mRootNode=new aiNode("gltf_scene_root");
 +    std::map<const cgltf_node*,std::string> names;
-+    for(size_t i=0;i<raw->nodes_count;++i) names[&raw->nodes[i]]=raw->nodes[i].name?raw->nodes[i].name:"gltf_node_"+std::to_string(i);
++    for(size_t i=0;i<raw->nodes_count;++i) names[&raw->nodes[i]]=raw->nodes[i].name?raw->nodes[i].name:
++        (animationsOnly ? "nodes["+std::to_string(i)+"]" : "gltf_node_"+std::to_string(i));
 +    std::set<std::string> reservedNames;
 +    for(const auto& entry:names) reservedNames.insert(entry.second);
 +    scene->mNumMaterials=unsigned(raw->materials_count+1); scene->mMaterials=new aiMaterial*[scene->mNumMaterials]{};
@@ -602502,7 +602504,7 @@ index 0000000..25d5d92
 +        float local[16]; cgltf_node_transform_local(n,local); out->mTransformation=Matrix(local);
 +        out->mNumChildren=unsigned(n->children_count); out->mChildren=new aiNode*[out->mNumChildren]{};
 +        for(unsigned k=0;k<out->mNumChildren;++k) out->mChildren[k]=node(n->children[k],out.get());
-+        if(n->mesh) {
++        if(n->mesh && !animationsOnly) {
 +            out->mNumMeshes=unsigned(n->mesh->primitives_count); out->mMeshes=new unsigned[out->mNumMeshes]{};
 +            for(unsigned p=0;p<out->mNumMeshes;++p) {
 +                auto& primitive=n->mesh->primitives[p];
@@ -602669,16 +602671,17 @@ index 0000000..25d5d92
 +}
 diff --git a/mdlcompiler/gltfscene.h b/mdlcompiler/gltfscene.h
 new file mode 100644
-index 0000000..dcf70a5
+index 0000000..f7d957a
 --- /dev/null
 +++ b/mdlcompiler/gltfscene.h
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,8 @@
 +#pragma once
 +#include <memory>
 +#include <string>
 +struct aiScene;
 +namespace pulse::source {
-+std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights=false);
++std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights=false,
++                                       bool animationsOnly=false);
 +}
 diff --git a/mdlcompiler/main.cpp b/mdlcompiler/main.cpp
 index 710c49b..50a83f8 100644
@@ -605013,10 +605016,10 @@ index 0000000..d9dcfc2
 +}
 diff --git a/mdlcompiler/sceneloader.cpp b/mdlcompiler/sceneloader.cpp
 new file mode 100644
-index 0000000..53bb685
+index 0000000..9f49513
 --- /dev/null
 +++ b/mdlcompiler/sceneloader.cpp
-@@ -0,0 +1,308 @@
+@@ -0,0 +1,321 @@
 +#include "sceneloader.h"
 +#include "dependencies.h"
 +#include "gltfscene.h"
@@ -605079,6 +605082,19 @@ index 0000000..53bb685
 +                Assimp::Importer importer;
 +                if(!importer.ReadFile(path,aiProcess_Triangulate|aiProcess_GenSmoothNormals)) throw std::runtime_error(importer.GetErrorString());
 +                parsed.reset(importer.GetOrphanedScene());
++                if (gltf && parsed->mNumAnimations) {
++                    // Assimp drops glTF STEP markers and cubic tangents.
++                    // Keep its geometry/skin import, but sample animation from
++                    // original accessors, without building a second mesh copy.
++                    auto precise = LoadFastGltfScene(path, options.sampleRate,
++                        !options.bakeAnimation.empty(), true);
++                    for (unsigned i=0;i<parsed->mNumAnimations;++i) delete parsed->mAnimations[i];
++                    delete[] parsed->mAnimations;
++                    parsed->mNumAnimations = precise->mNumAnimations;
++                    parsed->mAnimations = precise->mAnimations;
++                    precise->mNumAnimations = 0;
++                    precise->mAnimations = nullptr;
++                }
 +            }
 +            found=cache.emplace(key,std::move(parsed)).first;
 +        }

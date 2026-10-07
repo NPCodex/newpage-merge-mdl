@@ -60,6 +60,19 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
                 Assimp::Importer importer;
                 if(!importer.ReadFile(path,aiProcess_Triangulate|aiProcess_GenSmoothNormals)) throw std::runtime_error(importer.GetErrorString());
                 parsed.reset(importer.GetOrphanedScene());
+                if (gltf && parsed->mNumAnimations) {
+                    // Assimp drops glTF STEP markers and cubic tangents.
+                    // Keep its geometry/skin import, but sample animation from
+                    // original accessors, without building a second mesh copy.
+                    auto precise = LoadFastGltfScene(path, options.sampleRate,
+                        !options.bakeAnimation.empty(), true);
+                    for (unsigned i=0;i<parsed->mNumAnimations;++i) delete parsed->mAnimations[i];
+                    delete[] parsed->mAnimations;
+                    parsed->mNumAnimations = precise->mNumAnimations;
+                    parsed->mAnimations = precise->mAnimations;
+                    precise->mNumAnimations = 0;
+                    precise->mAnimations = nullptr;
+                }
             }
             found=cache.emplace(key,std::move(parsed)).first;
         }

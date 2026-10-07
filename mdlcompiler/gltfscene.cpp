@@ -173,20 +173,22 @@ std::vector<float> Evaluate(const cgltf_animation_sampler& s,double time,int wid
     return result;
 }
 }
-std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights) {
+std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights,bool animationsOnly) {
     cgltf_options options{}; cgltf_data* raw=nullptr;
     options.file.read=ReadFile; options.file.release=ReleaseFile;
     if(cgltf_parse_file(&options,path.c_str(),&raw)!=cgltf_result_success) throw std::runtime_error("cannot parse glTF/GLB");
     std::unique_ptr<cgltf_data,decltype(&cgltf_free)> data(raw,cgltf_free);
     if(cgltf_load_buffers(&options,raw,path.c_str())!=cgltf_result_success || cgltf_validate(raw)!=cgltf_result_success)
         throw std::runtime_error("invalid glTF buffers or accessors; compressed extensions may require $NoFastGltf");
-    DecodeMeshopt(raw);
-    DracoViews dracoStorage;DecodeDraco(raw,dracoStorage);
+    if (!animationsOnly) DecodeMeshopt(raw);
+    DracoViews dracoStorage;
+    if (!animationsOnly) DecodeDraco(raw,dracoStorage);
     if(!std::isfinite(sampleRate) || sampleRate<=0 || sampleRate>1000) throw std::runtime_error("invalid glTF sample rate");
     auto scene=std::make_shared<aiScene>();
     scene->mRootNode=new aiNode("gltf_scene_root");
     std::map<const cgltf_node*,std::string> names;
-    for(size_t i=0;i<raw->nodes_count;++i) names[&raw->nodes[i]]=raw->nodes[i].name?raw->nodes[i].name:"gltf_node_"+std::to_string(i);
+    for(size_t i=0;i<raw->nodes_count;++i) names[&raw->nodes[i]]=raw->nodes[i].name?raw->nodes[i].name:
+        (animationsOnly ? "nodes["+std::to_string(i)+"]" : "gltf_node_"+std::to_string(i));
     std::set<std::string> reservedNames;
     for(const auto& entry:names) reservedNames.insert(entry.second);
     scene->mNumMaterials=unsigned(raw->materials_count+1); scene->mMaterials=new aiMaterial*[scene->mNumMaterials]{};
@@ -200,7 +202,7 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
         float local[16]; cgltf_node_transform_local(n,local); out->mTransformation=Matrix(local);
         out->mNumChildren=unsigned(n->children_count); out->mChildren=new aiNode*[out->mNumChildren]{};
         for(unsigned k=0;k<out->mNumChildren;++k) out->mChildren[k]=node(n->children[k],out.get());
-        if(n->mesh) {
+        if(n->mesh && !animationsOnly) {
             out->mNumMeshes=unsigned(n->mesh->primitives_count); out->mMeshes=new unsigned[out->mNumMeshes]{};
             for(unsigned p=0;p<out->mNumMeshes;++p) {
                 auto& primitive=n->mesh->primitives[p];

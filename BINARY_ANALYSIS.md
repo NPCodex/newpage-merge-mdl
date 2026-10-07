@@ -139,3 +139,7 @@ Nine self-authored glTF reference cases establish Neko exact-name import mapping
 ## v1.2.10 procedural sampling evidence
 
 Self-authored SMD cases expose a real NekoDriverBone mismatch: animated ancestors and differing pose hierarchies require world-pose accumulation followed by conversion into the model bind-parent space. Six reference cases cover separate parents, animated parents, differing hierarchy, scale, parent renaming and multiple helpers. Frozen numeric evidence is in tests/fixtures/neko-driver-reference.json. The pose sampling source is isolated from the model bone table, including when declared before the body. Native driverbone behavior is unchanged; arbitrary rigs remain outside this bounded certification.
+
+## v1.2.11 glTF fallback interpolation
+
+The vendored Assimp glTF2 importer keeps cubic center values but discards tangents and STEP interpolation metadata. Self-authored output comparisons show v1.2.10 produces linear translation samples for both STEP and CUBICSPLINE. The maintained fallback now keeps Assimp geometry/skin import while sampling original glTF accessors with the existing evaluator, without a duplicate mesh allocation. Authored-value regressions cover three container types, three translation modes, quaternion STEP/cubic, unnamed nodes/clips and scale/morph baking. This improves authored glTF behavior; it is not evidence that the Neko binary preserves these modes identically.

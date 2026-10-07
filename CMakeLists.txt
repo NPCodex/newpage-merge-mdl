@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 # Upstream TOOL_VERSION declarations remain as merge context only.
 # C is enabled only for the vendored ufbx single-file reader; all of our own
 # code is C++.
-project(NewPageMergeMDL VERSION 1.2.10 LANGUAGES CXX C)
+project(NewPageMergeMDL VERSION 1.2.11 LANGUAGES CXX C)
 
 # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
 # with byte-identical output, but made an incremental build 4x slower. Left off;

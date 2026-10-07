@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.10
+# NewPageMergeMDL v1.2.11
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.10.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.11.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -14,6 +14,10 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+
+## v1.2.11: glTF animation interpolation on the Assimp path
+
+Fixes lost STEP markers and CUBICSPLINE tangents with `$NoFastGltf`. Assimp still imports geometry and skins; animation is sampled from original glTF accessors without building a second geometry copy. Eighteen translation checks cover LINEAR, STEP and CUBICSPLINE on both backends across glTF/GLB/VRM. Quaternion animation, unnamed nodes/clips and scale/morph-weight baking are also checked. All 157 compatibility and 20 automation tests pass. Other Assimp formats are not universally verified.
 
 ## v1.2.10: Neko procedural parent compatibility
 
@@ -157,7 +161,7 @@ This list reflects v1.2.8 implementation and existing validation records. “Unv
 | Integration gaps | CE replacemesh semantics remain unconfirmed. Separate/animated Neko parents and differing pose hierarchies are fixed and compared with reference output. Additional formats and rig combinations beyond tested cases still need coverage; power-loss/forced termination recovery remains incomplete. See FEATURE_MATRIX.md. |
 | Extra extension: skinned instances and mesh swaps | These are not prerequisites for five-compiler integration. Skinned `EXT_mesh_gpu_instancing` and animated mesh swaps remain unsupported. Static unskinned instances are supported. |
 | Extra extension: VRM runtime behavior | These are not prerequisites for five-compiler integration. Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
-| Import format and interpolation coverage | cgltf and Assimp 6.0.4 imports are implemented, but not every Assimp format, complex FBX/VRM hierarchy or fallback interpolation path has been tested. |
+| Import format and interpolation coverage | Lost STEP/CUBICSPLINE semantics on the glTF fallback are fixed and tested. Other Assimp formats, complex FBX/VRM hierarchies and interpolation in other formats still need coverage. |
 | Complex rig and collision coverage | IK, jiggle, drivers, correctives, eyelids, combined facial rigs and per-bone VHACD have regressions. Arbitrary complex hierarchies, hard edges, authored normals, controller remapping and complex collisions still need model-specific checks. Single-bone weighting remains experimental. |
 | Cross-game and reference coverage | Specific GMod samples are tested. Other games and shaders need independent checks; not all reference compiler syntax edge cases, diagnostic text or performance scenarios are covered. |
 

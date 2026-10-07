@@ -2,6 +2,49 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def scene_bone_animation(self,model,clip,bone):
+  import re
+  import __main__
+  COMPILER=__main__.COMPILER
+  compiler=Path(COMPILER);decoder=compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix)
+  result=subprocess.run([str(decoder),str(self.root/'models'/(model+'.mdl')),'-smdanimation','-outdir',str(self.root/'decompiled')],capture_output=True,text=True,errors='replace')
+  self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+  files=[p for p in (self.root/'decompiled').rglob(clip+'.smd') if model in [q.name for q in p.parents]]
+  self.assertEqual(len(files),1)
+  text=files[0].read_text();match=re.search(r'^(\d+) "'+re.escape(bone)+r'"',text,re.M);self.assertIsNotNone(match)
+  return [tuple(float(v) for v in line.split()[1:]) for line in text.split('skeleton',1)[1].splitlines() if len(line.split())==7 and line.split()[0]==match[1]]
+
+ def test_assimp_gltf_interpolation_matches_authored_samples(self):
+  expected={'STEP':[2,2,2,2,6],'LINEAR':[2,3,4,5,6],'CUBICSPLINE':[2,3.75,5,5.75,6]}
+  for kind in ('gltf','glb','vrm'):
+   for mode,positions in expected.items():
+    self.scene_fixture(kind,interpolation=mode)
+    for backend in ('','$NoFastGltf\n'):
+     with self.subTest(kind=kind,mode=mode,backend=backend):
+      self.scene_qc('$modelname interpolation\n'+backend+f'$body m scene.{kind} InNode MeshA\n$animationcullmethod none\n$animation move scene.{kind} Pick Move SampleRate 4\n$sequence idle move\n')
+      frames=self.scene_bone_animation('interpolation','move','MeshA');self.assertEqual(len(frames),5)
+      for frame,value in zip(frames,positions):self.assertAlmostEqual(frame[0],value,delta=.01)
+
+ def test_assimp_gltf_unnamed_node_and_clip_preserve_interpolation(self):
+  doc=json.loads(scene_bytes(interpolation='STEP'));doc['nodes'][1].pop('name');doc['animations'][0].pop('name');self.write('unnamed.gltf',json.dumps(doc))
+  self.scene_qc('$modelname unnamed\n$NoFastGltf\n$body m unnamed.gltf InNode "nodes[1]"\n$animationcullmethod none\n$animation move unnamed.gltf Pick animation_0 SampleRate 4\n$sequence idle move\n')
+  frames=self.scene_bone_animation('unnamed','move','nodes[1]');self.assertEqual(len(frames),5)
+  for frame,value in zip(frames,[2,2,2,2,6]):self.assertAlmostEqual(frame[0],value,delta=.01)
+
+ def test_assimp_gltf_quaternion_step_and_cubic_sampling(self):
+  import math
+  for mode in ('STEP','CUBICSPLINE'):
+   doc=json.loads(scene_bytes());binary=bytearray(base64.b64decode(doc['buffers'][0]['uri'].split(',')[1]));root2=math.sqrt(.5)
+   values=[0,0,0,1,0,0,root2,root2]
+   if mode=='CUBICSPLINE':values=[0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,root2,root2,0,0,0,0]
+   binary.extend(b'\0'*((-len(binary))%4));offset=len(binary);binary.extend(struct.pack('<'+'f'*len(values),*values));doc['bufferViews'].append({'buffer':0,'byteOffset':offset,'byteLength':len(values)*4});doc['accessors'].append({'bufferView':len(doc['bufferViews'])-1,'componentType':5126,'count':len(values)//4,'type':'VEC4'});sampler=doc['animations'][0]['samplers'][0];sampler['output']=len(doc['accessors'])-1;sampler['interpolation']=mode;doc['animations'][0]['channels'][0]['target']['path']='rotation';doc['buffers'][0]={'byteLength':len(binary),'uri':'data:application/octet-stream;base64,'+base64.b64encode(binary).decode()};self.write('rotation.gltf',json.dumps(doc))
+   for backend in ('','$NoFastGltf\n'):
+    self.scene_qc('$modelname rotation\n'+backend+'$body m rotation.gltf InNode MeshA\n$animationcullmethod none\n$animation move rotation.gltf Pick Move SampleRate 4\n$sequence idle move\n')
+    frames=self.scene_bone_animation('rotation','move','MeshA');self.assertEqual(len(frames),5)
+    expected=0 if mode=='STEP' else 2*math.atan2(.125+.5*root2,.5+.5*root2)
+    self.assertAlmostEqual(abs(frames[2][5]),expected,delta=.01)
+    self.assertAlmostEqual(abs(frames[-1][5]),math.pi/2,delta=.01)
+
  def test_neko_driver_samples_animated_and_different_parents(self):
   nodes='0 "root" -1\n1 "driverparent" 0\n2 "driver" 1\n3 "helperparent" 0\n4 "helper" 3\n'
   bind='0 0 0 0 0 0 0\n1 2 0 0 .1 .2 .3\n2 1 0 0 .2 .1 -.1\n3 0 3 0 -.2 .1 .4\n4 0 0 1 .1 -.2 .2\n'
@@ -249,9 +292,10 @@ class ExtendedCases:
   doc['animations'][0]['samplers'].append({'input':doc['animations'][0]['samplers'][0]['input'],'output':len(doc['accessors'])-1})
   doc['animations'][0]['channels'].append({'sampler':1,'target':{'node':1,'path':'weights'}})
   doc['buffers'][0]={'byteLength':len(blob),'uri':'data:application/octet-stream;base64,'+base64.b64encode(blob).decode()};self.write('scene.gltf',json.dumps(doc))
-  self.scene_qc('$modelname baked\n$body m scene.gltf BakeSceneAnimation Move SceneSampleRate 2\n')
-  d,flex=self.first_mesh_flex('baked');self.assertTrue(any(abs(struct.unpack_from('<3e',d,v+4)[0]-.5)<1e-4 for v in flex))
-  self.assertTrue(any(abs(struct.unpack_from('<3e',d,v+4)[1]+.125)<1e-4 for v in flex))
+  for backend in ('','$NoFastGltf\n'):
+   self.scene_qc('$modelname baked\n'+backend+'$body m scene.gltf BakeSceneAnimation Move SceneSampleRate 2\n')
+   d,flex=self.first_mesh_flex('baked');self.assertTrue(any(abs(struct.unpack_from('<3e',d,v+4)[0]-.5)<1e-4 for v in flex))
+   self.assertTrue(any(abs(struct.unpack_from('<3e',d,v+4)[1]+.125)<1e-4 for v in flex))
 
  def test_invalid_bake_clip_preserves_previous_output(self):
   self.scene_fixture();self.scene_qc('$modelname baked\n$body m scene.gltf\n');old=self.mdl('baked')
