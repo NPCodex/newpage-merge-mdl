@@ -1215,7 +1215,8 @@ class Compatibility(unittest.TestCase):
             self.assertIn(message,result);self.assertFalse((self.root/'models/bad.mdl').exists())
         primary='"position$0" "vector3_array" [ "0 0 0", "1 0 0", "0 1 0" ]\n"position$0Indices" "int_array" [ "0", "1", "2" ]\n'
         both=re.sub(r'("positions"\s+"vector3_array"\s*\[)[^\]]*',lambda m:m[1]+'"0 0 0"',fixture,count=1)
-        both=both.replace('"name" "string" "bind"','"name" "string" "bind"\n'+primary,1)
+        start=both.index('"DmeVertexData"')
+        both=both[:start]+both[start:].replace('"name" "string" "bind"','"name" "string" "bind"\n'+primary,1)
         self.write('aliases.dmx',both)
         self.scene_qc('$modelname aliases\n$body m aliases.dmx\n')
         self.assertEqual(struct.unpack_from('<i',(self.root/'models/aliases.vvd').read_bytes(),16)[0],3)
