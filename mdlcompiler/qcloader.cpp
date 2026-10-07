@@ -231,6 +231,9 @@ struct Ctx {
     std::map<std::string, source::Source*> rendermeshes; // $rendermesh name -> loaded source
     // filename -> shared source. A bodied $rendermesh is excluded: its edits must not leak to other refs.
     std::map<std::string, source::Source*> sourceCache;
+    // Pose samplers must not define the model skeleton, even when their QC
+    // command precedes $body. Owned until parsing finishes for safe cache reuse.
+    std::vector<std::unique_ptr<source::Source>> proceduralPoseSources;
     // full path -> parsed DMX. Read-only input, so the same file feeding several
     // loads (each $rendermesh reopens it) is read and parsed once.
     std::map<std::string, std::shared_ptr<pulse::dmx::Datamodel>> dmxCache;
@@ -593,7 +596,8 @@ std::shared_ptr<pulse::dmx::Datamodel> LoadDmxCached(Ctx& c, const fs::path& ful
 source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                            bool morphSource = false, MeshEdit* edit = nullptr,
                            source::LoadKind kind = source::LoadKind::Model,
-                           const source::SceneOptions* sceneOptions=nullptr) {
+                           const source::SceneOptions* sceneOptions=nullptr,
+                           bool proceduralPoseOnly=false) {
     const bool priv = edit != nullptr;
     const bool animOnly = kind == source::LoadKind::Animation;
     // a collision hull is never drawn, so keep its materials out of the model's
@@ -604,6 +608,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
 
     const source::SceneOptions& scene = sceneOptions ? *sceneOptions : (edit ? edit->sceneOptions : c.sceneOptions);
     std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate);
+    if (proceduralPoseOnly) key += "|procedural-pose";
     for (const auto& rename : c.morphRenames) if (rename.sourceOnly)
         key += "|morph:" + std::to_string(rename.from.size()) + ":" + rename.from +
                ":" + std::to_string(rename.to.size()) + ":" + rename.to;
@@ -783,8 +788,9 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
 
     if(kind==source::LoadKind::Collision && c.in.ce.collisionOneBone)
         for(auto& v:src->vertex) { v.boneweight.numbones=1; v.boneweight.weight[0]=1.0f; }
-    c.in.sources.push_back(std::move(src));
-    source::Source* loaded = c.in.sources.back().get();
+    auto& owners = proceduralPoseOnly ? c.proceduralPoseSources : c.in.sources;
+    owners.push_back(std::move(src));
+    source::Source* loaded = owners.back().get();
     if (!priv) {
         source::Source*& cached = c.sourceCache[key];
         if (!cached || cached->kind < kind) // raise only - see the cache rule above
@@ -6053,7 +6059,7 @@ bool AddTrigger(Ctx& c, const Token& cmd, cm::ProceduralBone& pb, float tolDeg,
 // reads the driver's and the helper's local pose from that frame. A frame is
 // parent-relative in full, so a `posetrigger` is always absolute no matter the
 // block mode - one block can mix relative `trigger`s with sampled ones.
-bool CmdDriverBone(Ctx& c, const Token& cmd) {
+bool ParseDriverBone(Ctx& c, const Token& cmd, bool sampleWorld) {
     cm::ProceduralBone pb;
     if (!c.Want("a helper bone name", cmd, pb.helpername) ||
         !c.Want("a driver bone name", cmd, pb.drivername))
@@ -6089,6 +6095,8 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
         float tol = 0.0f;
         pm::Vector3 driverRot, helperRot, pos;
         int frame = -1; // >= 0: sample the pose file instead
+        pm::Quaternion driverWorld, helperWorld;
+        pm::Vector3 helperWorldPos;
     };
     std::vector<Raw> raw;
     pm::Vector3 basepos{};
@@ -6150,7 +6158,7 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
             return c.Fail(cmd.line, "$driverbone \"" + pb.helpername +
                                     "\": posetrigger needs a `poseanim <file>` on the command");
         source::Source* ps = LoadSource(c, WithSourceExtension(c, poseFile), poseLine, false,
-                                        nullptr, source::LoadKind::Animation);
+                                        nullptr, source::LoadKind::Animation, nullptr, sampleWorld);
         if (!ps)
             return false;
         // the named clip carries the frames; "BindPose" is the one-frame fallback
@@ -6195,6 +6203,31 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
             r.driverRot = {RadToDeg(d.rot.x), RadToDeg(d.rot.y), RadToDeg(d.rot.z)};
             r.helperRot = {RadToDeg(h.rot.x), RadToDeg(h.rot.y), RadToDeg(h.rot.z)};
             r.pos = {h.pos.x * unscale, h.pos.y * unscale, h.pos.z * unscale};
+            if (sampleWorld) {
+                std::vector<pm::matrix3x4> world(ps->localBone.size());
+                std::vector<int> state(ps->localBone.size(), 0);
+                auto accumulate = [&](auto&& self, int bone) -> bool {
+                    if (bone < 0 || bone >= static_cast<int>(world.size()) || bone >= static_cast<int>(f.size())) return false;
+                    if (state[bone] == 2) return true;
+                    if (state[bone] == 1) return false;
+                    state[bone] = 1;
+                    pm::Quaternion q;
+                    pm::AngleQuaternion(f[bone].rot, q);
+                    world[bone] = pm::QuaternionMatrix(q, f[bone].pos);
+                    int parent = ps->localBone[bone].parent;
+                    if (parent != -1) {
+                        if (!self(self, parent)) return false;
+                        world[bone] = pm::ConcatTransforms(world[parent], world[bone]);
+                    }
+                    state[bone] = 2;
+                    return true;
+                };
+                if (!accumulate(accumulate, driver) || !accumulate(accumulate, helper))
+                    return c.Fail(r.at.line, "$NekoDriverBone: invalid or incomplete pose hierarchy");
+                pm::Vector3 unused;
+                pm::MatrixAngles(world[driver], r.driverWorld, unused);
+                pm::MatrixAngles(world[helper], r.helperWorld, r.helperWorldPos);
+            }
         }
     }
 
@@ -6205,14 +6238,26 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
                               basepos.z + r.pos.z};
         // posetrigger samples a full parent-relative frame, so it is absolute
         // regardless of the block mode
+        const size_t previous = pb.triggers.size();
         if (!AddTrigger(c, r.at, pb, r.tol, r.driverRot, r.helperRot, pos,
                         blockAbsolute || r.frame >= 0))
             return false;
+        if (sampleWorld && r.frame >= 0 && pb.triggers.size() != previous) {
+            auto& trigger = pb.triggers.back();
+            trigger.sampledWorld = true;
+            trigger.trigger = r.driverWorld;
+            trigger.quat = r.helperWorld;
+            trigger.pos = r.helperWorldPos;
+        }
     }
     c.in.proceduralbones.push_back(std::move(pb));
     if (c.in.proceduralbones.size() > static_cast<size_t>(pulse::limits::kMaxProceduralBones))
         return c.Fail(cmd.line, "too many procedural bones");
     return true;
+}
+
+bool CmdDriverBone(Ctx& c, const Token& cmd) {
+    return ParseDriverBone(c, cmd, false);
 }
 
 // $driveraimat <bone> <target> <up x y z> <aim x y z>
@@ -6239,7 +6284,7 @@ bool CmdNekoDriverBone(Ctx& c,const Token& cmd) {
     for(const auto& helper:helpers) {
         std::vector<Token> body={helper,{driver,cmd.line,true},{"absolute",cmd.line,false},{"poseanim",cmd.line,false},{pose,cmd.line,true},{"{",cmd.line,false}};
         body.insert(body.end(),triggers.begin(),triggers.end()); body.push_back({"}",cmd.line,false});
-        c.SpliceAt(c.pos,body); if(!CmdDriverBone(c,cmd)) return false;
+        c.SpliceAt(c.pos,body); if(!ParseDriverBone(c,cmd,true)) return false;
     }
     return true;
 }

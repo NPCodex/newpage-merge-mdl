@@ -2,6 +2,34 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def test_neko_driver_samples_animated_and_different_parents(self):
+  nodes='0 "root" -1\n1 "driverparent" 0\n2 "driver" 1\n3 "helperparent" 0\n4 "helper" 3\n'
+  bind='0 0 0 0 0 0 0\n1 2 0 0 .1 .2 .3\n2 1 0 0 .2 .1 -.1\n3 0 3 0 -.2 .1 .4\n4 0 0 1 .1 -.2 .2\n'
+  frame=bind.replace('2 1 0 0 .2 .1 -.1','2 1 0 0 .6 -.3 .2').replace('4 0 0 1 .1 -.2 .2','4 .4 -.2 1.5 -.1 .4 .6')
+  self.write('parentmesh.smd','version 1\nnodes\n'+nodes+'end\nskeleton\ntime 0\n'+bind+'end\ntriangles\nmaterial\n4 0 0 0 0 0 1 0 0\n4 1 0 0 0 0 1 1 0\n4 0 1 0 0 0 1 0 1\nend\n')
+  # Serialized trigger values from self-authored NekoMDL 2.3.0 reference cases.
+  expected=json.loads((Path(__file__).parent/'fixtures/neko-driver-reference.json').read_text())['cases']
+  for case in expected:
+   pose_nodes=nodes.replace('4 "helper" 3','4 "helper" 1') if case=='different_hierarchy' else nodes
+   pose_frame=frame
+   if case=='parent_motion':pose_frame=frame.replace('3 0 3 0 -.2 .1 .4','3 2 5 1 .7 -.5 .8').replace('1 2 0 0 .1 .2 .3','1 3 1 2 -.3 .4 -.5')
+   self.write('parentpose.smd','version 1\nnodes\n'+pose_nodes+'end\nskeleton\ntime 0\n'+bind+'time 1\n'+pose_frame+'end\n')
+   block='$NekoDriverBone driver {\npose parentpose.smd\ntrigger 90 0\ntrigger 90 1\nhelper\n'+('helperparent\n' if case=='multihelper' else '')+'}\n'
+   header='$modelname parentdriver\n'+('$scale 2\n' if case=='scale2' else '')+'$bonemerge driver\n$bonemerge driverparent\n$bonemerge helperparent\n'
+   for before in (False,True):
+    with self.subTest(case=case,before_model=before):
+     body='$body m parentmesh.smd\n'
+     self.scene_qc(header+(block+body if before else body+block)+'$sequence idle parentmesh.smd\n'+('$renamebone helperparent renamed_parent\n' if case=='rename' else ''))
+     d=self.mdl('parentdriver');count,start=struct.unpack_from('<2i',d,156);actual=[]
+     for i in range(count):
+      bone=start+i*216;kind,offset=struct.unpack_from('<2i',d,bone+164)
+      if kind==2:
+       proc=bone+offset;_,triggers,offset=struct.unpack_from('<3i',d,proc)
+       actual.extend(struct.unpack_from('<12f',d,proc+offset+j*48) for j in range(triggers))
+     self.assertEqual(len(actual),len(expected[case]))
+     for a,b in zip(actual,expected[case]):
+      for x,y in zip(a,b):self.assertAlmostEqual(x,y,delta=1e-5)
+
  def test_neko_rename_morph_import_mapping(self):
   self.scene_fixture()
   cases=[('', 'Smile', 3), ('$RenameMorph Missing New', 'Smile', 3),

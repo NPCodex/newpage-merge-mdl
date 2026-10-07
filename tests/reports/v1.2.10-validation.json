@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "version": "1.2.10",
+  "compatibility_tests": 154,
+  "automation_tests": 20,
+  "compiler_sha256": "c853a02ef8b619cbd9bb6b48e548d943546ab616e16c2143215805cb0e8f7beb",
+  "production_model": "Plum playermodel_f_compile2_hair.qc",
+  "game": {
+    "schema": 1,
+    "engine": "GarrysMod x64",
+    "render_cases": 28,
+    "face_differences": [
+      {
+        "model": "models/newpage_production_validation/plum_v1210_player.mdl",
+        "noise_pixels": 0,
+        "expression_pixels": 23674
+      }
+    ],
+    "lod_reduction_required": false,
+    "geometry_and_selection_verified": true,
+    "full_material_rendering_verified": true,
+    "material_probes": [
+      {
+        "missing": [],
+        "model": "models/newpage_production_validation/plum_v1210_player.mdl"
+      }
+    ],
+    "physics": [
+      {
+        "model": "models/newpage_production_validation/plum_v1210_player.mdl",
+        "bodies": 18,
+        "max_horizontal_drift": 40.9664306640625,
+        "max_final_speed": 0
+      }
+    ]
+  },
+  "game_outputs_sha256": {
+    "plum_v1210_player.dx80.vtx": "cbb49ae841b8ce8c718aeee8e5289a524f97081bf22e9b95531925c3d9092d2c",
+    "plum_v1210_player.dx90.vtx": "e4087ce5f3a194cdbeebd4111d67d905a53a9864a71209b10035fcf42efb9bf4",
+    "plum_v1210_player.mdl": "44b443af3167ba643330cff62c3a3683d97230493f269025888c85578bc3cbf9",
+    "plum_v1210_player.phy": "48ba82e23179754e1608e4838f13f66c48db74407b7a47d7d655ff18ae65f2e5",
+    "plum_v1210_player.vvd": "acec98233ba8efcb649968b481472180ed08eb2936a332745dc02aec3d701d83"
+  },
+  "game_outputs_match_final_compiler": true,
+  "reference_cases": {
+    "compiler": "NekoMDL 2.3.0",
+    "cases": [
+      "different rotated parents",
+      "animated parents",
+      "different pose/model hierarchy",
+      "scale 2",
+      "renamed parent",
+      "multiple helpers"
+    ],
+    "command_order_regression_cases": 12,
+    "serialized_numeric_tolerance": 1e-05,
+    "evidence": "tests/fixtures/neko-driver-reference.json"
+  },
+  "new_features": [
+    "Neko procedural world-pose sampling resolves animated/different ancestors against model bind parents",
+    "Pose-only sampling sources do not define model skeleton; command order does not alter hierarchy"
+  ],
+  "remaining_integration": [
+    "CE replacemesh reference syntax/behavior",
+    "Assimp format and interpolation parity",
+    "Rig combinations beyond the tested reference cases",
+    "StudioMDL 2013 game dependency reference environment"
+  ],
+  "test_scope": "Six self-authored Neko reference cases, both QC command orders, and one supplied Plum player model with 28 GMod render states and 18 physics bodies. No claim of universal rig or five-compiler parity."
+}

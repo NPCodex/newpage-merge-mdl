@@ -80,7 +80,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 153 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 154 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -183,7 +183,7 @@ is a behavioral reference, not bundled or called by this compiler.
 | `$UpAxis y\|z gltf`, `$UpAxis y\|z assimp` | Independent scene import axes, default Y-up. A bare UpAxis retains existing model-wide behavior. ufbx FBX retains its native coordinate conversion. |
 | `$NekoModel name { ... }` | One bodygroup with private studio choices. Each studio's eyes/lids stay scoped; shared named flex/flexpair declarations apply to all choices and controllers/rules are registered once. Use separate lines for studio and face declarations. Neko eyelid syntax takes three morph/target pairs followed by right and left eye names. |
 | Named `flex`, `flexpair` | Uses the source morph name. Stereo glTF/FBX morphs receive smooth balance over the default one-unit X band. Missing morph data creates an empty descriptor with a warning, matching the reference's permissive declarations. Existing SMD/VTA frame syntax remains unchanged. |
-| `$NekoDriverBone driver { pose file; trigger angle frame; helpers... }` | Samples every helper from the pose animation and emits quaternion procedural triggers. Trigger/helper declarations use separate lines. |
+| `$NekoDriverBone driver { pose file; trigger angle frame; helpers... }` | Samples driver/helper world transforms including animated ancestors, then resolves them against final model bind parents. Pose and model hierarchies may differ; pose-only sources do not define the model skeleton. Six Neko 2.3.0 reference cases and both command orders pass. Trigger/helper declarations use separate lines. |
 | `$JiggleBoneRealign p y r` | Applies a local XYZ rotation in degrees to jiggle bone bind axes, compensating geometry/animations through srcRealign. |
 | `$ReverseJiggleBoneRotation [pitch] [yaw]` | Reverses each selected constraint range to [-max,-min], independently of declaration order. |
 | `NoBoneRealign`, `AppendScale N` | Opts one animation out of source realignment; multiplies its existing scale. |

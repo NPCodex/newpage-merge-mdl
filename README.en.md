@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.9
+# NewPageMergeMDL v1.2.10
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.9.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.10.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -14,6 +14,10 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+
+## v1.2.10: Neko procedural parent compatibility
+
+`$NekoDriverBone` now accumulates pose-animation ancestor transforms and resolves world poses against the final model's bind parents. Animated ancestors and differing pose/model hierarchies are retained. Sampling sources no longer define the model skeleton, including when the command precedes `$body`. Six self-authored Neko 2.3.0 reference cases cover separate parents, parent animation, hierarchy changes, scale, renamed parents and multiple helpers; twelve command-order regression cases pass. Native `$driverbone` sampling semantics remain unchanged. All 154 compatibility and 20 automation tests pass.
 
 ## v1.2.9: Neko morph mapping and output preservation
 
@@ -150,7 +154,7 @@ This list reflects v1.2.8 implementation and existing validation records. “Unv
 
 | Area | Current status and remaining work |
 | --- | --- |
-| Integration gaps | CE replacemesh semantics and complex Neko driver parents still need evidence. RenameMorph tolerance and handled output failure rollback are implemented; power-loss/forced termination recovery remains incomplete. See FEATURE_MATRIX.md. |
+| Integration gaps | CE replacemesh semantics remain unconfirmed. Separate/animated Neko parents and differing pose hierarchies are fixed and compared with reference output. Additional formats and rig combinations beyond tested cases still need coverage; power-loss/forced termination recovery remains incomplete. See FEATURE_MATRIX.md. |
 | Extra extension: skinned instances and mesh swaps | These are not prerequisites for five-compiler integration. Skinned `EXT_mesh_gpu_instancing` and animated mesh swaps remain unsupported. Static unskinned instances are supported. |
 | Extra extension: VRM runtime behavior | These are not prerequisites for five-compiler integration. Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
 | Import format and interpolation coverage | cgltf and Assimp 6.0.4 imports are implemented, but not every Assimp format, complex FBX/VRM hierarchy or fallback interpolation path has been tested. |

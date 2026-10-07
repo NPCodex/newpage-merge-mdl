@@ -135,3 +135,7 @@ fallback interpolation and complex rig/engine verification.
 ## v1.2.9 follow-up
 
 Nine self-authored glTF reference cases establish Neko exact-name import mapping, ignored missing names, non-chaining, unchanged QC declarations and named-key selection. The explicit neko profile now follows these rules. Checked output staging and rollback handle write/replacement failures; Windows sharing-lock and directory-collision regressions preserve existing output bytes. These checks do not establish reference crash/power-loss recovery semantics.
+
+## v1.2.10 procedural sampling evidence
+
+Self-authored SMD cases expose a real NekoDriverBone mismatch: animated ancestors and differing pose hierarchies require world-pose accumulation followed by conversion into the model bind-parent space. Six reference cases cover separate parents, animated parents, differing hierarchy, scale, parent renaming and multiple helpers. Frozen numeric evidence is in tests/fixtures/neko-driver-reference.json. The pose sampling source is isolated from the model bone table, including when declared before the body. Native driverbone behavior is unchanged; arbitrary rigs remain outside this bounded certification.

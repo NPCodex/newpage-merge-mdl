@@ -233,6 +233,9 @@ struct ProceduralBoneTrigger {
     // Per-trigger: one $driverbone block can mix `trigger` (the block's
     // relative/absolute mode) with `posetrigger` (always absolute).
     bool absolutePose = false;
+    // Neko sampled poses include animated ancestors and may use a different
+    // source hierarchy. Resolve world transforms against final bind parents.
+    bool sampledWorld = false;
 };
 
 // one `animconstraintlist` entry (QC $driverbone / VRD <helper>, reference

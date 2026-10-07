@@ -1121,6 +1121,16 @@ bool MapProceduralBones(Ctx& ctx, std::string* err) {
         pm::AngleQuaternion(ctx.out->bones[pb.helper].rot, bindQuat);
         const Vector3& bindPos = ctx.out->bones[pb.helper].pos;
         for (ProceduralBoneTrigger& tr : pb.triggers) {
+            if (tr.sampledWorld) {
+                matrix3x4 driverPose = pm::QuaternionMatrix(tr.trigger, Vector3{});
+                matrix3x4 helperPose = pm::QuaternionMatrix(tr.quat, tr.pos);
+                if (dp >= 0) driverPose = pm::ConcatTransforms(pm::MatrixInvert(ctx.out->bones[dp].boneToPose), driverPose);
+                if (hp >= 0) helperPose = pm::ConcatTransforms(pm::MatrixInvert(ctx.out->bones[hp].boneToPose), helperPose);
+                Vector3 unused;
+                pm::MatrixAngles(driverPose, tr.trigger, unused);
+                pm::MatrixAngles(helperPose, tr.quat, tr.pos);
+                tr.sampledWorld = false;
+            }
             if (tr.absolutePose)
                 continue;
             Quaternion remapped;
