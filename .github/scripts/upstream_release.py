@@ -250,7 +250,7 @@ def prepare(args):
         'See both READMEs and COMPATIBILITY.md for remaining differences.\n\n'
         'Includes NvTriStrip legacy ordering, LOD replacement validation, '
         'DMX finite-number checks, safe oversized animation encoding and long PHY strings. '
-        'Global legacy clamping and 512 final bones remain unsupported; '
+        'Includes checked body/skin capacity, synchronized global clamping, local-hierarchy retention, DMX corner validation and opt-in concave collision decomposition. 512 final bones remain unsupported; '
         'see RESEARCH.md for measured performance and validation scope.\n\n'
         'Both platform builds and compatibility tests must pass before publication. '
         'The attached source archive is the actual merged build input; '

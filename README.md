@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.1
+# NewPageMergeMDL v1.2.2
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.1**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.2**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -63,9 +63,20 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 ### 本项目的工具与维护功能
 
-- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.1** 版本号；彩色启动横幅，重定向日志保持纯文本。
+- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.2** 版本号；彩色启动横幅，重定向日志保持纯文本。
 - 自动拉取 PulseModel、套用维护补丁，完成 Windows/Linux 构建与测试后发布 GitHub Release；冲突或检查失败停止发布。CE/++/Neko 的新增闭源功能仍需人工分析。
-- 97 项兼容测试及 16 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
+- 104 项兼容测试及 16 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
+
+## v1.2.2 六项改进
+
+- **Bodygroups**：组合数乘积使用 64 位计算，允许最多 2^31 种组合（body 值 0..2147483647）；31 个二选一组可编译，32 个会在写出前报错。固定单选组不再造成无意义的 preset mask 累加。
+- **Skin groups**：在分配皮肤表前检查材质数 × 皮肤数 × 2 字节，应用文件格式及 `$MDLOutputBufferSize` / `$FileBufferSize` 限制；验证 1001 个皮肤及超限不改写已有输出。
+- **全局裁剪**：`$UseLegacyClampMethod` 启用跨材质拆分，`$MaxVerts limit [clamp]` 的 limit 控制触发阈值、clamp 控制块大小（最多 65536）。每个 LOD 和 flex 增量随顶点重映射；额外 `_clamped` 身体组共享原组 base 和选项，包括缺失块的 blank，不会让隐藏选项的碎片继续显示。算法采用保守的三角形容量预留，作用于统一后的输出顶点，并非 CE 全部历史行为复刻。
+- **复杂动画**：仅被 `localhierarchy` 引用的骨骼及新父骨骼不再被未使用骨骼裁剪/普通折叠丢掉；拒绝将骨骼临时设为自己的父骨。显式 `$alwayscollapse` 仍按原有规则优先。
+- **DMX**：在法线合并和表情索引前检查位置、法线、UV、balance、speed 的角点索引数量与范围；扩展有限数值检查到 blendweights、balance、speed，输出具体错误原因。
+- **碰撞**：使用 double 累加体积加权质量，防止大 mass bias 产生 NaN；拒绝非正偏置及不可表示的碰撞体积。单刚体 `$collisionmodel` 新增 `$decomposeconcave`，使用已有 VHACD 依赖分解封闭、连通的凹形网格，遵守正值 `$maxconvexpieces`；普通 `$concave` 保持原岛分割行为，ragdoll 暂不支持此新选项。
+
+**极限模型的新诊断**：用户提供的 `playermodel_f_compile2_hair.qc` 有 2,774,532,096 种身体组合，在 Shoes 组超出 32 位正值 body 范围，v1.2.2 会正确拒绝；原文件未修改。此前成功编译不代表所有组合可在引擎中正确选择。另取其 Hair1 DMX 作隔离裁剪测试，22307 顶点成功拆为 3 个不超过 10000 顶点的块；Alyx 和 Neko 完整示例继续通过。
 
 ## v1.2.1 新增功能与修复
 
@@ -95,7 +106,7 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 | glTF 动画与压缩 | 快速路径支持位移/旋转的 LINEAR、STEP、CUBICSPLINE，静态缩放烘焙进网格。动画缩放、形态键权重和网格切换会明确报错，需要先烘焙或改用 QC flex 控制器。Draco、meshopt 压缩与 GPU 实例扩展需要先展开源模型。Assimp 后备路径可能改变 STEP/CUBICSPLINE 插值，建议优先使用快速路径。 |
 | NekoMDL 算法与默认值 | `$MaxVerts` 控制每材质输出网格的分割上限，实际不超过 65536；不复现 Neko 的源文件预拆分/裁剪算法。`$FileBufferSize` 限制各输出文件字节数，不预分配固定内存。保留本项目动态缓冲区、骨骼折叠和序列排序默认值；需要保留加权骨骼时启用 `$CEBoneRules`。 |
 | NekoMDL 面部与驱动骨 | 基础双侧权重及飘骨旋转/约束已对照二进制输出；多 studio、眼睑和驱动骨有输出测试，但复杂 driver/procedural/IK 层级尚未做全面差分。 |
-| 旧版网格算法 | `$UseLegacyStripify` / `-nvtristrip` 已接入 NvTriStrip；`$UseLegacyClampMethod`（跨材质全局顶点裁剪）仍未实现，使用时明确报错。 |
+| 旧版网格算法 | `$UseLegacyStripify` / `-nvtristrip` 已接入 NvTriStrip；`$UseLegacyClampMethod` 已支持跨材质拆分及同步身体组选项。实现基于统一后的 LOD 顶点字典，不保证与 CE 的源文件预拆分逐字节一致；默认仍为按材质分割。 |
 | `gameinfo.txt` AppID 挂载 | 尚未实现，不能依靠 AppID 自动找到其他游戏资源。 |
 | 完整语法与输出兼容 | 动画 `copy`、`match pos/rot` 和条件语句采用本项目定义的语义；尚未认证与 StudioMDL++ 完全一致。输出为 v49，不能与 CE/++ 的 v48 文件逐字节比较。 |
 | 复杂面部与 DMX | 已验证基础法线、皱纹、逆向表情和眼睑规则；复杂 corrective rig、硬边、自定义法线、控制器重映射及游戏内眼睑表现仍需更多验证。 |
@@ -146,7 +157,7 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-97 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 16 项自动发布测试。
+104 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 16 项自动发布测试。
 
 已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。这项验证不包含游戏内加载或渲染。
 

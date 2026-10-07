@@ -39,7 +39,7 @@ bool ValidateDmxNumbers(const dmx::Datamodel& dm, std::string* err) {
         const std::string& n = attr.name;
         if (n != "position" && n != "orientation" && n != "position$0" && n != "positions" &&
             n != "normal$0" && n != "normals" && n != "texcoord$0" && n != "textureCoordinates" &&
-            n != "jointWeights" && n != "wrinkle$0" && n != "wrinkleScales" && n != "values" && n != "times") continue;
+            n != "jointWeights" && n != "blendweights$0" && n != "balance" && n != "balance$0" && n != "speed" && n != "speed$0" && n != "wrinkle$0" && n != "wrinkleScales" && n != "values" && n != "times") continue;
         if (!std::visit([](const auto& value) { return FiniteDmxNumber(value); }, attr.value)) {
             if (err) *err = "non-finite DMX attribute '" + n + "' in element '" + element->name + "'";
             return false;
@@ -861,6 +861,7 @@ void ComputeTriangulatedIndices(const std::vector<dmx::Vector3>& positions,
 }
 
 struct LoadMeshInfo {
+    std::string* err = nullptr;
     Source* source = nullptr;
     const dmx::Element* model = nullptr;
     const std::vector<dmx::ElementPtr>* jointList = nullptr;
@@ -1175,6 +1176,34 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
         PickIntArray(bindState, "position$0Indices", "positionsIndices");
     const std::vector<int32_t>* texcoordIndices =
         PickIntArray(bindState, "texcoord$0Indices", "textureCoordinatesIndices");
+
+    // Validate per-corner streams before normal collapsing and flex indexing.
+    if (positionIndices) {
+        auto validate = [&](const char* field, const char* alias, const char* index, const char* indexAlias) {
+            const auto* indices = PickIntArray(bindState, index, indexAlias);
+            if (!indices || indices->empty()) return true;
+            size_t size = 0;
+            for (const auto& attr : bindState->attributes) if (attr.name == field || attr.name == alias)
+                std::visit([&](const auto& value) {
+                    using T = std::decay_t<decltype(value)>;
+                    if constexpr (std::is_same_v<T, std::vector<float>> || std::is_same_v<T, std::vector<dmx::Vector2>> || std::is_same_v<T, std::vector<dmx::Vector3>>) size = value.size();
+                }, attr.value);
+            if (indices->size() != positionIndices->size()) {
+                if (info.err) *info.err = std::string("DMX corner count mismatch for ") + field;
+                return false;
+            }
+            for (int v : *indices) if (v < 0 || static_cast<size_t>(v) >= size) {
+                if (info.err) *info.err = std::string("DMX index out of range for ") + field;
+                return false;
+            }
+            return true;
+        };
+        if (!validate("position$0", "positions", "position$0Indices", "positionsIndices") ||
+            !validate("normal$0", "normals", "normal$0Indices", "normalsIndices") ||
+            !validate("texcoord$0", "textureCoordinates", "texcoord$0Indices", "textureCoordinatesIndices") ||
+            !validate("balance$0", "balance", "balance$0Indices", "balanceIndices") ||
+            !validate("speed$0", "speed", "speed$0Indices", "speedIndices")) return false;
+    }
 
     // CollapseRedundantNormals mutates the (copied) normal stream + indices.
     // Meshes with delta states take the per-position variant that yields a
@@ -1541,8 +1570,9 @@ bool LoadMeshesRecursive(const LoadMeshInfo& info, const dmx::Element* dag,
 
 bool LoadMeshes(const dmx::Element* model, float flScale, const BoneMap& boneMap,
                 MaterialTable& mats, MeshTemp& tmp, FlexTemp* flex, MeshFilter* filter,
-                bool physics, Source& out) {
+                bool physics, Source& out, std::string* err) {
     LoadMeshInfo info;
+    info.err = err;
     info.physics = physics;
     info.filter = filter;
     info.source = &out;
@@ -2349,8 +2379,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
     if (!animOnly) {
         PULSE_PERF("load", "LoadMeshes");
         if (!LoadMeshes(model, scale, boneMap, mats, tmp, flexTemp.enabled ? &flexTemp : nullptr,
-                        filter, physicsShapes, out)) {
-            if (err) *err = "failed to load meshes";
+                        filter, physicsShapes, out, err)) {
+            if (err && err->empty()) *err = "failed to load meshes";
             return false;
         }
         if (!tmp.face.empty())

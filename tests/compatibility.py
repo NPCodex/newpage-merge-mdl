@@ -897,12 +897,9 @@ class Compatibility(unittest.TestCase):
         output=self.run_qc('$PUSHDProcedural 1\n'+text,success=False)
         self.assertIn('<helper> expects',output)
 
-    def test_ce_unimplemented_legacy_algorithms_fail_explicitly(self):
-        for option in ['UseLegacyClampMethod']:
-            output=self.run_qc('$modelname legacy\n$'+option+'\n',success=False)
-            self.assertIn('legacy CE algorithm is not implemented',output)
-            self.assertFalse((self.root/'models/legacy.mdl').exists())
-
+    def test_ce_legacy_clamp_accepts_small_models(self):
+        self.run_qc('$modelname legacy\n$UseLegacyClampMethod\n')
+        self.assertEqual(struct.unpack_from('<i',self.mdl('legacy'),232)[0],1)
 
     def test_ce_hbox_ignore_child_keeps_mesh_bounds(self):
         p=self.root/'mesh.smd';s=p.read_text().replace('1 0 0 1 0 0 0','1 100 0 0 0 0 0').replace('0 1 0 0 0 0 1 1 0','0 3 3 0 0 0 1 1 0').replace('0 0 1 0 0 0 1 0 1','0 0 0 3 0 0 1 0 1');p.write_text(s)
@@ -1142,6 +1139,115 @@ class Compatibility(unittest.TestCase):
         output=self.scene_qc('$modelname longik\n$body m chain.smd\n$ikchain leg foot\n$sequence move move.smd { ikrule leg touch hip usesource }\n',success=False)
         self.assertIn('32767',output);self.assertIn('write error',output)
         self.assertEqual({p.name:p.read_bytes() for p in (self.root/'models').glob('longik.*')},previous)
+
+    def test_bodygroup_combination_capacity_is_checked(self):
+        groups=lambda n: ''.join(f'$bodygroup choice{i} {{ blank\nblank\n}}\n' for i in range(n))
+        self.run_qc('$modelname combinations\n'+groups(31))
+        d=self.mdl('combinations');count,index=struct.unpack_from('<2i',d,232)
+        self.assertEqual(count,32)
+        self.assertEqual(struct.unpack_from('<i',d,index+30*16+8)[0],1<<30)
+        old=d
+        text=self.run_qc('$modelname combinations\n'+groups(32),success=False)
+        self.assertIn('bodygroup combination count exceeds',text)
+        self.assertEqual(self.mdl('combinations'),old)
+        text=self.run_qc('$modelname combinations\n$bodygroup empty { }\n',success=False)
+        self.assertIn('expects at least one choice',text)
+        self.assertEqual(self.mdl('combinations'),old)
+
+    def test_skin_table_budget_precedes_output_replacement(self):
+        self.run_qc('$modelname skins\n$texturegroup family {\n'+'{ material }\n'*1001+'}\n')
+        old=self.mdl('skins');self.assertEqual(struct.unpack_from('<i',old,224)[0],1001)
+        rows='{ material }\n'+''.join('{ material'+str(i)+' }\n' for i in range(20))
+        text=self.run_qc('$modelname skins\n$MDLOutputBufferSize .0002\n$texturegroup family {\n'+rows+'}\n',success=False)
+        self.assertIn('skin table exceeds output capacity',text)
+        self.assertEqual(self.mdl('skins'),old)
+
+    def test_global_clamp_preserves_materials_lods_flexes_and_choices(self):
+        import json
+        doc=json.loads(scene_bytes());doc['materials'].append({'name':'second'})
+        import copy
+        doc['meshes'].append(copy.deepcopy(doc['meshes'][0]));doc['meshes'][1]['primitives'][0]['material']=1;doc['nodes'][2]['mesh']=1
+        self.write('scene.gltf',json.dumps(doc))
+        self.scene_qc('$modelname clamped\n$UseLegacyClampMethod\n$MaxVerts 4\n$bodygroup heads {\nstudio scene.gltf { flex Smile\nflexcontroller test strength\n%Smile = strength\n}\nblank\n}\n$lod 10 { }\n')
+        d=self.mdl('clamped');count,index=struct.unpack_from('<2i',d,232)
+        self.assertEqual(count,2);all_mats=[];all_flex=[]
+        for bp in (index,index+16):
+            choices,base,offset=struct.unpack_from('<3i',d,bp+4);self.assertEqual((choices,base),(2,1))
+            model=bp+offset;num_meshes,meshes,vertices=struct.unpack_from('<3i',d,model+72)
+            self.assertEqual(vertices,3);self.assertEqual(num_meshes,1)
+            self.assertEqual(struct.unpack_from('<i',d,model+148+80)[0],0) # blank alternative
+            mesh=model+meshes;all_mats.append(struct.unpack_from('<i',d,mesh)[0])
+            nf,of=struct.unpack_from('<2i',d,mesh+16)
+            self.assertEqual(nf,1)
+            key=mesh+of;nv,ov=struct.unpack_from('<2i',d,key+20);self.assertEqual(nv,3)
+            for v in range(nv):
+                entry=key+ov+v*16;self.assertLess(struct.unpack_from('<H',d,entry)[0],3)
+                all_flex.append(struct.unpack_from('<3e',d,entry+4))
+        self.assertEqual(set(all_mats),{0,1});self.assertEqual(len(all_flex),6)
+        for ext in ('dx80','dx90'):
+            vtx=(self.root/f'models/clamped.{ext}.vtx').read_bytes();parts,po=struct.unpack_from('<2i',vtx,28)
+            self.assertEqual(parts,2)
+            for bp in (po,po+8):
+                nm,mo=struct.unpack_from('<2i',vtx,bp);self.assertEqual(nm,2)
+                model=bp+mo;lods,lo=struct.unpack_from('<2i',vtx,model);self.assertEqual(lods,2)
+                for lod in range(lods):
+                    lr=model+lo+lod*12;meshes,moff=struct.unpack_from('<2i',vtx,lr);self.assertEqual(meshes,1)
+                    mesh=lr+moff;ng,go=struct.unpack_from('<2i',vtx,mesh);self.assertEqual(ng,1)
+                    self.assertEqual(struct.unpack_from('<i',vtx,mesh+go+8)[0],3)
+
+    def test_localhierarchy_keeps_unweighted_parent_and_rejects_self(self):
+        source=(self.root/'mesh.smd').read_text().replace('1 \"unused_child\" 0\nend', '1 \"unused_child\" 0\n2 \"helper\" 0\nend').replace('1 0 0 1 0 0 0\nend', '1 0 0 1 0 0 0\n2 5 0 0 0 0 0\nend')
+        self.write('mesh.smd',source)
+        self.run_qc('$modelname hierarchy\n$sequence move mesh.smd { localhierarchy unused_child helper }\n')
+        d=self.mdl('hierarchy');self.assertEqual(struct.unpack_from('<i',d,156)[0],3)
+        anim=struct.unpack_from('<i',d,184)[0];n,offset=struct.unpack_from('<2i',d,anim+72)
+        self.assertEqual(n,1);self.assertEqual(struct.unpack_from('<2i',d,anim+offset),(1,2))
+        result=self.run_qc('$modelname hierarchy\n$sequence move mesh.smd { localhierarchy root root }\n',success=False)
+        self.assertIn('cannot parent a bone to itself',result);self.assertEqual(self.mdl('hierarchy'),d)
+
+    def test_dmx_corner_stream_lengths_and_indices_are_validated(self):
+        import re
+        fixture=(Path(__file__).parent/'fixtures/ce-facial.dmx').read_text()
+        for name,values,message in [('normalsIndices','"0", "1"','corner count mismatch'),('positionsIndices','"0", "1", "99"','index out of range'),('normalsIndices','"-1", "1", "2"','index out of range')]:
+            bad=re.sub(r'("'+name+r'"\s+"int_array"\s*\[)[^\]]*',lambda m:m[1]+values,fixture,count=1)
+            self.write('bad.dmx',bad)
+            result=self.scene_qc('$modelname bad\n$body m bad.dmx\n',success=False)
+            self.assertIn(message,result);self.assertFalse((self.root/'models/bad.mdl').exists())
+        bad=fixture.replace('"name" "string" "bind"','"name" "string" "bind"\n"balance" "float_array" [ "nan" ]',1)
+        self.write('bad.dmx',bad);self.assertIn('non-finite DMX',self.scene_qc('$modelname bad\n$body m bad.dmx\n',success=False))
+
+    def test_collision_large_mass_bias_stays_finite_and_negative_fails(self):
+        import re,math
+        points=[(0,0,0),(10,0,0),(0,10,0),(0,0,10)];faces=[(0,2,1),(0,1,3),(0,3,2),(1,2,3)]
+        mesh='version 1\nnodes\n0 "root" -1\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\nend\ntriangles\n'
+        for face in faces:
+            mesh+='material\n'+''.join(f'0 {points[v][0]} {points[v][1]} {points[v][2]} 0 0 1 0 0\n' for v in face)
+        self.write('tetra.smd',mesh+'end\n')
+        qc='$modelname physics\n$body m tetra.smd\n$collisionmodel tetra.smd { $mass 10 $jointmassbias root %s }\n'
+        self.scene_qc(qc%'1e38')
+        data=(self.root/'models/physics.phy').read_bytes();mass=float(re.search(rb'"mass" "([^"]+)"',data)[1]);self.assertTrue(math.isfinite(mass));self.assertAlmostEqual(mass,10,places=3)
+        text=self.scene_qc(qc%'-1',success=False);self.assertIn('mass bias must be positive',text)
+        self.assertEqual((self.root/'models/physics.phy').read_bytes(),data)
+
+    def test_opt_in_concave_collision_decomposes_connected_geometry(self):
+        import re
+        outline=[(0,0),(2,0),(2,1),(1,1),(1,2),(0,2)]
+        vertices=[(x,y,z) for z in (0,1) for x,y in outline]
+        cap=[(0,1,3),(1,2,3),(0,3,5),(3,4,5)]
+        faces=[tuple(reversed(f)) for f in cap]+[tuple(v+6 for v in f) for f in cap]
+        for a in range(6):
+            b=(a+1)%6;faces.extend([(a,b,b+6),(a,b+6,a+6)])
+        mesh='version 1\nnodes\n0 "root" -1\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\nend\ntriangles\n'
+        for face in faces:
+            mesh+='material\n'+''.join(f'0 {vertices[v][0]} {vertices[v][1]} {vertices[v][2]} 0 0 1 0 0\n' for v in face)
+        self.write('concave.smd',mesh+'end\n')
+        qc='$modelname concave\n$body m concave.smd\n$collisionmodel concave.smd { $mass 10 $maxconvexpieces 4 %s }\n'
+        self.scene_qc(qc%'$concave');data=(self.root/'models/concave.phy').read_bytes()
+        before=float(re.search(rb'"volume" "([^"]+)"',data)[1])
+        output=self.scene_qc(qc%'$decomposeconcave');data=(self.root/'models/concave.phy').read_bytes()
+        after=float(re.search(rb'"volume" "([^"]+)"',data)[1]);pieces=int(re.search(r'Decomposed collision .*: (\d+) convex pieces',output)[1])
+        self.assertGreater(pieces,1);self.assertLessEqual(pieces,4)
+        self.assertLess(after,before-.05);self.assertGreater(after,2.5)
 
 if __name__ == "__main__":
     unittest.main()

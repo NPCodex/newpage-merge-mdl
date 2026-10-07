@@ -4862,7 +4862,7 @@ bool CmdMaxVerts(Ctx& c,const Token& cmd) {
     int clamp=limit;
     if(!c.Eof() && c.Cur().line==cmd.line) { if(!c.WantInt("a vertex clamp",cmd,clamp)) return false; }
     if(clamp<3 || clamp>limit) return c.Fail(cmd.line,"MaxVertexClamp must be 3..MaxVertexLimit");
-    c.in.maxMeshVerts=std::min(clamp,lim::kMaxMeshVerts); return true;
+    c.in.maxModelVerts=limit; c.in.maxMeshVerts=std::min(clamp,lim::kMaxMeshVerts); return true;
 }
 
 bool CmdMaxBones(Ctx& c,const Token& cmd) {
@@ -8140,6 +8140,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
             if (!c.WantFloat("a position epsilon", sub, c.in.physWeldPosition)) return false;
         } else if (o == "$weldnormal") {
             if (!c.WantFloat("a normal epsilon", sub, c.in.physWeldNormal)) return false;
+        } else if (o == "$decomposeconcave") {
+            c.in.physDecomposeConcave = true;
+            c.in.physLegacyConcave = true;
         } else if (o == "$concave") {
             c.in.physLegacyConcave = true;
         } else if (o == "$convexhullcountoverride") {
@@ -9327,8 +9330,7 @@ bool CmdCeOption(Ctx& c, const Token& cmd) {
     if(name=="remapflextoglobal") { c.in.ce.remapFlexGlobal=!c.in.ce.remapFlexGlobal; return true; }
     if(name=="cebonerules") { c.in.ce.boneRules=true; return true; }
     if(name=="uselegacystripify") { c.in.ce.legacyStripify=true; return true; }
-    if(name=="uselegacyclampmethod")
-        return c.Fail(cmd.line,name+": legacy CE algorithm is not implemented; current compiler uses mesh splitting and meshoptimizer");
+    if(name=="uselegacyclampmethod") { c.in.ce.legacyClamp=true; return true; }
     if(name=="eyeballscale") {
         if(!c.WantFloat("a positive eye scale",cmd,c.in.ce.eyeScale)) return false;
         if(!std::isfinite(c.in.ce.eyeScale) || c.in.ce.eyeScale<=0) return c.Fail(cmd.line,"eyeballscale must be finite and positive");

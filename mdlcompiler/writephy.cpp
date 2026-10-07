@@ -82,14 +82,14 @@ std::vector<uint8_t> BuildPhy(cm::CompiledModel& m, int32_t checksum) {
     // Mass is distributed by volume share, so it can only be resolved once
     // every solid is built. A zero total would divide by zero on a degenerate
     // model, so it falls back to 1 exactly like the reference.
-    float totalVolume = 0.0f;
+    double totalVolume = 0.0;
     for (const cm::PhysicsSolid& s : m.physSolids)
-        totalVolume += s.volume * s.massBias;
+        totalVolume += static_cast<double>(s.volume) * s.massBias;
     if (totalVolume <= 0.0f) totalVolume = 1.0f;
 
     int solidIndex = 0;
     for (cm::PhysicsSolid& s : m.physSolids) {
-        s.mass = ((s.volume * s.massBias) / totalVolume) * m.physTotalMass;
+        s.mass = static_cast<float>(((static_cast<double>(s.volume) * s.massBias) / totalVolume) * m.physTotalMass);
         if (s.mass < 1.0f) s.mass = 1.0f;
 
         AppendText(buf, "solid {\n");

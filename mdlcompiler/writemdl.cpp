@@ -2858,6 +2858,13 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
             }
         }
 
+    for (const auto& solid : m.physSolids) {
+        if (!std::isfinite(solid.volume) || solid.volume < 0 || !std::isfinite(solid.massBias) || solid.massBias <= 0) {
+            if (err) *err = "collision volume or mass bias is not representable for solid '" + solid.name + "'";
+            return false;
+        }
+    }
+
     // Error streams use signed 16-bit relative offsets even in frame animations.
     // Reject an unrepresentable stream before reserving or writing any output.
     auto validErrors = [&](const cm::AnimStream& stream, const std::string& name) {

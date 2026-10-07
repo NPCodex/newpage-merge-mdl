@@ -1121,7 +1121,7 @@ struct CompileInput {
         bool ignoreEyelid=false, ignoreEyeScale=false, ignoreIrisScale=false;
         bool collisionOneBone=false, allowCollapseVertex=false, hboxIgnoreChild=false;
         bool computeNormals=false, computeWrinkles=false, remapFlexGlobal=false;
-        bool boneRules=false, legacyStripify=false;
+        bool boneRules=false, legacyStripify=false, legacyClamp=false;
         std::string launchPrelude;
         size_t mdlLimit=0,aniLimit=0,fileLimit=0; // bytes; zero keeps dynamic-buffer behavior
         float eyeScale=0.0f;
@@ -1174,6 +1174,7 @@ struct CompileInput {
     RadianEuler jiggleRealign;
     bool jiggleRealignSet=false,reverseJigglePitch=false,reverseJiggleYaw=false;
     int maxMeshVerts=lim::kMaxMeshVerts;
+    int maxModelVerts=lim::kMaxMeshVerts; // legacy global-clamp trigger
     int budgetBones = 255;
     int budgetMaterials = lim::kMaxSkins;
 
@@ -1302,6 +1303,7 @@ struct CompileInput {
     std::vector<PhysicsCollidePair> physCollidePairs;
     PhysicsBuildMode physBuildMode = PhysicsBuildMode::Auto;
     bool physLegacyConcave = false;
+    bool physDecomposeConcave = false; // opt-in VHACD for authored single-body meshes
     bool physLegacyConcavePerJoint = false;
     bool physConvexHullCountOverride = false;
     // physicsmarkuplist container scalars - the per-body DEFAULTS a child

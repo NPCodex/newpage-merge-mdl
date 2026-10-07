@@ -1,3 +1,22 @@
+# v1.2.2 六项改进与验证
+
+| 课题 | 本轮完成 | 验证 |
+| --- | --- | --- |
+| Bodygroups | 64 位组合计算，2^31 容量保护，固定组 preset mask 处理 | 31 个二选一组通过，32 个超限，已有输出不改写 |
+| Skin groups | 分配前按材质数与皮肤数检查表大小和配置预算 | 1001 个皮肤通过；超预算保留已有输出 |
+| 全局裁剪 | `$UseLegacyClampMethod` 跨材质分块；同步选择、LOD、flex、眼球索引；稀疏映射避免每块复制整个字典 | 两材质、两 LOD、表情、blank 选择；用户 Hair1 的 22307 顶点拆为三个 10000 上限块 |
+| 复杂动画 | 保留 localhierarchy 引用的无权重骨骼；拒绝自父级 | 检查最终骨骼及局部层级父索引；失败保留输出 |
+| DMX | 法线合并前角点数组长度/范围检查；balance/speed 有限数值检查；错误传递 | 短法线索引、负索引、越界位置索引及 NaN 提前拒绝；生产 DMX 示例通过 |
+| 碰撞 | double 质量累加；非正 mass bias/不可表示体积诊断；显式 `$decomposeconcave` VHACD 分解 | 大偏置仍输出有限质量；封闭 L 形网格输出多个凸块，体积更接近原形 |
+
+本轮共 104 项兼容回归、16 项自动发布测试。Alyx 和 Neko 完整示例继续通过。用户原始极限 QC 有 **2774532096** 种组合：Shoes 组 base 为 396361728、7 个选项，全部组合无法以正值 int32 body 表示，新保护会拒绝。原文件未修改，单独提取其 Hair1 DMX 验证大网格裁剪。此前 v1.2.1 的编译成功记录不代表全组合游戏内可用。历史 `game/shared/animation.cpp` 的 SetBodygroup/GetBodygroup 使用 int body 及整数除法/取模，支持这一正值范围检查。
+
+全局裁剪作用于统一后的 LOD 字典，保守预留三角形容量；与历史源文件预拆分阶段不同。附加身体组共享原 base，会出现在查看器中，选择并非独立。`$decomposeconcave` 是单刚体显式选项，封闭网格、100000 voxel、0.01 误差、depth 10；复杂 ragdoll、任意 rig、游戏物理/渲染和 512 最终骨骼仍未认证或未支持。
+
+English: v1.2.2 adds checked body/skin capacity, opt-in global clamping with synchronized alternatives and remapped LOD/flex/eye data, local-hierarchy bone retention, DMX corner validation, robust mass arithmetic and opt-in connected concave decomposition. The original extreme QC intentionally fails its 2774532096 combination count; isolated Hair1, Alyx and Neko remain useful passing fixtures. Full historical source-stage parity and engine behavior are still unverified.
+
+---
+
 # v1.2.1 六项课题调查与验证
 
 本轮进一步检查历史 StudioMDL 的骨骼、UnifyLODs、DMX、NvTriStrip、动画写入和碰撞实现。历史核心编译器文件作为参考留在独立调查目录；NvTriStrip 作为依赖加入 `libs/nvtristrip`，来源和可移植修改见其 `SOURCE.md`。

@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.1
+# NewPageMergeMDL v1.2.2
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.1.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.2.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -65,9 +65,20 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 
 ### Project tooling and maintenance
 
-- Compiler, decompiler and utilities share the project naming and **v1.2.1** version; colored startup banner, plain redirected logs.
+- Compiler, decompiler and utilities share the project naming and **v1.2.2** version; colored startup banner, plain redirected logs.
 - Automatic PulseModel integration through a maintained patch, followed by Windows/Linux builds, tests and GitHub Release publication. Conflicts or failed checks stop publication. New closed-source CE/++/Neko features require manual analysis.
-- 97 compatibility tests and 16 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
+- 104 compatibility tests and 16 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
+
+## v1.2.2: six improvements
+
+- **Bodygroups:** 64-bit combination arithmetic accepts up to 2^31 combinations (body values 0..2147483647). Tests accept 31 binary groups and reject 32 before output. Fixed single-choice parts no longer add meaningless preset-mask digits.
+- **Skin groups:** check materials × families × 2 bytes before allocating the table, including configured MDL/file budgets. Tests cover 1001 skins and preservation of prior outputs on rejection.
+- **Global clamping:** `$UseLegacyClampMethod` splits across materials. `$MaxVerts limit [clamp]` controls the trigger and piece cap (at most 65536). LODs, flexes and eyeball mesh references move with vertices. Added `_clamped` bodyparts share the original base and choices, with blank alternatives for absent pieces. Conservative triangle reservation operates on the unified output dictionary, rather than reproducing all historical CE source-stage behavior.
+- **Animation:** retain bones and parents used only by `localhierarchy`; reject self-parenting. Explicit `$alwayscollapse` retains its existing precedence.
+- **DMX:** validate corner counts and index bounds before normal collapsing and flex indexing, covering positions, normals, UVs, balance and speed. Finite-number validation also covers blendweights, balance and speed.
+- **Collision:** accumulate volume-weighted mass in double precision to avoid NaN with large biases; reject nonpositive biases and unrepresentable volumes. Single-body `$collisionmodel` gains `$decomposeconcave` using bundled VHACD for closed, connected concave meshes with a positive `$maxconvexpieces`. Ordinary `$concave` retains island splitting; ragdoll decomposition through this option is unsupported.
+
+**Extreme-model diagnostic:** the supplied `playermodel_f_compile2_hair.qc` has 2,774,532,096 body combinations and exceeds signed 32-bit body capacity at Shoes. v1.2.2 rejects it; the original files were not edited. Earlier successful compilation did not certify every engine combination. Its isolated 22307-vertex Hair1 DMX splits into three pieces capped at 10000 vertices. The complete Alyx and Neko examples still compile.
 
 ## v1.2.1 additions and fixes
 
@@ -97,7 +108,7 @@ See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESE
 | glTF animation/compression | The fast importer supports LINEAR, STEP and CUBICSPLINE translation/rotation; static scale is baked into geometry. Animated scale, morph weights and mesh swaps fail explicitly and need baking or QC flex controllers. Draco, meshopt compression and GPU instancing need expanded source files. Assimp fallback interpolation may differ for STEP/CUBICSPLINE; prefer the fast path. |
 | Neko algorithms/defaults | `$MaxVerts` splits per-material output meshes, with a real 65536 index ceiling, rather than reproducing source pre-splitting/clamping. `$FileBufferSize` caps serialized output sizes without fixed preallocation. Existing dynamic buffers, bone collapse and sequence ordering defaults remain. Use `$CEBoneRules` to retain weighted bones. |
 | Neko faces/drivers | Basic stereo balance and jiggle rotation/constraints are checked against binary output. Multi-studio faces and drivers have output tests; complex procedural/driver/IK hierarchy parity is unverified. |
-| Legacy mesh algorithms | `$UseLegacyStripify` / `-nvtristrip` now use NvTriStrip. Cross-material global clamping (`$UseLegacyClampMethod`) remains unimplemented and fails explicitly. |
+| Legacy mesh algorithms | NvTriStrip and cross-material global clamping (`$UseLegacyClampMethod`) are implemented. Clamping uses the unified LOD dictionary and synchronized body choices, with no guarantee of byte parity with CE source pre-splitting. Per-material splitting remains the default. |
 | `gameinfo.txt` AppID mounting | Unimplemented; AppID-based discovery of other games' resources is unavailable. |
 | Full syntax/output parity | Animation copy, channel matching and conditions use this project's documented semantics. Complete StudioMDL++ parity is unverified. Output is v49 rather than the reference compilers' v48; whole-file byte equality is not expected. |
 | Complex face/DMX rigs | Basic normals, wrinkles, inverse flexes and eyelid rules are tested. Complex corrective rigs, hard edges, authored normals, controller remaps and in-game eyelids need more verification. |
@@ -152,7 +163,7 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 python -m unittest discover -s tests -p test_automation.py
 ```
 
-There are 97 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
+There are 104 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
 and 16 automation tests. Tests inspect MDL/VVD data and decompile animations to
 check positions, rotations and conditions. The user-provided Alyx QC compiled
 successfully with 113 bones and 27,571 VVD vertices; this does not cover in-game

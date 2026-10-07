@@ -64,7 +64,7 @@ into unconditional `$alwayscollapse` and protects vertex bones unless
 | Bone collapse rules | `$CEBoneRules` is opt-in; full skeletal/procedural/LOD parity still needs larger fixtures. |
 | Bounding-box warnings / cmdlist checks | Diagnostic parity and extreme-input fixtures; dynamic vectors already avoid fixed-array overflow. |
 | CE face/flex extensions | Implemented below; arbitrary corrective rigs, custom normals, eyelid setup and engine rendering are not certified identical. |
-| CE legacy mesh algorithms | `$UseLegacyStripify` / `-nvtristrip` select NvTriStrip triangle-list ordering (16-entry cache, no meshoptimizer overdraw pass). `$UseLegacyClampMethod` remains unimplemented and fails explicitly; default output uses meshoptimizer and per-material mesh splitting. |
+| CE legacy mesh algorithms | `$UseLegacyStripify` / `-nvtristrip` select NvTriStrip triangle-list ordering (16-entry cache, no meshoptimizer overdraw pass). `$UseLegacyClampMethod` now enables cross-material clamping on the unified LOD dictionary, with synchronized bodygroup alternatives; default output uses meshoptimizer and per-material splitting. |
 | Other Tools++ tools | VBSP/VVIS/VRAD/BSPZIP are map tools, outside this model compiler port. |
 
 ## Build and validation
@@ -78,7 +78,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 97 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 104 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -196,7 +196,7 @@ is a behavioral reference, not bundled or called by this compiler.
 Static node scale is baked into geometry. Animated scene scale cannot be encoded
 as MDL bone TRS and fails explicitly; bake it into vertex animation first.
 
-Unimplemented or unverified: full source clamp
+Unimplemented or unverified: complete historical source-clamp
 algorithm parity, all scene formats/complex rigs, animated morph weights/mesh
 swaps, compressed/instanced glTF, and engine integration. Assimp fallback can
 lose glTF STEP/CUBICSPLINE interpolation semantics. No claim of whole-file or
@@ -241,3 +241,15 @@ DMX positions, normals, texture coordinates, weights, orientation and animation 
 Oversized RLE records and constant translations outside the half-float range switch the complete animation to frame encoding. Frame position channels use float32 when needed. Compressed IK/local-hierarchy channel offsets must fit the signed 16-bit field: oversized inputs fail before any output replacement. RLE 255-frame runs and section seams are tested by decompiling poses.
 
 PHY string serialization no longer uses fixed 512-byte buffers for keyed strings or joint-merge names. A 600-character surface property and root-bone name survive output. Simulation behavior remains unverified. See RESEARCH.md for benchmark scope and unresolved global clamp, full rig and 512-final-bone work.
+
+## v1.2.2 capacity, clamp and collision behavior
+
+Body combination capacity is 2^31, with signed nonnegative body values; integer multiplication and preset handling are checked. The compiler rejects an excessive authored combination space instead of wrapping. Skin family count is capped at 8388608, but the actual table must also fit signed 32-bit offsets and configured MDL/file budgets.
+
+`$UseLegacyClampMethod` performs conservative cross-material splitting after LOD unification. `$MaxVerts limit [clamp]` selects the trigger and chunk cap. Added bodyparts share the original base and alternatives, with blank pieces where needed; these helper groups are visible in viewers and cannot be selected independently. Vertices, flex deltas and eyeball mesh indices are remapped. Default thresholds remain project defaults; historical CE/source preprocessing and in-game parity are not certified.
+
+`localhierarchy` references retain their unweighted bones and new parents under ordinary culling/collapse; self-parenting fails. DMX corner streams require matching lengths and valid indices before normal and flex processing. Empty optional streams retain existing fallback behavior.
+
+`$collisionmodel file { $decomposeconcave $maxconvexpieces 4 }` opts into VHACD decomposition of closed connected meshes. It uses a 100000-voxel budget, 0.01 volume-error tolerance, depth 10 and the requested positive piece cap. It does not affect ordinary `$concave`, and rejects ragdoll use. Collision mass uses double intermediate arithmetic; nonpositive mass bias or non-finite volume fails. Geometry decomposition is approximate and game physics remains unverified.
+
+The supplied extreme QC now fails at Shoes: 2774532096 body combinations exceed capacity. Its source files are unchanged. Isolated Hair1 geometry passes global clamping, and complete Alyx/Neko examples pass. See RESEARCH.md for tests and remaining work.

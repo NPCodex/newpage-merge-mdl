@@ -376,6 +376,14 @@ bool BoneIsFlexDriver(const Ctx& ctx, const char* pname) {
     return false;
 }
 
+bool BoneIsLocalHierarchy(const Ctx& ctx, const char* name) {
+    for (const Anim& anim : ctx.out->anims) for (const AnimCmd& cmd : anim.cmds)
+        if (cmd.kind == AnimCmd::LocalHierarchy &&
+            (_stricmp(name, cmd.alignBone.c_str()) == 0 ||
+             (!cmd.parentBone.empty() && _stricmp(name, cmd.parentBone.c_str()) == 0))) return true;
+    return false;
+}
+
 bool BoneIsDoNotCollapse(const Ctx& ctx, const char* pname) {
     for (const BoneMarkup& bm : ctx.in->bonemarkups)
         if (bm.doNotCollapse && _stricmp(bm.name.c_str(), pname) == 0)
@@ -1324,6 +1332,14 @@ void TagUsedBones(Ctx& ctx) {
         // tag bones used as bone morph drivers
         TagFlexDriverBones(ctx, psource);
 
+        // Local hierarchy references must survive the initial unused-bone cull.
+        for (const Anim& anim : ctx.out->anims) for (const AnimCmd& cmd : anim.cmds)
+            if (cmd.kind == AnimCmd::LocalHierarchy)
+                for (int j = 0; j < psource->numbones; ++j)
+                    if (_stricmp(psource->localBone[j].name.c_str(), cmd.alignBone.c_str()) == 0 ||
+                        (!cmd.parentBone.empty() && _stricmp(psource->localBone[j].name.c_str(), cmd.parentBone.c_str()) == 0))
+                        psource->boneflags[j] |= BONE_USED_BY_ATTACHMENT;
+
         // tag bonerefs as the union of the boneflags of all their children
         for (int k = 0; k < psource->numbones; k++) {
             int nFlags = psource->boneflags[k];
@@ -1748,6 +1764,7 @@ void CollapseBones(Ctx& ctx) {
             if (!always &&
                (BoneIsDoNotCollapse(ctx, m.bones[k].name.c_str()) ||
                 BoneHasAnimation(ctx, m.bones[k].name.c_str()) ||
+                BoneIsLocalHierarchy(ctx, m.bones[k].name.c_str()) ||
                 BoneIsIK(ctx, m.bones[k].name.c_str()) ||
                 BoneHasAttachments(ctx, m.bones[k].name.c_str()) ||
                 BoneHasHitbox(ctx, m.bones[k].name.c_str()) ||
@@ -3582,7 +3599,7 @@ struct MeshBucket {
 // land on both sides of a cut is duplicated into both; those few duplicates are
 // the entire cost of the split.
 std::vector<MeshBucket> PartitionMesh(int numvertices,
-                                      const std::vector<std::vector<src::SrcFace>>& lodFaces,int cap) {
+                                      const std::vector<std::vector<src::SrcFace>>& lodFaces,int cap, bool conservative=false) {
     std::vector<MeshBucket> buckets;
     std::vector<bool> owned(numvertices, false);
 
@@ -3625,7 +3642,7 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
     if (!lodFaces.empty()) {
         size_t cur = 0;
         for (const src::SrcFace& f : lodFaces[0]) {
-            if (static_cast<int>(buckets[cur].verts.size()) + missing(buckets[cur], f) > cap) {
+            if (static_cast<int>(buckets[cur].verts.size()) + (conservative ? 3 : missing(buckets[cur], f)) > cap) {
                 addBucket();
                 cur = buckets.size() - 1;
             }
@@ -3809,6 +3826,102 @@ void BuildOutputMeshes(Ctx& ctx) {
                 continue;
             if (eye.mesh >= 0 && eye.mesh < nummeshes)
                 eye.mesh = firstOutMesh[eye.mesh];
+        }
+    }
+}
+
+// Global clamp operates on the unified dictionary, keeping all LODs together.
+// Additional bodyparts share the original mixed-radix base and choices, so a
+// hidden alternative cannot leave its extra pieces visible.
+void ClampOutputModels(Ctx& ctx) {
+    auto& m = *ctx.out;
+    if (!ctx.in->ce.legacyClamp) return;
+    struct Piece {
+        Model model; std::unordered_map<int,int> map; std::vector<int> meshes; bool identity = false; size_t originalVertices = 0;
+        int Remap(int vertex) const {
+            if (identity) return vertex >= 0 && static_cast<size_t>(vertex) < originalVertices ? vertex : -1;
+            const auto it = map.find(vertex); return it == map.end() ? -1 : it->second;
+        }
+    };
+    const size_t originalCount = m.models.size();
+    std::vector<std::vector<Piece>> pieces(originalCount);
+    for (size_t id = 0; id < originalCount; ++id) {
+        const Model& old = m.models[id];
+        const int lods = static_cast<int>(m.scriptLods.size());
+        std::vector<std::vector<src::SrcFace>> faces(lods);
+        std::vector<int> owner(old.vertices.size(), -1);
+        for (size_t mesh = 0; mesh < old.outMeshes.size(); ++mesh) {
+            const auto& om = old.outMeshes[mesh];
+            for (int v = 0; v < om.numvertices; ++v) owner[om.vertexoffset + v] = static_cast<int>(mesh);
+            for (int lod = 0; lod < lods; ++lod) for (auto f : om.lodFaces[lod]) {
+                f.a += om.vertexoffset; f.b += om.vertexoffset; f.c += om.vertexoffset;
+                faces[lod].push_back(f);
+            }
+        }
+        if (old.vertices.size() < static_cast<size_t>(ctx.in->maxModelVerts)) {
+            Piece piece; piece.model = old;
+            piece.identity = true; piece.originalVertices = old.vertices.size(); piece.meshes.resize(old.outMeshes.size());
+            for (size_t v = 0; v < piece.meshes.size(); ++v) piece.meshes[v] = static_cast<int>(v);
+            pieces[id].push_back(std::move(piece)); continue;
+        }
+        auto buckets = PartitionMesh(static_cast<int>(old.vertices.size()), faces, ctx.in->maxMeshVerts, true);
+        for (auto& bucket : buckets) {
+            Piece piece; piece.model.name = old.name; piece.model.source = old.source;
+            piece.model.boundingradius = old.boundingradius; piece.model.lodSources = old.lodSources;
+            piece.map.reserve(bucket.verts.size()); piece.meshes.assign(old.outMeshes.size(), -1);
+            for (size_t mesh = 0; mesh < old.outMeshes.size(); ++mesh) {
+                OutMesh om; om.material = old.outMeshes[mesh].material;
+                om.vertexoffset = static_cast<int>(piece.model.vertices.size()); om.lodFaces.resize(lods);
+                for (int v : bucket.verts) if (owner[v] == static_cast<int>(mesh)) {
+                    piece.map[v] = static_cast<int>(piece.model.vertices.size());
+                    piece.model.vertices.push_back(old.vertices[v]);
+                }
+                om.numvertices = static_cast<int>(piece.model.vertices.size()) - om.vertexoffset;
+                if (!om.numvertices) continue;
+                for (int lod = 0; lod < lods; ++lod) for (auto f : bucket.lodFaces[lod]) {
+                    const int a = bucket.verts[f.a], b = bucket.verts[f.b], c = bucket.verts[f.c];
+                    if (owner[a] != static_cast<int>(mesh)) continue;
+                    f.a = piece.Remap(a) - om.vertexoffset; f.b = piece.Remap(b) - om.vertexoffset; f.c = piece.Remap(c) - om.vertexoffset;
+                    om.lodFaces[lod].push_back(f);
+                }
+                piece.meshes[mesh] = static_cast<int>(piece.model.outMeshes.size());
+                piece.model.outMeshes.push_back(std::move(om));
+            }
+            pieces[id].push_back(std::move(piece));
+        }
+        std::printf("Global clamp: model '%s' -> %zu synchronized pieces (cap %d)\n", old.name.c_str(), pieces[id].size(), ctx.in->maxMeshVerts);
+    }
+    const auto oldKeys = std::move(m.flexkeys);
+    const auto oldEyes = std::move(m.eyeballs);
+    m.flexkeys.clear(); m.eyeballs.clear();
+    auto bind = [&](int oldID, size_t chunk, int newID) {
+        const Piece& piece = pieces[oldID][chunk];
+        for (const auto& key : oldKeys) if (key.imodel == oldID) {
+            FlexKey copy = key; copy.imodel = newID; copy.vanim.clear();
+            for (auto va : key.vanim) if (va.vertex >= 0 && piece.Remap(va.vertex) >= 0) {
+                va.vertex = piece.Remap(va.vertex); copy.vanim.push_back(va);
+            }
+            if (!copy.vanim.empty() || key.vanim.empty()) m.flexkeys.push_back(std::move(copy));
+        }
+        for (auto eye : oldEyes) if (eye.model == oldID && eye.mesh >= 0 && eye.mesh < static_cast<int>(piece.meshes.size()) && piece.meshes[eye.mesh] >= 0) {
+            eye.model = newID; eye.mesh = piece.meshes[eye.mesh]; m.eyeballs.push_back(std::move(eye));
+        }
+    };
+    for (size_t id = 0; id < originalCount; ++id) { m.models[id] = std::move(pieces[id][0].model); bind(static_cast<int>(id), 0, static_cast<int>(id)); }
+    const auto originalParts = m.bodyparts;
+    for (const auto& bp : originalParts) {
+        size_t count = 1;
+        for (int id : bp.modelIndices) count = std::max(count, pieces[id].size());
+        for (size_t chunk = 1; chunk < count; ++chunk) {
+            BodyPart extra; extra.name = bp.name + "_clamped" + std::to_string(chunk); extra.base = bp.base;
+            auto taken = [&] { for (const auto& existing : m.bodyparts) if (existing.name == extra.name) return true; return false; };
+            while (taken()) extra.name += "_";
+            for (int id : bp.modelIndices) {
+                const int newID = static_cast<int>(m.models.size()); extra.modelIndices.push_back(newID);
+                if (chunk < pieces[id].size()) { m.models.push_back(std::move(pieces[id][chunk].model)); bind(id, chunk, newID); }
+                else { Model blank; blank.name = "blank"; m.models.push_back(std::move(blank)); }
+            }
+            m.bodyparts.push_back(std::move(extra));
         }
     }
 }
@@ -4581,6 +4694,11 @@ bool ConvexesFromGenerated(const GeneratedShape& gen, const matrix3x4* poseToBon
 
 bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generated,
                            std::string* err) {
+    if (ctx.in->physDecomposeConcave) {
+        if (err) *err = "$decomposeconcave currently requires a single-body $collisionmodel";
+        return false;
+    }
+
     CompiledModel& m = *ctx.out;
     const CompileInput& in = *ctx.in;
 
@@ -5215,6 +5333,35 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         anyConcave = anyConcave || shape.concave;
         maxConvexPieces = std::max(maxConvexPieces, shape.maxConvex);
 
+        if (in.physDecomposeConcave) {
+            if (shape.maxConvex <= 0) {
+                if (err) *err = "$decomposeconcave requires a positive $maxconvexpieces";
+                freeConvexes(); return false;
+            }
+            std::vector<float> points; points.reserve(shapeVerts.size() * 3);
+            for (const auto& v : shapeVerts) { points.push_back(v.x); points.push_back(v.y); points.push_back(v.z); }
+            std::vector<int> triangles; triangles.reserve(faces.size() * 3);
+            for (const auto& f : faces) { triangles.push_back(f.a); triangles.push_back(f.b); triangles.push_back(f.c); }
+            std::vector<VHACDHull::DecomposedHull> hulls;
+            if (!VHACDHull::DecomposeConvex(points.data(), static_cast<int>(shapeVerts.size()), triangles.data(), static_cast<int>(faces.size()),
+                                          .01f, shape.maxConvex, 1.0f, hulls, 100000, 10) || hulls.empty()) {
+                if (err) *err = "failed to decompose collision mesh '" + shape.name + "'";
+                freeConvexes(); return false;
+            }
+            std::vector<phys::Vec3> decomposed;
+            std::vector<std::vector<int>> groups;
+            for (const auto& hull : hulls) {
+                groups.emplace_back();
+                for (size_t v = 0; v + 2 < hull.vertices.size(); v += 3) {
+                    groups.back().push_back(static_cast<int>(decomposed.size()));
+                    decomposed.push_back({hull.vertices[v], hull.vertices[v+1], hull.vertices[v+2]});
+                }
+            }
+            if (!BuildConvexesForGroups(groups, decomposed, shape.name.c_str(), shape.remove2d, 0, convexes, err)) {
+                freeConvexes(); return false;
+            }
+            std::printf("Decomposed collision '%s': %zu convex pieces\n", shape.name.c_str(), hulls.size());
+        } else {
         // one piece per disjoint island when concave, otherwise one hull for
         // the whole shape
         std::vector<std::vector<int>> islands;
@@ -5234,6 +5381,7 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
                                     0, convexes, err)) {
             freeConvexes();
             return false;
+        }
         }
     }
 
@@ -6983,6 +7131,11 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
                                         cmd.parentBone + "' in localhierarchy";
                         return false;
                     }
+                }
+
+                if (rule.newparent == rule.bone) {
+                    if (err) *err = "localhierarchy cannot parent a bone to itself in animation '" + panim.name + "'";
+                    return false;
                 }
 
                 int numerror = rule.end - rule.start + 1;
@@ -10486,12 +10639,25 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     }
 
     // ---- build models/bodyparts + anims/sequences from the script input ----
-    int bodypartBase = 1;
+    for (const auto& mk : input.physMarkups) if (mk.massBiasSet && (!std::isfinite(mk.massBias) || mk.massBias <= 0)) {
+        if (err) *err = "collision mass bias must be positive for bone '" + mk.bonename + "'";
+        return false;
+    }
+    int64_t bodypartBase = 1;
     for (const auto& bp : input.bodyparts) {
         BodyPart part;
         part.name = bp.name;
-        part.base = bodypartBase;
-        bodypartBase *= static_cast<int>(bp.models.size() ? bp.models.size() : 1);
+        if (bp.models.empty()) {
+            if (err) *err = "bodygroup '" + bp.name + "' must contain at least one model or blank";
+            return false;
+        }
+        const size_t choices = std::max<size_t>(1, bp.models.size());
+        if (choices > 1 && (bodypartBase > INT32_MAX || bodypartBase > (static_cast<uint64_t>(INT32_MAX) + 1) / choices)) {
+            if (err) *err = "bodygroup combination count exceeds signed 32-bit capacity at '" + bp.name + "'";
+            return false;
+        }
+        part.base = bodypartBase <= INT32_MAX ? static_cast<int>(bodypartBase) : 1;
+        bodypartBase *= choices;
         for (const auto& im : bp.models) {
             Model model;
             model.name = im.source ? im.name : "blank";
@@ -10527,6 +10693,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                            ch.first + "\" (" + std::to_string(nummodels) + " choices)";
                 return false;
             }
+            if (nummodels == 1) continue; // a fixed part has no selection bit
             const int cur = (preset.value / bp->base) % nummodels;
             preset.value = preset.value - cur * bp->base + ch.second * bp->base;
             const int curMask = (preset.mask / bp->base) % nummodels;
@@ -11352,7 +11519,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     // (RemapVertexAnimations, GenerateVertexAveragedAttachments, CullFlex) has
     // to have had its say first. What follows only ever takes min/max over all
     // vertices, which duplication cannot change.
-    { PULSE_TIME_PASS("BuildOutputMeshes"); BuildOutputMeshes(ctx); }
+    { PULSE_TIME_PASS("BuildOutputMeshes"); BuildOutputMeshes(ctx); ClampOutputModels(ctx); }
 
     { PULSE_TIME_PASS("SetupHitBoxes"); if (!SetupHitBoxes(ctx, err)) return false; }
     { PULSE_TIME_PASS("CompressAnimations"); CompressAnimations(ctx); }
@@ -11671,6 +11838,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         return false;
     }
     out.numskinref = nummaterials;
+    const uint64_t rows = 1ULL + families.size();
+    const uint64_t bytes = rows * static_cast<uint64_t>(nummaterials) * sizeof(int16_t);
+    size_t skinLimit = INT32_MAX;
+    if (input.ce.mdlLimit) skinLimit = std::min(skinLimit, input.ce.mdlLimit);
+    if (input.ce.fileLimit) skinLimit = std::min(skinLimit, input.ce.fileLimit);
+    if (rows > lim::kMaxSkinFamilies || bytes > skinLimit) {
+        if (err) *err = "skin table exceeds output capacity (" + std::to_string(bytes) + " bytes)";
+        return false;
+    }
     out.numskinfamilies = 1 + static_cast<int>(families.size());
     out.skinref.assign(out.numskinfamilies, std::vector<int16_t>(nummaterials));
     for (auto& row : out.skinref)
