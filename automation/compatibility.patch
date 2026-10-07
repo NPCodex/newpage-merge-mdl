@@ -597409,7 +597409,7 @@ index a9b8bb8..d0078a8 100644
          bool ignoreTransformPosition = false;
          int motiontype = 0;    // motion controls (LX/LY/LZ/LXR/.../LM/LQ)
 diff --git a/mdlcompiler/dmxloader.cpp b/mdlcompiler/dmxloader.cpp
-index 4e13c39..41e3e60 100644
+index 4e13c39..2d47def 100644
 --- a/mdlcompiler/dmxloader.cpp
 +++ b/mdlcompiler/dmxloader.cpp
 @@ -24,6 +24,30 @@ namespace lim = pulse::limits;
@@ -597459,7 +597459,7 @@ index 4e13c39..41e3e60 100644
      Source* source = nullptr;
      const dmx::Element* model = nullptr;
      const std::vector<dmx::ElementPtr>* jointList = nullptr;
-@@ -1151,6 +1177,34 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
+@@ -1151,6 +1177,38 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
      const std::vector<int32_t>* texcoordIndices =
          PickIntArray(bindState, "texcoord$0Indices", "textureCoordinatesIndices");
  
@@ -597469,11 +597469,15 @@ index 4e13c39..41e3e60 100644
 +            const auto* indices = PickIntArray(bindState, index, indexAlias);
 +            if (!indices || indices->empty()) return true;
 +            size_t size = 0;
-+            for (const auto& attr : bindState->attributes) if (attr.name == field || attr.name == alias)
-+                std::visit([&](const auto& value) {
-+                    using T = std::decay_t<decltype(value)>;
-+                    if constexpr (std::is_same_v<T, std::vector<float>> || std::is_same_v<T, std::vector<dmx::Vector2>> || std::is_same_v<T, std::vector<dmx::Vector3>>) size = value.size();
-+                }, attr.value);
++            if (std::strcmp(field, "position$0") == 0 || std::strcmp(field, "normal$0") == 0) {
++                if (const auto* data = PickV3Array(bindState, field, alias)) size = data->size();
++            } else if (std::strcmp(field, "texcoord$0") == 0) {
++                const auto* data = bindState->GetVector2Array(field);
++                if (!data) data = bindState->GetVector2Array(alias);
++                if (data) size = data->size();
++            } else {
++                if (const auto* data = PickFloatArray(bindState, field, alias)) size = data->size();
++            }
 +            if (indices->size() != positionIndices->size()) {
 +                if (info.err) *info.err = std::string("DMX corner count mismatch for ") + field;
 +                return false;
@@ -597494,7 +597498,7 @@ index 4e13c39..41e3e60 100644
      // CollapseRedundantNormals mutates the (copied) normal stream + indices.
      // Meshes with delta states take the per-position variant that yields a
      // normalMap for remapping the delta states' normal entries.
-@@ -1315,11 +1369,11 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
+@@ -1315,11 +1373,11 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
                  }
              }
              const std::vector<float>* aw = PickFloatArray(delta, "wrinkle$0", "wrinkle");
@@ -597508,7 +597512,7 @@ index 4e13c39..41e3e60 100644
                  GenerateWrinkleDelta(dPos, dPosIdx, ws->scale, posInverse,
                                       texcoordIndices ? *texcoordIndices : std::vector<int32_t>{},
                                       nTexcoordDataCount, dWrinkle, dWrinkleIdx);
-@@ -1516,8 +1570,9 @@ bool LoadMeshesRecursive(const LoadMeshInfo& info, const dmx::Element* dag,
+@@ -1516,8 +1574,9 @@ bool LoadMeshesRecursive(const LoadMeshInfo& info, const dmx::Element* dag,
  
  bool LoadMeshes(const dmx::Element* model, float flScale, const BoneMap& boneMap,
                  MaterialTable& mats, MeshTemp& tmp, FlexTemp* flex, MeshFilter* filter,
@@ -597519,7 +597523,7 @@ index 4e13c39..41e3e60 100644
      info.physics = physics;
      info.filter = filter;
      info.source = &out;
-@@ -2204,6 +2259,9 @@ void CaptureFlexRig(const dmx::Element* comboOp, const ComboTemp& combo, FlexRig
+@@ -2204,6 +2263,9 @@ void CaptureFlexRig(const dmx::Element* comboOp, const ComboTemp& combo, FlexRig
  int MaterialTable::LookupTexture(const char* name, bool relative) {
      // reference LookupTexture: names are stored extension-stripped (path kept).
      // Q_StripExtension: drop the extension, keep any directory.
@@ -597529,7 +597533,7 @@ index 4e13c39..41e3e60 100644
      std::string noExt = name;
      {
          size_t dot = noExt.find_last_of('.');
-@@ -2264,7 +2322,8 @@ void ResetDmxUpAxis() { s_bUpAxisY = false; s_bUpAxisChecked = false; }
+@@ -2264,7 +2326,8 @@ void ResetDmxUpAxis() { s_bUpAxisY = false; s_bUpAxisChecked = false; }
  
  bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, float scale,
                     std::string* err, bool morphSource, MeshFilter* filter, bool animOnly,
@@ -597539,7 +597543,7 @@ index 4e13c39..41e3e60 100644
      const dmx::Element* root = dm.root;
      if (!root) {
          if (err) *err = "DMX has no root element";
-@@ -2300,6 +2359,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
+@@ -2300,6 +2363,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
      ComboTemp comboTemp;
      if (morphSource && !animOnly) {
          flexTemp.enabled = true;
@@ -597548,7 +597552,7 @@ index 4e13c39..41e3e60 100644
          // controls first - GenerateWrinkleDeltas runs before the meshes load
          if (const dmx::Element* comboOp = root->GetElement("combinationOperator"))
              ParseComboControls(comboOp, comboTemp, flexTemp);
-@@ -2318,8 +2379,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
+@@ -2318,8 +2383,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
      if (!animOnly) {
          PULSE_PERF("load", "LoadMeshes");
          if (!LoadMeshes(model, scale, boneMap, mats, tmp, flexTemp.enabled ? &flexTemp : nullptr,
@@ -597559,7 +597563,7 @@ index 4e13c39..41e3e60 100644
              return false;
          }
          if (!tmp.face.empty())
-@@ -2331,6 +2392,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
+@@ -2331,6 +2396,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
      if (flexTemp.enabled)
          AddFlexKeys(comboTemp, flexTemp, out);
  

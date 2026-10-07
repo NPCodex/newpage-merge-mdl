@@ -1183,11 +1183,15 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
             const auto* indices = PickIntArray(bindState, index, indexAlias);
             if (!indices || indices->empty()) return true;
             size_t size = 0;
-            for (const auto& attr : bindState->attributes) if (attr.name == field || attr.name == alias)
-                std::visit([&](const auto& value) {
-                    using T = std::decay_t<decltype(value)>;
-                    if constexpr (std::is_same_v<T, std::vector<float>> || std::is_same_v<T, std::vector<dmx::Vector2>> || std::is_same_v<T, std::vector<dmx::Vector3>>) size = value.size();
-                }, attr.value);
+            if (std::strcmp(field, "position$0") == 0 || std::strcmp(field, "normal$0") == 0) {
+                if (const auto* data = PickV3Array(bindState, field, alias)) size = data->size();
+            } else if (std::strcmp(field, "texcoord$0") == 0) {
+                const auto* data = bindState->GetVector2Array(field);
+                if (!data) data = bindState->GetVector2Array(alias);
+                if (data) size = data->size();
+            } else {
+                if (const auto* data = PickFloatArray(bindState, field, alias)) size = data->size();
+            }
             if (indices->size() != positionIndices->size()) {
                 if (info.err) *info.err = std::string("DMX corner count mismatch for ") + field;
                 return false;
