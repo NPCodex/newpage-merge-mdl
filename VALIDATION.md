@@ -1,3 +1,9 @@
+# v1.2.5 编译修复验证 / Compilation regression fix
+
+128 项兼容回归、16 项自动化回归通过。用户原始 player 和 NPC Hair QC 分别输出 126 / 124 根骨骼、572277 顶点；两份均在隔离输出目录通过编译。报告：`tests/reports/v1.2.5-validation.json`。原始 QC、QCI 和 DMX 未修改。
+
+Both original Hair QCs now compile without modifying their source assets. Bodygroup validation checks stored bases and preset values. This compilation fix does not extend the earlier engine-validation scope.
+
 # v1.2.4：新增功能与验证 / Features and validation
 
 ## 资源查找 / Resource lookup

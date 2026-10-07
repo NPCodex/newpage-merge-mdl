@@ -85,3 +85,6 @@ testsamples/
 # CLAUDE
 CLAUDE.md
 AGENTS.md
+
+# Local compiled tools and user-model verification outputs
+local-build/

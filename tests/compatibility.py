@@ -1261,6 +1261,17 @@ class Compatibility(ExtendedCases,unittest.TestCase):
         self.assertIn('expects at least one choice',text)
         self.assertEqual(self.mdl('combinations'),old)
 
+    def test_final_bodygroup_product_does_not_reject_valid_bases(self):
+        groups=''.join(f'$bodygroup choice{i} {{ blank\nblank\n}}\n' for i in range(30))
+        text=self.run_qc('$modelname widechoices\n'+groups+'$bodygroup last { blank\nblank\nblank\n}\n')
+        self.assertIn('preserving valid MDL bases',text)
+        d=self.mdl('widechoices');count,index=struct.unpack_from('<2i',d,232)
+        self.assertEqual(struct.unpack_from('<i',d,index+30*16+8)[0],1<<30)
+        old=d
+        text=self.run_qc('$modelname widechoices\n'+groups+'$bodygroup last { blank\nblank\nblank\n}\n$modelgrouppreset invalid { last 2 }\n',success=False)
+        self.assertIn('preset selection exceeds',text)
+        self.assertEqual(self.mdl('widechoices'),old)
+
     def test_skin_table_budget_precedes_output_replacement(self):
         self.run_qc('$modelname skins\n$texturegroup family {\n'+'{ material }\n'*1001+'}\n')
         old=self.mdl('skins');self.assertEqual(struct.unpack_from('<i',old,224)[0],1001)

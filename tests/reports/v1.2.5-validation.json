@@ -1,0 +1,61 @@
+{
+  "version": "1.2.5",
+  "compatibility_tests": 128,
+  "production_compilation": {
+    "schema": 1,
+    "cases": [
+      {
+        "qc": "provided player Hair QC",
+        "samples": [
+          {
+            "schema": 1,
+            "version": "1.2.5",
+            "load_ms": 2954.78,
+            "compile_ms": 1294.39,
+            "write_ms": 1625.8,
+            "total_ms": 5874.97,
+            "peak_working_set_bytes": 649617408,
+            "bones": 126,
+            "vertices": 572277,
+            "wall_seconds": 5.952999999997701
+          }
+        ],
+        "median_total_ms": 5874.97,
+        "median_peak_bytes": 649617408,
+        "output_sha256": {
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.dx80.vtx": "2319bc0bec829533d5e76d7beed513be0674cc741d83e8111d3c3798e2daece7",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.dx90.vtx": "c75fcfcfd518dffca9063792ecff3b16a41387c8de14e64afdd170b52a067472",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.mdl": "4cc69254e37550fdaa4c36a877af1a5730cab745d4b202f99141d45d6df875db",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.phy": "8d73ddddd6c61af320d3dde44cccaf9b83953fab6f5caaf1970d36799f1d5113",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.vvd": "fef292e5b258cbf275825c580f76f00b59efc3e64386940693662aa8f2ac45dc"
+        }
+      },
+      {
+        "qc": "provided NPC Hair QC",
+        "samples": [
+          {
+            "schema": 1,
+            "version": "1.2.5",
+            "load_ms": 2784.32,
+            "compile_ms": 555.815,
+            "write_ms": 1614.42,
+            "total_ms": 4954.56,
+            "peak_working_set_bytes": 644382720,
+            "bones": 124,
+            "vertices": 572277,
+            "wall_seconds": 5.032000000002881
+          }
+        ],
+        "median_total_ms": 4954.56,
+        "median_peak_bytes": 644382720,
+        "output_sha256": {
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.dx80.vtx": "66a72defa0fd51811cab28922d5e1bb5bd795746c4e7742753049a0a3f0750ef",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.dx90.vtx": "7be838d7a8fea69a192149ca60f154236f81ec8e81ea04f3285a2e78013fc3ca",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.mdl": "f371ee69aae47680566ff17d53bbd925a75eefd6112cc9286d57f5b3166756e8",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.phy": "72d1bf5f573bbd7b59ede175056713127bd5ea1a2375ed8e7006491478f9e1a7",
+          "player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_e.vvd": "6e74c0ad4050295302e47d86ca3887740df356021c3c2f8eef86ab59a27c3b4e"
+        }
+      }
+    ]
+  }
+}

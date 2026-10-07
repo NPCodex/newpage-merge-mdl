@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.4
+# NewPageMergeMDL v1.2.5
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.4.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.5.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -12,6 +12,10 @@ The compiler is `NewPageMergeMDL.exe`; the decompiler is
 `NewPageMergeMDL-Decompiler.exe`. Windows x64 and Linux builds are verified by
 GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
+
+## v1.2.5: Hair QC compilation fix
+
+Correct overly strict bodygroup validation; add final-product and preset-integer regressions. The current suite has 128 compatibility tests.
 
 ## v1.2.4: seven improvements
 
@@ -23,7 +27,7 @@ and GitHub Release configuration.
 - Actual GMod Alyx loading, faces/eyelids and forced LOD, plus authored vertex-animation and two-body physics/ground-contact tests. White material override isolates geometry; authored shaders are not comprehensively certified.
 - `-perfjson` phase timings/peak working set and isolated repeated production benchmarks with deterministic output checksums.
 
-**127 compatibility tests and 16 automation tests.** Usage and bounded results: [VALIDATION.md](VALIDATION.md).
+**128 compatibility tests and 16 automation tests.** Usage and bounded results: [VALIDATION.md](VALIDATION.md).
 
 ## Inherited PulseModel features
 
@@ -77,9 +81,9 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 
 ### Project tooling and maintenance
 
-- Compiler, decompiler and utilities share the project naming and **v1.2.4** version; colored startup banner, plain redirected logs.
+- Compiler, decompiler and utilities share the project naming and **v1.2.5** version; colored startup banner, plain redirected logs.
 - Automatic PulseModel integration through a maintained patch, followed by Windows/Linux builds, tests and GitHub Release publication. Conflicts or failed checks stop publication. New closed-source CE/++/Neko features require manual analysis.
-- 127 compatibility tests and 16 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
+- 128 compatibility tests and 16 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
 
 ## v1.2.3: fewer incomplete features
 
@@ -98,7 +102,7 @@ The unsupported material-merge row is removed and the glTF compression/instance 
 - **DMX:** validate corner counts and index bounds before normal collapsing and flex indexing, covering positions, normals, UVs, balance and speed. Finite-number validation also covers blendweights, balance and speed.
 - **Collision:** accumulate volume-weighted mass in double precision to avoid NaN with large biases; reject nonpositive biases and unrepresentable volumes. Single-body `$collisionmodel` gains `$decomposeconcave` using bundled VHACD for closed, connected concave meshes with a positive `$maxconvexpieces`. Ordinary `$concave` retains island splitting; v1.2.4 also supports ragdoll decomposition.
 
-**Extreme-model diagnostic:** the supplied `playermodel_f_compile2_hair.qc` has 2,774,532,096 body combinations and exceeds signed 32-bit body capacity at Shoes. v1.2.2 rejects it; the original files were not edited. Earlier successful compilation did not certify every engine combination. Its isolated 22307-vertex Hair1 DMX splits into three pieces capped at 10000 vertices. The complete Alyx and Neko examples still compile.
+**v1.2.5 fix:** correct an overly strict check that blocked the complete Hair QC. Both original player and NPC QCs compile, with 126 / 124 bones and 572277 vertices, without changing the user models. Validate stored bodygroup bases and preset values while retaining diagnostics.
 
 ## v1.2.1 additions and fixes
 
@@ -181,7 +185,7 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 python -m unittest discover -s tests -p test_automation.py
 ```
 
-There are 127 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
+There are 128 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
 and 16 automation tests. Tests inspect MDL/VVD data and decompile animations to
 check positions, rotations and conditions. The user-provided Alyx QC compiled
 successfully with 113 bones and 27,571 VVD vertices; this does not cover in-game

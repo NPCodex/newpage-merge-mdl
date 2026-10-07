@@ -242,7 +242,7 @@ PHY string serialization no longer uses fixed 512-byte buffers for keyed strings
 
 ## v1.2.2 capacity, clamp and collision behavior
 
-Body combination capacity is 2^31, with signed nonnegative body values; integer multiplication and preset handling are checked. The compiler rejects an excessive authored combination space instead of wrapping. Skin family count is capped at 8388608, but the actual table must also fit signed 32-bit offsets and configured MDL/file budgets.
+Body combination capacity is 2^31, with signed nonnegative body values; integer multiplication and preset handling are checked. Since v1.2.5, validation checks the actual stored base for each selectable group rather than rejecting solely on the final Cartesian product; presets use checked 64-bit intermediates. Skin family count is capped at 8388608, but the actual table must also fit signed 32-bit offsets and configured MDL/file budgets.
 
 `$UseLegacyClampMethod` performs conservative cross-material splitting after LOD unification. `$MaxVerts limit [clamp]` selects the trigger and chunk cap. Added bodyparts share the original base and alternatives, with blank pieces where needed; these helper groups are visible in viewers and cannot be selected independently. Vertices, flex deltas and eyeball mesh indices are remapped. Default thresholds remain project defaults; historical CE/source preprocessing and in-game parity are not certified.
 

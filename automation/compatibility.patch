@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..6e1953c 100644
+index fed7eaf..654c45d 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..6e1953c 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.4 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.5 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -600514,7 +600514,7 @@ index fcff31d..e43442b 100644
 +
 +set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")
 diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
-index bdb0c90..561f276 100644
+index bdb0c90..ee9d010 100644
 --- a/mdlcompiler/compile.cpp
 +++ b/mdlcompiler/compile.cpp
 @@ -1,6 +1,7 @@
@@ -601419,7 +601419,7 @@ index bdb0c90..561f276 100644
      out.bbox[0] = input.bbox[0];
      out.bbox[1] = input.bbox[1];
      out.bboxset = input.bboxSet;
-@@ -10400,12 +10678,25 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10400,12 +10678,32 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      }
  
      // ---- build models/bodyparts + anims/sequences from the script input ----
@@ -601439,24 +601439,43 @@ index bdb0c90..561f276 100644
 +            return false;
 +        }
 +        const size_t choices = std::max<size_t>(1, bp.models.size());
-+        if (choices > 1 && (bodypartBase > INT32_MAX || bodypartBase > (static_cast<uint64_t>(INT32_MAX) + 1) / choices)) {
++        if (choices > 1 && bodypartBase > INT32_MAX) {
 +            if (err) *err = "bodygroup combination count exceeds signed 32-bit capacity at '" + bp.name + "'";
 +            return false;
 +        }
 +        part.base = bodypartBase <= INT32_MAX ? static_cast<int>(bodypartBase) : 1;
-+        bodypartBase *= choices;
++        // The MDL stores each group's base, not the total Cartesian product.
++        // A final group may have individually usable choices even when some
++        // combined selections are outside the engine's nonnegative body range.
++        const int64_t previousBase = bodypartBase;
++        if (choices > 1) bodypartBase *= choices;
++        if (previousBase <= static_cast<int64_t>(INT32_MAX) + 1 &&
++            bodypartBase > static_cast<int64_t>(INT32_MAX) + 1)
++            std::fprintf(stderr, "warning: some combined bodygroup selections are outside the nonnegative body range; preserving valid MDL bases\n");
          for (const auto& im : bp.models) {
              Model model;
              model.name = im.source ? im.name : "blank";
-@@ -10441,6 +10732,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10441,10 +10739,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             ch.first + "\" (" + std::to_string(nummodels) + " choices)";
                  return false;
              }
 +            if (nummodels == 1) continue; // a fixed part has no selection bit
              const int cur = (preset.value / bp->base) % nummodels;
-             preset.value = preset.value - cur * bp->base + ch.second * bp->base;
+-            preset.value = preset.value - cur * bp->base + ch.second * bp->base;
++            const int64_t value = static_cast<int64_t>(preset.value) - static_cast<int64_t>(cur) * bp->base + static_cast<int64_t>(ch.second) * bp->base;
              const int curMask = (preset.mask / bp->base) % nummodels;
-@@ -10467,6 +10759,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+-            preset.mask = preset.mask - curMask * bp->base + bp->base;
++            const int64_t mask = static_cast<int64_t>(preset.mask) - static_cast<int64_t>(curMask) * bp->base + bp->base;
++            if (value > INT32_MAX || mask > INT32_MAX) {
++                if (err) *err = "$modelgrouppreset selection exceeds signed 32-bit capacity: " + ip.name;
++                return false;
++            }
++            preset.value = static_cast<int>(value);
++            preset.mask = static_cast<int>(mask);
+         }
+         out.bodygrouppresets.push_back(std::move(preset));
+     }
+@@ -10467,6 +10772,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          a.fudgeloop = ia.fudgeloop;
          a.noAutoIK = ia.noAutoIK;
          a.nocull = ia.nocull;
@@ -601464,7 +601483,7 @@ index bdb0c90..561f276 100644
          a.ignoreTransformAngles = ia.ignoreTransformAngles;
          a.ignoreTransformPosition = ia.ignoreTransformPosition;
          a.motiontype = ia.motiontype;
-@@ -10703,6 +10996,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10703,6 +11009,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  cmd.forceRot = ic.forceRot;
                  break;
              case InCmd::RefMotion:
@@ -601472,7 +601491,7 @@ index bdb0c90..561f276 100644
              case InCmd::AppendAnim:
              case InCmd::WorldspaceBlend:
              case InCmd::MatchBlend:
-@@ -10714,7 +11008,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10714,7 +11021,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                      "\" in " + a.name;
                      return false;
                  }
@@ -601486,7 +601505,7 @@ index bdb0c90..561f276 100644
                             : (ic.kind == InCmd::Match)      ? AnimCmd::Match
                             : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
                             : (ic.kind == InCmd::WorldspaceBlend)
-@@ -10722,6 +11022,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10722,6 +11035,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
                                                             : AnimCmd::AppendAnim;
                  cmd.matchPre = ic.matchPre;
@@ -601495,7 +601514,7 @@ index bdb0c90..561f276 100644
                  cmd.matchPost = ic.matchPost;
                  cmd.worldLoops = ic.worldLoops;
                  cmd.motiontype = ic.motiontype;
-@@ -11161,7 +11463,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11161,7 +11476,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // resulting replacebone chains are flattened before any vertex is remapped
      // (reference: after RealignBones)
      ExpandLodBoneCollapses(ctx);
@@ -601504,7 +601523,7 @@ index bdb0c90..561f276 100644
  
      { PULSE_TIME_PASS("RemapVertices"); RemapVertices(ctx); }
      if (!input.bboxMeshes.empty()) {
-@@ -11256,7 +11558,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11256,7 +11571,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // (RemapVertexAnimations, GenerateVertexAveragedAttachments, CullFlex) has
      // to have had its say first. What follows only ever takes min/max over all
      // vertices, which duplication cannot change.
@@ -601513,7 +601532,7 @@ index bdb0c90..561f276 100644
  
      { PULSE_TIME_PASS("SetupHitBoxes"); if (!SetupHitBoxes(ctx, err)) return false; }
      { PULSE_TIME_PASS("CompressAnimations"); CompressAnimations(ctx); }
-@@ -11575,6 +11877,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11575,6 +11890,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          return false;
      }
      out.numskinref = nummaterials;

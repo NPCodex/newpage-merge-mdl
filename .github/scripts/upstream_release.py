@@ -253,7 +253,7 @@ def prepare(args):
         'Includes checked body/skin capacity, synchronized global clamping, local-hierarchy retention, DMX corner validation and opt-in concave collision decomposition. '
         'Includes model-scoped material merging, meshopt glTF decoding and static unskinned GPU instance expansion. '
         'see RESEARCH.md for measured performance and validation scope.\n\n'
-        'Includes ordered AppID/VPK resource mounting, direct Draco glTF import, '
+        'Fixes overly strict bodygroup validation that blocked complete Hair QCs. Includes ordered AppID/VPK resource mounting, direct Draco glTF import, '
         'sampled scale/morph-weight vertex animation with a GMod Lua playback helper, '
         'per-bone ragdoll decomposition, expanded reference differentials, actual GMod '
         'geometry/LOD/facial/physics checks and phase/memory benchmark reports. '

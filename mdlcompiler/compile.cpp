@@ -10691,12 +10691,19 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
             return false;
         }
         const size_t choices = std::max<size_t>(1, bp.models.size());
-        if (choices > 1 && (bodypartBase > INT32_MAX || bodypartBase > (static_cast<uint64_t>(INT32_MAX) + 1) / choices)) {
+        if (choices > 1 && bodypartBase > INT32_MAX) {
             if (err) *err = "bodygroup combination count exceeds signed 32-bit capacity at '" + bp.name + "'";
             return false;
         }
         part.base = bodypartBase <= INT32_MAX ? static_cast<int>(bodypartBase) : 1;
-        bodypartBase *= choices;
+        // The MDL stores each group's base, not the total Cartesian product.
+        // A final group may have individually usable choices even when some
+        // combined selections are outside the engine's nonnegative body range.
+        const int64_t previousBase = bodypartBase;
+        if (choices > 1) bodypartBase *= choices;
+        if (previousBase <= static_cast<int64_t>(INT32_MAX) + 1 &&
+            bodypartBase > static_cast<int64_t>(INT32_MAX) + 1)
+            std::fprintf(stderr, "warning: some combined bodygroup selections are outside the nonnegative body range; preserving valid MDL bases\n");
         for (const auto& im : bp.models) {
             Model model;
             model.name = im.source ? im.name : "blank";
@@ -10734,9 +10741,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
             }
             if (nummodels == 1) continue; // a fixed part has no selection bit
             const int cur = (preset.value / bp->base) % nummodels;
-            preset.value = preset.value - cur * bp->base + ch.second * bp->base;
+            const int64_t value = static_cast<int64_t>(preset.value) - static_cast<int64_t>(cur) * bp->base + static_cast<int64_t>(ch.second) * bp->base;
             const int curMask = (preset.mask / bp->base) % nummodels;
-            preset.mask = preset.mask - curMask * bp->base + bp->base;
+            const int64_t mask = static_cast<int64_t>(preset.mask) - static_cast<int64_t>(curMask) * bp->base + bp->base;
+            if (value > INT32_MAX || mask > INT32_MAX) {
+                if (err) *err = "$modelgrouppreset selection exceeds signed 32-bit capacity: " + ip.name;
+                return false;
+            }
+            preset.value = static_cast<int>(value);
+            preset.mask = static_cast<int>(mask);
         }
         out.bodygrouppresets.push_back(std::move(preset));
     }

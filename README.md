@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.4
+# NewPageMergeMDL v1.2.5
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.4**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.5**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -10,6 +10,10 @@
 
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
+
+## v1.2.5：Hair QC 编译修复
+
+修正误拒绝有效 bodygroup 基数的检查；增加最终组合乘积与预设整数检查回归，当前共 128 项兼容测试。
 
 ## v1.2.4：七项改进
 
@@ -21,7 +25,7 @@
 - **游戏实测**：GMod 验证 Alyx 加载、表情/眼睑、强制 LOD；自制样例验证顶点动画、双物理体质量和地面碰撞。白色材质覆盖用于几何检查，未认证用户材质的全部着色效果。
 - **性能诊断**：`-perfjson` 报告加载/编译/写入耗时和峰值工作集；生产模型各三次隔离编译并检查输出 SHA256 一致。
 
-当前 **127 项兼容回归、16 项自动化测试**。参数、实测范围和复现方法见 [VALIDATION.md](VALIDATION.md)。
+当前 **128 项兼容回归、16 项自动化测试**。参数、实测范围和复现方法见 [VALIDATION.md](VALIDATION.md)。
 
 ## 原版 PulseModel 功能
 
@@ -75,9 +79,9 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 ### 本项目的工具与维护功能
 
-- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.4** 版本号；彩色启动横幅，重定向日志保持纯文本。
+- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.5** 版本号；彩色启动横幅，重定向日志保持纯文本。
 - 自动拉取 PulseModel、套用维护补丁，完成 Windows/Linux 构建与测试后发布 GitHub Release；冲突或检查失败停止发布。CE/++/Neko 的新增闭源功能仍需人工分析。
-- 127 项兼容测试及 16 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
+- 128 项兼容测试及 16 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
 
 ## v1.2.3 缩减未完成项
 
@@ -96,7 +100,7 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 - **DMX**：在法线合并和表情索引前检查位置、法线、UV、balance、speed 的角点索引数量与范围；扩展有限数值检查到 blendweights、balance、speed，输出具体错误原因。
 - **碰撞**：使用 double 累加体积加权质量，防止大 mass bias 产生 NaN；拒绝非正偏置及不可表示的碰撞体积。单刚体 `$collisionmodel` 新增 `$decomposeconcave`，使用已有 VHACD 依赖分解封闭、连通的凹形网格，遵守正值 `$maxconvexpieces`；普通 `$concave` 保持原岛分割行为，v1.2.4 已补齐 ragdoll 分解。
 
-**极限模型的新诊断**：用户提供的 `playermodel_f_compile2_hair.qc` 有 2,774,532,096 种身体组合，在 Shoes 组超出 32 位正值 body 范围，v1.2.2 会正确拒绝；原文件未修改。此前成功编译不代表所有组合可在引擎中正确选择。另取其 Hair1 DMX 作隔离裁剪测试，22307 顶点成功拆为 3 个不超过 10000 顶点的块；Alyx 和 Neko 完整示例继续通过。
+**v1.2.5 修复**：修正完整 Hair QC 被过度严格检查阻止编译的问题。玩家和 NPC 两份原始 QC 均通过编译，分别输出 126 / 124 根骨骼和 572277 个顶点；不修改原始模型。检查实际写入的 bodygroup 基数和预设值，保留诊断。
 
 ## v1.2.1 新增功能与修复
 
@@ -175,7 +179,7 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-127 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 16 项自动发布测试。
+128 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 16 项自动发布测试。
 
 已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。v1.2.4 另完成 GMod 几何、表情/眼睑与 LOD 验证。
 
