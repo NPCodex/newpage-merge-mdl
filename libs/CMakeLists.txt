@@ -18,6 +18,9 @@ add_library(pulse_meshopt STATIC
     meshoptimizer/overdrawoptimizer.cpp
     meshoptimizer/allocator.cpp
     meshoptimizer/simplifier.cpp
+    meshoptimizer/vertexcodec.cpp
+    meshoptimizer/indexcodec.cpp
+    meshoptimizer/vertexfilter.cpp
 )
 target_include_directories(pulse_meshopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/meshoptimizer)
 

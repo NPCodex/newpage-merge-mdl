@@ -78,7 +78,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 104 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 112 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -198,7 +198,7 @@ as MDL bone TRS and fails explicitly; bake it into vertex animation first.
 
 Unimplemented or unverified: complete historical source-clamp
 algorithm parity, all scene formats/complex rigs, animated morph weights/mesh
-swaps, compressed/instanced glTF, and engine integration. Assimp fallback can
+swaps, Draco-compressed glTF, skinned instancing, and engine integration. Assimp fallback can
 lose glTF STEP/CUBICSPLINE interpolation semantics. No claim of whole-file or
 performance equality is made. PulseModel updates retain these maintained source
 changes through the overlay; Neko reference updates are reviewed manually.
@@ -253,3 +253,11 @@ Body combination capacity is 2^31, with signed nonnegative body values; integer 
 `$collisionmodel file { $decomposeconcave $maxconvexpieces 4 }` opts into VHACD decomposition of closed connected meshes. It uses a 100000-voxel budget, 0.01 volume-error tolerance, depth 10 and the requested positive piece cap. It does not affect ordinary `$concave`, and rejects ragdoll use. Collision mass uses double intermediate arithmetic; nonpositive mass bias or non-finite volume fails. Geometry decomposition is approximate and game physics remains unverified.
 
 The supplied extreme QC now fails at Shoes: 2774532096 body combinations exceed capacity. Its source files are unchanged. Isolated Hair1 geometry passes global clamping, and complete Alyx/Neko examples pass. See RESEARCH.md for tests and remaining work.
+
+## v1.2.3 material merging and glTF extensions
+
+Model-scoped `RenameMat` can merge several material IDs into one name. Vertex and face ranges are regrouped in ascending material order; morph indices and face tags follow the remapping. Vertices are retained rather than welded, preserving normal/UV seams. Other body choices remain private. This does not change top-level `$renamematerial` or `$renametextures` table-renaming semantics.
+
+The fast glTF/GLB/VRM path decodes meshopt compressed buffer views using the bundled meshoptimizer v1.1 codecs. Supported modes: ATTRIBUTES, TRIANGLES, INDICES; filters: NONE, OCTAHEDRAL, QUATERNION, EXPONENTIAL, COLOR. EXPONENTIAL and both index modes have dedicated fixture comparisons; other filters use the dependency decoder but lack dedicated output fixtures. Quantization filters need not reproduce the original floats bit-for-bit. Buffer range, decoded size and stream failures are checked before output.
+
+`EXT_mesh_gpu_instancing` expands unskinned meshes into generated child nodes sharing imported mesh data. Node/ancestor transforms compose with instance translation/rotation/scale. Morph deltas remain attached to each instance. `InNode` includes generated children. Singular scales, zero/non-finite quaternions and malformed accessor types fail explicitly. Generated names avoid collisions; the expanded scene is still subject to the source bone/node limit. Draco, animated scale/morph weights, skinned instances and game validation remain unresolved.

@@ -5,6 +5,7 @@
 #include "pulselimits.h"
 #include "dependencies.h"
 #include "pathcompat.h"
+#include "meshoptimizer.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -14,6 +15,8 @@
 #include <array>
 #include <fstream>
 #include <cstdlib>
+#include <limits>
+#include <set>
 
 namespace pulse::source {
 namespace {
@@ -44,6 +47,33 @@ std::vector<float> Values(const cgltf_accessor* a,int width) {
 const cgltf_accessor* Attribute(const cgltf_attribute* a,size_t count,cgltf_attribute_type type,int set=0) {
     for(size_t k=0;k<count;++k) if(a[k].type==type && a[k].index==set) return a[k].data;
     return nullptr;
+}
+void DecodeMeshopt(cgltf_data* data) {
+    for(size_t b=0;b<data->buffer_views_count;++b) {
+        auto& view=data->buffer_views[b];
+        if(!view.has_meshopt_compression) continue;
+        const auto& c=view.meshopt_compression;
+        if(!c.buffer || !c.buffer->data || c.offset>c.buffer->size || c.size>c.buffer->size-c.offset ||
+           !c.count || !c.stride || c.count>std::numeric_limits<size_t>::max()/c.stride ||
+           c.count*c.stride!=view.size)
+            throw std::runtime_error("invalid meshopt compressed buffer range or size");
+        if(c.mode==cgltf_meshopt_compression_mode_attributes && (c.stride%4 || c.stride>256))
+            throw std::runtime_error("invalid meshopt attribute stride");
+        if(c.mode!=cgltf_meshopt_compression_mode_attributes && c.stride!=2 && c.stride!=4)
+            throw std::runtime_error("invalid meshopt index stride");
+        view.data=data->memory.alloc_func(data->memory.user_data,view.size);
+        if(!view.data) throw std::bad_alloc();
+        const auto* bytes=static_cast<const unsigned char*>(c.buffer->data)+c.offset;
+        int status=-1;
+        if(c.mode==cgltf_meshopt_compression_mode_attributes) status=meshopt_decodeVertexBuffer(view.data,c.count,c.stride,bytes,c.size);
+        else if(c.mode==cgltf_meshopt_compression_mode_triangles) status=meshopt_decodeIndexBuffer(view.data,c.count,c.stride,bytes,c.size);
+        else if(c.mode==cgltf_meshopt_compression_mode_indices) status=meshopt_decodeIndexSequence(view.data,c.count,c.stride,bytes,c.size);
+        if(status) throw std::runtime_error("invalid meshopt compressed stream");
+        if(c.filter==cgltf_meshopt_compression_filter_octahedral) meshopt_decodeFilterOct(view.data,c.count,c.stride);
+        else if(c.filter==cgltf_meshopt_compression_filter_quaternion) meshopt_decodeFilterQuat(view.data,c.count,c.stride);
+        else if(c.filter==cgltf_meshopt_compression_filter_exponential) meshopt_decodeFilterExp(view.data,c.count,c.stride);
+        else if(c.filter==cgltf_meshopt_compression_filter_color) meshopt_decodeFilterColor(view.data,c.count,c.stride);
+    }
 }
 aiVector3D V(const std::vector<float>& x,size_t k) { return {x[k*3],x[k*3+1],x[k*3+2]}; }
 // Evaluate glTF samplers before handing a regular frame grid to the shared
@@ -80,13 +110,14 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
     std::unique_ptr<cgltf_data,decltype(&cgltf_free)> data(raw,cgltf_free);
     if(cgltf_load_buffers(&options,raw,path.c_str())!=cgltf_result_success || cgltf_validate(raw)!=cgltf_result_success)
         throw std::runtime_error("invalid glTF buffers or accessors; compressed extensions may require $NoFastGltf");
-    for(size_t b=0;b<raw->buffer_views_count;++b) if(raw->buffer_views[b].has_meshopt_compression)
-        throw std::runtime_error("meshopt-compressed glTF must be expanded before import");
+    DecodeMeshopt(raw);
     if(!std::isfinite(sampleRate) || sampleRate<=0 || sampleRate>1000) throw std::runtime_error("invalid glTF sample rate");
     auto scene=std::make_shared<aiScene>();
     scene->mRootNode=new aiNode("gltf_scene_root");
     std::map<const cgltf_node*,std::string> names;
     for(size_t i=0;i<raw->nodes_count;++i) names[&raw->nodes[i]]=raw->nodes[i].name?raw->nodes[i].name:"gltf_node_"+std::to_string(i);
+    std::set<std::string> reservedNames;
+    for(const auto& entry:names) reservedNames.insert(entry.second);
     scene->mNumMaterials=unsigned(raw->materials_count+1); scene->mMaterials=new aiMaterial*[scene->mNumMaterials]{};
     for(unsigned i=0;i<scene->mNumMaterials;++i) {
         scene->mMaterials[i]=new aiMaterial(); aiString name(i<raw->materials_count && raw->materials[i].name?raw->materials[i].name:"material");
@@ -102,7 +133,7 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
             out->mNumMeshes=unsigned(n->mesh->primitives_count); out->mMeshes=new unsigned[out->mNumMeshes]{};
             for(unsigned p=0;p<out->mNumMeshes;++p) {
                 auto& primitive=n->mesh->primitives[p];
-                if(primitive.has_draco_mesh_compression || n->has_mesh_gpu_instancing) throw std::runtime_error("compressed/instanced glTF requires an expanded source");
+                if(primitive.has_draco_mesh_compression) throw std::runtime_error("Draco-compressed glTF requires an expanded source");
                 auto position=Attribute(primitive.attributes,primitive.attributes_count,cgltf_attribute_type_position);
                 if(!position) throw std::runtime_error("glTF mesh has no POSITION");
                 std::unique_ptr<aiMesh> mesh(new aiMesh()); out->mMeshes[p]=unsigned(meshes.size());
@@ -157,6 +188,48 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
                 }
                 meshes.push_back(std::move(mesh));
             }
+        }
+        if(n->has_mesh_gpu_instancing) {
+            if(n->skin || !n->mesh) throw std::runtime_error("glTF instancing requires an unskinned mesh");
+            const auto& inst=n->mesh_gpu_instancing;
+            size_t count=inst.attributes[0].data->count;
+            if(count>size_t(limits::kMaxSrcBones)) throw std::runtime_error("glTF instance count exceeds source bone limit");
+            std::vector<float> translation,rotation,scale;
+            for(size_t k=0;k<inst.attributes_count;++k) {
+                const auto& attr=inst.attributes[k];
+                const std::string name=attr.name?attr.name:"";
+                int width=name=="ROTATION"?4:3;
+                if(name!="TRANSLATION" && name!="ROTATION" && name!="SCALE") continue;
+                if(attr.data->type!=(width==4?cgltf_type_vec4:cgltf_type_vec3)) throw std::runtime_error("invalid glTF instance attribute type");
+                auto values=Values(attr.data,width);
+                for(float v:values) if(!std::isfinite(v)) throw std::runtime_error("non-finite glTF instance transform");
+                if(name=="TRANSLATION") translation=std::move(values);
+                else if(name=="ROTATION") rotation=std::move(values);
+                else scale=std::move(values);
+            }
+            const unsigned previous=out->mNumChildren;
+            auto children=new aiNode*[previous+count]{};
+            if(previous) std::copy(out->mChildren,out->mChildren+previous,children);
+            delete[] out->mChildren;out->mChildren=children;out->mNumChildren=unsigned(previous+count);
+            for(size_t i=0;i<count;++i) {
+                std::string instanceName=names.at(n)+"_instance_"+std::to_string(i);
+                while(!reservedNames.insert(instanceName).second) instanceName+="_";
+                auto child=out->mChildren[previous+i]=new aiNode(instanceName);
+                child->mParent=out.get();
+                aiVector3D p=translation.empty()?aiVector3D():V(translation,i);
+                aiVector3D s=scale.empty()?aiVector3D(1,1,1):V(scale,i);
+                aiQuaternion q;
+                if(!rotation.empty()) {
+                    q=aiQuaternion(rotation[i*4+3],rotation[i*4],rotation[i*4+1],rotation[i*4+2]);
+                    if(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w<1e-12f) throw std::runtime_error("zero glTF instance rotation quaternion");
+                    q.Normalize();
+                }
+                if(s.x==0 || s.y==0 || s.z==0) throw std::runtime_error("singular glTF instance scale");
+                child->mTransformation=aiMatrix4x4(s,q,p);
+                child->mNumMeshes=out->mNumMeshes;child->mMeshes=new unsigned[child->mNumMeshes];
+                std::copy(out->mMeshes,out->mMeshes+out->mNumMeshes,child->mMeshes);
+            }
+            delete[] out->mMeshes;out->mMeshes=nullptr;out->mNumMeshes=0;
         }
         return out.release();
     };

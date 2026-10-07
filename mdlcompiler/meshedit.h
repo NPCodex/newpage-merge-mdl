@@ -17,6 +17,9 @@
 
 namespace pulse::source {
 
+// Regroup renamed materials, preserving vertex identity and morph deltas.
+void RemapMaterials(Source& src, const std::vector<int>& materialMap);
+
 // $exceptionlist <exclusive|inclusive> { <name> ... } - a DmeMesh name filter
 // applied as the DMX loads, so an excluded mesh contributes no geometry, no
 // materials and no delta shapes. `inclusive` (the default) keeps only what is

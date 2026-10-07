@@ -15,6 +15,112 @@ COMPILER = str(Path(sys.argv.pop(1)).resolve())
 
 
 class Compatibility(unittest.TestCase):
+    def test_merged_materials_keep_geometry_flexes_and_lods(self):
+        import json,copy
+        doc=json.loads(scene_bytes());doc['materials'].append({'name':'Second'})
+        doc['meshes'].append(copy.deepcopy(doc['meshes'][0]));doc['meshes'][1]['primitives'][0]['material']=1
+        doc['nodes'][2]['mesh']=1
+        self.write('scene.gltf',json.dumps(doc))
+        self.scene_qc('$modelname merged\n$body m scene.gltf RenameMat Original Shared RenameMat Second Shared {\nflex Smile\nflexcontroller test strength\n%Smile = strength\n}\n$lod 10 { }\n')
+        d,flex=self.first_mesh_flex('merged');self.assertEqual(len(flex),6)
+        self.assertEqual(struct.unpack_from('<i',d,204)[0],1)
+        body=struct.unpack_from('<i',d,236)[0];model=body+struct.unpack_from('<i',d,body+12)[0]
+        self.assertEqual(struct.unpack_from('<i',d,model+72)[0],1)
+        self.assertEqual(struct.unpack_from('<i',d,model+80)[0],6)
+        self.assertEqual(sorted(struct.unpack_from('<H',d,v)[0] for v in flex),list(range(6)))
+        vvd=(self.root/'models/merged.vvd').read_bytes();start=struct.unpack_from('<i',vvd,56)[0]
+        points=[struct.unpack_from('<3f',vvd,start+i*48+16) for i in range(6)]
+        self.assertAlmostEqual(min(p[0] for p in points),1);self.assertAlmostEqual(max(p[0] for p in points),11)
+        for ext in ('dx80','dx90'):
+            vtx=(self.root/f'models/merged.{ext}.vtx').read_bytes();bp=struct.unpack_from('<i',vtx,32)[0]
+            model=bp+struct.unpack_from('<i',vtx,bp+4)[0];lods,off=struct.unpack_from('<2i',vtx,model)
+            self.assertEqual(lods,2)
+            for i in range(lods):self.assertEqual(struct.unpack_from('<i',vtx,model+off+i*12)[0],1)
+
+    def test_material_merge_is_scoped_to_one_body_choice(self):
+        self.scene_fixture()
+        self.scene_qc('$modelname scoped\n$bodygroup heads {\nstudio scene.gltf RenameMat Original Shared\nstudio scene.gltf\n}\n')
+        d=self.mdl('scoped');self.assertEqual(struct.unpack_from('<i',d,204)[0],2)
+        self.assertIn(b'Shared\0',d);self.assertIn(b'Original\0',d)
+
+    def test_meshopt_compression_matches_plain_geometry_and_flex(self):
+        fixture=Path(__file__).parent/'fixtures'
+        baseline=None
+        for kind in ('plain','triangles','indices'):
+            self.write('scene.gltf',(fixture/f'meshopt-{kind}.gltf').read_text())
+            self.scene_qc('$modelname packed\n$body m scene.gltf { flex Smile\nflexcontroller test strength\n%Smile = strength\n}\n$sequence idle scene.gltf\n')
+            d,flex=self.first_mesh_flex('packed')
+            vvd=(self.root/'models/packed.vvd').read_bytes();count=struct.unpack_from('<i',vvd,16)[0]
+            start=struct.unpack_from('<i',vvd,56)[0]
+            result=([struct.unpack_from('<12f',vvd,start+i*48) for i in range(count)],[d[v:v+16] for v in flex],self.animation_poses('packed','idle'))
+            if baseline is None:baseline=result
+            else:
+                self.assertEqual(len(result[0]),len(baseline[0]));self.assertEqual(result[1:],baseline[1:])
+                # EXPONENTIAL preprocessing intentionally quantizes floats.
+                for a,b in zip(result[0],baseline[0]):
+                    for x,y in zip(a,b):self.assertAlmostEqual(x,y,places=6)
+
+    def test_corrupt_meshopt_stream_keeps_existing_output(self):
+        import json,base64
+        fixture=Path(__file__).parent/'fixtures'
+        doc=json.loads((fixture/'meshopt-triangles.gltf').read_text())
+        self.write('scene.gltf',json.dumps(doc));self.scene_qc('$modelname packed\n$body m scene.gltf\n');old=self.mdl('packed')
+        data=bytearray(base64.b64decode(doc['buffers'][1]['uri'].split(',')[1]));data[0]=0
+        doc['buffers'][1]['uri']='data:application/octet-stream;base64,'+base64.b64encode(data).decode()
+        self.write('scene.gltf',json.dumps(doc))
+        self.assertIn('invalid meshopt compressed stream',self.scene_qc('$modelname packed\n$body m scene.gltf\n',success=False))
+        self.assertEqual(self.mdl('packed'),old)
+
+    def instance_fixture(self,rotation=None,scale=None):
+        import json,base64
+        doc=json.loads(scene_bytes());doc['animations']=[];doc['nodes'][0]['children']=[1]
+        payload=bytearray(base64.b64decode(doc['buffers'][0]['uri'].split(',')[1]))
+        def attribute(values,width):
+            offset=len(payload);payload.extend(struct.pack('<'+'f'*len(values),*values))
+            doc['bufferViews'].append({'buffer':0,'byteOffset':offset,'byteLength':len(values)*4})
+            doc['accessors'].append({'bufferView':len(doc['bufferViews'])-1,'componentType':5126,'count':2,'type':'VEC4' if width==4 else 'VEC3'})
+            return len(doc['accessors'])-1
+        attrs={'TRANSLATION':attribute([0,0,0,10,0,0],3)}
+        if rotation is not None:attrs['ROTATION']=attribute(rotation,4)
+        if scale is not None:attrs['SCALE']=attribute(scale,3)
+        doc['nodes'][1]['extensions']={'EXT_mesh_gpu_instancing':{'attributes':attrs}}
+        doc['extensionsUsed']=['EXT_mesh_gpu_instancing'];doc['extensionsRequired']=doc['extensionsUsed']
+        doc['buffers'][0]={'byteLength':len(payload),'uri':'data:application/octet-stream;base64,'+base64.b64encode(payload).decode()}
+        self.write('scene.gltf',json.dumps(doc))
+
+    def test_static_gpu_instances_expand_transforms_and_morphs(self):
+        self.instance_fixture(scale=[1,1,1,2,1,1])
+        self.scene_qc('$modelname instanced\n$body m scene.gltf InNode MeshA { flex Smile\nflexcontroller test strength\n%Smile = strength\n}\n')
+        d,flex=self.first_mesh_flex('instanced');self.assertEqual(len(flex),6)
+        vvd=(self.root/'models/instanced.vvd').read_bytes();self.assertEqual(struct.unpack_from('<i',vvd,16)[0],6)
+        start=struct.unpack_from('<i',vvd,56)[0]
+        points=sorted(round(struct.unpack_from('<f',vvd,start+i*48+16)[0],4) for i in range(6))
+        self.assertEqual(points,[1,2,3,10,12,14])
+
+    def test_invalid_instance_rotation_is_rejected(self):
+        self.instance_fixture(rotation=[0,0,0,0,0,0,0,1])
+        result=self.scene_qc('$modelname invalid\n$body m scene.gltf\n',success=False)
+        self.assertIn('zero glTF instance rotation',result);self.assertFalse((self.root/'models/invalid.mdl').exists())
+
+    def test_static_instances_preserve_rotation_and_mirrored_winding(self):
+        import math
+        h=math.sqrt(.5)
+        self.instance_fixture(rotation=[0,0,h,h,0,0,0,1],scale=[1,1,1,-1,1,1])
+        self.scene_qc('$modelname rotated\n$UpAxis z gltf\n$body m scene.gltf InNode MeshA\n')
+        vvd=(self.root/'models/rotated.vvd').read_bytes();start=struct.unpack_from('<i',vvd,56)[0]
+        points=sorted(tuple(round(x,4) for x in struct.unpack_from('<3f',vvd,start+i*48+16)) for i in range(6))
+        self.assertEqual(points,[(1,0,0),(2,-1,0),(2,1,0),(11,0,0),(12,1,0),(13,0,0)])
+
+    def test_meshopt_range_errors_are_reported_before_output(self):
+        import json
+        fixture=Path(__file__).parent/'fixtures'
+        for field,value in [('byteStride',0),('byteOffset',999999)]:
+            doc=json.loads((fixture/'meshopt-triangles.gltf').read_text())
+            doc['bufferViews'][0]['extensions']['EXT_meshopt_compression'][field]=value
+            self.write('scene.gltf',json.dumps(doc))
+            self.scene_qc('$modelname bad\n$body m scene.gltf\n',success=False)
+            self.assertFalse((self.root/'models/bad.mdl').exists())
+
     def scene_qc(self,text,*args,success=True):
         qc=self.write('scene.qc',text)
         result=subprocess.run([COMPILER,str(qc),'-game',str(self.root),*args],capture_output=True,text=True,errors='replace')

@@ -1,3 +1,11 @@
+# v1.2.3 completed compatibility gaps
+
+Three targeted gaps now have implementations: model-scoped many-to-one material merging with morph/face remapping; meshopt buffer-view decoding; static unskinned GPU instance expansion. 112 compatibility tests and 16 automation tests include merged-material LOD/flex output, plain/compressed geometry and UV comparisons, decompiled animation, corrupt streams, invalid ranges, transformed/mirrored instances and zero-quaternion rejection.
+
+The meshopt fixtures are self-authored, encoded with meshoptimizer v1.1. EXPONENTIAL introduces small float quantization; comparisons use numerical tolerance. OCTAHEDRAL/QUATERNION/COLOR are wired to the dependency decoders but not individually certified. Draco, AppID, skinned instances, animated scale/weights and complex rig/game parity remain open. This release removes the material-merge blocker and narrows the glTF limitations; it does not claim all previous research topics are complete.
+
+---
+
 # v1.2.2 六项改进与验证
 
 | 课题 | 本轮完成 | 验证 |

@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..47dca02 100644
+index fed7eaf..afd9e28 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..47dca02 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.2 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.3 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -34,10 +34,20 @@ index fed7eaf..47dca02 100644
  
  # Layout (kept shallow):
 diff --git a/libs/CMakeLists.txt b/libs/CMakeLists.txt
-index 43b2a1d..3db0214 100644
+index 43b2a1d..514e13f 100644
 --- a/libs/CMakeLists.txt
 +++ b/libs/CMakeLists.txt
-@@ -48,6 +48,20 @@ add_library(pulse_ufbx STATIC
+@@ -18,6 +18,9 @@ add_library(pulse_meshopt STATIC
+     meshoptimizer/overdrawoptimizer.cpp
+     meshoptimizer/allocator.cpp
+     meshoptimizer/simplifier.cpp
++    meshoptimizer/vertexcodec.cpp
++    meshoptimizer/indexcodec.cpp
++    meshoptimizer/vertexfilter.cpp
+ )
+ target_include_directories(pulse_meshopt PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/meshoptimizer)
+ 
+@@ -48,6 +51,20 @@ add_library(pulse_ufbx STATIC
  )
  target_include_directories(pulse_ufbx PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/ufbx)
  
@@ -58,7 +68,7 @@ index 43b2a1d..3db0214 100644
  # DMX reader (clean-room port of Datamodel.NET's format logic).
  add_library(pulse_dmx STATIC
      dmx/dmx.cpp
-@@ -63,3 +77,7 @@ add_library(pulse_drlibs STATIC
+@@ -63,3 +80,7 @@ add_library(pulse_drlibs STATIC
      drlibs/drlibs_impl.c
  )
  target_include_directories(pulse_drlibs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/drlibs)
@@ -593634,6 +593644,4153 @@ index b75eb2c..ccfdc54 100644
  inline constexpr int32_t STUDIO_LOCAL = 0x0200;
  inline constexpr int32_t STUDIO_HIDDEN = 0x0400;
  inline constexpr int32_t STUDIO_OVERRIDE = 0x0800;
+diff --git a/libs/meshoptimizer/LICENSE.md b/libs/meshoptimizer/LICENSE.md
+new file mode 100644
+index 0000000..468827f
+--- /dev/null
++++ b/libs/meshoptimizer/LICENSE.md
+@@ -0,0 +1,21 @@
++MIT License
++
++Copyright (c) 2016-2026 Arseny Kapoulkine
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff --git a/libs/meshoptimizer/SOURCE.md b/libs/meshoptimizer/SOURCE.md
+new file mode 100644
+index 0000000..0818e38
+--- /dev/null
++++ b/libs/meshoptimizer/SOURCE.md
+@@ -0,0 +1,10 @@
++# meshoptimizer codec provenance
++
++The codec and filter sources are unmodified files from the official meshoptimizer v1.1 tag: https://github.com/zeux/meshoptimizer/tree/v1.1/src . The existing optimizer and header remain at their vendored v1.1 versions. License: MIT, see LICENSE.md.
++
++SHA256 of downloaded files:
++
++- `vertexcodec.cpp`: `6e76ae9946f6a550f5a357d1a365e8abad4489cea533b6973e054b4fc8a85f6b`
++- `indexcodec.cpp`: `f98c84b7ee1bc15b075fdba430b8c2d69b21ff9ff7e782b9ff84a6db8f8c8e19`
++- `vertexfilter.cpp`: `a773dcdc20bb4401a737d7cb0a0d047311a819e1efc55bfc0d1fb6e62c88d574`
++- `LICENSE.md`: `f03037ca7bad1e3eb7f4a63fa6084a8baabd5ba30d3c239a9a7f35705d873e26`
+diff --git a/libs/meshoptimizer/indexcodec.cpp b/libs/meshoptimizer/indexcodec.cpp
+new file mode 100644
+index 0000000..8e6b3a4
+--- /dev/null
++++ b/libs/meshoptimizer/indexcodec.cpp
+@@ -0,0 +1,684 @@
++// This file is part of meshoptimizer library; see meshoptimizer.h for version/license details
++#include "meshoptimizer.h"
++
++#include <assert.h>
++#include <string.h>
++
++// This work is based on:
++// Fabian Giesen. Simple lossless index buffer compression & follow-up. 2013
++// Conor Stokes. Vertex Cache Optimised Index Buffer Compression. 2014
++namespace meshopt
++{
++
++const unsigned char kIndexHeader = 0xe0;
++const unsigned char kSequenceHeader = 0xd0;
++
++static int gEncodeIndexVersion = 1;
++const int kDecodeIndexVersion = 1;
++
++typedef unsigned int VertexFifo[16];
++typedef unsigned int EdgeFifo[16][2];
++
++static const unsigned char kCodeAuxEncodingTable[16] = {
++    0x00, 0x76, 0x87, 0x56, 0x67, 0x78, 0xa9, 0x86, 0x65, 0x89, 0x68, 0x98, 0x01, 0x69,
++    0, 0, // last two entries aren't used for encoding
++};
++
++static int rotateTriangle(unsigned int a, unsigned int b, unsigned int c, unsigned int next)
++{
++	(void)a;
++
++	return (b == next) ? 1 : (c == next ? 2 : 0);
++}
++
++static int getEdgeFifo(EdgeFifo fifo, unsigned int a, unsigned int b, unsigned int c, size_t offset)
++{
++	for (int i = 0; i < 16; ++i)
++	{
++		size_t index = (offset - 1 - i) & 15;
++
++		unsigned int e0 = fifo[index][0];
++		unsigned int e1 = fifo[index][1];
++
++		if (e0 == a && e1 == b)
++			return (i << 2) | 0;
++		if (e0 == b && e1 == c)
++			return (i << 2) | 1;
++		if (e0 == c && e1 == a)
++			return (i << 2) | 2;
++	}
++
++	return -1;
++}
++
++static void pushEdgeFifo(EdgeFifo fifo, unsigned int a, unsigned int b, size_t& offset)
++{
++	fifo[offset][0] = a;
++	fifo[offset][1] = b;
++	offset = (offset + 1) & 15;
++}
++
++static int getVertexFifo(VertexFifo fifo, unsigned int v, size_t offset)
++{
++	for (int i = 0; i < 16; ++i)
++	{
++		size_t index = (offset - 1 - i) & 15;
++
++		if (fifo[index] == v)
++			return i;
++	}
++
++	return -1;
++}
++
++static void pushVertexFifo(VertexFifo fifo, unsigned int v, size_t& offset, int cond = 1)
++{
++	fifo[offset] = v;
++	offset = (offset + cond) & 15;
++}
++
++static void encodeVByte(unsigned char*& data, unsigned int v)
++{
++	// encode 32-bit value in up to 5 7-bit groups
++	do
++	{
++		*data++ = (v & 127) | (v > 127 ? 128 : 0);
++		v >>= 7;
++	} while (v);
++}
++
++static unsigned int decodeVByte(const unsigned char*& data)
++{
++	unsigned char lead = *data++;
++
++	// fast path: single byte
++	if (lead < 128)
++		return lead;
++
++	// slow path: up to 4 extra bytes
++	// note that this loop always terminates, which is important for malformed data
++	unsigned int result = lead & 127;
++	unsigned int shift = 7;
++
++	for (int i = 0; i < 4; ++i)
++	{
++		unsigned char group = *data++;
++		result |= unsigned(group & 127) << shift;
++		shift += 7;
++
++		if (group < 128)
++			break;
++	}
++
++	return result;
++}
++
++static void encodeIndex(unsigned char*& data, unsigned int index, unsigned int last)
++{
++	unsigned int d = index - last;
++	unsigned int v = (d << 1) ^ (int(d) >> 31);
++
++	encodeVByte(data, v);
++}
++
++static unsigned int decodeIndex(const unsigned char*& data, unsigned int last)
++{
++	unsigned int v = decodeVByte(data);
++	unsigned int d = (v >> 1) ^ -int(v & 1);
++
++	return last + d;
++}
++
++static int getCodeAuxIndex(unsigned char v, const unsigned char* table)
++{
++	for (int i = 0; i < 16; ++i)
++		if (table[i] == v)
++			return i;
++
++	return -1;
++}
++
++static void writeTriangle(void* destination, size_t offset, size_t index_size, unsigned int a, unsigned int b, unsigned int c)
++{
++	if (index_size == 2)
++	{
++		static_cast<unsigned short*>(destination)[offset + 0] = (unsigned short)(a);
++		static_cast<unsigned short*>(destination)[offset + 1] = (unsigned short)(b);
++		static_cast<unsigned short*>(destination)[offset + 2] = (unsigned short)(c);
++	}
++	else
++	{
++		static_cast<unsigned int*>(destination)[offset + 0] = a;
++		static_cast<unsigned int*>(destination)[offset + 1] = b;
++		static_cast<unsigned int*>(destination)[offset + 2] = c;
++	}
++}
++
++} // namespace meshopt
++
++size_t meshopt_encodeIndexBuffer(unsigned char* buffer, size_t buffer_size, const unsigned int* indices, size_t index_count)
++{
++	using namespace meshopt;
++
++	assert(index_count % 3 == 0);
++
++	// the minimum valid encoding is header, 1 byte per triangle and a 16-byte codeaux table
++	if (buffer_size < 1 + index_count / 3 + 16)
++		return 0;
++
++	int version = gEncodeIndexVersion;
++
++	buffer[0] = (unsigned char)(kIndexHeader | version);
++
++	EdgeFifo edgefifo;
++	memset(edgefifo, -1, sizeof(edgefifo));
++
++	VertexFifo vertexfifo;
++	memset(vertexfifo, -1, sizeof(vertexfifo));
++
++	size_t edgefifooffset = 0;
++	size_t vertexfifooffset = 0;
++
++	unsigned int next = 0;
++	unsigned int last = 0;
++
++	unsigned char* code = buffer + 1;
++	unsigned char* data = code + index_count / 3;
++	unsigned char* data_safe_end = buffer + buffer_size - 16;
++
++	int fecmax = version >= 1 ? 13 : 15;
++
++	static const int rotations[] = {0, 1, 2, 0, 1};
++
++	// use static encoding table; it's possible to pack the result and then build an optimal table and repack
++	// for now we keep it simple and use the table that has been generated based on symbol frequency on a training mesh set
++	const unsigned char* codeaux_table = kCodeAuxEncodingTable;
++
++	for (size_t i = 0; i < index_count; i += 3)
++	{
++		// make sure we have enough space to write a triangle
++		// each triangle writes at most 16 bytes: 1b for codeaux and 5b for each free index
++		// after this we can be sure we can write without extra bounds checks
++		if (data > data_safe_end)
++			return 0;
++
++		int fer = getEdgeFifo(edgefifo, indices[i + 0], indices[i + 1], indices[i + 2], edgefifooffset);
++
++		if (fer >= 0 && (fer >> 2) < 15)
++		{
++			// note: getEdgeFifo implicitly rotates triangles by matching a/b to existing edge
++			const int* order = rotations + (fer & 3);
++
++			unsigned int a = indices[i + order[0]], b = indices[i + order[1]], c = indices[i + order[2]];
++
++			// encode edge index and vertex fifo index, next or free index
++			int fe = fer >> 2;
++			int fc = getVertexFifo(vertexfifo, c, vertexfifooffset);
++
++			int fec = (fc >= 1 && fc < fecmax) ? fc : (c == next ? (next++, 0) : 15);
++
++			if (fec == 15 && version >= 1)
++			{
++				// encode last-1 and last+1 to optimize strip-like sequences
++				if (c + 1 == last)
++					fec = 13, last = c;
++				if (c == last + 1)
++					fec = 14, last = c;
++			}
++
++			*code++ = (unsigned char)((fe << 4) | fec);
++
++			// note that we need to update the last index since free indices are delta-encoded
++			if (fec == 15)
++				encodeIndex(data, c, last), last = c;
++
++			// we only need to push third vertex since first two are likely already in the vertex fifo
++			if (fec == 0 || fec >= fecmax)
++				pushVertexFifo(vertexfifo, c, vertexfifooffset);
++
++			// we only need to push two new edges to edge fifo since the third one is already there
++			pushEdgeFifo(edgefifo, c, b, edgefifooffset);
++			pushEdgeFifo(edgefifo, a, c, edgefifooffset);
++		}
++		else
++		{
++			int rotation = rotateTriangle(indices[i + 0], indices[i + 1], indices[i + 2], next);
++			const int* order = rotations + rotation;
++
++			unsigned int a = indices[i + order[0]], b = indices[i + order[1]], c = indices[i + order[2]];
++
++			// if a/b/c are 0/1/2, we emit a reset code
++			bool reset = false;
++
++			if (a == 0 && b == 1 && c == 2 && next > 0 && version >= 1)
++			{
++				reset = true;
++				next = 0;
++
++				// reset vertex fifo to make sure we don't accidentally reference vertices from that in the future
++				// this makes sure next continues to get incremented instead of being stuck
++				memset(vertexfifo, -1, sizeof(vertexfifo));
++			}
++
++			int fb = getVertexFifo(vertexfifo, b, vertexfifooffset);
++			int fc = getVertexFifo(vertexfifo, c, vertexfifooffset);
++
++			// after rotation, a is almost always equal to next, so we don't waste bits on FIFO encoding for a
++			// note: decoder implicitly assumes that if feb=fec=0, then fea=0 (reset code); this is enforced by rotation
++			int fea = (a == next) ? (next++, 0) : 15;
++			int feb = (fb >= 0 && fb < 14) ? fb + 1 : (b == next ? (next++, 0) : 15);
++			int fec = (fc >= 0 && fc < 14) ? fc + 1 : (c == next ? (next++, 0) : 15);
++
++			// we encode feb & fec in 4 bits using a table if possible, and as a full byte otherwise
++			unsigned char codeaux = (unsigned char)((feb << 4) | fec);
++			int codeauxindex = getCodeAuxIndex(codeaux, codeaux_table);
++
++			// <14 encodes an index into codeaux table, 14 encodes fea=0, 15 encodes fea=15
++			if (fea == 0 && codeauxindex >= 0 && codeauxindex < 14 && !reset)
++			{
++				*code++ = (unsigned char)((15 << 4) | codeauxindex);
++			}
++			else
++			{
++				*code++ = (unsigned char)((15 << 4) | 14 | fea);
++				*data++ = codeaux;
++			}
++
++			// note that we need to update the last index since free indices are delta-encoded
++			if (fea == 15)
++				encodeIndex(data, a, last), last = a;
++
++			if (feb == 15)
++				encodeIndex(data, b, last), last = b;
++
++			if (fec == 15)
++				encodeIndex(data, c, last), last = c;
++
++			// only push vertices that weren't already in fifo
++			if (fea == 0 || fea == 15)
++				pushVertexFifo(vertexfifo, a, vertexfifooffset);
++
++			if (feb == 0 || feb == 15)
++				pushVertexFifo(vertexfifo, b, vertexfifooffset);
++
++			if (fec == 0 || fec == 15)
++				pushVertexFifo(vertexfifo, c, vertexfifooffset);
++
++			// all three edges aren't in the fifo; pushing all of them is important so that we can match them for later triangles
++			pushEdgeFifo(edgefifo, b, a, edgefifooffset);
++			pushEdgeFifo(edgefifo, c, b, edgefifooffset);
++			pushEdgeFifo(edgefifo, a, c, edgefifooffset);
++		}
++	}
++
++	// make sure we have enough space to write codeaux table
++	if (data > data_safe_end)
++		return 0;
++
++	// add codeaux encoding table to the end of the stream; this is used for decoding codeaux *and* as padding
++	// we need padding for decoding to be able to assume that each triangle is encoded as <= 16 bytes of extra data
++	// this is enough space for aux byte + 5 bytes per varint index which is the absolute worst case for any input
++	for (size_t i = 0; i < 16; ++i)
++	{
++		// decoder assumes that table entries never refer to separately encoded indices
++		assert((codeaux_table[i] & 0xf) != 0xf && (codeaux_table[i] >> 4) != 0xf);
++
++		*data++ = codeaux_table[i];
++	}
++
++	// since we encode restarts as codeaux without a table reference, we need to make sure 00 is encoded as a table reference
++	assert(codeaux_table[0] == 0);
++
++	assert(data >= buffer + index_count / 3 + 16);
++	assert(data <= buffer + buffer_size);
++
++	return data - buffer;
++}
++
++size_t meshopt_encodeIndexBufferBound(size_t index_count, size_t vertex_count)
++{
++	assert(index_count % 3 == 0);
++
++	// compute number of bits required for each index
++	unsigned int vertex_bits = 1;
++
++	while (vertex_bits < 32 && vertex_count > size_t(1) << vertex_bits)
++		vertex_bits++;
++
++	// worst-case encoding is 2 header bytes + 3 varint-7 encoded index deltas
++	unsigned int vertex_groups = (vertex_bits + 1 + 6) / 7;
++
++	return 1 + (index_count / 3) * (2 + 3 * vertex_groups) + 16;
++}
++
++void meshopt_encodeIndexVersion(int version)
++{
++	assert(unsigned(version) <= unsigned(meshopt::kDecodeIndexVersion));
++
++	meshopt::gEncodeIndexVersion = version;
++}
++
++int meshopt_decodeIndexVersion(const unsigned char* buffer, size_t buffer_size)
++{
++	if (buffer_size < 1)
++		return -1;
++
++	unsigned char header = buffer[0];
++
++	if ((header & 0xf0) != meshopt::kIndexHeader && (header & 0xf0) != meshopt::kSequenceHeader)
++		return -1;
++
++	int version = header & 0x0f;
++	if (version > meshopt::kDecodeIndexVersion)
++		return -1;
++
++	return version;
++}
++
++int meshopt_decodeIndexBuffer(void* destination, size_t index_count, size_t index_size, const unsigned char* buffer, size_t buffer_size)
++{
++	using namespace meshopt;
++
++	assert(index_count % 3 == 0);
++	assert(index_size == 2 || index_size == 4);
++
++	// the minimum valid encoding is header, 1 byte per triangle and a 16-byte codeaux table
++	if (buffer_size < 1 + index_count / 3 + 16)
++		return -2;
++
++	if ((buffer[0] & 0xf0) != kIndexHeader)
++		return -1;
++
++	int version = buffer[0] & 0x0f;
++	if (version > kDecodeIndexVersion)
++		return -1;
++
++	EdgeFifo edgefifo;
++	memset(edgefifo, -1, sizeof(edgefifo));
++
++	VertexFifo vertexfifo;
++	memset(vertexfifo, -1, sizeof(vertexfifo));
++
++	size_t edgefifooffset = 0;
++	size_t vertexfifooffset = 0;
++
++	unsigned int next = 0;
++	unsigned int last = 0;
++
++	int fecmax = version >= 1 ? 13 : 15;
++
++	// since we store 16-byte codeaux table at the end, triangle data has to begin before data_safe_end
++	const unsigned char* code = buffer + 1;
++	const unsigned char* data = code + index_count / 3;
++	const unsigned char* data_safe_end = buffer + buffer_size - 16;
++
++	const unsigned char* codeaux_table = data_safe_end;
++
++	for (size_t i = 0; i < index_count; i += 3)
++	{
++		// make sure we have enough data to read for a triangle
++		// each triangle reads at most 16 bytes of data: 1b for codeaux and 5b for each free index
++		// after this we can be sure we can read without extra bounds checks
++		if (data > data_safe_end)
++			return -2;
++
++		unsigned char codetri = *code++;
++
++		if (codetri < 0xf0)
++		{
++			int fe = codetri >> 4;
++
++			// fifo reads are wrapped around 16 entry buffer
++			unsigned int a = edgefifo[(edgefifooffset - 1 - fe) & 15][0];
++			unsigned int b = edgefifo[(edgefifooffset - 1 - fe) & 15][1];
++			unsigned int c = 0;
++
++			int fec = codetri & 15;
++
++			// note: this is the most common path in the entire decoder
++			// inside this if we try to stay branchless (by using cmov/etc.) since these aren't predictable
++			if (fec < fecmax)
++			{
++				// fifo reads are wrapped around 16 entry buffer
++				unsigned int cf = vertexfifo[(vertexfifooffset - 1 - fec) & 15];
++				c = (fec == 0) ? next : cf;
++
++				int fec0 = fec == 0;
++				next += fec0;
++
++				// push vertex fifo must match the encoding step *exactly* otherwise the data will not be decoded correctly
++				pushVertexFifo(vertexfifo, c, vertexfifooffset, fec0);
++			}
++			else
++			{
++				// fec - (fec ^ 3) decodes 13, 14 into -1, 1
++				// note that we need to update the last index since free indices are delta-encoded
++				last = c = (fec != 15) ? last + (fec - (fec ^ 3)) : decodeIndex(data, last);
++
++				// push vertex/edge fifo must match the encoding step *exactly* otherwise the data will not be decoded correctly
++				pushVertexFifo(vertexfifo, c, vertexfifooffset);
++			}
++
++			// push edge fifo must match the encoding step *exactly* otherwise the data will not be decoded correctly
++			pushEdgeFifo(edgefifo, c, b, edgefifooffset);
++			pushEdgeFifo(edgefifo, a, c, edgefifooffset);
++
++			// output triangle
++			writeTriangle(destination, i, index_size, a, b, c);
++		}
++		else
++		{
++			// fast path: read codeaux from the table
++			if (codetri < 0xfe)
++			{
++				unsigned char codeaux = codeaux_table[codetri & 15];
++
++				// note: table can't contain feb/fec=15
++				int feb = codeaux >> 4;
++				int fec = codeaux & 15;
++
++				// fifo reads are wrapped around 16 entry buffer
++				// also note that we increment next for all three vertices before decoding indices - this matches encoder behavior
++				unsigned int a = next++;
++
++				unsigned int bf = vertexfifo[(vertexfifooffset - feb) & 15];
++				unsigned int b = (feb == 0) ? next : bf;
++
++				int feb0 = feb == 0;
++				next += feb0;
++
++				unsigned int cf = vertexfifo[(vertexfifooffset - fec) & 15];
++				unsigned int c = (fec == 0) ? next : cf;
++
++				int fec0 = fec == 0;
++				next += fec0;
++
++				// output triangle
++				writeTriangle(destination, i, index_size, a, b, c);
++
++				// push vertex/edge fifo must match the encoding step *exactly* otherwise the data will not be decoded correctly
++				pushVertexFifo(vertexfifo, a, vertexfifooffset);
++				pushVertexFifo(vertexfifo, b, vertexfifooffset, feb0);
++				pushVertexFifo(vertexfifo, c, vertexfifooffset, fec0);
++
++				pushEdgeFifo(edgefifo, b, a, edgefifooffset);
++				pushEdgeFifo(edgefifo, c, b, edgefifooffset);
++				pushEdgeFifo(edgefifo, a, c, edgefifooffset);
++			}
++			else
++			{
++				// slow path: read a full byte for codeaux instead of using a table lookup
++				unsigned char codeaux = *data++;
++
++				int fea = codetri == 0xfe ? 0 : 15;
++				int feb = codeaux >> 4;
++				int fec = codeaux & 15;
++
++				// reset: codeaux is 0 but encoded as not-a-table
++				if (codeaux == 0)
++					next = 0;
++
++				// fifo reads are wrapped around 16 entry buffer
++				// also note that we increment next for all three vertices before decoding indices - this matches encoder behavior
++				unsigned int a = (fea == 0) ? next++ : 0;
++				unsigned int b = (feb == 0) ? next++ : vertexfifo[(vertexfifooffset - feb) & 15];
++				unsigned int c = (fec == 0) ? next++ : vertexfifo[(vertexfifooffset - fec) & 15];
++
++				// note that we need to update the last index since free indices are delta-encoded
++				if (fea == 15)
++					last = a = decodeIndex(data, last);
++
++				if (feb == 15)
++					last = b = decodeIndex(data, last);
++
++				if (fec == 15)
++					last = c = decodeIndex(data, last);
++
++				// output triangle
++				writeTriangle(destination, i, index_size, a, b, c);
++
++				// push vertex/edge fifo must match the encoding step *exactly* otherwise the data will not be decoded correctly
++				pushVertexFifo(vertexfifo, a, vertexfifooffset);
++				pushVertexFifo(vertexfifo, b, vertexfifooffset, (feb == 0) | (feb == 15));
++				pushVertexFifo(vertexfifo, c, vertexfifooffset, (fec == 0) | (fec == 15));
++
++				pushEdgeFifo(edgefifo, b, a, edgefifooffset);
++				pushEdgeFifo(edgefifo, c, b, edgefifooffset);
++				pushEdgeFifo(edgefifo, a, c, edgefifooffset);
++			}
++		}
++	}
++
++	// we should've read all data bytes and stopped at the boundary between data and codeaux table
++	if (data != data_safe_end)
++		return -3;
++
++	return 0;
++}
++
++size_t meshopt_encodeIndexSequence(unsigned char* buffer, size_t buffer_size, const unsigned int* indices, size_t index_count)
++{
++	using namespace meshopt;
++
++	// the minimum valid encoding is header, 1 byte per index and a 4-byte tail
++	if (buffer_size < 1 + index_count + 4)
++		return 0;
++
++	int version = gEncodeIndexVersion;
++
++	buffer[0] = (unsigned char)(kSequenceHeader | version);
++
++	unsigned int last[2] = {};
++	unsigned int current = 0;
++
++	unsigned char* data = buffer + 1;
++	unsigned char* data_safe_end = buffer + buffer_size - 4;
++
++	for (size_t i = 0; i < index_count; ++i)
++	{
++		// make sure we have enough data to write
++		// each index writes at most 5 bytes of data; there's a 4 byte tail after data_safe_end
++		// after this we can be sure we can write without extra bounds checks
++		if (data >= data_safe_end)
++			return 0;
++
++		unsigned int index = indices[i];
++
++		// this is a heuristic that switches between baselines when the delta grows too large
++		// we want the encoded delta to fit into one byte (7 bits), but 2 bits are used for sign and baseline index
++		// for now we immediately switch the baseline when delta grows too large - this can be adjusted arbitrarily
++		int cd = int(index - last[current]);
++		current ^= ((cd < 0 ? -cd : cd) >= 30);
++
++		// encode delta from the last index
++		unsigned int d = index - last[current];
++		unsigned int v = (d << 1) ^ (int(d) >> 31);
++
++		// note: low bit encodes the index of the last baseline which will be used for reconstruction
++		encodeVByte(data, (v << 1) | current);
++
++		// update last for the next iteration that uses it
++		last[current] = index;
++	}
++
++	// make sure we have enough space to write tail
++	if (data > data_safe_end)
++		return 0;
++
++	for (int k = 0; k < 4; ++k)
++		*data++ = 0;
++
++	return data - buffer;
++}
++
++size_t meshopt_encodeIndexSequenceBound(size_t index_count, size_t vertex_count)
++{
++	// compute number of bits required for each index
++	unsigned int vertex_bits = 1;
++
++	while (vertex_bits < 32 && vertex_count > size_t(1) << vertex_bits)
++		vertex_bits++;
++
++	// worst-case encoding is 1 varint-7 encoded index delta for a K bit value and an extra bit
++	unsigned int vertex_groups = (vertex_bits + 1 + 1 + 6) / 7;
++
++	return 1 + index_count * vertex_groups + 4;
++}
++
++int meshopt_decodeIndexSequence(void* destination, size_t index_count, size_t index_size, const unsigned char* buffer, size_t buffer_size)
++{
++	using namespace meshopt;
++
++	// the minimum valid encoding is header, 1 byte per index and a 4-byte tail
++	if (buffer_size < 1 + index_count + 4)
++		return -2;
++
++	if ((buffer[0] & 0xf0) != kSequenceHeader)
++		return -1;
++
++	int version = buffer[0] & 0x0f;
++	if (version > kDecodeIndexVersion)
++		return -1;
++
++	const unsigned char* data = buffer + 1;
++	const unsigned char* data_safe_end = buffer + buffer_size - 4;
++
++	unsigned int last[2] = {};
++
++	for (size_t i = 0; i < index_count; ++i)
++	{
++		// make sure we have enough data to read
++		// each index reads at most 5 bytes of data; there's a 4 byte tail after data_safe_end
++		// after this we can be sure we can read without extra bounds checks
++		if (data >= data_safe_end)
++			return -2;
++
++		unsigned int v = decodeVByte(data);
++
++		// decode the index of the last baseline
++		unsigned int current = v & 1;
++		v >>= 1;
++
++		// reconstruct index as a delta
++		unsigned int d = (v >> 1) ^ -int(v & 1);
++		unsigned int index = last[current] + d;
++
++		// update last for the next iteration that uses it
++		last[current] = index;
++
++		if (index_size == 2)
++		{
++			static_cast<unsigned short*>(destination)[i] = (unsigned short)(index);
++		}
++		else
++		{
++			static_cast<unsigned int*>(destination)[i] = index;
++		}
++	}
++
++	// we should've read all data bytes and stopped at the boundary between data and tail
++	if (data != data_safe_end)
++		return -3;
++
++	return 0;
++}
+diff --git a/libs/meshoptimizer/vertexcodec.cpp b/libs/meshoptimizer/vertexcodec.cpp
+new file mode 100644
+index 0000000..545ca90
+--- /dev/null
++++ b/libs/meshoptimizer/vertexcodec.cpp
+@@ -0,0 +1,1910 @@
++// This file is part of meshoptimizer library; see meshoptimizer.h for version/license details
++#include "meshoptimizer.h"
++
++#include <assert.h>
++#include <string.h>
++
++// The block below auto-detects SIMD ISA that can be used on the target platform
++#ifndef MESHOPTIMIZER_NO_SIMD
++
++// The SIMD implementation requires SSSE3, which can be enabled unconditionally through compiler settings
++#if defined(__AVX__) || defined(__SSSE3__)
++#define SIMD_SSE
++#endif
++
++// An experimental implementation using AVX512 instructions; it's only enabled when AVX512 is enabled through compiler settings
++#if defined(__AVX512VBMI2__) && defined(__AVX512VBMI__) && defined(__AVX512VL__) && defined(__POPCNT__)
++#undef SIMD_SSE
++#define SIMD_AVX
++#endif
++
++// MSVC supports compiling SSSE3 code regardless of compile options; we use a cpuid-based scalar fallback
++#if !defined(SIMD_SSE) && !defined(SIMD_AVX) && defined(_MSC_VER) && !defined(__clang__) && (defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC)))
++#define SIMD_SSE
++#define SIMD_FALLBACK
++#endif
++
++// GCC 4.9+ and clang 3.8+ support targeting SIMD ISA from individual functions; we use a cpuid-based scalar fallback
++#if !defined(SIMD_SSE) && !defined(SIMD_AVX) && ((defined(__clang__) && __clang_major__ * 100 + __clang_minor__ >= 308) || (defined(__GNUC__) && __GNUC__ * 100 + __GNUC_MINOR__ >= 409)) && (defined(__i386__) || defined(__x86_64__))
++#define SIMD_SSE
++#define SIMD_FALLBACK
++#define SIMD_TARGET __attribute__((target("ssse3")))
++#endif
++
++// GCC/clang define these when NEON support is available
++#if defined(__ARM_NEON__) || defined(__ARM_NEON)
++#define SIMD_NEON
++#endif
++
++// On MSVC, we assume that ARM builds always target NEON-capable devices
++#if !defined(SIMD_NEON) && defined(_MSC_VER) && (defined(_M_ARM) || defined(_M_ARM64) || defined(_M_ARM64EC))
++#define SIMD_NEON
++#endif
++
++// When targeting Wasm SIMD we can't use runtime cpuid checks so we unconditionally enable SIMD
++#if defined(__wasm_simd128__)
++#define SIMD_WASM
++// Prevent compiling other variant when wasm simd compilation is active
++#undef SIMD_NEON
++#undef SIMD_SSE
++#undef SIMD_AVX
++#endif
++
++#ifndef SIMD_TARGET
++#define SIMD_TARGET
++#endif
++
++// When targeting AArch64/x64, optimize for latency to allow decoding of individual 16-byte groups to overlap
++// We don't do this for 32-bit systems because we need 64-bit math for this and this will hurt in-order CPUs
++#if (defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)) && !defined(MESHOPTIMIZER_VERTEXCODEC_SIMDNOLOPT)
++#define SIMD_LATENCYOPT
++#endif
++
++// In switch dispatch, marking default case as unreachable allows to remove redundant bounds checks
++#if defined(__GNUC__)
++#define SIMD_UNREACHABLE() __builtin_unreachable()
++#elif defined(_MSC_VER)
++#define SIMD_UNREACHABLE() __assume(false)
++#else
++#define SIMD_UNREACHABLE() assert(!"Unreachable")
++#endif
++
++#endif // !MESHOPTIMIZER_NO_SIMD
++
++#ifdef SIMD_SSE
++#include <tmmintrin.h>
++#endif
++
++#if defined(SIMD_SSE) && defined(SIMD_FALLBACK)
++#ifdef _MSC_VER
++#include <intrin.h> // __cpuid
++#else
++#include <cpuid.h> // __cpuid
++#endif
++#endif
++
++#ifdef SIMD_AVX
++#include <immintrin.h>
++#endif
++
++#ifdef SIMD_NEON
++#if defined(_MSC_VER) && defined(_M_ARM64)
++#include <arm64_neon.h>
++#else
++#include <arm_neon.h>
++#endif
++#endif
++
++#ifdef SIMD_WASM
++#include <wasm_simd128.h>
++#endif
++
++#ifndef TRACE
++#define TRACE 0
++#endif
++
++#if TRACE
++#include <stdio.h>
++#endif
++
++#ifdef SIMD_WASM
++#define wasmx_splat_v32x4(v, i) wasm_i32x4_shuffle(v, v, i, i, i, i)
++#define wasmx_unpacklo_v8x16(a, b) wasm_i8x16_shuffle(a, b, 0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23)
++#define wasmx_unpackhi_v8x16(a, b) wasm_i8x16_shuffle(a, b, 8, 24, 9, 25, 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31)
++#define wasmx_unpacklo_v16x8(a, b) wasm_i16x8_shuffle(a, b, 0, 8, 1, 9, 2, 10, 3, 11)
++#define wasmx_unpackhi_v16x8(a, b) wasm_i16x8_shuffle(a, b, 4, 12, 5, 13, 6, 14, 7, 15)
++#define wasmx_unpacklo_v64x2(a, b) wasm_i64x2_shuffle(a, b, 0, 2)
++#define wasmx_unpackhi_v64x2(a, b) wasm_i64x2_shuffle(a, b, 1, 3)
++#endif
++
++namespace meshopt
++{
++
++const unsigned char kVertexHeader = 0xa0;
++
++static int gEncodeVertexVersion = 1;
++const int kDecodeVertexVersion = 1;
++
++const size_t kVertexBlockSizeBytes = 8192;
++const size_t kVertexBlockMaxSize = 256;
++const size_t kByteGroupSize = 16;
++const size_t kByteGroupDecodeLimit = 24;
++const size_t kTailMinSizeV0 = 32;
++const size_t kTailMinSizeV1 = 24;
++
++static const int kBitsV0[4] = {0, 2, 4, 8};
++static const int kBitsV1[5] = {0, 1, 2, 4, 8};
++
++const int kEncodeDefaultLevel = 2;
++
++static size_t getVertexBlockSize(size_t vertex_size)
++{
++	// make sure the entire block fits into the scratch buffer and is aligned to byte group size
++	// note: the block size is implicitly part of the format, so we can't change it without breaking compatibility
++	size_t result = (kVertexBlockSizeBytes / vertex_size) & ~(kByteGroupSize - 1);
++
++	return (result < kVertexBlockMaxSize) ? result : kVertexBlockMaxSize;
++}
++
++inline unsigned int rotate(unsigned int v, int r)
++{
++	return (v << r) | (v >> ((32 - r) & 31));
++}
++
++template <typename T>
++inline T zigzag(T v)
++{
++	return (0 - (v >> (sizeof(T) * 8 - 1))) ^ (v << 1);
++}
++
++template <typename T>
++inline T unzigzag(T v)
++{
++	return (0 - (v & 1)) ^ (v >> 1);
++}
++
++#if TRACE
++struct Stats
++{
++	size_t size;
++	size_t header;  // bytes for header
++	size_t bitg[9]; // bytes for bit groups
++	size_t bitc[8]; // bit consistency: how many bits are shared between all bytes in a group
++	size_t ctrl[4]; // number of control groups
++};
++
++static Stats* bytestats = NULL;
++static Stats vertexstats[256];
++#endif
++
++static bool encodeBytesGroupZero(const unsigned char* buffer)
++{
++	assert(kByteGroupSize == sizeof(unsigned long long) * 2);
++
++	unsigned long long v[2];
++	memcpy(v, buffer, sizeof(v));
++
++	return (v[0] | v[1]) == 0;
++}
++
++static size_t encodeBytesGroupMeasure(const unsigned char* buffer, int bits)
++{
++	assert(bits >= 0 && bits <= 8);
++
++	if (bits == 0)
++		return encodeBytesGroupZero(buffer) ? 0 : size_t(-1);
++
++	if (bits == 8)
++		return kByteGroupSize;
++
++	size_t result = kByteGroupSize * bits / 8;
++
++	unsigned char sentinel = (1 << bits) - 1;
++
++	for (size_t i = 0; i < kByteGroupSize; ++i)
++		result += buffer[i] >= sentinel;
++
++	return result;
++}
++
++static unsigned char* encodeBytesGroup(unsigned char* data, const unsigned char* buffer, int bits)
++{
++	assert(bits >= 0 && bits <= 8);
++	assert(kByteGroupSize % 8 == 0);
++
++	if (bits == 0)
++		return data;
++
++	if (bits == 8)
++	{
++		memcpy(data, buffer, kByteGroupSize);
++		return data + kByteGroupSize;
++	}
++
++	size_t byte_size = 8 / bits;
++	assert(kByteGroupSize % byte_size == 0);
++
++	// fixed portion: bits bits for each value
++	// variable portion: full byte for each out-of-range value (using 1...1 as sentinel)
++	unsigned char sentinel = (1 << bits) - 1;
++
++	for (size_t i = 0; i < kByteGroupSize; i += byte_size)
++	{
++		unsigned char byte = 0;
++
++		for (size_t k = 0; k < byte_size; ++k)
++		{
++			unsigned char enc = (buffer[i + k] >= sentinel) ? sentinel : buffer[i + k];
++
++			byte <<= bits;
++			byte |= enc;
++		}
++
++		// encode 1-bit groups in reverse bit order
++		// this makes them faster to decode alongside other groups
++		if (bits == 1)
++			byte = (unsigned char)(((byte * 0x80200802ull) & 0x0884422110ull) * 0x0101010101ull >> 32);
++
++		*data++ = byte;
++	}
++
++	for (size_t i = 0; i < kByteGroupSize; ++i)
++	{
++		unsigned char v = buffer[i];
++
++		// branchless append of out-of-range values
++		*data = v;
++		data += v >= sentinel;
++	}
++
++	return data;
++}
++
++static unsigned char* encodeBytes(unsigned char* data, unsigned char* data_end, const unsigned char* buffer, size_t buffer_size, const int bits[4])
++{
++	assert(buffer_size % kByteGroupSize == 0);
++
++	unsigned char* header = data;
++
++	// round number of groups to 4 to get number of header bytes
++	size_t header_size = (buffer_size / kByteGroupSize + 3) / 4;
++
++	if (size_t(data_end - data) < header_size)
++		return NULL;
++
++	data += header_size;
++
++	memset(header, 0, header_size);
++
++	int last_bits = -1;
++
++	for (size_t i = 0; i < buffer_size; i += kByteGroupSize)
++	{
++		if (size_t(data_end - data) < kByteGroupDecodeLimit)
++			return NULL;
++
++		int best_bitk = 3;
++		size_t best_size = encodeBytesGroupMeasure(buffer + i, bits[best_bitk]);
++
++		for (int bitk = 0; bitk < 3; ++bitk)
++		{
++			size_t size = encodeBytesGroupMeasure(buffer + i, bits[bitk]);
++
++			// favor consistent bit selection across groups, but never replace literals
++			if (size < best_size || (size == best_size && bits[bitk] == last_bits && bits[best_bitk] != 8))
++			{
++				best_bitk = bitk;
++				best_size = size;
++			}
++		}
++
++		size_t header_offset = i / kByteGroupSize;
++		header[header_offset / 4] |= best_bitk << ((header_offset % 4) * 2);
++
++		int best_bits = bits[best_bitk];
++		unsigned char* next = encodeBytesGroup(data, buffer + i, best_bits);
++
++		assert(data + best_size == next);
++		data = next;
++		last_bits = best_bits;
++
++#if TRACE
++		bytestats->bitg[best_bits] += best_size;
++#endif
++	}
++
++#if TRACE
++	bytestats->header += header_size;
++#endif
++
++	return data;
++}
++
++template <typename T, bool Xor>
++static void encodeDeltas1(unsigned char* buffer, const unsigned char* vertex_data, size_t vertex_count, size_t vertex_size, const unsigned char last_vertex[256], size_t k, int rot)
++{
++	size_t k0 = k & ~(sizeof(T) - 1);
++	int ks = (k & (sizeof(T) - 1)) * 8;
++
++	T p = last_vertex[k0];
++	for (size_t j = 1; j < sizeof(T); ++j)
++		p |= T(last_vertex[k0 + j]) << (j * 8);
++
++	const unsigned char* vertex = vertex_data + k0;
++
++	for (size_t i = 0; i < vertex_count; ++i)
++	{
++		T v = vertex[0];
++		for (size_t j = 1; j < sizeof(T); ++j)
++			v |= vertex[j] << (j * 8);
++
++		T d = Xor ? T(rotate(v ^ p, rot)) : zigzag(T(v - p));
++
++		buffer[i] = (unsigned char)(d >> ks);
++		p = v;
++		vertex += vertex_size;
++	}
++}
++
++static void encodeDeltas(unsigned char* buffer, const unsigned char* vertex_data, size_t vertex_count, size_t vertex_size, const unsigned char last_vertex[256], size_t k, int channel)
++{
++	switch (channel & 3)
++	{
++	case 0:
++		return encodeDeltas1<unsigned char, false>(buffer, vertex_data, vertex_count, vertex_size, last_vertex, k, 0);
++	case 1:
++		return encodeDeltas1<unsigned short, false>(buffer, vertex_data, vertex_count, vertex_size, last_vertex, k, 0);
++	case 2:
++		return encodeDeltas1<unsigned int, true>(buffer, vertex_data, vertex_count, vertex_size, last_vertex, k, channel >> 4);
++	default:
++		assert(!"Unsupported channel encoding"); // unreachable
++	}
++}
++
++static int estimateBits(unsigned char v)
++{
++	return v <= 15 ? (v <= 3 ? (v == 0 ? 0 : 2) : 4) : 8;
++}
++
++static int estimateRotate(const unsigned char* vertex_data, size_t vertex_count, size_t vertex_size, size_t k, size_t group_size)
++{
++	size_t sizes[8] = {};
++
++	const unsigned char* vertex = vertex_data + k;
++	unsigned int last = vertex[0] | (vertex[1] << 8) | (vertex[2] << 16) | (vertex[3] << 24);
++
++	for (size_t i = 0; i < vertex_count; i += group_size)
++	{
++		unsigned int bitg = 0;
++
++		// calculate bit consistency mask for the group
++		for (size_t j = 0; j < group_size && i + j < vertex_count; ++j)
++		{
++			unsigned int v = vertex[0] | (vertex[1] << 8) | (vertex[2] << 16) | (vertex[3] << 24);
++			unsigned int d = v ^ last;
++
++			bitg |= d;
++			last = v;
++			vertex += vertex_size;
++		}
++
++#if TRACE
++		for (int j = 0; j < 32; ++j)
++			vertexstats[k + (j / 8)].bitc[j % 8] += (i + group_size < vertex_count ? group_size : vertex_count - i) * (1 - ((bitg >> j) & 1));
++#endif
++
++		for (int j = 0; j < 8; ++j)
++		{
++			unsigned int bitr = rotate(bitg, j);
++
++			sizes[j] += estimateBits((unsigned char)(bitr >> 0)) + estimateBits((unsigned char)(bitr >> 8));
++			sizes[j] += estimateBits((unsigned char)(bitr >> 16)) + estimateBits((unsigned char)(bitr >> 24));
++		}
++	}
++
++	int best_rot = 0;
++	for (int rot = 1; rot < 8; ++rot)
++		best_rot = (sizes[rot] < sizes[best_rot]) ? rot : best_rot;
++
++	return best_rot;
++}
++
++static int estimateChannel(const unsigned char* vertex_data, size_t vertex_count, size_t vertex_size, size_t k, size_t vertex_block_size, size_t block_skip, int max_channel, int xor_rot)
++{
++	unsigned char block[kVertexBlockMaxSize];
++	assert(vertex_block_size <= kVertexBlockMaxSize);
++
++	unsigned char last_vertex[256] = {};
++
++	size_t sizes[3] = {};
++	assert(max_channel <= 3);
++
++	for (size_t i = 0; i < vertex_count; i += vertex_block_size * block_skip)
++	{
++		size_t block_size = i + vertex_block_size < vertex_count ? vertex_block_size : vertex_count - i;
++		size_t block_size_aligned = (block_size + kByteGroupSize - 1) & ~(kByteGroupSize - 1);
++
++		memcpy(last_vertex, vertex_data + (i == 0 ? 0 : i - 1) * vertex_size, vertex_size);
++
++		// we sometimes encode elements we didn't fill when rounding to kByteGroupSize
++		if (block_size < block_size_aligned)
++			memset(block + block_size, 0, block_size_aligned - block_size);
++
++		for (int channel = 0; channel < max_channel; ++channel)
++			for (size_t j = 0; j < 4; ++j)
++			{
++				encodeDeltas(block, vertex_data + i * vertex_size, block_size, vertex_size, last_vertex, k + j, channel | (xor_rot << 4));
++
++				for (size_t ig = 0; ig < block_size; ig += kByteGroupSize)
++				{
++					// to maximize encoding performance we only evaluate 1/2/4/8 bit groups
++					size_t size1 = encodeBytesGroupMeasure(block + ig, 1);
++					size_t size2 = encodeBytesGroupMeasure(block + ig, 2);
++					size_t size4 = encodeBytesGroupMeasure(block + ig, 4);
++					size_t size8 = encodeBytesGroupMeasure(block + ig, 8);
++
++					size_t best_size = size1 < size2 ? size1 : size2;
++					best_size = best_size < size4 ? best_size : size4;
++					best_size = best_size < size8 ? best_size : size8;
++
++					sizes[channel] += best_size;
++				}
++			}
++	}
++
++	int best_channel = 0;
++	for (int channel = 1; channel < max_channel; ++channel)
++		best_channel = (sizes[channel] < sizes[best_channel]) ? channel : best_channel;
++
++	return best_channel == 2 ? best_channel | (xor_rot << 4) : best_channel;
++}
++
++static bool estimateControlZero(const unsigned char* buffer, size_t vertex_count_aligned)
++{
++	for (size_t i = 0; i < vertex_count_aligned; i += kByteGroupSize)
++		if (!encodeBytesGroupZero(buffer + i))
++			return false;
++
++	return true;
++}
++
++static int estimateControl(const unsigned char* buffer, size_t vertex_count, size_t vertex_count_aligned, int level)
++{
++	if (estimateControlZero(buffer, vertex_count_aligned))
++		return 2; // zero encoding
++
++	if (level == 0)
++		return 1; // 1248 encoding in level 0 for encoding speed
++
++	// round number of groups to 4 to get number of header bytes
++	size_t header_size = (vertex_count_aligned / kByteGroupSize + 3) / 4;
++
++	size_t est_bytes0 = header_size, est_bytes1 = header_size;
++
++	for (size_t i = 0; i < vertex_count_aligned; i += kByteGroupSize)
++	{
++		// assumes kBitsV1[] = {0, 1, 2, 4, 8} for performance
++		size_t size0 = encodeBytesGroupMeasure(buffer + i, 0);
++		size_t size1 = encodeBytesGroupMeasure(buffer + i, 1);
++		size_t size2 = encodeBytesGroupMeasure(buffer + i, 2);
++		size_t size4 = encodeBytesGroupMeasure(buffer + i, 4);
++		size_t size8 = encodeBytesGroupMeasure(buffer + i, 8);
++
++		// both control modes have access to 1/2/4 bit encoding
++		size_t size12 = size1 < size2 ? size1 : size2;
++		size_t size124 = size12 < size4 ? size12 : size4;
++
++		// each control mode has access to 0/8 bit encoding respectively
++		est_bytes0 += size124 < size0 ? size124 : size0;
++		est_bytes1 += size124 < size8 ? size124 : size8;
++	}
++
++	// pick shortest control entry but prefer literal encoding
++	if (est_bytes0 < vertex_count || est_bytes1 < vertex_count)
++		return est_bytes0 < est_bytes1 ? 0 : 1;
++	else
++		return 3; // literal encoding
++}
++
++static unsigned char* encodeVertexBlock(unsigned char* data, unsigned char* data_end, const unsigned char* vertex_data, size_t vertex_count, size_t vertex_size, unsigned char last_vertex[256], const unsigned char* channels, int version, int level)
++{
++	assert(vertex_count > 0 && vertex_count <= kVertexBlockMaxSize);
++	assert(vertex_size % 4 == 0);
++
++	unsigned char buffer[kVertexBlockMaxSize];
++	assert(sizeof(buffer) % kByteGroupSize == 0);
++
++	size_t vertex_count_aligned = (vertex_count + kByteGroupSize - 1) & ~(kByteGroupSize - 1);
++
++	// we sometimes encode elements we didn't fill when rounding to kByteGroupSize
++	memset(buffer, 0, sizeof(buffer));
++
++	size_t control_size = version == 0 ? 0 : vertex_size / 4;
++	if (size_t(data_end - data) < control_size)
++		return NULL;
++
++	unsigned char* control = data;
++	data += control_size;
++
++	memset(control, 0, control_size);
++
++	for (size_t k = 0; k < vertex_size; ++k)
++	{
++		encodeDeltas(buffer, vertex_data, vertex_count, vertex_size, last_vertex, k, version == 0 ? 0 : channels[k / 4]);
++
++#if TRACE
++		const unsigned char* olddata = data;
++		bytestats = &vertexstats[k];
++#endif
++
++		int ctrl = 0;
++
++		if (version != 0)
++		{
++			ctrl = estimateControl(buffer, vertex_count, vertex_count_aligned, level);
++
++			assert(unsigned(ctrl) < 4);
++			control[k / 4] |= ctrl << ((k % 4) * 2);
++
++#if TRACE
++			vertexstats[k].ctrl[ctrl]++;
++#endif
++		}
++
++		if (ctrl == 3)
++		{
++			// literal encoding
++			if (size_t(data_end - data) < vertex_count)
++				return NULL;
++
++			memcpy(data, buffer, vertex_count);
++			data += vertex_count;
++		}
++		else if (ctrl != 2) // non-zero encoding
++		{
++			data = encodeBytes(data, data_end, buffer, vertex_count_aligned, version == 0 ? kBitsV0 : kBitsV1 + ctrl);
++			if (!data)
++				return NULL;
++		}
++
++#if TRACE
++		bytestats = NULL;
++		vertexstats[k].size += data - olddata;
++#endif
++	}
++
++	memcpy(last_vertex, &vertex_data[vertex_size * (vertex_count - 1)], vertex_size);
++
++	return data;
++}
++
++#if defined(SIMD_FALLBACK) || (!defined(SIMD_SSE) && !defined(SIMD_NEON) && !defined(SIMD_AVX) && !defined(SIMD_WASM))
++static const unsigned char* decodeBytesGroup(const unsigned char* data, unsigned char* buffer, int bits)
++{
++#define READ() byte = *data++
++#define NEXT(bits) enc = byte >> (8 - bits), byte <<= bits, encv = *data_var, *buffer++ = (enc == (1 << bits) - 1) ? encv : enc, data_var += (enc == (1 << bits) - 1)
++
++	unsigned char byte, enc, encv;
++	const unsigned char* data_var;
++
++	switch (bits)
++	{
++	case 0:
++		memset(buffer, 0, kByteGroupSize);
++		return data;
++	case 1:
++		data_var = data + 2;
++
++		// 2 groups with 8 1-bit values in each byte (reversed from the order in other groups)
++		READ();
++		byte = (unsigned char)(((byte * 0x80200802ull) & 0x0884422110ull) * 0x0101010101ull >> 32);
++		NEXT(1), NEXT(1), NEXT(1), NEXT(1), NEXT(1), NEXT(1), NEXT(1), NEXT(1);
++		READ();
++		byte = (unsigned char)(((byte * 0x80200802ull) & 0x0884422110ull) * 0x0101010101ull >> 32);
++		NEXT(1), NEXT(1), NEXT(1), NEXT(1), NEXT(1), NEXT(1), NEXT(1), NEXT(1);
++
++		return data_var;
++	case 2:
++		data_var = data + 4;
++
++		// 4 groups with 4 2-bit values in each byte
++		READ(), NEXT(2), NEXT(2), NEXT(2), NEXT(2);
++		READ(), NEXT(2), NEXT(2), NEXT(2), NEXT(2);
++		READ(), NEXT(2), NEXT(2), NEXT(2), NEXT(2);
++		READ(), NEXT(2), NEXT(2), NEXT(2), NEXT(2);
++
++		return data_var;
++	case 4:
++		data_var = data + 8;
++
++		// 8 groups with 2 4-bit values in each byte
++		READ(), NEXT(4), NEXT(4);
++		READ(), NEXT(4), NEXT(4);
++		READ(), NEXT(4), NEXT(4);
++		READ(), NEXT(4), NEXT(4);
++		READ(), NEXT(4), NEXT(4);
++		READ(), NEXT(4), NEXT(4);
++		READ(), NEXT(4), NEXT(4);
++		READ(), NEXT(4), NEXT(4);
++
++		return data_var;
++	case 8:
++		memcpy(buffer, data, kByteGroupSize);
++		return data + kByteGroupSize;
++	default:
++		assert(!"Unexpected bit length"); // unreachable
++		return data;
++	}
++
++#undef READ
++#undef NEXT
++}
++
++static const unsigned char* decodeBytes(const unsigned char* data, const unsigned char* data_end, unsigned char* buffer, size_t buffer_size, const int* bits)
++{
++	assert(buffer_size % kByteGroupSize == 0);
++
++	// round number of groups to 4 to get number of header bytes
++	size_t header_size = (buffer_size / kByteGroupSize + 3) / 4;
++	if (size_t(data_end - data) < header_size)
++		return NULL;
++
++	const unsigned char* header = data;
++	data += header_size;
++
++	for (size_t i = 0; i < buffer_size; i += kByteGroupSize)
++	{
++		if (size_t(data_end - data) < kByteGroupDecodeLimit)
++			return NULL;
++
++		size_t header_offset = i / kByteGroupSize;
++		int bitsk = (header[header_offset / 4] >> ((header_offset % 4) * 2)) & 3;
++
++		data = decodeBytesGroup(data, buffer + i, bits[bitsk]);
++	}
++
++	return data;
++}
++
++template <typename T, bool Xor>
++static void decodeDeltas1(const unsigned char* buffer, unsigned char* transposed, size_t vertex_count, size_t vertex_size, const unsigned char* last_vertex, int rot)
++{
++	for (size_t k = 0; k < 4; k += sizeof(T))
++	{
++		size_t vertex_offset = k;
++
++		T p = last_vertex[0];
++		for (size_t j = 1; j < sizeof(T); ++j)
++			p |= last_vertex[j] << (8 * j);
++
++		for (size_t i = 0; i < vertex_count; ++i)
++		{
++			T v = buffer[i];
++			for (size_t j = 1; j < sizeof(T); ++j)
++				v |= buffer[i + vertex_count * j] << (8 * j);
++
++			v = Xor ? T(rotate(v, rot)) ^ p : unzigzag(v) + p;
++
++			for (size_t j = 0; j < sizeof(T); ++j)
++				transposed[vertex_offset + j] = (unsigned char)(v >> (j * 8));
++
++			p = v;
++
++			vertex_offset += vertex_size;
++		}
++
++		buffer += vertex_count * sizeof(T);
++		last_vertex += sizeof(T);
++	}
++}
++
++static const unsigned char* decodeVertexBlock(const unsigned char* data, const unsigned char* data_end, unsigned char* vertex_data, size_t vertex_count, size_t vertex_size, unsigned char last_vertex[256], const unsigned char* channels, int version)
++{
++	assert(vertex_count > 0 && vertex_count <= kVertexBlockMaxSize);
++
++	unsigned char buffer[kVertexBlockMaxSize * 4];
++	unsigned char transposed[kVertexBlockSizeBytes];
++
++	size_t vertex_count_aligned = (vertex_count + kByteGroupSize - 1) & ~(kByteGroupSize - 1);
++	assert(vertex_count <= vertex_count_aligned);
++
++	size_t control_size = version == 0 ? 0 : vertex_size / 4;
++	if (size_t(data_end - data) < control_size)
++		return NULL;
++
++	const unsigned char* control = data;
++	data += control_size;
++
++	for (size_t k = 0; k < vertex_size; k += 4)
++	{
++		unsigned char ctrl_byte = version == 0 ? 0 : control[k / 4];
++
++		for (size_t j = 0; j < 4; ++j)
++		{
++			int ctrl = (ctrl_byte >> (j * 2)) & 3;
++
++			if (ctrl == 3)
++			{
++				// literal encoding
++				if (size_t(data_end - data) < vertex_count)
++					return NULL;
++
++				memcpy(buffer + j * vertex_count, data, vertex_count);
++				data += vertex_count;
++			}
++			else if (ctrl == 2)
++			{
++				// zero encoding
++				memset(buffer + j * vertex_count, 0, vertex_count);
++			}
++			else
++			{
++				data = decodeBytes(data, data_end, buffer + j * vertex_count, vertex_count_aligned, version == 0 ? kBitsV0 : kBitsV1 + ctrl);
++				if (!data)
++					return NULL;
++			}
++		}
++
++		int channel = version == 0 ? 0 : channels[k / 4];
++
++		switch (channel & 3)
++		{
++		case 0:
++			decodeDeltas1<unsigned char, false>(buffer, transposed + k, vertex_count, vertex_size, last_vertex + k, 0);
++			break;
++		case 1:
++			decodeDeltas1<unsigned short, false>(buffer, transposed + k, vertex_count, vertex_size, last_vertex + k, 0);
++			break;
++		case 2:
++			decodeDeltas1<unsigned int, true>(buffer, transposed + k, vertex_count, vertex_size, last_vertex + k, (32 - (channel >> 4)) & 31);
++			break;
++		default:
++			return NULL; // invalid channel type
++		}
++	}
++
++	memcpy(vertex_data, transposed, vertex_count * vertex_size);
++
++	memcpy(last_vertex, &transposed[vertex_size * (vertex_count - 1)], vertex_size);
++
++	return data;
++}
++#endif
++
++#if defined(SIMD_SSE) || defined(SIMD_NEON) || defined(SIMD_WASM)
++static unsigned char kDecodeBytesGroupShuffle[256][8];
++static unsigned char kDecodeBytesGroupCount[256];
++
++#ifdef __wasm__
++__attribute__((cold)) // this saves 500 bytes in the output binary - we don't need to vectorize this loop!
++#endif
++static bool
++decodeBytesGroupBuildTables()
++{
++	for (int mask = 0; mask < 256; ++mask)
++	{
++		unsigned char shuffle[8];
++		unsigned char count = 0;
++
++		for (int i = 0; i < 8; ++i)
++		{
++			int maski = (mask >> i) & 1;
++			shuffle[i] = maski ? count : 0x80;
++			count += (unsigned char)(maski);
++		}
++
++		memcpy(kDecodeBytesGroupShuffle[mask], shuffle, 8);
++		kDecodeBytesGroupCount[mask] = count;
++	}
++
++	return true;
++}
++
++static bool gDecodeBytesGroupInitialized = decodeBytesGroupBuildTables();
++#endif
++
++#ifdef SIMD_SSE
++SIMD_TARGET
++inline __m128i decodeShuffleMask(unsigned char mask0, unsigned char mask1)
++{
++	__m128i sm0 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(&kDecodeBytesGroupShuffle[mask0]));
++	__m128i sm1 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(&kDecodeBytesGroupShuffle[mask1]));
++	__m128i sm1off = _mm_set1_epi8(kDecodeBytesGroupCount[mask0]);
++
++	__m128i sm1r = _mm_add_epi8(sm1, sm1off);
++
++	return _mm_unpacklo_epi64(sm0, sm1r);
++}
++
++#ifdef __GNUC__
++typedef int __attribute__((aligned(1))) unaligned_int;
++#else
++typedef int unaligned_int;
++#endif
++
++SIMD_TARGET
++inline const unsigned char* decodeBytesGroupSimd(const unsigned char* data, unsigned char* buffer, int hbits)
++{
++	switch (hbits)
++	{
++	case 0:
++	case 4:
++	{
++		__m128i result = _mm_setzero_si128();
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), result);
++
++		return data;
++	}
++
++	case 1:
++	case 6:
++	{
++#ifdef SIMD_LATENCYOPT
++		unsigned int data32;
++		memcpy(&data32, data, 4);
++		data32 &= data32 >> 1;
++
++		// arrange bits such that low bits of nibbles of data64 contain all 2-bit elements of data32
++		unsigned long long data64 = ((unsigned long long)data32 << 30) | data32;
++
++		// adds all 1-bit nibbles together; the sum fits in 4 bits because datacnt=16 would have used mode 3
++		int datacnt = int(((data64 & 0x1111111111111111ull) * 0x1111111111111111ull) >> 60);
++#endif
++
++		__m128i sel2 = _mm_cvtsi32_si128(*reinterpret_cast<const unaligned_int*>(data));
++		__m128i rest = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data + 4));
++
++		__m128i sel22 = _mm_unpacklo_epi8(_mm_srli_epi16(sel2, 4), sel2);
++		__m128i sel2222 = _mm_unpacklo_epi8(_mm_srli_epi16(sel22, 2), sel22);
++		__m128i sel = _mm_and_si128(sel2222, _mm_set1_epi8(3));
++
++		__m128i mask = _mm_cmpeq_epi8(sel, _mm_set1_epi8(3));
++		int mask16 = _mm_movemask_epi8(mask);
++		unsigned char mask0 = (unsigned char)(mask16 & 255);
++		unsigned char mask1 = (unsigned char)(mask16 >> 8);
++
++		__m128i shuf = decodeShuffleMask(mask0, mask1);
++		__m128i result = _mm_or_si128(_mm_shuffle_epi8(rest, shuf), _mm_andnot_si128(mask, sel));
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), result);
++
++#ifdef SIMD_LATENCYOPT
++		return data + 4 + datacnt;
++#else
++		return data + 4 + kDecodeBytesGroupCount[mask0] + kDecodeBytesGroupCount[mask1];
++#endif
++	}
++
++	case 2:
++	case 7:
++	{
++#ifdef SIMD_LATENCYOPT
++		unsigned long long data64;
++		memcpy(&data64, data, 8);
++		data64 &= data64 >> 1;
++		data64 &= data64 >> 2;
++
++		// adds all 1-bit nibbles together; the sum fits in 4 bits because datacnt=16 would have used mode 3
++		int datacnt = int(((data64 & 0x1111111111111111ull) * 0x1111111111111111ull) >> 60);
++#endif
++
++		__m128i sel4 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(data));
++		__m128i rest = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data + 8));
++
++		__m128i sel44 = _mm_unpacklo_epi8(_mm_srli_epi16(sel4, 4), sel4);
++		__m128i sel = _mm_and_si128(sel44, _mm_set1_epi8(15));
++
++		__m128i mask = _mm_cmpeq_epi8(sel, _mm_set1_epi8(15));
++		int mask16 = _mm_movemask_epi8(mask);
++		unsigned char mask0 = (unsigned char)(mask16 & 255);
++		unsigned char mask1 = (unsigned char)(mask16 >> 8);
++
++		__m128i shuf = decodeShuffleMask(mask0, mask1);
++		__m128i result = _mm_or_si128(_mm_shuffle_epi8(rest, shuf), _mm_andnot_si128(mask, sel));
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), result);
++
++#ifdef SIMD_LATENCYOPT
++		return data + 8 + datacnt;
++#else
++		return data + 8 + kDecodeBytesGroupCount[mask0] + kDecodeBytesGroupCount[mask1];
++#endif
++	}
++
++	case 3:
++	case 8:
++	{
++		__m128i result = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data));
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), result);
++
++		return data + 16;
++	}
++
++	case 5:
++	{
++		__m128i rest = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data + 2));
++
++		unsigned char mask0 = data[0];
++		unsigned char mask1 = data[1];
++
++		__m128i shuf = decodeShuffleMask(mask0, mask1);
++		__m128i result = _mm_shuffle_epi8(rest, shuf);
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), result);
++
++		return data + 2 + kDecodeBytesGroupCount[mask0] + kDecodeBytesGroupCount[mask1];
++	}
++
++	default:
++		SIMD_UNREACHABLE(); // unreachable
++	}
++}
++#endif
++
++#ifdef SIMD_AVX
++static const __m128i kDecodeBytesGroupConfig[8][2] = {
++    {_mm_setzero_si128(), _mm_setzero_si128()},
++    {_mm_set1_epi8(3), _mm_setr_epi8(6, 4, 2, 0, 14, 12, 10, 8, 22, 20, 18, 16, 30, 28, 26, 24)},
++    {_mm_set1_epi8(15), _mm_setr_epi8(4, 0, 12, 8, 20, 16, 28, 24, 36, 32, 44, 40, 52, 48, 60, 56)},
++    {_mm_setzero_si128(), _mm_setzero_si128()},
++    {_mm_setzero_si128(), _mm_setzero_si128()},
++    {_mm_set1_epi8(1), _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)},
++    {_mm_set1_epi8(3), _mm_setr_epi8(6, 4, 2, 0, 14, 12, 10, 8, 22, 20, 18, 16, 30, 28, 26, 24)},
++    {_mm_set1_epi8(15), _mm_setr_epi8(4, 0, 12, 8, 20, 16, 28, 24, 36, 32, 44, 40, 52, 48, 60, 56)},
++};
++
++SIMD_TARGET
++inline const unsigned char* decodeBytesGroupSimd(const unsigned char* data, unsigned char* buffer, int hbits)
++{
++	switch (hbits)
++	{
++	case 0:
++	case 4:
++	{
++		__m128i result = _mm_setzero_si128();
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), result);
++
++		return data;
++	}
++
++	case 5: // 1-bit
++	case 1: // 2-bit
++	case 6:
++	case 2: // 4-bit
++	case 7:
++	{
++		const unsigned char* skip = data + (2 << (hbits < 3 ? hbits : hbits - 5));
++
++		__m128i selb = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(data));
++		__m128i rest = _mm_loadu_si128(reinterpret_cast<const __m128i*>(skip));
++
++		__m128i sent = kDecodeBytesGroupConfig[hbits][0];
++		__m128i ctrl = kDecodeBytesGroupConfig[hbits][1];
++
++		__m128i selw = _mm_shuffle_epi32(selb, 0x44);
++		__m128i sel = _mm_and_si128(sent, _mm_multishift_epi64_epi8(ctrl, selw));
++		__mmask16 mask16 = _mm_cmp_epi8_mask(sel, sent, _MM_CMPINT_EQ);
++
++		__m128i result = _mm_mask_expand_epi8(sel, mask16, rest);
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), result);
++
++		return skip + _mm_popcnt_u32(mask16);
++	}
++
++	case 3:
++	case 8:
++	{
++		__m128i result = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data));
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(buffer), result);
++
++		return data + 16;
++	}
++
++	default:
++		SIMD_UNREACHABLE(); // unreachable
++	}
++}
++#endif
++
++#ifdef SIMD_NEON
++SIMD_TARGET
++inline uint8x16_t shuffleBytes(unsigned char mask0, unsigned char mask1, uint8x8_t rest0, uint8x8_t rest1)
++{
++	uint8x8_t sm0 = vld1_u8(kDecodeBytesGroupShuffle[mask0]);
++	uint8x8_t sm1 = vld1_u8(kDecodeBytesGroupShuffle[mask1]);
++
++	uint8x8_t r0 = vtbl1_u8(rest0, sm0);
++	uint8x8_t r1 = vtbl1_u8(rest1, sm1);
++
++	return vcombine_u8(r0, r1);
++}
++
++SIMD_TARGET
++inline void neonMoveMask(uint8x16_t mask, unsigned char& mask0, unsigned char& mask1)
++{
++	// magic constant found using z3 SMT assuming mask has 8 groups of 0xff or 0x00
++	const uint64_t magic = 0x000103070f1f3f80ull;
++
++	uint64x2_t mask2 = vreinterpretq_u64_u8(mask);
++
++	mask0 = uint8_t((vgetq_lane_u64(mask2, 0) * magic) >> 56);
++	mask1 = uint8_t((vgetq_lane_u64(mask2, 1) * magic) >> 56);
++}
++
++SIMD_TARGET
++inline const unsigned char* decodeBytesGroupSimd(const unsigned char* data, unsigned char* buffer, int hbits)
++{
++	switch (hbits)
++	{
++	case 0:
++	case 4:
++	{
++		uint8x16_t result = vdupq_n_u8(0);
++
++		vst1q_u8(buffer, result);
++
++		return data;
++	}
++
++	case 1:
++	case 6:
++	{
++#ifdef SIMD_LATENCYOPT
++		unsigned int data32;
++		memcpy(&data32, data, 4);
++		data32 &= data32 >> 1;
++
++		// arrange bits such that low bits of nibbles of data64 contain all 2-bit elements of data32
++		unsigned long long data64 = ((unsigned long long)data32 << 30) | data32;
++
++		// adds all 1-bit nibbles together; the sum fits in 4 bits because datacnt=16 would have used mode 3
++		int datacnt = int(((data64 & 0x1111111111111111ull) * 0x1111111111111111ull) >> 60);
++#endif
++
++		uint8x8_t sel2 = vld1_u8(data);
++		uint8x8_t sel22 = vzip_u8(vshr_n_u8(sel2, 4), sel2).val[0];
++		uint8x8x2_t sel2222 = vzip_u8(vshr_n_u8(sel22, 2), sel22);
++		uint8x16_t sel = vandq_u8(vcombine_u8(sel2222.val[0], sel2222.val[1]), vdupq_n_u8(3));
++
++		uint8x16_t mask = vceqq_u8(sel, vdupq_n_u8(3));
++		unsigned char mask0, mask1;
++		neonMoveMask(mask, mask0, mask1);
++
++		uint8x8_t rest0 = vld1_u8(data + 4);
++		uint8x8_t rest1 = vld1_u8(data + 4 + kDecodeBytesGroupCount[mask0]);
++
++		uint8x16_t result = vbslq_u8(mask, shuffleBytes(mask0, mask1, rest0, rest1), sel);
++
++		vst1q_u8(buffer, result);
++
++#ifdef SIMD_LATENCYOPT
++		return data + 4 + datacnt;
++#else
++		return data + 4 + kDecodeBytesGroupCount[mask0] + kDecodeBytesGroupCount[mask1];
++#endif
++	}
++
++	case 2:
++	case 7:
++	{
++#ifdef SIMD_LATENCYOPT
++		unsigned long long data64;
++		memcpy(&data64, data, 8);
++		data64 &= data64 >> 1;
++		data64 &= data64 >> 2;
++
++		// adds all 1-bit nibbles together; the sum fits in 4 bits because datacnt=16 would have used mode 3
++		int datacnt = int(((data64 & 0x1111111111111111ull) * 0x1111111111111111ull) >> 60);
++#endif
++
++		uint8x8_t sel4 = vld1_u8(data);
++		uint8x8x2_t sel44 = vzip_u8(vshr_n_u8(sel4, 4), vand_u8(sel4, vdup_n_u8(15)));
++		uint8x16_t sel = vcombine_u8(sel44.val[0], sel44.val[1]);
++
++		uint8x16_t mask = vceqq_u8(sel, vdupq_n_u8(15));
++		unsigned char mask0, mask1;
++		neonMoveMask(mask, mask0, mask1);
++
++		uint8x8_t rest0 = vld1_u8(data + 8);
++		uint8x8_t rest1 = vld1_u8(data + 8 + kDecodeBytesGroupCount[mask0]);
++
++		uint8x16_t result = vbslq_u8(mask, shuffleBytes(mask0, mask1, rest0, rest1), sel);
++
++		vst1q_u8(buffer, result);
++
++#ifdef SIMD_LATENCYOPT
++		return data + 8 + datacnt;
++#else
++		return data + 8 + kDecodeBytesGroupCount[mask0] + kDecodeBytesGroupCount[mask1];
++#endif
++	}
++
++	case 3:
++	case 8:
++	{
++		uint8x16_t result = vld1q_u8(data);
++
++		vst1q_u8(buffer, result);
++
++		return data + 16;
++	}
++
++	case 5:
++	{
++		unsigned char mask0 = data[0];
++		unsigned char mask1 = data[1];
++
++		uint8x8_t rest0 = vld1_u8(data + 2);
++		uint8x8_t rest1 = vld1_u8(data + 2 + kDecodeBytesGroupCount[mask0]);
++
++		uint8x16_t result = shuffleBytes(mask0, mask1, rest0, rest1);
++
++		vst1q_u8(buffer, result);
++
++		return data + 2 + kDecodeBytesGroupCount[mask0] + kDecodeBytesGroupCount[mask1];
++	}
++
++	default:
++		SIMD_UNREACHABLE(); // unreachable
++	}
++}
++#endif
++
++#ifdef SIMD_WASM
++SIMD_TARGET
++inline v128_t decodeShuffleMask(unsigned char mask0, unsigned char mask1)
++{
++	v128_t sm0 = wasm_v128_load(&kDecodeBytesGroupShuffle[mask0]);
++	v128_t sm1 = wasm_v128_load(&kDecodeBytesGroupShuffle[mask1]);
++
++	v128_t sm1off = wasm_v128_load8_splat(&kDecodeBytesGroupCount[mask0]);
++	v128_t sm1r = wasm_i8x16_add(sm1, sm1off);
++
++	return wasmx_unpacklo_v64x2(sm0, sm1r);
++}
++
++SIMD_TARGET
++inline void wasmMoveMask(v128_t mask, unsigned char& mask0, unsigned char& mask1)
++{
++	// magic constant found using z3 SMT assuming mask has 8 groups of 0xff or 0x00
++	const uint64_t magic = 0x000103070f1f3f80ull;
++
++	mask0 = uint8_t((wasm_i64x2_extract_lane(mask, 0) * magic) >> 56);
++	mask1 = uint8_t((wasm_i64x2_extract_lane(mask, 1) * magic) >> 56);
++}
++
++SIMD_TARGET
++inline const unsigned char* decodeBytesGroupSimd(const unsigned char* data, unsigned char* buffer, int hbits)
++{
++	switch (hbits)
++	{
++	case 0:
++	case 4:
++	{
++		v128_t result = wasm_i8x16_splat(0);
++
++		wasm_v128_store(buffer, result);
++
++		return data;
++	}
++
++	case 1:
++	case 6:
++	{
++		v128_t sel2 = wasm_v128_load(data);
++		v128_t rest = wasm_v128_load(data + 4);
++
++		v128_t sel22 = wasmx_unpacklo_v8x16(wasm_i16x8_shr(sel2, 4), sel2);
++		v128_t sel2222 = wasmx_unpacklo_v8x16(wasm_i16x8_shr(sel22, 2), sel22);
++		v128_t sel = wasm_v128_and(sel2222, wasm_i8x16_splat(3));
++
++		v128_t mask = wasm_i8x16_eq(sel, wasm_i8x16_splat(3));
++
++		unsigned char mask0, mask1;
++		wasmMoveMask(mask, mask0, mask1);
++
++		v128_t shuf = decodeShuffleMask(mask0, mask1);
++		v128_t result = wasm_v128_bitselect(wasm_i8x16_swizzle(rest, shuf), sel, mask);
++
++		wasm_v128_store(buffer, result);
++
++		return data + 4 + kDecodeBytesGroupCount[mask0] + kDecodeBytesGroupCount[mask1];
++	}
++
++	case 2:
++	case 7:
++	{
++		v128_t sel4 = wasm_v128_load(data);
++		v128_t rest = wasm_v128_load(data + 8);
++
++		v128_t sel44 = wasmx_unpacklo_v8x16(wasm_i16x8_shr(sel4, 4), sel4);
++		v128_t sel = wasm_v128_and(sel44, wasm_i8x16_splat(15));
++
++		v128_t mask = wasm_i8x16_eq(sel, wasm_i8x16_splat(15));
++
++		unsigned char mask0, mask1;
++		wasmMoveMask(mask, mask0, mask1);
++
++		v128_t shuf = decodeShuffleMask(mask0, mask1);
++		v128_t result = wasm_v128_bitselect(wasm_i8x16_swizzle(rest, shuf), sel, mask);
++
++		wasm_v128_store(buffer, result);
++
++		return data + 8 + kDecodeBytesGroupCount[mask0] + kDecodeBytesGroupCount[mask1];
++	}
++
++	case 3:
++	case 8:
++	{
++		v128_t result = wasm_v128_load(data);
++
++		wasm_v128_store(buffer, result);
++
++		return data + 16;
++	}
++
++	case 5:
++	{
++		v128_t rest = wasm_v128_load(data + 2);
++
++		unsigned char mask0 = data[0];
++		unsigned char mask1 = data[1];
++
++		v128_t shuf = decodeShuffleMask(mask0, mask1);
++		v128_t result = wasm_i8x16_swizzle(rest, shuf);
++
++		wasm_v128_store(buffer, result);
++
++		return data + 2 + kDecodeBytesGroupCount[mask0] + kDecodeBytesGroupCount[mask1];
++	}
++
++	default:
++		SIMD_UNREACHABLE(); // unreachable
++	}
++}
++#endif
++
++#if defined(SIMD_SSE) || defined(SIMD_AVX)
++SIMD_TARGET
++inline void transpose8(__m128i& x0, __m128i& x1, __m128i& x2, __m128i& x3)
++{
++	__m128i t0 = _mm_unpacklo_epi8(x0, x1);
++	__m128i t1 = _mm_unpackhi_epi8(x0, x1);
++	__m128i t2 = _mm_unpacklo_epi8(x2, x3);
++	__m128i t3 = _mm_unpackhi_epi8(x2, x3);
++
++	x0 = _mm_unpacklo_epi16(t0, t2);
++	x1 = _mm_unpackhi_epi16(t0, t2);
++	x2 = _mm_unpacklo_epi16(t1, t3);
++	x3 = _mm_unpackhi_epi16(t1, t3);
++}
++
++SIMD_TARGET
++inline __m128i unzigzag8(__m128i v)
++{
++	__m128i xl = _mm_sub_epi8(_mm_setzero_si128(), _mm_and_si128(v, _mm_set1_epi8(1)));
++	__m128i xr = _mm_and_si128(_mm_srli_epi16(v, 1), _mm_set1_epi8(127));
++
++	return _mm_xor_si128(xl, xr);
++}
++
++SIMD_TARGET
++inline __m128i unzigzag16(__m128i v)
++{
++	__m128i xl = _mm_sub_epi16(_mm_setzero_si128(), _mm_and_si128(v, _mm_set1_epi16(1)));
++	__m128i xr = _mm_srli_epi16(v, 1);
++
++	return _mm_xor_si128(xl, xr);
++}
++
++SIMD_TARGET
++inline __m128i rotate32(__m128i v, int r)
++{
++	return _mm_or_si128(_mm_slli_epi32(v, r), _mm_srli_epi32(v, 32 - r));
++}
++#endif
++
++#ifdef SIMD_NEON
++SIMD_TARGET
++inline void transpose8(uint8x16_t& x0, uint8x16_t& x1, uint8x16_t& x2, uint8x16_t& x3)
++{
++	uint8x16x2_t t01 = vzipq_u8(x0, x1);
++	uint8x16x2_t t23 = vzipq_u8(x2, x3);
++
++	uint16x8x2_t x01 = vzipq_u16(vreinterpretq_u16_u8(t01.val[0]), vreinterpretq_u16_u8(t23.val[0]));
++	uint16x8x2_t x23 = vzipq_u16(vreinterpretq_u16_u8(t01.val[1]), vreinterpretq_u16_u8(t23.val[1]));
++
++	x0 = vreinterpretq_u8_u16(x01.val[0]);
++	x1 = vreinterpretq_u8_u16(x01.val[1]);
++	x2 = vreinterpretq_u8_u16(x23.val[0]);
++	x3 = vreinterpretq_u8_u16(x23.val[1]);
++}
++
++SIMD_TARGET
++inline uint8x16_t unzigzag8(uint8x16_t v)
++{
++	uint8x16_t xl = vreinterpretq_u8_s8(vnegq_s8(vreinterpretq_s8_u8(vandq_u8(v, vdupq_n_u8(1)))));
++	uint8x16_t xr = vshrq_n_u8(v, 1);
++
++	return veorq_u8(xl, xr);
++}
++
++SIMD_TARGET
++inline uint8x16_t unzigzag16(uint8x16_t v)
++{
++	uint16x8_t vv = vreinterpretq_u16_u8(v);
++	uint8x16_t xl = vreinterpretq_u8_s16(vnegq_s16(vreinterpretq_s16_u16(vandq_u16(vv, vdupq_n_u16(1)))));
++	uint8x16_t xr = vreinterpretq_u8_u16(vshrq_n_u16(vv, 1));
++
++	return veorq_u8(xl, xr);
++}
++
++SIMD_TARGET
++inline uint8x16_t rotate32(uint8x16_t v, int r)
++{
++	uint32x4_t v32 = vreinterpretq_u32_u8(v);
++	return vreinterpretq_u8_u32(vorrq_u32(vshlq_u32(v32, vdupq_n_s32(r)), vshlq_u32(v32, vdupq_n_s32(r - 32))));
++}
++
++template <int Channel>
++SIMD_TARGET inline uint8x8_t rebase(uint8x8_t npi, uint8x16_t r0, uint8x16_t r1, uint8x16_t r2, uint8x16_t r3)
++{
++	switch (Channel)
++	{
++	case 0:
++	{
++		uint8x16_t rsum = vaddq_u8(vaddq_u8(r0, r1), vaddq_u8(r2, r3));
++		uint8x8_t rsumx = vadd_u8(vget_low_u8(rsum), vget_high_u8(rsum));
++		return vadd_u8(vadd_u8(npi, rsumx), vext_u8(rsumx, rsumx, 4));
++	}
++	case 1:
++	{
++		uint16x8_t rsum = vaddq_u16(vaddq_u16(vreinterpretq_u16_u8(r0), vreinterpretq_u16_u8(r1)), vaddq_u16(vreinterpretq_u16_u8(r2), vreinterpretq_u16_u8(r3)));
++		uint16x4_t rsumx = vadd_u16(vget_low_u16(rsum), vget_high_u16(rsum));
++		return vreinterpret_u8_u16(vadd_u16(vadd_u16(vreinterpret_u16_u8(npi), rsumx), vext_u16(rsumx, rsumx, 2)));
++	}
++	case 2:
++	{
++		uint8x16_t rsum = veorq_u8(veorq_u8(r0, r1), veorq_u8(r2, r3));
++		uint8x8_t rsumx = veor_u8(vget_low_u8(rsum), vget_high_u8(rsum));
++		return veor_u8(veor_u8(npi, rsumx), vext_u8(rsumx, rsumx, 4));
++	}
++	default:
++		return npi;
++	}
++}
++#endif
++
++#ifdef SIMD_WASM
++SIMD_TARGET
++inline void transpose8(v128_t& x0, v128_t& x1, v128_t& x2, v128_t& x3)
++{
++	v128_t t0 = wasmx_unpacklo_v8x16(x0, x1);
++	v128_t t1 = wasmx_unpackhi_v8x16(x0, x1);
++	v128_t t2 = wasmx_unpacklo_v8x16(x2, x3);
++	v128_t t3 = wasmx_unpackhi_v8x16(x2, x3);
++
++	x0 = wasmx_unpacklo_v16x8(t0, t2);
++	x1 = wasmx_unpackhi_v16x8(t0, t2);
++	x2 = wasmx_unpacklo_v16x8(t1, t3);
++	x3 = wasmx_unpackhi_v16x8(t1, t3);
++}
++
++SIMD_TARGET
++inline v128_t unzigzag8(v128_t v)
++{
++	v128_t xl = wasm_i8x16_neg(wasm_v128_and(v, wasm_i8x16_splat(1)));
++	v128_t xr = wasm_u8x16_shr(v, 1);
++
++	return wasm_v128_xor(xl, xr);
++}
++
++SIMD_TARGET
++inline v128_t unzigzag16(v128_t v)
++{
++	v128_t xl = wasm_i16x8_neg(wasm_v128_and(v, wasm_i16x8_splat(1)));
++	v128_t xr = wasm_u16x8_shr(v, 1);
++
++	return wasm_v128_xor(xl, xr);
++}
++
++SIMD_TARGET
++inline v128_t rotate32(v128_t v, int r)
++{
++	return wasm_v128_or(wasm_i32x4_shl(v, r), wasm_i32x4_shr(v, 32 - r));
++}
++#endif
++
++#if defined(SIMD_SSE) || defined(SIMD_AVX) || defined(SIMD_NEON) || defined(SIMD_WASM)
++SIMD_TARGET
++static const unsigned char* decodeBytesSimd(const unsigned char* data, const unsigned char* data_end, unsigned char* buffer, size_t buffer_size, int hshift)
++{
++	assert(buffer_size % kByteGroupSize == 0);
++	assert(kByteGroupSize == 16);
++
++	// round number of groups to 4 to get number of header bytes
++	size_t header_size = (buffer_size / kByteGroupSize + 3) / 4;
++	if (size_t(data_end - data) < header_size)
++		return NULL;
++
++	const unsigned char* header = data;
++	data += header_size;
++
++	size_t i = 0;
++
++	// fast-path: process 4 groups at a time, do a shared bounds check
++	for (; i + kByteGroupSize * 4 <= buffer_size && size_t(data_end - data) >= kByteGroupDecodeLimit * 4; i += kByteGroupSize * 4)
++	{
++		size_t header_offset = i / kByteGroupSize;
++		unsigned char header_byte = header[header_offset / 4];
++
++		data = decodeBytesGroupSimd(data, buffer + i + kByteGroupSize * 0, hshift + ((header_byte >> 0) & 3));
++		data = decodeBytesGroupSimd(data, buffer + i + kByteGroupSize * 1, hshift + ((header_byte >> 2) & 3));
++		data = decodeBytesGroupSimd(data, buffer + i + kByteGroupSize * 2, hshift + ((header_byte >> 4) & 3));
++		data = decodeBytesGroupSimd(data, buffer + i + kByteGroupSize * 3, hshift + ((header_byte >> 6) & 3));
++	}
++
++	// slow-path: process remaining groups
++	for (; i < buffer_size; i += kByteGroupSize)
++	{
++		if (size_t(data_end - data) < kByteGroupDecodeLimit)
++			return NULL;
++
++		size_t header_offset = i / kByteGroupSize;
++		unsigned char header_byte = header[header_offset / 4];
++
++		data = decodeBytesGroupSimd(data, buffer + i, hshift + ((header_byte >> ((header_offset % 4) * 2)) & 3));
++	}
++
++	return data;
++}
++
++template <int Channel>
++SIMD_TARGET static void
++decodeDeltas4Simd(const unsigned char* buffer, unsigned char* transposed, size_t vertex_count_aligned, size_t vertex_size, unsigned char last_vertex[4], int rot)
++{
++#if defined(SIMD_SSE) || defined(SIMD_AVX)
++#define TEMP __m128i
++#define PREP() __m128i pi = _mm_cvtsi32_si128(*reinterpret_cast<const int*>(last_vertex))
++#define LOAD(i) __m128i r##i = _mm_loadu_si128(reinterpret_cast<const __m128i*>(buffer + j + i * vertex_count_aligned))
++#define GRP4(i) t0 = r##i, t1 = _mm_shuffle_epi32(r##i, 1), t2 = _mm_shuffle_epi32(r##i, 2), t3 = _mm_shuffle_epi32(r##i, 3)
++#define FIXD(i) t##i = pi = Channel == 0 ? _mm_add_epi8(pi, t##i) : (Channel == 1 ? _mm_add_epi16(pi, t##i) : _mm_xor_si128(pi, t##i))
++#define SAVE(i) *reinterpret_cast<int*>(savep) = _mm_cvtsi128_si32(t##i), savep += vertex_size
++#endif
++
++#ifdef SIMD_NEON
++#define TEMP uint8x8_t
++#define PREP() uint8x8_t pi = vreinterpret_u8_u32(vld1_lane_u32(reinterpret_cast<uint32_t*>(last_vertex), vdup_n_u32(0), 0))
++#define LOAD(i) uint8x16_t r##i = vld1q_u8(buffer + j + i * vertex_count_aligned)
++#define GRP4(i) t0 = vget_low_u8(r##i), t1 = vreinterpret_u8_u32(vdup_lane_u32(vreinterpret_u32_u8(t0), 1)), t2 = vget_high_u8(r##i), t3 = vreinterpret_u8_u32(vdup_lane_u32(vreinterpret_u32_u8(t2), 1))
++#define FIXD(i) t##i = pi = Channel == 0 ? vadd_u8(pi, t##i) : (Channel == 1 ? vreinterpret_u8_u16(vadd_u16(vreinterpret_u16_u8(pi), vreinterpret_u16_u8(t##i))) : veor_u8(pi, t##i))
++#define SAVE(i) vst1_lane_u32(reinterpret_cast<uint32_t*>(savep), vreinterpret_u32_u8(t##i), 0), savep += vertex_size
++#endif
++
++#ifdef SIMD_WASM
++#define TEMP v128_t
++#define PREP() v128_t pi = wasm_v128_load(last_vertex)
++#define LOAD(i) v128_t r##i = wasm_v128_load(buffer + j + i * vertex_count_aligned)
++#define GRP4(i) t0 = r##i, t1 = wasmx_splat_v32x4(r##i, 1), t2 = wasmx_splat_v32x4(r##i, 2), t3 = wasmx_splat_v32x4(r##i, 3)
++#define FIXD(i) t##i = pi = Channel == 0 ? wasm_i8x16_add(pi, t##i) : (Channel == 1 ? wasm_i16x8_add(pi, t##i) : wasm_v128_xor(pi, t##i))
++#define SAVE(i) wasm_v128_store32_lane(savep, t##i, 0), savep += vertex_size
++#endif
++
++#define UNZR(i) r##i = Channel == 0 ? unzigzag8(r##i) : (Channel == 1 ? unzigzag16(r##i) : rotate32(r##i, rot))
++
++	PREP();
++
++	unsigned char* savep = transposed;
++
++	for (size_t j = 0; j < vertex_count_aligned; j += 16)
++	{
++		LOAD(0);
++		LOAD(1);
++		LOAD(2);
++		LOAD(3);
++
++		transpose8(r0, r1, r2, r3);
++
++		TEMP t0, t1, t2, t3;
++		TEMP npi = pi;
++
++		UNZR(0);
++		GRP4(0);
++		FIXD(0), FIXD(1), FIXD(2), FIXD(3);
++		SAVE(0), SAVE(1), SAVE(2), SAVE(3);
++
++		UNZR(1);
++		GRP4(1);
++		FIXD(0), FIXD(1), FIXD(2), FIXD(3);
++		SAVE(0), SAVE(1), SAVE(2), SAVE(3);
++
++		UNZR(2);
++		GRP4(2);
++		FIXD(0), FIXD(1), FIXD(2), FIXD(3);
++		SAVE(0), SAVE(1), SAVE(2), SAVE(3);
++
++		UNZR(3);
++		GRP4(3);
++		FIXD(0), FIXD(1), FIXD(2), FIXD(3);
++		SAVE(0), SAVE(1), SAVE(2), SAVE(3);
++
++#if defined(SIMD_LATENCYOPT) && defined(SIMD_NEON) && (defined(__APPLE__) || defined(_WIN32))
++		// instead of relying on accumulated pi, recompute it from scratch from r0..r3; this shortens dependency between loop iterations
++		pi = rebase<Channel>(npi, r0, r1, r2, r3);
++#else
++		(void)npi;
++#endif
++
++#undef UNZR
++#undef TEMP
++#undef PREP
++#undef LOAD
++#undef GRP4
++#undef FIXD
++#undef SAVE
++	}
++}
++
++SIMD_TARGET
++static const unsigned char* decodeVertexBlockSimd(const unsigned char* data, const unsigned char* data_end, unsigned char* vertex_data, size_t vertex_count, size_t vertex_size, unsigned char last_vertex[256], const unsigned char* channels, int version)
++{
++	assert(vertex_count > 0 && vertex_count <= kVertexBlockMaxSize);
++
++	unsigned char buffer[kVertexBlockMaxSize * 4];
++	unsigned char transposed[kVertexBlockSizeBytes];
++
++	size_t vertex_count_aligned = (vertex_count + kByteGroupSize - 1) & ~(kByteGroupSize - 1);
++
++	size_t control_size = version == 0 ? 0 : vertex_size / 4;
++	if (size_t(data_end - data) < control_size)
++		return NULL;
++
++	const unsigned char* control = data;
++	data += control_size;
++
++	for (size_t k = 0; k < vertex_size; k += 4)
++	{
++		unsigned char ctrl_byte = version == 0 ? 0 : control[k / 4];
++
++		for (size_t j = 0; j < 4; ++j)
++		{
++			int ctrl = (ctrl_byte >> (j * 2)) & 3;
++
++			if (ctrl == 3)
++			{
++				// literal encoding; safe to over-copy due to tail
++				if (size_t(data_end - data) < vertex_count_aligned)
++					return NULL;
++
++				memcpy(buffer + j * vertex_count_aligned, data, vertex_count_aligned);
++				data += vertex_count;
++			}
++			else if (ctrl == 2)
++			{
++				// zero encoding
++				memset(buffer + j * vertex_count_aligned, 0, vertex_count_aligned);
++			}
++			else
++			{
++				// for v0, headers are mapped to 0..3; for v1, headers are mapped to 4..8
++				int hshift = version == 0 ? 0 : 4 + ctrl;
++
++				data = decodeBytesSimd(data, data_end, buffer + j * vertex_count_aligned, vertex_count_aligned, hshift);
++				if (!data)
++					return NULL;
++			}
++		}
++
++		int channel = version == 0 ? 0 : channels[k / 4];
++
++		switch (channel & 3)
++		{
++		case 0:
++			decodeDeltas4Simd<0>(buffer, transposed + k, vertex_count_aligned, vertex_size, last_vertex + k, 0);
++			break;
++		case 1:
++			decodeDeltas4Simd<1>(buffer, transposed + k, vertex_count_aligned, vertex_size, last_vertex + k, 0);
++			break;
++		case 2:
++			decodeDeltas4Simd<2>(buffer, transposed + k, vertex_count_aligned, vertex_size, last_vertex + k, (32 - (channel >> 4)) & 31);
++			break;
++		default:
++			return NULL; // invalid channel type
++		}
++	}
++
++	memcpy(vertex_data, transposed, vertex_count * vertex_size);
++
++	memcpy(last_vertex, &transposed[vertex_size * (vertex_count - 1)], vertex_size);
++
++	return data;
++}
++#endif
++
++#if defined(SIMD_SSE) && defined(SIMD_FALLBACK)
++static unsigned int getCpuFeatures()
++{
++	int cpuinfo[4] = {};
++#ifdef _MSC_VER
++	__cpuid(cpuinfo, 1);
++#else
++	__cpuid(1, cpuinfo[0], cpuinfo[1], cpuinfo[2], cpuinfo[3]);
++#endif
++	return cpuinfo[2];
++}
++
++static unsigned int cpuid = getCpuFeatures();
++#endif
++
++} // namespace meshopt
++
++size_t meshopt_encodeVertexBufferLevel(unsigned char* buffer, size_t buffer_size, const void* vertices, size_t vertex_count, size_t vertex_size, int level, int version)
++{
++	using namespace meshopt;
++
++	assert(vertex_size > 0 && vertex_size <= 256);
++	assert(vertex_size % 4 == 0);
++	assert(level >= 0 && level <= 9); // only a subset of this range is used right now
++	assert(version < 0 || unsigned(version) <= kDecodeVertexVersion);
++
++	version = version < 0 ? gEncodeVertexVersion : version;
++
++#if TRACE
++	memset(vertexstats, 0, sizeof(vertexstats));
++#endif
++
++	const unsigned char* vertex_data = static_cast<const unsigned char*>(vertices);
++
++	unsigned char* data = buffer;
++	unsigned char* data_end = buffer + buffer_size;
++
++	if (size_t(data_end - data) < 1)
++		return 0;
++
++	*data++ = (unsigned char)(kVertexHeader | version);
++
++	unsigned char first_vertex[256] = {};
++	if (vertex_count > 0)
++		memcpy(first_vertex, vertex_data, vertex_size);
++
++	unsigned char last_vertex[256] = {};
++	memcpy(last_vertex, first_vertex, vertex_size);
++
++	size_t vertex_block_size = getVertexBlockSize(vertex_size);
++
++	unsigned char channels[64] = {};
++	if (version != 0 && level > 1 && vertex_count > 1)
++		for (size_t k = 0; k < vertex_size; k += 4)
++		{
++			int rot = level >= 3 ? estimateRotate(vertex_data, vertex_count, vertex_size, k, /* group_size= */ 16) : 0;
++			int channel = estimateChannel(vertex_data, vertex_count, vertex_size, k, vertex_block_size, /* block_skip= */ 3, /* max_channels= */ level >= 3 ? 3 : 2, rot);
++
++			assert(unsigned(channel) < 2 || ((channel & 3) == 2 && unsigned(channel >> 4) < 8));
++			channels[k / 4] = (unsigned char)channel;
++		}
++
++	size_t vertex_offset = 0;
++
++	while (vertex_offset < vertex_count)
++	{
++		size_t block_size = (vertex_offset + vertex_block_size < vertex_count) ? vertex_block_size : vertex_count - vertex_offset;
++
++		data = encodeVertexBlock(data, data_end, vertex_data + vertex_offset * vertex_size, block_size, vertex_size, last_vertex, channels, version, level);
++		if (!data)
++			return 0;
++
++		vertex_offset += block_size;
++	}
++
++	size_t tail_size = vertex_size + (version == 0 ? 0 : vertex_size / 4);
++	size_t tail_size_min = version == 0 ? kTailMinSizeV0 : kTailMinSizeV1;
++	size_t tail_size_pad = tail_size < tail_size_min ? tail_size_min : tail_size;
++
++	if (size_t(data_end - data) < tail_size_pad)
++		return 0;
++
++	if (tail_size < tail_size_pad)
++	{
++		memset(data, 0, tail_size_pad - tail_size);
++		data += tail_size_pad - tail_size;
++	}
++
++	memcpy(data, first_vertex, vertex_size);
++	data += vertex_size;
++
++	if (version != 0)
++	{
++		memcpy(data, channels, vertex_size / 4);
++		data += vertex_size / 4;
++	}
++
++	assert(data >= buffer + tail_size);
++	assert(data <= buffer + buffer_size);
++
++#if TRACE
++	size_t total_size = data - buffer;
++
++	for (size_t k = 0; k < vertex_size; ++k)
++	{
++		const Stats& vsk = vertexstats[k];
++
++		printf("%2d: %7d bytes [%4.1f%%] %.1f bpv", int(k), int(vsk.size), double(vsk.size) / double(total_size) * 100, double(vsk.size) / double(vertex_count) * 8);
++
++		size_t total_k = vsk.header + vsk.bitg[1] + vsk.bitg[2] + vsk.bitg[4] + vsk.bitg[8];
++		double total_kr = total_k ? 1.0 / double(total_k) : 0;
++
++		if (version != 0)
++		{
++			int channel = channels[k / 4];
++
++			if ((channel & 3) == 2 && k % 4 == 0)
++				printf(" | ^%d", channel >> 4);
++			else
++				printf(" | %2s", channel == 0 ? "1" : (channel == 1 && k % 2 == 0 ? "2" : "."));
++		}
++
++		printf(" | hdr [%5.1f%%] bitg [1 %4.1f%% 2 %4.1f%% 4 %4.1f%% 8 %4.1f%%]",
++		    double(vsk.header) * total_kr * 100,
++		    double(vsk.bitg[1]) * total_kr * 100, double(vsk.bitg[2]) * total_kr * 100,
++		    double(vsk.bitg[4]) * total_kr * 100, double(vsk.bitg[8]) * total_kr * 100);
++
++		size_t total_ctrl = vsk.ctrl[0] + vsk.ctrl[1] + vsk.ctrl[2] + vsk.ctrl[3];
++
++		if (total_ctrl)
++		{
++			printf(" | ctrl %3.0f%% %3.0f%% %3.0f%% %3.0f%%",
++			    double(vsk.ctrl[0]) / double(total_ctrl) * 100, double(vsk.ctrl[1]) / double(total_ctrl) * 100,
++			    double(vsk.ctrl[2]) / double(total_ctrl) * 100, double(vsk.ctrl[3]) / double(total_ctrl) * 100);
++		}
++
++		if (level >= 3)
++			printf(" | bitc [%3.0f%% %3.0f%% %3.0f%% %3.0f%% %3.0f%% %3.0f%% %3.0f%% %3.0f%%]",
++			    double(vsk.bitc[0]) / double(vertex_count) * 100, double(vsk.bitc[1]) / double(vertex_count) * 100,
++			    double(vsk.bitc[2]) / double(vertex_count) * 100, double(vsk.bitc[3]) / double(vertex_count) * 100,
++			    double(vsk.bitc[4]) / double(vertex_count) * 100, double(vsk.bitc[5]) / double(vertex_count) * 100,
++			    double(vsk.bitc[6]) / double(vertex_count) * 100, double(vsk.bitc[7]) / double(vertex_count) * 100);
++
++		printf("\n");
++	}
++#endif
++
++	return data - buffer;
++}
++
++size_t meshopt_encodeVertexBuffer(unsigned char* buffer, size_t buffer_size, const void* vertices, size_t vertex_count, size_t vertex_size)
++{
++	return meshopt_encodeVertexBufferLevel(buffer, buffer_size, vertices, vertex_count, vertex_size, meshopt::kEncodeDefaultLevel, meshopt::gEncodeVertexVersion);
++}
++
++size_t meshopt_encodeVertexBufferBound(size_t vertex_count, size_t vertex_size)
++{
++	using namespace meshopt;
++
++	assert(vertex_size > 0 && vertex_size <= 256);
++	assert(vertex_size % 4 == 0);
++
++	size_t vertex_block_size = getVertexBlockSize(vertex_size);
++	size_t vertex_block_count = (vertex_count + vertex_block_size - 1) / vertex_block_size;
++
++	size_t vertex_block_control_size = vertex_size / 4;
++	size_t vertex_block_header_size = (vertex_block_size / kByteGroupSize + 3) / 4;
++	size_t vertex_block_data_size = vertex_block_size;
++
++	size_t tail_size = vertex_size + (vertex_size / 4);
++	size_t tail_size_min = kTailMinSizeV0 > kTailMinSizeV1 ? kTailMinSizeV0 : kTailMinSizeV1;
++	size_t tail_size_pad = tail_size < tail_size_min ? tail_size_min : tail_size;
++	assert(tail_size_pad >= kByteGroupDecodeLimit);
++
++	return 1 + vertex_block_count * vertex_size * (vertex_block_control_size + vertex_block_header_size + vertex_block_data_size) + tail_size_pad;
++}
++
++void meshopt_encodeVertexVersion(int version)
++{
++	assert(unsigned(version) <= unsigned(meshopt::kDecodeVertexVersion));
++
++	meshopt::gEncodeVertexVersion = version;
++}
++
++int meshopt_decodeVertexVersion(const unsigned char* buffer, size_t buffer_size)
++{
++	if (buffer_size < 1)
++		return -1;
++
++	unsigned char header = buffer[0];
++
++	if ((header & 0xf0) != meshopt::kVertexHeader)
++		return -1;
++
++	int version = header & 0x0f;
++	if (version > meshopt::kDecodeVertexVersion)
++		return -1;
++
++	return version;
++}
++
++int meshopt_decodeVertexBuffer(void* destination, size_t vertex_count, size_t vertex_size, const unsigned char* buffer, size_t buffer_size)
++{
++	using namespace meshopt;
++
++	assert(vertex_size > 0 && vertex_size <= 256);
++	assert(vertex_size % 4 == 0);
++
++	const unsigned char* (*decode)(const unsigned char*, const unsigned char*, unsigned char*, size_t, size_t, unsigned char[256], const unsigned char*, int) = NULL;
++
++#if defined(SIMD_SSE) && defined(SIMD_FALLBACK)
++	decode = (cpuid & (1 << 9)) ? decodeVertexBlockSimd : decodeVertexBlock;
++#elif defined(SIMD_SSE) || defined(SIMD_AVX) || defined(SIMD_NEON) || defined(SIMD_WASM)
++	decode = decodeVertexBlockSimd;
++#else
++	decode = decodeVertexBlock;
++#endif
++
++#if defined(SIMD_SSE) || defined(SIMD_NEON) || defined(SIMD_WASM)
++	assert(gDecodeBytesGroupInitialized);
++	(void)gDecodeBytesGroupInitialized;
++#endif
++
++	unsigned char* vertex_data = static_cast<unsigned char*>(destination);
++
++	const unsigned char* data = buffer;
++	const unsigned char* data_end = buffer + buffer_size;
++
++	if (size_t(data_end - data) < 1)
++		return -2;
++
++	unsigned char data_header = *data++;
++
++	if ((data_header & 0xf0) != kVertexHeader)
++		return -1;
++
++	int version = data_header & 0x0f;
++	if (version > kDecodeVertexVersion)
++		return -1;
++
++	size_t tail_size = vertex_size + (version == 0 ? 0 : vertex_size / 4);
++	size_t tail_size_min = version == 0 ? kTailMinSizeV0 : kTailMinSizeV1;
++	size_t tail_size_pad = tail_size < tail_size_min ? tail_size_min : tail_size;
++
++	if (size_t(data_end - data) < tail_size_pad)
++		return -2;
++
++	const unsigned char* tail = data_end - tail_size;
++
++	unsigned char last_vertex[256];
++	memcpy(last_vertex, tail, vertex_size);
++
++	const unsigned char* channels = version == 0 ? NULL : tail + vertex_size;
++
++	size_t vertex_block_size = getVertexBlockSize(vertex_size);
++
++	size_t vertex_offset = 0;
++
++	while (vertex_offset < vertex_count)
++	{
++		size_t block_size = (vertex_offset + vertex_block_size < vertex_count) ? vertex_block_size : vertex_count - vertex_offset;
++
++		data = decode(data, data_end, vertex_data + vertex_offset * vertex_size, block_size, vertex_size, last_vertex, channels, version);
++		if (!data)
++			return -2;
++
++		vertex_offset += block_size;
++	}
++
++	if (size_t(data_end - data) != tail_size_pad)
++		return -3;
++
++	return 0;
++}
++
++#undef SIMD_NEON
++#undef SIMD_SSE
++#undef SIMD_AVX
++#undef SIMD_WASM
++#undef SIMD_FALLBACK
++#undef SIMD_TARGET
++#undef SIMD_LATENCYOPT
+diff --git a/libs/meshoptimizer/vertexfilter.cpp b/libs/meshoptimizer/vertexfilter.cpp
+new file mode 100644
+index 0000000..57eecb8
+--- /dev/null
++++ b/libs/meshoptimizer/vertexfilter.cpp
+@@ -0,0 +1,1492 @@
++// This file is part of meshoptimizer library; see meshoptimizer.h for version/license details
++#include "meshoptimizer.h"
++
++#include <math.h>
++#include <string.h>
++
++// The block below auto-detects SIMD ISA that can be used on the target platform
++#ifndef MESHOPTIMIZER_NO_SIMD
++
++// The SIMD implementation requires SSE2, which can be enabled unconditionally through compiler settings
++#if defined(__SSE2__)
++#define SIMD_SSE
++#endif
++
++// MSVC supports compiling SSE2 code regardless of compile options; we assume all 32-bit CPUs support SSE2
++#if !defined(SIMD_SSE) && defined(_MSC_VER) && !defined(__clang__) && (defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC)))
++#define SIMD_SSE
++#endif
++
++// GCC/clang define these when NEON support is available
++#if defined(__ARM_NEON__) || defined(__ARM_NEON)
++#define SIMD_NEON
++#endif
++
++// On MSVC, we assume that ARM builds always target NEON-capable devices
++#if !defined(SIMD_NEON) && defined(_MSC_VER) && (defined(_M_ARM) || defined(_M_ARM64) || defined(_M_ARM64EC))
++#define SIMD_NEON
++#endif
++
++// When targeting Wasm SIMD we can't use runtime cpuid checks so we unconditionally enable SIMD
++#if defined(__wasm_simd128__)
++#define SIMD_WASM
++// Prevent compiling other variant when wasm simd compilation is active
++#undef SIMD_NEON
++#undef SIMD_SSE
++#endif
++
++#endif // !MESHOPTIMIZER_NO_SIMD
++
++#ifdef SIMD_SSE
++#include <emmintrin.h>
++#include <stdint.h>
++#endif
++
++#ifdef _MSC_VER
++#include <intrin.h>
++#endif
++
++#ifdef SIMD_NEON
++#if defined(_MSC_VER) && defined(_M_ARM64)
++#include <arm64_neon.h>
++#else
++#include <arm_neon.h>
++#endif
++#endif
++
++#ifdef SIMD_WASM
++#undef __DEPRECATED
++#include <wasm_simd128.h>
++#endif
++
++#ifdef SIMD_WASM
++#define wasmx_unpacklo_v16x8(a, b) wasm_v16x8_shuffle(a, b, 0, 8, 1, 9, 2, 10, 3, 11)
++#define wasmx_unpackhi_v16x8(a, b) wasm_v16x8_shuffle(a, b, 4, 12, 5, 13, 6, 14, 7, 15)
++#define wasmx_unziplo_v32x4(a, b) wasm_v32x4_shuffle(a, b, 0, 2, 4, 6)
++#define wasmx_unziphi_v32x4(a, b) wasm_v32x4_shuffle(a, b, 1, 3, 5, 7)
++#endif
++
++#ifndef __has_builtin
++#define __has_builtin(x) 0
++#endif
++
++namespace meshopt
++{
++
++#if !defined(SIMD_SSE) && !defined(SIMD_NEON) && !defined(SIMD_WASM)
++template <typename T>
++static void decodeFilterOct(T* data, size_t count)
++{
++	const float max = float((1 << (sizeof(T) * 8 - 1)) - 1);
++
++	for (size_t i = 0; i < count; ++i)
++	{
++		// convert x and y to floats and reconstruct z; this assumes zf encodes 1.f at the same bit count
++		float x = float(data[i * 4 + 0]);
++		float y = float(data[i * 4 + 1]);
++		float z = float(data[i * 4 + 2]) - fabsf(x) - fabsf(y);
++
++		// fixup octahedral coordinates for z<0
++		float t = (z >= 0.f) ? 0.f : z;
++
++		x += (x >= 0.f) ? t : -t;
++		y += (y >= 0.f) ? t : -t;
++
++		// compute normal length & scale
++		float l = sqrtf(x * x + y * y + z * z);
++		float s = max / l;
++
++		// rounded signed float->int
++		int xf = int(x * s + (x >= 0.f ? 0.5f : -0.5f));
++		int yf = int(y * s + (y >= 0.f ? 0.5f : -0.5f));
++		int zf = int(z * s + (z >= 0.f ? 0.5f : -0.5f));
++
++		data[i * 4 + 0] = T(xf);
++		data[i * 4 + 1] = T(yf);
++		data[i * 4 + 2] = T(zf);
++	}
++}
++
++static void decodeFilterQuat(short* data, size_t count)
++{
++	const float scale = 32767.f / sqrtf(2.f);
++
++	for (size_t i = 0; i < count; ++i)
++	{
++		// recover scale from the high byte of the component
++		int sf = data[i * 4 + 3] | 3;
++		float s = float(sf);
++
++		// convert x/y/z to floating point (unscaled! implied scale of 1/sqrt(2.f) * 1/sf)
++		float x = float(data[i * 4 + 0]);
++		float y = float(data[i * 4 + 1]);
++		float z = float(data[i * 4 + 2]);
++
++		// reconstruct w as a square root (unscaled); we clamp to 0.f to avoid NaN due to precision errors
++		float ws = s * s;
++		float ww = ws * 2.f - x * x - y * y - z * z;
++		float w = sqrtf(ww >= 0.f ? ww : 0.f);
++
++		// compute final scale; note that all computations above are unscaled
++		// we need to divide by sf to get out of fixed point, divide by sqrt(2) to renormalize and multiply by 32767 to get to int16 range
++		float ss = scale / s;
++
++		// rounded signed float->int
++		int xf = int(x * ss + (x >= 0.f ? 0.5f : -0.5f));
++		int yf = int(y * ss + (y >= 0.f ? 0.5f : -0.5f));
++		int zf = int(z * ss + (z >= 0.f ? 0.5f : -0.5f));
++		int wf = int(w * ss + 0.5f);
++
++		int qc = data[i * 4 + 3] & 3;
++
++		// output order is dictated by input index
++		data[i * 4 + ((qc + 1) & 3)] = short(xf);
++		data[i * 4 + ((qc + 2) & 3)] = short(yf);
++		data[i * 4 + ((qc + 3) & 3)] = short(zf);
++		data[i * 4 + ((qc + 0) & 3)] = short(wf);
++	}
++}
++
++static void decodeFilterExp(unsigned int* data, size_t count)
++{
++	for (size_t i = 0; i < count; ++i)
++	{
++		unsigned int v = data[i];
++
++		// decode mantissa and exponent
++		int m = int(v << 8) >> 8;
++		int e = int(v) >> 24;
++
++		union
++		{
++			float f;
++			unsigned int ui;
++		} u;
++
++		// optimized version of ldexp(float(m), e)
++		u.ui = unsigned(e + 127) << 23;
++		u.f = u.f * float(m);
++
++		data[i] = u.ui;
++	}
++}
++
++template <typename ST, typename T>
++static void decodeFilterColor(T* data, size_t count)
++{
++	const float max = float((1 << (sizeof(T) * 8)) - 1);
++
++	for (size_t i = 0; i < count; ++i)
++	{
++		// recover scale from alpha high bit
++		int as = data[i * 4 + 3];
++		as |= as >> 1;
++		as |= as >> 2;
++		as |= as >> 4;
++		as |= as >> 8; // noop for 8-bit
++
++		// convert to RGB in fixed point (co/cg are sign extended)
++		int y = data[i * 4 + 0], co = ST(data[i * 4 + 1]), cg = ST(data[i * 4 + 2]);
++
++		int r = y + co - cg;
++		int g = y + cg;
++		int b = y - co - cg;
++
++		// expand alpha by one bit to match other components
++		int a = data[i * 4 + 3];
++		a = ((a << 1) & as) | (a & 1);
++
++		// compute scaling factor
++		float ss = max / float(as);
++
++		// rounded float->int
++		int rf = int(float(r) * ss + 0.5f);
++		int gf = int(float(g) * ss + 0.5f);
++		int bf = int(float(b) * ss + 0.5f);
++		int af = int(float(a) * ss + 0.5f);
++
++		data[i * 4 + 0] = T(rf);
++		data[i * 4 + 1] = T(gf);
++		data[i * 4 + 2] = T(bf);
++		data[i * 4 + 3] = T(af);
++	}
++}
++#endif
++
++#if defined(SIMD_SSE) || defined(SIMD_NEON) || defined(SIMD_WASM)
++template <typename T>
++static void dispatchSimd(void (*process)(T*, size_t), T* data, size_t count, size_t stride)
++{
++	assert(stride <= 4);
++
++	size_t count4 = count & ~size_t(3);
++	process(data, count4);
++
++#ifdef MESHOPTIMIZER_VERTEXFILTER_SIMDNOTAIL
++	// optionally omit tail processing to improve code size, expecting the caller to pass aligned counts
++	assert(count4 == count);
++	(void)stride;
++#else
++	if (count4 < count)
++	{
++		T tail[4 * 4] = {}; // max stride 4, max count 4
++		size_t tail_size = (count - count4) * stride * sizeof(T);
++		assert(tail_size <= sizeof(tail));
++
++		memcpy(tail, data + count4 * stride, tail_size);
++		process(tail, count - count4);
++		memcpy(data + count4 * stride, tail, tail_size);
++	}
++#endif
++}
++
++inline uint64_t rotateleft64(uint64_t v, int x)
++{
++#if defined(_MSC_VER) && !defined(__clang__)
++	return _rotl64(v, x);
++#elif defined(__clang__) && __has_builtin(__builtin_rotateleft64)
++	return __builtin_rotateleft64(v, x);
++#else
++	return (v << (x & 63)) | (v >> ((64 - x) & 63));
++#endif
++}
++#endif
++
++#ifdef SIMD_SSE
++static void decodeFilterOctSimd8(signed char* data, size_t count)
++{
++	const __m128 sign = _mm_set1_ps(-0.f);
++
++	for (size_t i = 0; i < count; i += 4)
++	{
++		__m128i n4 = _mm_loadu_si128(reinterpret_cast<__m128i*>(&data[i * 4]));
++
++		// sign-extends each of x,y in [x y ? ?] with arithmetic shifts
++		__m128i xf = _mm_srai_epi32(_mm_slli_epi32(n4, 24), 24);
++		__m128i yf = _mm_srai_epi32(_mm_slli_epi32(n4, 16), 24);
++
++		// unpack z; note that z is unsigned so we technically don't need to sign extend it
++		__m128i zf = _mm_srai_epi32(_mm_slli_epi32(n4, 8), 24);
++
++		// convert x and y to floats and reconstruct z; this assumes zf encodes 1.f at the same bit count
++		__m128 x = _mm_cvtepi32_ps(xf);
++		__m128 y = _mm_cvtepi32_ps(yf);
++		__m128 z = _mm_sub_ps(_mm_cvtepi32_ps(zf), _mm_add_ps(_mm_andnot_ps(sign, x), _mm_andnot_ps(sign, y)));
++
++		// fixup octahedral coordinates for z<0
++		__m128 t = _mm_min_ps(z, _mm_setzero_ps());
++
++		x = _mm_add_ps(x, _mm_xor_ps(t, _mm_and_ps(x, sign)));
++		y = _mm_add_ps(y, _mm_xor_ps(t, _mm_and_ps(y, sign)));
++
++		// compute normal length & scale
++		__m128 ll = _mm_add_ps(_mm_mul_ps(x, x), _mm_add_ps(_mm_mul_ps(y, y), _mm_mul_ps(z, z)));
++		__m128 s = _mm_mul_ps(_mm_set1_ps(127.f), _mm_rsqrt_ps(ll));
++
++		// rounded signed float->int
++		__m128i xr = _mm_cvtps_epi32(_mm_mul_ps(x, s));
++		__m128i yr = _mm_cvtps_epi32(_mm_mul_ps(y, s));
++		__m128i zr = _mm_cvtps_epi32(_mm_mul_ps(z, s));
++
++		// combine xr/yr/zr into final value
++		__m128i res = _mm_and_si128(n4, _mm_set1_epi32(0xff000000));
++		res = _mm_or_si128(res, _mm_and_si128(xr, _mm_set1_epi32(0xff)));
++		res = _mm_or_si128(res, _mm_slli_epi32(_mm_and_si128(yr, _mm_set1_epi32(0xff)), 8));
++		res = _mm_or_si128(res, _mm_slli_epi32(_mm_and_si128(zr, _mm_set1_epi32(0xff)), 16));
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(&data[i * 4]), res);
++	}
++}
++
++static void decodeFilterOctSimd16(short* data, size_t count)
++{
++	const __m128 sign = _mm_set1_ps(-0.f);
++
++	for (size_t i = 0; i < count; i += 4)
++	{
++		__m128 n4_0 = _mm_loadu_ps(reinterpret_cast<float*>(&data[(i + 0) * 4]));
++		__m128 n4_1 = _mm_loadu_ps(reinterpret_cast<float*>(&data[(i + 2) * 4]));
++
++		// gather both x/y 16-bit pairs in each 32-bit lane
++		__m128i n4 = _mm_castps_si128(_mm_shuffle_ps(n4_0, n4_1, _MM_SHUFFLE(2, 0, 2, 0)));
++
++		// sign-extends each of x,y in [x y] with arithmetic shifts
++		__m128i xf = _mm_srai_epi32(_mm_slli_epi32(n4, 16), 16);
++		__m128i yf = _mm_srai_epi32(n4, 16);
++
++		// unpack z; note that z is unsigned so we don't need to sign extend it
++		__m128i z4 = _mm_castps_si128(_mm_shuffle_ps(n4_0, n4_1, _MM_SHUFFLE(3, 1, 3, 1)));
++		__m128i zf = _mm_and_si128(z4, _mm_set1_epi32(0x7fff));
++
++		// convert x and y to floats and reconstruct z; this assumes zf encodes 1.f at the same bit count
++		__m128 x = _mm_cvtepi32_ps(xf);
++		__m128 y = _mm_cvtepi32_ps(yf);
++		__m128 z = _mm_sub_ps(_mm_cvtepi32_ps(zf), _mm_add_ps(_mm_andnot_ps(sign, x), _mm_andnot_ps(sign, y)));
++
++		// fixup octahedral coordinates for z<0
++		__m128 t = _mm_min_ps(z, _mm_setzero_ps());
++
++		x = _mm_add_ps(x, _mm_xor_ps(t, _mm_and_ps(x, sign)));
++		y = _mm_add_ps(y, _mm_xor_ps(t, _mm_and_ps(y, sign)));
++
++		// compute normal length & scale
++		__m128 ll = _mm_add_ps(_mm_mul_ps(x, x), _mm_add_ps(_mm_mul_ps(y, y), _mm_mul_ps(z, z)));
++		__m128 s = _mm_div_ps(_mm_set1_ps(32767.f), _mm_sqrt_ps(ll));
++
++		// rounded signed float->int
++		__m128i xr = _mm_cvtps_epi32(_mm_mul_ps(x, s));
++		__m128i yr = _mm_cvtps_epi32(_mm_mul_ps(y, s));
++		__m128i zr = _mm_cvtps_epi32(_mm_mul_ps(z, s));
++
++		// mix x/z and y/0 to make 16-bit unpack easier
++		__m128i xzr = _mm_or_si128(_mm_and_si128(xr, _mm_set1_epi32(0xffff)), _mm_slli_epi32(zr, 16));
++		__m128i y0r = _mm_and_si128(yr, _mm_set1_epi32(0xffff));
++
++		// pack x/y/z using 16-bit unpacks; note that this has 0 where we should have .w
++		__m128i res_0 = _mm_unpacklo_epi16(xzr, y0r);
++		__m128i res_1 = _mm_unpackhi_epi16(xzr, y0r);
++
++		// patch in .w
++		__m128i maskw = _mm_set_epi32(0xffff0000, 0, 0xffff0000, 0);
++		res_0 = _mm_or_si128(res_0, _mm_and_si128(_mm_castps_si128(n4_0), maskw));
++		res_1 = _mm_or_si128(res_1, _mm_and_si128(_mm_castps_si128(n4_1), maskw));
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(&data[(i + 0) * 4]), res_0);
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(&data[(i + 2) * 4]), res_1);
++	}
++}
++
++static void decodeFilterQuatSimd(short* data, size_t count)
++{
++	const float scale = 32767.f / sqrtf(2.f);
++
++	for (size_t i = 0; i < count; i += 4)
++	{
++		__m128 q4_0 = _mm_loadu_ps(reinterpret_cast<float*>(&data[(i + 0) * 4]));
++		__m128 q4_1 = _mm_loadu_ps(reinterpret_cast<float*>(&data[(i + 2) * 4]));
++
++		// gather both x/y 16-bit pairs in each 32-bit lane
++		__m128i q4_xy = _mm_castps_si128(_mm_shuffle_ps(q4_0, q4_1, _MM_SHUFFLE(2, 0, 2, 0)));
++		__m128i q4_zc = _mm_castps_si128(_mm_shuffle_ps(q4_0, q4_1, _MM_SHUFFLE(3, 1, 3, 1)));
++
++		// sign-extends each of x,y in [x y] with arithmetic shifts
++		__m128i xf = _mm_srai_epi32(_mm_slli_epi32(q4_xy, 16), 16);
++		__m128i yf = _mm_srai_epi32(q4_xy, 16);
++		__m128i zf = _mm_srai_epi32(_mm_slli_epi32(q4_zc, 16), 16);
++		__m128i cf = _mm_srai_epi32(q4_zc, 16);
++
++		// get a floating-point scaler using zc with bottom 2 bits set to 1 (which represents 1.f)
++		__m128i sf = _mm_or_si128(cf, _mm_set1_epi32(3));
++		__m128 s = _mm_cvtepi32_ps(sf);
++
++		// convert x/y/z to floating point (unscaled! implied scale of 1/sqrt(2.f) * 1/sf)
++		__m128 x = _mm_cvtepi32_ps(xf);
++		__m128 y = _mm_cvtepi32_ps(yf);
++		__m128 z = _mm_cvtepi32_ps(zf);
++
++		// reconstruct w as a square root (unscaled); we clamp to 0.f to avoid NaN due to precision errors
++		__m128 ws = _mm_mul_ps(s, _mm_add_ps(s, s)); // s*2s instead of 2*(s*s) to work around clang bug with integer multiplication
++		__m128 ww = _mm_sub_ps(ws, _mm_add_ps(_mm_mul_ps(x, x), _mm_add_ps(_mm_mul_ps(y, y), _mm_mul_ps(z, z))));
++		__m128 w = _mm_sqrt_ps(_mm_max_ps(ww, _mm_setzero_ps()));
++
++		// compute final scale; note that all computations above are unscaled
++		// we need to divide by sf to get out of fixed point, divide by sqrt(2) to renormalize and multiply by 32767 to get to int16 range
++		__m128 ss = _mm_div_ps(_mm_set1_ps(scale), s);
++
++		// rounded signed float->int
++		__m128i xr = _mm_cvtps_epi32(_mm_mul_ps(x, ss));
++		__m128i yr = _mm_cvtps_epi32(_mm_mul_ps(y, ss));
++		__m128i zr = _mm_cvtps_epi32(_mm_mul_ps(z, ss));
++		__m128i wr = _mm_cvtps_epi32(_mm_mul_ps(w, ss));
++
++		// mix x/z and w/y to make 16-bit unpack easier
++		__m128i xzr = _mm_or_si128(_mm_and_si128(xr, _mm_set1_epi32(0xffff)), _mm_slli_epi32(zr, 16));
++		__m128i wyr = _mm_or_si128(_mm_and_si128(wr, _mm_set1_epi32(0xffff)), _mm_slli_epi32(yr, 16));
++
++		// pack x/y/z/w using 16-bit unpacks; we pack wxyz by default (for qc=0)
++		__m128i res_0 = _mm_unpacklo_epi16(wyr, xzr);
++		__m128i res_1 = _mm_unpackhi_epi16(wyr, xzr);
++
++		// store results to stack so that we can rotate using scalar instructions
++		uint64_t res[4];
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(&res[0]), res_0);
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(&res[2]), res_1);
++
++		// rotate and store
++		uint64_t* out = reinterpret_cast<uint64_t*>(&data[i * 4]);
++
++		out[0] = rotateleft64(res[0], data[(i + 0) * 4 + 3] << 4);
++		out[1] = rotateleft64(res[1], data[(i + 1) * 4 + 3] << 4);
++		out[2] = rotateleft64(res[2], data[(i + 2) * 4 + 3] << 4);
++		out[3] = rotateleft64(res[3], data[(i + 3) * 4 + 3] << 4);
++	}
++}
++
++static void decodeFilterExpSimd(unsigned int* data, size_t count)
++{
++	for (size_t i = 0; i < count; i += 4)
++	{
++		__m128i v = _mm_loadu_si128(reinterpret_cast<__m128i*>(&data[i]));
++
++		// decode exponent into 2^x directly
++		__m128i ef = _mm_srai_epi32(v, 24);
++		__m128i es = _mm_slli_epi32(_mm_add_epi32(ef, _mm_set1_epi32(127)), 23);
++
++		// decode 24-bit mantissa into floating-point value
++		__m128i mf = _mm_srai_epi32(_mm_slli_epi32(v, 8), 8);
++		__m128 m = _mm_cvtepi32_ps(mf);
++
++		__m128 r = _mm_mul_ps(_mm_castsi128_ps(es), m);
++
++		_mm_storeu_ps(reinterpret_cast<float*>(&data[i]), r);
++	}
++}
++
++static void decodeFilterColorSimd8(unsigned char* data, size_t count)
++{
++	for (size_t i = 0; i < count; i += 4)
++	{
++		__m128i c4 = _mm_loadu_si128(reinterpret_cast<__m128i*>(&data[i * 4]));
++
++		// unpack y/co/cg/a (co/cg are sign extended with arithmetic shifts)
++		__m128i yf = _mm_and_si128(c4, _mm_set1_epi32(0xff));
++		__m128i cof = _mm_srai_epi32(_mm_slli_epi32(c4, 16), 24);
++		__m128i cgf = _mm_srai_epi32(_mm_slli_epi32(c4, 8), 24);
++		__m128i af = _mm_srli_epi32(c4, 24);
++
++		// recover scale from alpha high bit
++		__m128i as = af;
++		as = _mm_or_si128(as, _mm_srli_epi32(as, 1));
++		as = _mm_or_si128(as, _mm_srli_epi32(as, 2));
++		as = _mm_or_si128(as, _mm_srli_epi32(as, 4));
++
++		// expand alpha by one bit to match other components
++		af = _mm_or_si128(_mm_and_si128(_mm_slli_epi32(af, 1), as), _mm_and_si128(af, _mm_set1_epi32(1)));
++
++		// compute scaling factor
++		__m128 ss = _mm_mul_ps(_mm_set1_ps(255.f), _mm_rcp_ps(_mm_cvtepi32_ps(as)));
++
++		// convert to RGB in fixed point
++		__m128i rf = _mm_add_epi32(yf, _mm_sub_epi32(cof, cgf));
++		__m128i gf = _mm_add_epi32(yf, cgf);
++		__m128i bf = _mm_sub_epi32(yf, _mm_add_epi32(cof, cgf));
++
++		// rounded signed float->int
++		__m128i rr = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(rf), ss));
++		__m128i gr = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(gf), ss));
++		__m128i br = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(bf), ss));
++		__m128i ar = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(af), ss));
++
++		// repack rgba into final value
++		__m128i res = rr;
++		res = _mm_or_si128(res, _mm_slli_epi32(gr, 8));
++		res = _mm_or_si128(res, _mm_slli_epi32(br, 16));
++		res = _mm_or_si128(res, _mm_slli_epi32(ar, 24));
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(&data[i * 4]), res);
++	}
++}
++
++static void decodeFilterColorSimd16(unsigned short* data, size_t count)
++{
++	for (size_t i = 0; i < count; i += 4)
++	{
++		__m128i c4_0 = _mm_loadu_si128(reinterpret_cast<__m128i*>(&data[(i + 0) * 4]));
++		__m128i c4_1 = _mm_loadu_si128(reinterpret_cast<__m128i*>(&data[(i + 2) * 4]));
++
++		// gather both y/co 16-bit pairs in each 32-bit lane
++		__m128i c4_yco = _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(c4_0), _mm_castsi128_ps(c4_1), _MM_SHUFFLE(2, 0, 2, 0)));
++		__m128i c4_cga = _mm_castps_si128(_mm_shuffle_ps(_mm_castsi128_ps(c4_0), _mm_castsi128_ps(c4_1), _MM_SHUFFLE(3, 1, 3, 1)));
++
++		// unpack y/co/cg/a components (co/cg are sign extended with arithmetic shifts)
++		__m128i yf = _mm_and_si128(c4_yco, _mm_set1_epi32(0xffff));
++		__m128i cof = _mm_srai_epi32(c4_yco, 16);
++		__m128i cgf = _mm_srai_epi32(_mm_slli_epi32(c4_cga, 16), 16);
++		__m128i af = _mm_srli_epi32(c4_cga, 16);
++
++		// recover scale from alpha high bit
++		__m128i as = af;
++		as = _mm_or_si128(as, _mm_srli_epi32(as, 1));
++		as = _mm_or_si128(as, _mm_srli_epi32(as, 2));
++		as = _mm_or_si128(as, _mm_srli_epi32(as, 4));
++		as = _mm_or_si128(as, _mm_srli_epi32(as, 8));
++
++		// expand alpha by one bit to match other components
++		af = _mm_or_si128(_mm_and_si128(_mm_slli_epi32(af, 1), as), _mm_and_si128(af, _mm_set1_epi32(1)));
++
++		// compute scaling factor
++		__m128 ss = _mm_div_ps(_mm_set1_ps(65535.f), _mm_cvtepi32_ps(as));
++
++		// convert to RGB in fixed point
++		__m128i rf = _mm_add_epi32(yf, _mm_sub_epi32(cof, cgf));
++		__m128i gf = _mm_add_epi32(yf, cgf);
++		__m128i bf = _mm_sub_epi32(yf, _mm_add_epi32(cof, cgf));
++
++		// rounded signed float->int
++		__m128i rr = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(rf), ss));
++		__m128i gr = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(gf), ss));
++		__m128i br = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(bf), ss));
++		__m128i ar = _mm_cvtps_epi32(_mm_mul_ps(_mm_cvtepi32_ps(af), ss));
++
++		// mix r/b and g/a to make 16-bit unpack easier
++		__m128i rbr = _mm_or_si128(_mm_and_si128(rr, _mm_set1_epi32(0xffff)), _mm_slli_epi32(br, 16));
++		__m128i gar = _mm_or_si128(_mm_and_si128(gr, _mm_set1_epi32(0xffff)), _mm_slli_epi32(ar, 16));
++
++		// pack r/g/b/a using 16-bit unpacks
++		__m128i res_0 = _mm_unpacklo_epi16(rbr, gar);
++		__m128i res_1 = _mm_unpackhi_epi16(rbr, gar);
++
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(&data[(i + 0) * 4]), res_0);
++		_mm_storeu_si128(reinterpret_cast<__m128i*>(&data[(i + 2) * 4]), res_1);
++	}
++}
++#endif
++
++#if defined(SIMD_NEON) && !defined(__aarch64__) && !(defined(_M_ARM64) || defined(_M_ARM64EC))
++inline float32x4_t vsqrtq_f32(float32x4_t x)
++{
++	float32x4_t r = vrsqrteq_f32(x);
++	r = vmulq_f32(r, vrsqrtsq_f32(vmulq_f32(r, x), r)); // refine rsqrt estimate
++	return vmulq_f32(r, x);
++}
++
++inline float32x4_t vdivq_f32(float32x4_t x, float32x4_t y)
++{
++	float32x4_t r = vrecpeq_f32(y);
++	r = vmulq_f32(r, vrecpsq_f32(y, r)); // refine rcp estimate
++	return vmulq_f32(x, r);
++}
++
++#ifndef __ARM_FEATURE_FMA
++inline float32x4_t vfmaq_f32(float32x4_t x, float32x4_t y, float32x4_t z)
++{
++	return vaddq_f32(x, vmulq_f32(y, z));
++}
++#endif
++#endif
++
++#ifdef SIMD_NEON
++static void decodeFilterOctSimd8(signed char* data, size_t count)
++{
++	const int32x4_t sign = vdupq_n_s32(0x80000000);
++
++	for (size_t i = 0; i < count; i += 4)
++	{
++		int32x4_t n4 = vld1q_s32(reinterpret_cast<int32_t*>(&data[i * 4]));
++
++		// sign-extends each of x,y in [x y ? ?] with arithmetic shifts
++		int32x4_t xf = vshrq_n_s32(vshlq_n_s32(n4, 24), 24);
++		int32x4_t yf = vshrq_n_s32(vshlq_n_s32(n4, 16), 24);
++
++		// unpack z; note that z is unsigned so we technically don't need to sign extend it
++		int32x4_t zf = vshrq_n_s32(vshlq_n_s32(n4, 8), 24);
++
++		// convert x and y to floats and reconstruct z; this assumes zf encodes 1.f at the same bit count
++		float32x4_t x = vcvtq_f32_s32(xf);
++		float32x4_t y = vcvtq_f32_s32(yf);
++		float32x4_t z = vsubq_f32(vcvtq_f32_s32(zf), vaddq_f32(vabsq_f32(x), vabsq_f32(y)));
++
++		// fixup octahedral coordinates for z<0
++		float32x4_t t = vminq_f32(z, vdupq_n_f32(0.f));
++
++		x = vaddq_f32(x, vreinterpretq_f32_s32(veorq_s32(vreinterpretq_s32_f32(t), vandq_s32(vreinterpretq_s32_f32(x), sign))));
++		y = vaddq_f32(y, vreinterpretq_f32_s32(veorq_s32(vreinterpretq_s32_f32(t), vandq_s32(vreinterpretq_s32_f32(y), sign))));
++
++		// compute normal length & scale
++		float32x4_t ll = vfmaq_f32(vfmaq_f32(vmulq_f32(x, x), y, y), z, z);
++		float32x4_t rl = vrsqrteq_f32(ll);
++		float32x4_t s = vmulq_f32(vdupq_n_f32(127.f), rl);
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 8 bits so we can omit the subtraction
++		const float32x4_t fsnap = vdupq_n_f32(3 << 22);
++
++		int32x4_t xr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, x, s));
++		int32x4_t yr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, y, s));
++		int32x4_t zr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, z, s));
++
++		// combine xr/yr/zr into final value
++		int32x4_t res = vsliq_n_s32(xr, vsliq_n_s32(yr, zr, 8), 8);
++		res = vbslq_s32(vdupq_n_u32(0xff000000), n4, res);
++
++		vst1q_s32(reinterpret_cast<int32_t*>(&data[i * 4]), res);
++	}
++}
++
++static void decodeFilterOctSimd16(short* data, size_t count)
++{
++	const int32x4_t sign = vdupq_n_s32(0x80000000);
++
++	for (size_t i = 0; i < count; i += 4)
++	{
++		int32x4_t n4_0 = vld1q_s32(reinterpret_cast<int32_t*>(&data[(i + 0) * 4]));
++		int32x4_t n4_1 = vld1q_s32(reinterpret_cast<int32_t*>(&data[(i + 2) * 4]));
++
++		// gather both x/y 16-bit pairs in each 32-bit lane
++		int32x4_t n4 = vuzpq_s32(n4_0, n4_1).val[0];
++
++		// sign-extends each of x,y in [x y] with arithmetic shifts
++		int32x4_t xf = vshrq_n_s32(vshlq_n_s32(n4, 16), 16);
++		int32x4_t yf = vshrq_n_s32(n4, 16);
++
++		// unpack z; note that z is unsigned so we don't need to sign extend it
++		int32x4_t z4 = vuzpq_s32(n4_0, n4_1).val[1];
++		int32x4_t zf = vandq_s32(z4, vdupq_n_s32(0x7fff));
++
++		// convert x and y to floats and reconstruct z; this assumes zf encodes 1.f at the same bit count
++		float32x4_t x = vcvtq_f32_s32(xf);
++		float32x4_t y = vcvtq_f32_s32(yf);
++		float32x4_t z = vsubq_f32(vcvtq_f32_s32(zf), vaddq_f32(vabsq_f32(x), vabsq_f32(y)));
++
++		// fixup octahedral coordinates for z<0
++		float32x4_t t = vminq_f32(z, vdupq_n_f32(0.f));
++
++		x = vaddq_f32(x, vreinterpretq_f32_s32(veorq_s32(vreinterpretq_s32_f32(t), vandq_s32(vreinterpretq_s32_f32(x), sign))));
++		y = vaddq_f32(y, vreinterpretq_f32_s32(veorq_s32(vreinterpretq_s32_f32(t), vandq_s32(vreinterpretq_s32_f32(y), sign))));
++
++		// compute normal length & scale
++		float32x4_t ll = vfmaq_f32(vfmaq_f32(vmulq_f32(x, x), y, y), z, z);
++#if !defined(__aarch64__) && !(defined(_M_ARM64) || defined(_M_ARM64EC))
++		float32x4_t rl = vrsqrteq_f32(ll);
++		rl = vmulq_f32(rl, vrsqrtsq_f32(vmulq_f32(rl, ll), rl)); // refine rsqrt estimate
++		float32x4_t s = vmulq_f32(vdupq_n_f32(32767.f), rl);
++#else
++		float32x4_t s = vdivq_f32(vdupq_n_f32(32767.f), vsqrtq_f32(ll));
++#endif
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 16 bits so we can omit the subtraction
++		const float32x4_t fsnap = vdupq_n_f32(3 << 22);
++
++		int32x4_t xr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, x, s));
++		int32x4_t yr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, y, s));
++		int32x4_t zr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, z, s));
++
++		// mix x/z and y/0 to make 16-bit unpack easier
++		int32x4_t xzr = vsliq_n_s32(xr, zr, 16);
++		int32x4_t y0r = vandq_s32(yr, vdupq_n_s32(0xffff));
++
++		// pack x/y/z using 16-bit unpacks; note that this has 0 where we should have .w
++		int32x4_t res_0 = vreinterpretq_s32_s16(vzipq_s16(vreinterpretq_s16_s32(xzr), vreinterpretq_s16_s32(y0r)).val[0]);
++		int32x4_t res_1 = vreinterpretq_s32_s16(vzipq_s16(vreinterpretq_s16_s32(xzr), vreinterpretq_s16_s32(y0r)).val[1]);
++
++		// patch in .w
++		res_0 = vbslq_s32(vreinterpretq_u32_u64(vdupq_n_u64(0xffff000000000000)), n4_0, res_0);
++		res_1 = vbslq_s32(vreinterpretq_u32_u64(vdupq_n_u64(0xffff000000000000)), n4_1, res_1);
++
++		vst1q_s32(reinterpret_cast<int32_t*>(&data[(i + 0) * 4]), res_0);
++		vst1q_s32(reinterpret_cast<int32_t*>(&data[(i + 2) * 4]), res_1);
++	}
++}
++
++static void decodeFilterQuatSimd(short* data, size_t count)
++{
++	const float scale = 32767.f / sqrtf(2.f);
++
++	for (size_t i = 0; i < count; i += 4)
++	{
++		int32x4_t q4_0 = vld1q_s32(reinterpret_cast<int32_t*>(&data[(i + 0) * 4]));
++		int32x4_t q4_1 = vld1q_s32(reinterpret_cast<int32_t*>(&data[(i + 2) * 4]));
++
++		// gather both x/y 16-bit pairs in each 32-bit lane
++		int32x4_t q4_xy = vuzpq_s32(q4_0, q4_1).val[0];
++		int32x4_t q4_zc = vuzpq_s32(q4_0, q4_1).val[1];
++
++		// sign-extends each of x,y in [x y] with arithmetic shifts
++		int32x4_t xf = vshrq_n_s32(vshlq_n_s32(q4_xy, 16), 16);
++		int32x4_t yf = vshrq_n_s32(q4_xy, 16);
++		int32x4_t zf = vshrq_n_s32(vshlq_n_s32(q4_zc, 16), 16);
++		int32x4_t cf = vshrq_n_s32(q4_zc, 16);
++
++		// get a floating-point scaler using zc with bottom 2 bits set to 1 (which represents 1.f)
++		int32x4_t sf = vorrq_s32(cf, vdupq_n_s32(3));
++		float32x4_t s = vcvtq_f32_s32(sf);
++
++		// convert x/y/z to floating point (unscaled! implied scale of 1/sqrt(2.f) * 1/sf)
++		float32x4_t x = vcvtq_f32_s32(xf);
++		float32x4_t y = vcvtq_f32_s32(yf);
++		float32x4_t z = vcvtq_f32_s32(zf);
++
++		// reconstruct w as a square root (unscaled); we clamp to 0.f to avoid NaN due to precision errors
++		float32x4_t ws = vmulq_f32(s, s);
++		float32x4_t ww = vsubq_f32(vaddq_f32(ws, ws), vfmaq_f32(vfmaq_f32(vmulq_f32(x, x), y, y), z, z));
++		float32x4_t w = vsqrtq_f32(vmaxq_f32(ww, vdupq_n_f32(0.f)));
++
++		// compute final scale; note that all computations above are unscaled
++		// we need to divide by sf to get out of fixed point, divide by sqrt(2) to renormalize and multiply by 32767 to get to int16 range
++		float32x4_t ss = vdivq_f32(vdupq_n_f32(scale), s);
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 16 bits so we can omit the subtraction
++		const float32x4_t fsnap = vdupq_n_f32(3 << 22);
++
++		int32x4_t xr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, x, ss));
++		int32x4_t yr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, y, ss));
++		int32x4_t zr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, z, ss));
++		int32x4_t wr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, w, ss));
++
++		// mix x/z and w/y to make 16-bit unpack easier
++		int32x4_t xzr = vsliq_n_s32(xr, zr, 16);
++		int32x4_t wyr = vsliq_n_s32(wr, yr, 16);
++
++		// pack x/y/z/w using 16-bit unpacks; we pack wxyz by default (for qc=0)
++		uint64x2_t res_0 = vreinterpretq_u64_s16(vzipq_s16(vreinterpretq_s16_s32(wyr), vreinterpretq_s16_s32(xzr)).val[0]);
++		uint64x2_t res_1 = vreinterpretq_u64_s16(vzipq_s16(vreinterpretq_s16_s32(wyr), vreinterpretq_s16_s32(xzr)).val[1]);
++
++		// store results to stack so that we can rotate using scalar instructions
++		// TODO: volatile works around LLVM mis-optimizing code; https://github.com/llvm/llvm-project/issues/166808
++		volatile uint64_t res[4];
++		vst1q_u64(const_cast<uint64_t*>(&res[0]), res_0);
++		vst1q_u64(const_cast<uint64_t*>(&res[2]), res_1);
++
++		// rotate and store
++		uint64_t* out = reinterpret_cast<uint64_t*>(&data[i * 4]);
++
++		out[0] = rotateleft64(res[0], data[(i + 0) * 4 + 3] << 4);
++		out[1] = rotateleft64(res[1], data[(i + 1) * 4 + 3] << 4);
++		out[2] = rotateleft64(res[2], data[(i + 2) * 4 + 3] << 4);
++		out[3] = rotateleft64(res[3], data[(i + 3) * 4 + 3] << 4);
++	}
++}
++
++static void decodeFilterExpSimd(unsigned int* data, size_t count)
++{
++	for (size_t i = 0; i < count; i += 4)
++	{
++		int32x4_t v = vld1q_s32(reinterpret_cast<int32_t*>(&data[i]));
++
++		// decode exponent into 2^x directly
++		int32x4_t ef = vshrq_n_s32(v, 24);
++		int32x4_t es = vshlq_n_s32(vaddq_s32(ef, vdupq_n_s32(127)), 23);
++
++		// decode 24-bit mantissa into floating-point value
++		int32x4_t mf = vshrq_n_s32(vshlq_n_s32(v, 8), 8);
++		float32x4_t m = vcvtq_f32_s32(mf);
++
++		float32x4_t r = vmulq_f32(vreinterpretq_f32_s32(es), m);
++
++		vst1q_f32(reinterpret_cast<float*>(&data[i]), r);
++	}
++}
++
++static void decodeFilterColorSimd8(unsigned char* data, size_t count)
++{
++	for (size_t i = 0; i < count; i += 4)
++	{
++		int32x4_t c4 = vld1q_s32(reinterpret_cast<int32_t*>(&data[i * 4]));
++
++		// unpack y/co/cg/a (co/cg are sign extended with arithmetic shifts)
++		int32x4_t yf = vandq_s32(c4, vdupq_n_s32(0xff));
++		int32x4_t cof = vshrq_n_s32(vshlq_n_s32(c4, 16), 24);
++		int32x4_t cgf = vshrq_n_s32(vshlq_n_s32(c4, 8), 24);
++		int32x4_t af = vreinterpretq_s32_u32(vshrq_n_u32(vreinterpretq_u32_s32(c4), 24));
++
++		// recover scale from alpha high bit
++		int32x4_t as = af;
++		as = vorrq_s32(as, vshrq_n_s32(as, 1));
++		as = vorrq_s32(as, vshrq_n_s32(as, 2));
++		as = vorrq_s32(as, vshrq_n_s32(as, 4));
++
++		// expand alpha by one bit to match other components
++		af = vorrq_s32(vandq_s32(vshlq_n_s32(af, 1), as), vandq_s32(af, vdupq_n_s32(1)));
++
++		// compute scaling factor
++		float32x4_t ss = vmulq_f32(vdupq_n_f32(255.f), vrecpeq_f32(vcvtq_f32_s32(as)));
++
++		// convert to RGB in fixed point
++		int32x4_t rf = vaddq_s32(yf, vsubq_s32(cof, cgf));
++		int32x4_t gf = vaddq_s32(yf, cgf);
++		int32x4_t bf = vsubq_s32(yf, vaddq_s32(cof, cgf));
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 8 bits so we can omit the subtraction
++		const float32x4_t fsnap = vdupq_n_f32(3 << 22);
++
++		int32x4_t rr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, vcvtq_f32_s32(rf), ss));
++		int32x4_t gr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, vcvtq_f32_s32(gf), ss));
++		int32x4_t br = vreinterpretq_s32_f32(vfmaq_f32(fsnap, vcvtq_f32_s32(bf), ss));
++		int32x4_t ar = vreinterpretq_s32_f32(vfmaq_f32(fsnap, vcvtq_f32_s32(af), ss));
++
++		// repack rgba into final value
++		int32x4_t res = vsliq_n_s32(rr, vsliq_n_s32(gr, vsliq_n_s32(br, ar, 8), 8), 8);
++
++		vst1q_s32(reinterpret_cast<int32_t*>(&data[i * 4]), res);
++	}
++}
++
++static void decodeFilterColorSimd16(unsigned short* data, size_t count)
++{
++	for (size_t i = 0; i < count; i += 4)
++	{
++		int32x4_t c4_0 = vld1q_s32(reinterpret_cast<int32_t*>(&data[(i + 0) * 4]));
++		int32x4_t c4_1 = vld1q_s32(reinterpret_cast<int32_t*>(&data[(i + 2) * 4]));
++
++		// gather both y/co 16-bit pairs in each 32-bit lane
++		int32x4_t c4_yco = vuzpq_s32(c4_0, c4_1).val[0];
++		int32x4_t c4_cga = vuzpq_s32(c4_0, c4_1).val[1];
++
++		// unpack y/co/cg/a components (co/cg are sign extended with arithmetic shifts)
++		int32x4_t yf = vandq_s32(c4_yco, vdupq_n_s32(0xffff));
++		int32x4_t cof = vshrq_n_s32(c4_yco, 16);
++		int32x4_t cgf = vshrq_n_s32(vshlq_n_s32(c4_cga, 16), 16);
++		int32x4_t af = vreinterpretq_s32_u32(vshrq_n_u32(vreinterpretq_u32_s32(c4_cga), 16));
++
++		// recover scale from alpha high bit
++		int32x4_t as = af;
++		as = vorrq_s32(as, vshrq_n_s32(as, 1));
++		as = vorrq_s32(as, vshrq_n_s32(as, 2));
++		as = vorrq_s32(as, vshrq_n_s32(as, 4));
++		as = vorrq_s32(as, vshrq_n_s32(as, 8));
++
++		// expand alpha by one bit to match other components
++		af = vorrq_s32(vandq_s32(vshlq_n_s32(af, 1), as), vandq_s32(af, vdupq_n_s32(1)));
++
++		// compute scaling factor
++		float32x4_t ss = vdivq_f32(vdupq_n_f32(65535.f), vcvtq_f32_s32(as));
++
++		// convert to RGB in fixed point
++		int32x4_t rf = vaddq_s32(yf, vsubq_s32(cof, cgf));
++		int32x4_t gf = vaddq_s32(yf, cgf);
++		int32x4_t bf = vsubq_s32(yf, vaddq_s32(cof, cgf));
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 16 bits so we can omit the subtraction
++		const float32x4_t fsnap = vdupq_n_f32(3 << 22);
++
++		int32x4_t rr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, vcvtq_f32_s32(rf), ss));
++		int32x4_t gr = vreinterpretq_s32_f32(vfmaq_f32(fsnap, vcvtq_f32_s32(gf), ss));
++		int32x4_t br = vreinterpretq_s32_f32(vfmaq_f32(fsnap, vcvtq_f32_s32(bf), ss));
++		int32x4_t ar = vreinterpretq_s32_f32(vfmaq_f32(fsnap, vcvtq_f32_s32(af), ss));
++
++		// mix r/b and g/a to make 16-bit unpack easier
++		int32x4_t rbr = vsliq_n_s32(rr, br, 16);
++		int32x4_t gar = vsliq_n_s32(gr, ar, 16);
++
++		// pack r/g/b/a using 16-bit unpacks
++		int32x4_t res_0 = vreinterpretq_s32_s16(vzipq_s16(vreinterpretq_s16_s32(rbr), vreinterpretq_s16_s32(gar)).val[0]);
++		int32x4_t res_1 = vreinterpretq_s32_s16(vzipq_s16(vreinterpretq_s16_s32(rbr), vreinterpretq_s16_s32(gar)).val[1]);
++
++		vst1q_s32(reinterpret_cast<int32_t*>(&data[(i + 0) * 4]), res_0);
++		vst1q_s32(reinterpret_cast<int32_t*>(&data[(i + 2) * 4]), res_1);
++	}
++}
++#endif
++
++#ifdef SIMD_WASM
++static void decodeFilterOctSimd8(signed char* data, size_t count)
++{
++	const v128_t sign = wasm_f32x4_splat(-0.f);
++
++	for (size_t i = 0; i < count; i += 4)
++	{
++		v128_t n4 = wasm_v128_load(&data[i * 4]);
++
++		// sign-extends each of x,y in [x y ? ?] with arithmetic shifts
++		v128_t xf = wasm_i32x4_shr(wasm_i32x4_shl(n4, 24), 24);
++		v128_t yf = wasm_i32x4_shr(wasm_i32x4_shl(n4, 16), 24);
++
++		// unpack z; note that z is unsigned so we technically don't need to sign extend it
++		v128_t zf = wasm_i32x4_shr(wasm_i32x4_shl(n4, 8), 24);
++
++		// convert x and y to floats and reconstruct z; this assumes zf encodes 1.f at the same bit count
++		v128_t x = wasm_f32x4_convert_i32x4(xf);
++		v128_t y = wasm_f32x4_convert_i32x4(yf);
++		v128_t z = wasm_f32x4_sub(wasm_f32x4_convert_i32x4(zf), wasm_f32x4_add(wasm_f32x4_abs(x), wasm_f32x4_abs(y)));
++
++		// fixup octahedral coordinates for z<0
++		// note: i32x4_min with 0 is equvalent to f32x4_min
++		v128_t t = wasm_i32x4_min(z, wasm_i32x4_splat(0));
++
++		x = wasm_f32x4_add(x, wasm_v128_xor(t, wasm_v128_and(x, sign)));
++		y = wasm_f32x4_add(y, wasm_v128_xor(t, wasm_v128_and(y, sign)));
++
++		// compute normal length & scale
++		v128_t ll = wasm_f32x4_add(wasm_f32x4_mul(x, x), wasm_f32x4_add(wasm_f32x4_mul(y, y), wasm_f32x4_mul(z, z)));
++		v128_t s = wasm_f32x4_div(wasm_f32x4_splat(127.f), wasm_f32x4_sqrt(ll));
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 8 bits so we can omit the subtraction
++		const v128_t fsnap = wasm_f32x4_splat(3 << 22);
++
++		v128_t xr = wasm_f32x4_add(wasm_f32x4_mul(x, s), fsnap);
++		v128_t yr = wasm_f32x4_add(wasm_f32x4_mul(y, s), fsnap);
++		v128_t zr = wasm_f32x4_add(wasm_f32x4_mul(z, s), fsnap);
++
++		// combine xr/yr/zr into final value
++		v128_t res = wasm_v128_and(n4, wasm_i32x4_splat(0xff000000));
++		res = wasm_v128_or(res, wasm_v128_and(xr, wasm_i32x4_splat(0xff)));
++		res = wasm_v128_or(res, wasm_i32x4_shl(wasm_v128_and(yr, wasm_i32x4_splat(0xff)), 8));
++		res = wasm_v128_or(res, wasm_i32x4_shl(wasm_v128_and(zr, wasm_i32x4_splat(0xff)), 16));
++
++		wasm_v128_store(&data[i * 4], res);
++	}
++}
++
++static void decodeFilterOctSimd16(short* data, size_t count)
++{
++	const v128_t sign = wasm_f32x4_splat(-0.f);
++	const v128_t zmask = wasm_i32x4_splat(0x7fff);
++
++	for (size_t i = 0; i < count; i += 4)
++	{
++		v128_t n4_0 = wasm_v128_load(&data[(i + 0) * 4]);
++		v128_t n4_1 = wasm_v128_load(&data[(i + 2) * 4]);
++
++		// gather both x/y 16-bit pairs in each 32-bit lane
++		v128_t n4 = wasmx_unziplo_v32x4(n4_0, n4_1);
++
++		// sign-extends each of x,y in [x y] with arithmetic shifts
++		v128_t xf = wasm_i32x4_shr(wasm_i32x4_shl(n4, 16), 16);
++		v128_t yf = wasm_i32x4_shr(n4, 16);
++
++		// unpack z; note that z is unsigned so we don't need to sign extend it
++		v128_t z4 = wasmx_unziphi_v32x4(n4_0, n4_1);
++		v128_t zf = wasm_v128_and(z4, zmask);
++
++		// convert x and y to floats and reconstruct z; this assumes zf encodes 1.f at the same bit count
++		v128_t x = wasm_f32x4_convert_i32x4(xf);
++		v128_t y = wasm_f32x4_convert_i32x4(yf);
++		v128_t z = wasm_f32x4_sub(wasm_f32x4_convert_i32x4(zf), wasm_f32x4_add(wasm_f32x4_abs(x), wasm_f32x4_abs(y)));
++
++		// fixup octahedral coordinates for z<0
++		// note: i32x4_min with 0 is equvalent to f32x4_min
++		v128_t t = wasm_i32x4_min(z, wasm_i32x4_splat(0));
++
++		x = wasm_f32x4_add(x, wasm_v128_xor(t, wasm_v128_and(x, sign)));
++		y = wasm_f32x4_add(y, wasm_v128_xor(t, wasm_v128_and(y, sign)));
++
++		// compute normal length & scale
++		v128_t ll = wasm_f32x4_add(wasm_f32x4_mul(x, x), wasm_f32x4_add(wasm_f32x4_mul(y, y), wasm_f32x4_mul(z, z)));
++		v128_t s = wasm_f32x4_div(wasm_f32x4_splat(32767.f), wasm_f32x4_sqrt(ll));
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 16 bits so we can omit the subtraction
++		const v128_t fsnap = wasm_f32x4_splat(3 << 22);
++
++		v128_t xr = wasm_f32x4_add(wasm_f32x4_mul(x, s), fsnap);
++		v128_t yr = wasm_f32x4_add(wasm_f32x4_mul(y, s), fsnap);
++		v128_t zr = wasm_f32x4_add(wasm_f32x4_mul(z, s), fsnap);
++
++		// mix x/z and y/0 to make 16-bit unpack easier
++		v128_t xzr = wasm_v128_or(wasm_v128_and(xr, wasm_i32x4_splat(0xffff)), wasm_i32x4_shl(zr, 16));
++		v128_t y0r = wasm_v128_and(yr, wasm_i32x4_splat(0xffff));
++
++		// pack x/y/z using 16-bit unpacks; note that this has 0 where we should have .w
++		v128_t res_0 = wasmx_unpacklo_v16x8(xzr, y0r);
++		v128_t res_1 = wasmx_unpackhi_v16x8(xzr, y0r);
++
++		// patch in .w
++		res_0 = wasm_v128_or(res_0, wasm_v128_and(n4_0, wasm_i64x2_splat(0xffff000000000000)));
++		res_1 = wasm_v128_or(res_1, wasm_v128_and(n4_1, wasm_i64x2_splat(0xffff000000000000)));
++
++		wasm_v128_store(&data[(i + 0) * 4], res_0);
++		wasm_v128_store(&data[(i + 2) * 4], res_1);
++	}
++}
++
++static void decodeFilterQuatSimd(short* data, size_t count)
++{
++	const float scale = 32767.f / sqrtf(2.f);
++
++	for (size_t i = 0; i < count; i += 4)
++	{
++		v128_t q4_0 = wasm_v128_load(&data[(i + 0) * 4]);
++		v128_t q4_1 = wasm_v128_load(&data[(i + 2) * 4]);
++
++		// gather both x/y 16-bit pairs in each 32-bit lane
++		v128_t q4_xy = wasmx_unziplo_v32x4(q4_0, q4_1);
++		v128_t q4_zc = wasmx_unziphi_v32x4(q4_0, q4_1);
++
++		// sign-extends each of x,y in [x y] with arithmetic shifts
++		v128_t xf = wasm_i32x4_shr(wasm_i32x4_shl(q4_xy, 16), 16);
++		v128_t yf = wasm_i32x4_shr(q4_xy, 16);
++		v128_t zf = wasm_i32x4_shr(wasm_i32x4_shl(q4_zc, 16), 16);
++		v128_t cf = wasm_i32x4_shr(q4_zc, 16);
++
++		// get a floating-point scaler using zc with bottom 2 bits set to 1 (which represents 1.f)
++		v128_t sf = wasm_v128_or(cf, wasm_i32x4_splat(3));
++		v128_t s = wasm_f32x4_convert_i32x4(sf);
++
++		// convert x/y/z to floating point (unscaled! implied scale of 1/sqrt(2.f) * 1/sf)
++		v128_t x = wasm_f32x4_convert_i32x4(xf);
++		v128_t y = wasm_f32x4_convert_i32x4(yf);
++		v128_t z = wasm_f32x4_convert_i32x4(zf);
++
++		// reconstruct w as a square root (unscaled); we clamp to 0.f to avoid NaN due to precision errors
++		// note: i32x4_max with 0 is equivalent to f32x4_max
++		v128_t ws = wasm_f32x4_mul(s, s);
++		v128_t ww = wasm_f32x4_sub(wasm_f32x4_add(ws, ws), wasm_f32x4_add(wasm_f32x4_mul(x, x), wasm_f32x4_add(wasm_f32x4_mul(y, y), wasm_f32x4_mul(z, z))));
++		v128_t w = wasm_f32x4_sqrt(wasm_i32x4_max(ww, wasm_i32x4_splat(0)));
++
++		// compute final scale; note that all computations above are unscaled
++		// we need to divide by sf to get out of fixed point, divide by sqrt(2) to renormalize and multiply by 32767 to get to int16 range
++		v128_t ss = wasm_f32x4_div(wasm_f32x4_splat(scale), s);
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 16 bits so we can omit the subtraction
++		const v128_t fsnap = wasm_f32x4_splat(3 << 22);
++
++		v128_t xr = wasm_f32x4_add(wasm_f32x4_mul(x, ss), fsnap);
++		v128_t yr = wasm_f32x4_add(wasm_f32x4_mul(y, ss), fsnap);
++		v128_t zr = wasm_f32x4_add(wasm_f32x4_mul(z, ss), fsnap);
++		v128_t wr = wasm_f32x4_add(wasm_f32x4_mul(w, ss), fsnap);
++
++		// mix x/z and w/y to make 16-bit unpack easier
++		v128_t xzr = wasm_v128_or(wasm_v128_and(xr, wasm_i32x4_splat(0xffff)), wasm_i32x4_shl(zr, 16));
++		v128_t wyr = wasm_v128_or(wasm_v128_and(wr, wasm_i32x4_splat(0xffff)), wasm_i32x4_shl(yr, 16));
++
++		// pack x/y/z/w using 16-bit unpacks; we pack wxyz by default (for qc=0)
++		v128_t res_0 = wasmx_unpacklo_v16x8(wyr, xzr);
++		v128_t res_1 = wasmx_unpackhi_v16x8(wyr, xzr);
++
++		// compute component index shifted left by 4 (and moved into i32x4 slot)
++		v128_t cm = wasm_i32x4_shl(cf, 4);
++
++		// rotate and store
++		uint64_t* out = reinterpret_cast<uint64_t*>(&data[i * 4]);
++
++		out[0] = rotateleft64(wasm_i64x2_extract_lane(res_0, 0), wasm_i32x4_extract_lane(cm, 0));
++		out[1] = rotateleft64(wasm_i64x2_extract_lane(res_0, 1), wasm_i32x4_extract_lane(cm, 1));
++		out[2] = rotateleft64(wasm_i64x2_extract_lane(res_1, 0), wasm_i32x4_extract_lane(cm, 2));
++		out[3] = rotateleft64(wasm_i64x2_extract_lane(res_1, 1), wasm_i32x4_extract_lane(cm, 3));
++	}
++}
++
++static void decodeFilterExpSimd(unsigned int* data, size_t count)
++{
++	for (size_t i = 0; i < count; i += 4)
++	{
++		v128_t v = wasm_v128_load(&data[i]);
++
++		// decode exponent into 2^x directly
++		v128_t ef = wasm_i32x4_shr(v, 24);
++		v128_t es = wasm_i32x4_shl(wasm_i32x4_add(ef, wasm_i32x4_splat(127)), 23);
++
++		// decode 24-bit mantissa into floating-point value
++		v128_t mf = wasm_i32x4_shr(wasm_i32x4_shl(v, 8), 8);
++		v128_t m = wasm_f32x4_convert_i32x4(mf);
++
++		v128_t r = wasm_f32x4_mul(es, m);
++
++		wasm_v128_store(&data[i], r);
++	}
++}
++
++static void decodeFilterColorSimd8(unsigned char* data, size_t count)
++{
++	for (size_t i = 0; i < count; i += 4)
++	{
++		v128_t c4 = wasm_v128_load(&data[i * 4]);
++
++		// unpack y/co/cg/a (co/cg are sign extended with arithmetic shifts)
++		v128_t yf = wasm_v128_and(c4, wasm_i32x4_splat(0xff));
++		v128_t cof = wasm_i32x4_shr(wasm_i32x4_shl(c4, 16), 24);
++		v128_t cgf = wasm_i32x4_shr(wasm_i32x4_shl(c4, 8), 24);
++		v128_t af = wasm_u32x4_shr(c4, 24);
++
++		// recover scale from alpha high bit
++		v128_t as = af;
++		as = wasm_v128_or(as, wasm_i32x4_shr(as, 1));
++		as = wasm_v128_or(as, wasm_i32x4_shr(as, 2));
++		as = wasm_v128_or(as, wasm_i32x4_shr(as, 4));
++
++		// expand alpha by one bit to match other components
++		af = wasm_v128_or(wasm_v128_and(wasm_i32x4_shl(af, 1), as), wasm_v128_and(af, wasm_i32x4_splat(1)));
++
++		// compute scaling factor
++		v128_t ss = wasm_f32x4_div(wasm_f32x4_splat(255.f), wasm_f32x4_convert_i32x4(as));
++
++		// convert to RGB in fixed point
++		v128_t rf = wasm_i32x4_add(yf, wasm_i32x4_sub(cof, cgf));
++		v128_t gf = wasm_i32x4_add(yf, cgf);
++		v128_t bf = wasm_i32x4_sub(yf, wasm_i32x4_add(cof, cgf));
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 8 bits so we can omit the subtraction
++		const v128_t fsnap = wasm_f32x4_splat(3 << 22);
++
++		v128_t rr = wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(rf), ss), fsnap);
++		v128_t gr = wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(gf), ss), fsnap);
++		v128_t br = wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(bf), ss), fsnap);
++		v128_t ar = wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(af), ss), fsnap);
++
++		// repack rgba into final value
++		v128_t res = wasm_v128_and(rr, wasm_i32x4_splat(0xff));
++		res = wasm_v128_or(res, wasm_i32x4_shl(wasm_v128_and(gr, wasm_i32x4_splat(0xff)), 8));
++		res = wasm_v128_or(res, wasm_i32x4_shl(wasm_v128_and(br, wasm_i32x4_splat(0xff)), 16));
++		res = wasm_v128_or(res, wasm_i32x4_shl(ar, 24));
++
++		wasm_v128_store(&data[i * 4], res);
++	}
++}
++
++static void decodeFilterColorSimd16(unsigned short* data, size_t count)
++{
++	for (size_t i = 0; i < count; i += 4)
++	{
++		v128_t c4_0 = wasm_v128_load(&data[(i + 0) * 4]);
++		v128_t c4_1 = wasm_v128_load(&data[(i + 2) * 4]);
++
++		// gather both y/co 16-bit pairs in each 32-bit lane
++		v128_t c4_yco = wasmx_unziplo_v32x4(c4_0, c4_1);
++		v128_t c4_cga = wasmx_unziphi_v32x4(c4_0, c4_1);
++
++		// unpack y/co/cg/a components (co/cg are sign extended with arithmetic shifts)
++		v128_t yf = wasm_v128_and(c4_yco, wasm_i32x4_splat(0xffff));
++		v128_t cof = wasm_i32x4_shr(c4_yco, 16);
++		v128_t cgf = wasm_i32x4_shr(wasm_i32x4_shl(c4_cga, 16), 16);
++		v128_t af = wasm_u32x4_shr(c4_cga, 16);
++
++		// recover scale from alpha high bit
++		v128_t as = af;
++		as = wasm_v128_or(as, wasm_i32x4_shr(as, 1));
++		as = wasm_v128_or(as, wasm_i32x4_shr(as, 2));
++		as = wasm_v128_or(as, wasm_i32x4_shr(as, 4));
++		as = wasm_v128_or(as, wasm_i32x4_shr(as, 8));
++
++		// expand alpha by one bit to match other components
++		af = wasm_v128_or(wasm_v128_and(wasm_i32x4_shl(af, 1), as), wasm_v128_and(af, wasm_i32x4_splat(1)));
++
++		// compute scaling factor
++		v128_t ss = wasm_f32x4_div(wasm_f32x4_splat(65535.f), wasm_f32x4_convert_i32x4(as));
++
++		// convert to RGB in fixed point
++		v128_t rf = wasm_i32x4_add(yf, wasm_i32x4_sub(cof, cgf));
++		v128_t gf = wasm_i32x4_add(yf, cgf);
++		v128_t bf = wasm_i32x4_sub(yf, wasm_i32x4_add(cof, cgf));
++
++		// fast rounded signed float->int: addition triggers renormalization after which mantissa stores the integer value
++		// note: the result is offset by 0x4B40_0000, but we only need the low 16 bits so we can omit the subtraction
++		const v128_t fsnap = wasm_f32x4_splat(3 << 22);
++
++		v128_t rr = wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(rf), ss), fsnap);
++		v128_t gr = wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(gf), ss), fsnap);
++		v128_t br = wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(bf), ss), fsnap);
++		v128_t ar = wasm_f32x4_add(wasm_f32x4_mul(wasm_f32x4_convert_i32x4(af), ss), fsnap);
++
++		// mix r/b and g/a to make 16-bit unpack easier
++		v128_t rbr = wasm_v128_or(wasm_v128_and(rr, wasm_i32x4_splat(0xffff)), wasm_i32x4_shl(br, 16));
++		v128_t gar = wasm_v128_or(wasm_v128_and(gr, wasm_i32x4_splat(0xffff)), wasm_i32x4_shl(ar, 16));
++
++		// pack r/g/b/a using 16-bit unpacks
++		v128_t res_0 = wasmx_unpacklo_v16x8(rbr, gar);
++		v128_t res_1 = wasmx_unpackhi_v16x8(rbr, gar);
++
++		wasm_v128_store(&data[(i + 0) * 4], res_0);
++		wasm_v128_store(&data[(i + 2) * 4], res_1);
++	}
++}
++#endif
++
++// optimized variant of frexp
++inline int optlog2(float v)
++{
++	union
++	{
++		float f;
++		unsigned int ui;
++	} u;
++
++	u.f = v;
++	// +1 accounts for implicit 1. in mantissa; denormalized numbers will end up clamped to min_exp by calling code
++	return v == 0 ? 0 : int((u.ui >> 23) & 0xff) - 127 + 1;
++}
++
++// optimized variant of ldexp
++inline float optexp2(int e)
++{
++	union
++	{
++		float f;
++		unsigned int ui;
++	} u;
++
++	u.ui = unsigned(e + 127) << 23;
++	return u.f;
++}
++
++} // namespace meshopt
++
++void meshopt_decodeFilterOct(void* buffer, size_t count, size_t stride)
++{
++	using namespace meshopt;
++
++	assert(stride == 4 || stride == 8);
++
++#if defined(SIMD_SSE) || defined(SIMD_NEON) || defined(SIMD_WASM)
++	if (stride == 4)
++		dispatchSimd(decodeFilterOctSimd8, static_cast<signed char*>(buffer), count, 4);
++	else
++		dispatchSimd(decodeFilterOctSimd16, static_cast<short*>(buffer), count, 4);
++#else
++	if (stride == 4)
++		decodeFilterOct(static_cast<signed char*>(buffer), count);
++	else
++		decodeFilterOct(static_cast<short*>(buffer), count);
++#endif
++}
++
++void meshopt_decodeFilterQuat(void* buffer, size_t count, size_t stride)
++{
++	using namespace meshopt;
++
++	assert(stride == 8);
++	(void)stride;
++
++#if defined(SIMD_SSE) || defined(SIMD_NEON) || defined(SIMD_WASM)
++	dispatchSimd(decodeFilterQuatSimd, static_cast<short*>(buffer), count, 4);
++#else
++	decodeFilterQuat(static_cast<short*>(buffer), count);
++#endif
++}
++
++void meshopt_decodeFilterExp(void* buffer, size_t count, size_t stride)
++{
++	using namespace meshopt;
++
++	assert(stride > 0 && stride % 4 == 0);
++
++#if defined(SIMD_SSE) || defined(SIMD_NEON) || defined(SIMD_WASM)
++	dispatchSimd(decodeFilterExpSimd, static_cast<unsigned int*>(buffer), count * (stride / 4), 1);
++#else
++	decodeFilterExp(static_cast<unsigned int*>(buffer), count * (stride / 4));
++#endif
++}
++
++void meshopt_decodeFilterColor(void* buffer, size_t count, size_t stride)
++{
++	using namespace meshopt;
++
++	assert(stride == 4 || stride == 8);
++
++#if defined(SIMD_SSE) || defined(SIMD_NEON) || defined(SIMD_WASM)
++	if (stride == 4)
++		dispatchSimd(decodeFilterColorSimd8, static_cast<unsigned char*>(buffer), count, 4);
++	else
++		dispatchSimd(decodeFilterColorSimd16, static_cast<unsigned short*>(buffer), count, 4);
++#else
++	if (stride == 4)
++		decodeFilterColor<signed char>(static_cast<unsigned char*>(buffer), count);
++	else
++		decodeFilterColor<short>(static_cast<unsigned short*>(buffer), count);
++#endif
++}
++
++void meshopt_encodeFilterOct(void* destination, size_t count, size_t stride, int bits, const float* data)
++{
++	assert(stride == 4 || stride == 8);
++	assert(bits >= 2 && bits <= 16);
++
++	signed char* d8 = static_cast<signed char*>(destination);
++	short* d16 = static_cast<short*>(destination);
++
++	int bytebits = int(stride * 2);
++
++	for (size_t i = 0; i < count; ++i)
++	{
++		const float* n = &data[i * 4];
++
++		// octahedral encoding of a unit vector
++		float nx = n[0], ny = n[1], nz = n[2], nw = n[3];
++		float nl = fabsf(nx) + fabsf(ny) + fabsf(nz);
++		float ns = nl == 0.f ? 0.f : 1.f / nl;
++
++		nx *= ns;
++		ny *= ns;
++
++		float u = (nz >= 0.f) ? nx : (1 - fabsf(ny)) * (nx >= 0.f ? 1.f : -1.f);
++		float v = (nz >= 0.f) ? ny : (1 - fabsf(nx)) * (ny >= 0.f ? 1.f : -1.f);
++
++		int fu = meshopt_quantizeSnorm(u, bits);
++		int fv = meshopt_quantizeSnorm(v, bits);
++		int fo = meshopt_quantizeSnorm(1.f, bits);
++		int fw = meshopt_quantizeSnorm(nw, bytebits);
++
++		if (stride == 4)
++		{
++			d8[i * 4 + 0] = (signed char)(fu);
++			d8[i * 4 + 1] = (signed char)(fv);
++			d8[i * 4 + 2] = (signed char)(fo);
++			d8[i * 4 + 3] = (signed char)(fw);
++		}
++		else
++		{
++			d16[i * 4 + 0] = short(fu);
++			d16[i * 4 + 1] = short(fv);
++			d16[i * 4 + 2] = short(fo);
++			d16[i * 4 + 3] = short(fw);
++		}
++	}
++}
++
++void meshopt_encodeFilterQuat(void* destination_, size_t count, size_t stride, int bits, const float* data)
++{
++	assert(stride == 8);
++	assert(bits >= 4 && bits <= 16);
++	(void)stride;
++
++	short* destination = static_cast<short*>(destination_);
++
++	const float scaler = sqrtf(2.f);
++
++	for (size_t i = 0; i < count; ++i)
++	{
++		const float* q = &data[i * 4];
++		short* d = &destination[i * 4];
++
++		// establish maximum quaternion component
++		int qc = 0;
++		qc = fabsf(q[1]) > fabsf(q[qc]) ? 1 : qc;
++		qc = fabsf(q[2]) > fabsf(q[qc]) ? 2 : qc;
++		qc = fabsf(q[3]) > fabsf(q[qc]) ? 3 : qc;
++
++		// we use double-cover properties to discard the sign
++		float sign = q[qc] < 0.f ? -1.f : 1.f;
++
++		// note: we always encode a cyclical swizzle to be able to recover the order via rotation
++		d[0] = short(meshopt_quantizeSnorm(q[(qc + 1) & 3] * scaler * sign, bits));
++		d[1] = short(meshopt_quantizeSnorm(q[(qc + 2) & 3] * scaler * sign, bits));
++		d[2] = short(meshopt_quantizeSnorm(q[(qc + 3) & 3] * scaler * sign, bits));
++		d[3] = short((meshopt_quantizeSnorm(1.f, bits) & ~3) | qc);
++	}
++}
++
++void meshopt_encodeFilterExp(void* destination_, size_t count, size_t stride, int bits, const float* data, enum meshopt_EncodeExpMode mode)
++{
++	using namespace meshopt;
++
++	assert(stride > 0 && stride % 4 == 0 && stride <= 256);
++	assert(bits >= 1 && bits <= 24);
++
++	unsigned int* destination = static_cast<unsigned int*>(destination_);
++	size_t stride_float = stride / sizeof(float);
++
++	int component_exp[64];
++	assert(stride_float <= sizeof(component_exp) / sizeof(int));
++
++	const int min_exp = -100;
++
++	if (mode == meshopt_EncodeExpSharedComponent)
++	{
++		for (size_t j = 0; j < stride_float; ++j)
++			component_exp[j] = min_exp;
++
++		for (size_t i = 0; i < count; ++i)
++		{
++			const float* v = &data[i * stride_float];
++
++			// use maximum exponent to encode values; this guarantees that mantissa is [-1, 1]
++			for (size_t j = 0; j < stride_float; ++j)
++			{
++				int e = optlog2(v[j]);
++
++				component_exp[j] = (component_exp[j] < e) ? e : component_exp[j];
++			}
++		}
++	}
++
++	for (size_t i = 0; i < count; ++i)
++	{
++		const float* v = &data[i * stride_float];
++		unsigned int* d = &destination[i * stride_float];
++
++		int vector_exp = min_exp;
++
++		if (mode == meshopt_EncodeExpSharedVector)
++		{
++			// use maximum exponent to encode values; this guarantees that mantissa is [-1, 1]
++			for (size_t j = 0; j < stride_float; ++j)
++			{
++				int e = optlog2(v[j]);
++
++				vector_exp = (vector_exp < e) ? e : vector_exp;
++			}
++		}
++		else if (mode == meshopt_EncodeExpSeparate)
++		{
++			for (size_t j = 0; j < stride_float; ++j)
++			{
++				int e = optlog2(v[j]);
++
++				component_exp[j] = (min_exp < e) ? e : min_exp;
++			}
++		}
++		else if (mode == meshopt_EncodeExpClamped)
++		{
++			for (size_t j = 0; j < stride_float; ++j)
++			{
++				int e = optlog2(v[j]);
++
++				component_exp[j] = (0 < e) ? e : 0;
++			}
++		}
++		else
++		{
++			// the code below assumes component_exp is initialized outside of the loop
++			assert(mode == meshopt_EncodeExpSharedComponent);
++		}
++
++		for (size_t j = 0; j < stride_float; ++j)
++		{
++			int exp = (mode == meshopt_EncodeExpSharedVector) ? vector_exp : component_exp[j];
++
++			// note that we additionally scale the mantissa to make it a K-bit signed integer (K-1 bits for magnitude)
++			exp -= (bits - 1);
++
++			// compute renormalized rounded mantissa for each component
++			int mmask = (1 << 24) - 1;
++			int m = int(v[j] * optexp2(-exp) + (v[j] >= 0 ? 0.5f : -0.5f));
++
++			d[j] = (m & mmask) | (unsigned(exp) << 24);
++		}
++	}
++}
++
++void meshopt_encodeFilterColor(void* destination, size_t count, size_t stride, int bits, const float* data)
++{
++	assert(stride == 4 || stride == 8);
++	assert(bits >= 2 && bits <= 16);
++
++	unsigned char* d8 = static_cast<unsigned char*>(destination);
++	unsigned short* d16 = static_cast<unsigned short*>(destination);
++
++	for (size_t i = 0; i < count; ++i)
++	{
++		const float* c = &data[i * 4];
++
++		int fr = meshopt_quantizeUnorm(c[0], bits);
++		int fg = meshopt_quantizeUnorm(c[1], bits);
++		int fb = meshopt_quantizeUnorm(c[2], bits);
++
++		// YCoCg-R encoding with truncated Co/Cg ensures that decoding can be done using integers
++		int fco = (fr - fb) / 2;
++		int tmp = fb + fco;
++		int fcg = (fg - tmp) / 2;
++		int fy = tmp + fcg;
++
++		// validate that R/G/B can be reconstructed with K bit integers
++		assert(unsigned((fy + fco - fcg) | (fy + fcg) | (fy - fco - fcg)) < (1u << bits));
++
++		// alpha: K-1-bit encoding with high bit set to 1
++		int fa = (meshopt_quantizeUnorm(c[3], bits) >> 1) | (1 << (bits - 1));
++
++		if (stride == 4)
++		{
++			d8[i * 4 + 0] = (unsigned char)(fy);
++			d8[i * 4 + 1] = (unsigned char)(fco);
++			d8[i * 4 + 2] = (unsigned char)(fcg);
++			d8[i * 4 + 3] = (unsigned char)(fa);
++		}
++		else
++		{
++			d16[i * 4 + 0] = (unsigned short)(fy);
++			d16[i * 4 + 1] = (unsigned short)(fco);
++			d16[i * 4 + 2] = (unsigned short)(fcg);
++			d16[i * 4 + 3] = (unsigned short)(fa);
++		}
++	}
++}
++
++#undef SIMD_SSE
++#undef SIMD_NEON
++#undef SIMD_WASM
 diff --git a/libs/nvtristrip/NvTriStrip.cpp b/libs/nvtristrip/NvTriStrip.cpp
 new file mode 100644
 index 0000000..fe4c781
@@ -597880,10 +602037,10 @@ index 3b9da38..4f1fa56 100644
  // RegisterFlex(); nothing in here is format-specific.
 diff --git a/mdlcompiler/gltfscene.cpp b/mdlcompiler/gltfscene.cpp
 new file mode 100644
-index 0000000..a9dd885
+index 0000000..a3da5f9
 --- /dev/null
 +++ b/mdlcompiler/gltfscene.cpp
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,277 @@
 +#include "gltfscene.h"
 +#include "cgltf.h"
 +#include "assimp/scene.h"
@@ -597891,6 +602048,7 @@ index 0000000..a9dd885
 +#include "pulselimits.h"
 +#include "dependencies.h"
 +#include "pathcompat.h"
++#include "meshoptimizer.h"
 +#include <algorithm>
 +#include <cmath>
 +#include <functional>
@@ -597900,6 +602058,8 @@ index 0000000..a9dd885
 +#include <array>
 +#include <fstream>
 +#include <cstdlib>
++#include <limits>
++#include <set>
 +
 +namespace pulse::source {
 +namespace {
@@ -597930,6 +602090,33 @@ index 0000000..a9dd885
 +const cgltf_accessor* Attribute(const cgltf_attribute* a,size_t count,cgltf_attribute_type type,int set=0) {
 +    for(size_t k=0;k<count;++k) if(a[k].type==type && a[k].index==set) return a[k].data;
 +    return nullptr;
++}
++void DecodeMeshopt(cgltf_data* data) {
++    for(size_t b=0;b<data->buffer_views_count;++b) {
++        auto& view=data->buffer_views[b];
++        if(!view.has_meshopt_compression) continue;
++        const auto& c=view.meshopt_compression;
++        if(!c.buffer || !c.buffer->data || c.offset>c.buffer->size || c.size>c.buffer->size-c.offset ||
++           !c.count || !c.stride || c.count>std::numeric_limits<size_t>::max()/c.stride ||
++           c.count*c.stride!=view.size)
++            throw std::runtime_error("invalid meshopt compressed buffer range or size");
++        if(c.mode==cgltf_meshopt_compression_mode_attributes && (c.stride%4 || c.stride>256))
++            throw std::runtime_error("invalid meshopt attribute stride");
++        if(c.mode!=cgltf_meshopt_compression_mode_attributes && c.stride!=2 && c.stride!=4)
++            throw std::runtime_error("invalid meshopt index stride");
++        view.data=data->memory.alloc_func(data->memory.user_data,view.size);
++        if(!view.data) throw std::bad_alloc();
++        const auto* bytes=static_cast<const unsigned char*>(c.buffer->data)+c.offset;
++        int status=-1;
++        if(c.mode==cgltf_meshopt_compression_mode_attributes) status=meshopt_decodeVertexBuffer(view.data,c.count,c.stride,bytes,c.size);
++        else if(c.mode==cgltf_meshopt_compression_mode_triangles) status=meshopt_decodeIndexBuffer(view.data,c.count,c.stride,bytes,c.size);
++        else if(c.mode==cgltf_meshopt_compression_mode_indices) status=meshopt_decodeIndexSequence(view.data,c.count,c.stride,bytes,c.size);
++        if(status) throw std::runtime_error("invalid meshopt compressed stream");
++        if(c.filter==cgltf_meshopt_compression_filter_octahedral) meshopt_decodeFilterOct(view.data,c.count,c.stride);
++        else if(c.filter==cgltf_meshopt_compression_filter_quaternion) meshopt_decodeFilterQuat(view.data,c.count,c.stride);
++        else if(c.filter==cgltf_meshopt_compression_filter_exponential) meshopt_decodeFilterExp(view.data,c.count,c.stride);
++        else if(c.filter==cgltf_meshopt_compression_filter_color) meshopt_decodeFilterColor(view.data,c.count,c.stride);
++    }
 +}
 +aiVector3D V(const std::vector<float>& x,size_t k) { return {x[k*3],x[k*3+1],x[k*3+2]}; }
 +// Evaluate glTF samplers before handing a regular frame grid to the shared
@@ -597966,13 +602153,14 @@ index 0000000..a9dd885
 +    std::unique_ptr<cgltf_data,decltype(&cgltf_free)> data(raw,cgltf_free);
 +    if(cgltf_load_buffers(&options,raw,path.c_str())!=cgltf_result_success || cgltf_validate(raw)!=cgltf_result_success)
 +        throw std::runtime_error("invalid glTF buffers or accessors; compressed extensions may require $NoFastGltf");
-+    for(size_t b=0;b<raw->buffer_views_count;++b) if(raw->buffer_views[b].has_meshopt_compression)
-+        throw std::runtime_error("meshopt-compressed glTF must be expanded before import");
++    DecodeMeshopt(raw);
 +    if(!std::isfinite(sampleRate) || sampleRate<=0 || sampleRate>1000) throw std::runtime_error("invalid glTF sample rate");
 +    auto scene=std::make_shared<aiScene>();
 +    scene->mRootNode=new aiNode("gltf_scene_root");
 +    std::map<const cgltf_node*,std::string> names;
 +    for(size_t i=0;i<raw->nodes_count;++i) names[&raw->nodes[i]]=raw->nodes[i].name?raw->nodes[i].name:"gltf_node_"+std::to_string(i);
++    std::set<std::string> reservedNames;
++    for(const auto& entry:names) reservedNames.insert(entry.second);
 +    scene->mNumMaterials=unsigned(raw->materials_count+1); scene->mMaterials=new aiMaterial*[scene->mNumMaterials]{};
 +    for(unsigned i=0;i<scene->mNumMaterials;++i) {
 +        scene->mMaterials[i]=new aiMaterial(); aiString name(i<raw->materials_count && raw->materials[i].name?raw->materials[i].name:"material");
@@ -597988,7 +602176,7 @@ index 0000000..a9dd885
 +            out->mNumMeshes=unsigned(n->mesh->primitives_count); out->mMeshes=new unsigned[out->mNumMeshes]{};
 +            for(unsigned p=0;p<out->mNumMeshes;++p) {
 +                auto& primitive=n->mesh->primitives[p];
-+                if(primitive.has_draco_mesh_compression || n->has_mesh_gpu_instancing) throw std::runtime_error("compressed/instanced glTF requires an expanded source");
++                if(primitive.has_draco_mesh_compression) throw std::runtime_error("Draco-compressed glTF requires an expanded source");
 +                auto position=Attribute(primitive.attributes,primitive.attributes_count,cgltf_attribute_type_position);
 +                if(!position) throw std::runtime_error("glTF mesh has no POSITION");
 +                std::unique_ptr<aiMesh> mesh(new aiMesh()); out->mMeshes[p]=unsigned(meshes.size());
@@ -598043,6 +602231,48 @@ index 0000000..a9dd885
 +                }
 +                meshes.push_back(std::move(mesh));
 +            }
++        }
++        if(n->has_mesh_gpu_instancing) {
++            if(n->skin || !n->mesh) throw std::runtime_error("glTF instancing requires an unskinned mesh");
++            const auto& inst=n->mesh_gpu_instancing;
++            size_t count=inst.attributes[0].data->count;
++            if(count>size_t(limits::kMaxSrcBones)) throw std::runtime_error("glTF instance count exceeds source bone limit");
++            std::vector<float> translation,rotation,scale;
++            for(size_t k=0;k<inst.attributes_count;++k) {
++                const auto& attr=inst.attributes[k];
++                const std::string name=attr.name?attr.name:"";
++                int width=name=="ROTATION"?4:3;
++                if(name!="TRANSLATION" && name!="ROTATION" && name!="SCALE") continue;
++                if(attr.data->type!=(width==4?cgltf_type_vec4:cgltf_type_vec3)) throw std::runtime_error("invalid glTF instance attribute type");
++                auto values=Values(attr.data,width);
++                for(float v:values) if(!std::isfinite(v)) throw std::runtime_error("non-finite glTF instance transform");
++                if(name=="TRANSLATION") translation=std::move(values);
++                else if(name=="ROTATION") rotation=std::move(values);
++                else scale=std::move(values);
++            }
++            const unsigned previous=out->mNumChildren;
++            auto children=new aiNode*[previous+count]{};
++            if(previous) std::copy(out->mChildren,out->mChildren+previous,children);
++            delete[] out->mChildren;out->mChildren=children;out->mNumChildren=unsigned(previous+count);
++            for(size_t i=0;i<count;++i) {
++                std::string instanceName=names.at(n)+"_instance_"+std::to_string(i);
++                while(!reservedNames.insert(instanceName).second) instanceName+="_";
++                auto child=out->mChildren[previous+i]=new aiNode(instanceName);
++                child->mParent=out.get();
++                aiVector3D p=translation.empty()?aiVector3D():V(translation,i);
++                aiVector3D s=scale.empty()?aiVector3D(1,1,1):V(scale,i);
++                aiQuaternion q;
++                if(!rotation.empty()) {
++                    q=aiQuaternion(rotation[i*4+3],rotation[i*4],rotation[i*4+1],rotation[i*4+2]);
++                    if(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w<1e-12f) throw std::runtime_error("zero glTF instance rotation quaternion");
++                    q.Normalize();
++                }
++                if(s.x==0 || s.y==0 || s.z==0) throw std::runtime_error("singular glTF instance scale");
++                child->mTransformation=aiMatrix4x4(s,q,p);
++                child->mNumMeshes=out->mNumMeshes;child->mMeshes=new unsigned[child->mNumMeshes];
++                std::copy(out->mMeshes,out->mMeshes+out->mNumMeshes,child->mMeshes);
++            }
++            delete[] out->mMeshes;out->mMeshes=nullptr;out->mNumMeshes=0;
 +        }
 +        return out.release();
 +    };
@@ -598338,7 +602568,7 @@ index 710c49b..735f4e6 100644
      return rc;
  }
 diff --git a/mdlcompiler/meshedit.cpp b/mdlcompiler/meshedit.cpp
-index f72a45e..748f317 100644
+index f72a45e..d8ad9e0 100644
 --- a/mdlcompiler/meshedit.cpp
 +++ b/mdlcompiler/meshedit.cpp
 @@ -49,6 +49,61 @@ int MeshFilter::Tag(const std::string& meshName, const std::string& dagName) {
@@ -598403,11 +602633,66 @@ index f72a45e..748f317 100644
  void ApplyWrinkleScales(Source& src, std::vector<WrinkleScaleOption>& opts) {
      for (WrinkleScaleOption& w : opts) {
          SrcMorphAnim* morph = nullptr;
+@@ -186,6 +241,44 @@ void FillMeshes(Source& out, const std::vector<MFace>& faces) {
+ 
+ } // namespace
+ 
++void RemapMaterials(Source& src, const std::vector<int>& materialMap) {
++    std::vector<MFace> faces;
++    for (int k = 0; k < src.nummeshes; ++k) {
++        const int old = src.meshindex[k];
++        const auto& mesh = src.mesh[old];
++        for (int i = mesh.faceoffset; i < mesh.faceoffset + mesh.numfaces; ++i) {
++            const auto& f = src.face[i];
++            faces.push_back({materialMap.at(old), f.a + uint32_t(mesh.vertexoffset),
++                             f.b + uint32_t(mesh.vertexoffset), f.c + uint32_t(mesh.vertexoffset),
++                             src.faceTag.empty() ? uint16_t(0) : src.faceTag[i]});
++        }
++    }
++    auto vertices = std::move(src.vertex);
++    std::vector<int> order(vertices.size()), remap(vertices.size());
++    for (size_t i = 0; i < vertices.size(); ++i) {
++        order[i] = int(i);
++        vertices[i].material = materialMap.at(vertices[i].material);
++    }
++    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
++        return vertices[a].material < vertices[b].material;
++    });
++    src.vertex.resize(vertices.size());
++    const auto parts = src.vertexPart;
++    for (size_t i = 0; i < order.size(); ++i) {
++        remap[order[i]] = int(i);
++        src.vertex[i] = vertices[order[i]];
++        if (!parts.empty()) src.vertexPart[i] = parts[order[i]];
++    }
++    for (auto& f : faces) { f.a = remap[f.a]; f.b = remap[f.b]; f.c = remap[f.c]; }
++    std::stable_sort(faces.begin(), faces.end(), [](const MFace& a, const MFace& b) {
++        return a.material < b.material;
++    });
++    for (auto& morph : src.morphs)
++        for (auto& va : morph.vanims) va.vertex = remap.at(va.vertex);
++    FillMeshes(src, faces);
++    CalcModelTangentSpaces(src);
++}
++
+ void WeldVertices(Source& src, WeldMode mode, bool sharp, float sharpAngle) {
+     const int n = static_cast<int>(src.vertex.size());
+     if (mode == WeldMode::None || n == 0)
 diff --git a/mdlcompiler/meshedit.h b/mdlcompiler/meshedit.h
-index b3c6ca1..2adfeca 100644
+index b3c6ca1..ccabe1f 100644
 --- a/mdlcompiler/meshedit.h
 +++ b/mdlcompiler/meshedit.h
-@@ -126,6 +126,8 @@ bool ScaleBone(Source& src, const std::string& bone, const Vector3& scale);
+@@ -17,6 +17,9 @@
+ 
+ namespace pulse::source {
+ 
++// Regroup renamed materials, preserving vertex identity and morph deltas.
++void RemapMaterials(Source& src, const std::vector<int>& materialMap);
++
+ // $exceptionlist <exclusive|inclusive> { <name> ... } - a DmeMesh name filter
+ // applied as the DMX loads, so an excluded mesh contributes no geometry, no
+ // materials and no delta shapes. `inclusive` (the default) keeps only what is
+@@ -126,6 +129,8 @@ bool ScaleBone(Source& src, const std::string& bone, const Vector3& scale);
  
  // Reverse normals, morph normal deltas and triangle winding.
  void FlipNormals(Source& src);
@@ -598437,7 +602722,7 @@ index d460e13..cca5a2a 100644
              // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
              if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index 4ef35e3..921d018 100644
+index 4ef35e3..1b59a64 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
 @@ -29,6 +29,7 @@
@@ -598760,7 +603045,7 @@ index 4ef35e3..921d018 100644
          } else if (o == "subd") {
              // no quad subdivision in this compiler (matches importqc); accepted
          } else if (o == "faces") {
-@@ -1917,16 +1974,44 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1917,16 +1974,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              } else if (t.text == "}") {
                  if (--depth == 0)
                      break;
@@ -598782,7 +603067,6 @@ index 4ef35e3..921d018 100644
 +    }
 +    if(bindOneBone) for(auto& v:src->vertex) { v.boneweight.numbones=1; v.boneweight.weight[0]=1.0f; }
 +    std::map<int,int> materialRemap;
-+    const auto oldMeshes=src->mesh;
 +    for(int material:src->meshindex) {
 +        if(material<0 || material>=static_cast<int>(c.in.mats.materialToTexture.size())) continue;
 +        const auto oldTexture=c.in.mats.textures[c.in.mats.materialToTexture[material]];
@@ -598795,19 +603079,16 @@ index 4ef35e3..921d018 100644
 +        materialRemap[material]=name==oldTexture.name ? material :
 +            c.in.mats.UseTextureAsMaterial(c.in.mats.LookupTexture(name.c_str(),oldTexture.relative));
 +    }
-+    std::set<int> editedMaterialIds;
-+    for(const auto& entry:materialRemap) if(!editedMaterialIds.insert(entry.second).second)
-+        return c.Fail(cmd.line,"material rename merges mesh ranges; use distinct target materials");
-+    for(int& material:src->meshindex) {
-+        const int old=material; material=materialRemap[old];
-+        if(material>=static_cast<int>(src->mesh.size())) src->mesh.resize(material+1);
-+        src->mesh[material]=oldMeshes[old];
++    if (!renameMaterials.empty() || !materialPrefix.empty()) {
++        std::vector<int> map(c.in.mats.materialToTexture.size());
++        for(size_t i=0;i<map.size();++i) map[i]=int(i);
++        for(const auto& entry:materialRemap) map[entry.first]=entry.second;
++        source::RemapMaterials(*src,map);
 +    }
-+    for(auto& v:src->vertex) v.material=materialRemap[v.material];
      cm::CompileInput::InModel model;
      model.name = part.name;
      model.source = src;
-@@ -1942,6 +2027,9 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1942,6 +2023,9 @@ bool CmdModel(Ctx& c, const Token& cmd) {
      std::map<std::string, std::vector<source::VtaFlexOption>> vtaByFile; // file -> shapes
      std::string vcaFile, vcaName;
      int vtaLine = 0, vcaLine = 0;
@@ -598817,7 +603098,7 @@ index 4ef35e3..921d018 100644
  
      auto atEnd = [&] { return c.Eof() || (!c.Cur().quoted && c.Cur().text == "}"); };
      auto sameLine = [&](int line) { return !atEnd() && c.Cur().line == line; };
-@@ -1950,7 +2038,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1950,7 +2034,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          return lo == "eyeball" || lo == "eyelid" || lo == "dmxeyelid" || lo == "flexfile" ||
                 lo == "flex" || lo == "flexpair" || lo == "defaultflex" || lo == "vcafile" ||
                 lo == "localvar" || lo == "mouth" || lo == "flexcontroller" ||
@@ -598827,7 +603108,7 @@ index 4ef35e3..921d018 100644
      };
      // A `%name =` at the cursor starts a NEW rule; a bare `%name` is a fetch
      // operand, so a rule expression reads across lines until the next statement.
-@@ -2009,6 +2098,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2009,6 +2094,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          if (o == "eyeball") {
              FaceMarkup::Entry e;
              e.kind = FaceMarkup::Kind::Eyeball;
@@ -598840,7 +603121,7 @@ index 4ef35e3..921d018 100644
              std::string iris;
              if (!c.Want("an eyeball name", t, e.eyeball.name) ||
                  !c.Want("a bone name", t, e.eyeball.bonename) ||
-@@ -2081,6 +2176,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2081,6 +2172,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              continue;
          }
  
@@ -598855,7 +603136,7 @@ index 4ef35e3..921d018 100644
          // flexfile <file> - the VTA the following flex/flexpair/defaultflex read
          if (o == "flexfile") {
              if (!c.Want("a .vta filename", t, flexfile))
-@@ -2092,9 +2195,23 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2092,9 +2191,23 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          // flex/flexpair/defaultflex <name> [<split>] frame <N> [position f] [decay f]
          // Each names one VTA frame; a split routes to the stereo-split machinery.
          if (o == "flex" || o == "flexpair" || o == "defaultflex") {
@@ -598879,7 +603160,7 @@ index 4ef35e3..921d018 100644
              float split = 0.0f;
              bool hasSplit = false;
              if (o == "defaultflex") {
-@@ -2123,6 +2240,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2123,6 +2236,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                      ++c.pos;
                      if (!c.WantFloat("a decay", t, fo.decay))
                          return false;
@@ -598890,7 +603171,7 @@ index 4ef35e3..921d018 100644
                  } else if (k == "split") {
                      ++c.pos;
                      if (!c.WantFloat("a split", t, split))
-@@ -2135,6 +2256,15 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2135,6 +2252,15 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              if (!sawFrame)
                  return c.Fail(t.line, where + ": " + o + " \"" + fo.name +
                                            "\" needs a frame <N> - a .vta names nothing");
@@ -598906,7 +603187,7 @@ index 4ef35e3..921d018 100644
              if (fo.frame == 0)
                  continue; // frame 0 is the VTA basis (the rest pose), not a delta
              if (hasSplit && split != 0.0f)
-@@ -2168,6 +2298,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2168,6 +2294,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                  return false;
              FaceMarkup::Entry e;
              e.kind = FaceMarkup::Kind::Eyelid;
@@ -598914,7 +603195,7 @@ index 4ef35e3..921d018 100644
              const char dtc = type.empty() ? '?' : static_cast<char>(std::tolower(type[0]));
              if (dtc == 'u')      e.eyelid.upper = true;
              else if (dtc == 'l') e.eyelid.upper = false;
-@@ -2186,6 +2317,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2186,6 +2313,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                      if (e.eyelid.delta[slot] == "-")
                          e.eyelid.delta[slot].clear();
                      e.eyelid.target[slot] *= c.in.scale;
@@ -598922,7 +603203,7 @@ index 4ef35e3..921d018 100644
                      haveSlot[slot] = true;
                  } else if (ko == "split") {
                      if (!c.WantFloat("a split distance", t, e.eyelid.split)) return false;
-@@ -2277,6 +2409,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2277,6 +2405,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              continue;
          }
  
@@ -598937,7 +603218,7 @@ index 4ef35e3..921d018 100644
          if (o == "noautodmxrules")
              continue; // handled by the pre-scan above
          if (o == "attachment")
-@@ -2309,6 +2449,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2309,6 +2445,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          if (!source::LoadVtaMorphs(full.string(), *src, importScale, kv.second, &err))
              return c.Fail(vtaLine, "cannot load \"" + full.string() + "\": " + err);
      }
@@ -598978,7 +603259,7 @@ index 4ef35e3..921d018 100644
      if (!vcaFile.empty()) {
          std::vector<fs::path> tried;
          const fs::path full = FindSourceFile(c, vcaFile, &tried);
-@@ -2358,6 +2532,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
+@@ -2358,6 +2528,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
  //    1 - consumed as an option
  //    0 - not an animation option (caller treats it as a filename / seq ref)
  //   -1 - error, c.err set (includes a known-but-unsupported option)
@@ -598987,7 +603268,7 @@ index 4ef35e3..921d018 100644
  int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
      if (t.quoted)
          return 0; // a quoted token is always a filename
-@@ -2589,7 +2765,21 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2589,7 +2761,21 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
      // blockname <name>: sample a specific clip out of a multi-clip source. The
      // reference also resets the frame range to that clip's, which the compile
      // stage does by clamping to whichever clip is picked.
@@ -599010,7 +603291,7 @@ index 4ef35e3..921d018 100644
          if (!c.Want("a source clip name", t, a.blockname))
              return -1;
          return 1;
-@@ -2744,13 +2934,52 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2744,13 +2930,52 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
              return 1;
          }
      }
@@ -599064,7 +603345,7 @@ index 4ef35e3..921d018 100644
          a.cmds.push_back(std::move(cmd));
          return 1;
      }
-@@ -3168,21 +3397,70 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
+@@ -3168,21 +3393,70 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
      if (bindpose) {
          a.bindpose = true;
          a.endframe = 0; // one frame unless `numframes` says otherwise
@@ -599143,7 +603424,7 @@ index 4ef35e3..921d018 100644
  bool CmdAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, false); }
  bool CmdBindPoseAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, true); }
  
-@@ -3225,6 +3503,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
+@@ -3225,6 +3499,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
      std::string name;
      if (!c.Want("a compiled .mdl path", cmd, name))
          return false;
@@ -599154,7 +603435,7 @@ index 4ef35e3..921d018 100644
      // must name a .mdl - a source .dmx/.smd or a bare name would compile fine
      // and leave a reference the engine silently fails to resolve
      if (name.size() < 4 || _stricmp(name.c_str() + name.size() - 4, ".mdl") != 0)
-@@ -4120,6 +4402,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
+@@ -4120,6 +4398,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
              if (_stricmp(o.c_str(), "autoplay") == 0) { seq.flags |= kStudioAutoplay; continue; }
              if (_stricmp(o.c_str(), "hidden") == 0) { seq.flags |= kStudioHidden; continue; }
              if (_stricmp(o.c_str(), "realtime") == 0) { seq.flags |= kStudioRealtime; continue; }
@@ -599162,7 +603443,7 @@ index 4ef35e3..921d018 100644
              if (_stricmp(o.c_str(), "post") == 0) { seq.flags |= kStudioPost; continue; }
              if (_stricmp(o.c_str(), "delta") == 0) {
                  seq.flags |= kStudioDelta | kStudioPost;
-@@ -4557,6 +4840,37 @@ bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
+@@ -4557,6 +4836,37 @@ bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
  // $modelbudget { bones <n> materials <n> } - set the compile ceilings for this
  // model. Braces are optional for a single field. The pulselimits.h value is the
  // cap; bones default to 255 and must be raised here to go past it.
@@ -599200,7 +603481,7 @@ index 4ef35e3..921d018 100644
  bool CmdModelBudget(Ctx& c, const Token& cmd) {
      const bool braced = !c.Eof() && !c.Cur().quoted && c.Cur().text == "{";
      if (braced)
-@@ -4852,6 +5166,12 @@ bool CmdUpAxis(Ctx& c, const Token& cmd) {
+@@ -4852,6 +5162,12 @@ bool CmdUpAxis(Ctx& c, const Token& cmd) {
      if (!c.Want("an axis", cmd, axis))
          return false;
  
@@ -599213,7 +603494,7 @@ index 4ef35e3..921d018 100644
      pm::RadianEuler r{0.0f, 0.0f, pm::kPiF / 2.0f};
      if (_stricmp(axis.c_str(), "x") == 0)
          r.y = pm::kPiF / 2.0f; // 90 about y moves x into z
-@@ -5398,6 +5718,16 @@ bool CmdCullJiggleBones(Ctx& c, const Token&) {
+@@ -5398,6 +5714,16 @@ bool CmdCullJiggleBones(Ctx& c, const Token&) {
      return true;
  }
  
@@ -599230,7 +603511,7 @@ index 4ef35e3..921d018 100644
  // $hierarchy <child> <parent> (Cmd_ForcedHierarchy, "$heirarchy" is stock's own
  // misspelling and works too): reparent a bone. Applied once the global bone
  // table exists, so it can join two source skeletons that were exported apart.
-@@ -5830,6 +6160,29 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
+@@ -5830,6 +6156,29 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
  // attachment name if one matches and otherwise a bone name. The inline form of
  // a VRD <aimconstraint>; the parent and the base position both come from the
  // skeleton, so neither is asked for.
@@ -599260,7 +603541,7 @@ index 4ef35e3..921d018 100644
  bool CmdDriverAimAt(Ctx& c, const Token& cmd) {
      cm::AimAtBone ab;
      ab.autobasepos = true;
-@@ -5887,7 +6240,10 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
+@@ -5887,7 +6236,10 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
                                  filename + "\"");
  
      std::vector<fs::path> tried;
@@ -599271,7 +603552,7 @@ index 4ef35e3..921d018 100644
      if (full.empty())
          return c.Fail(cmd.line, "cannot find \"" + filename + "\" - looked in:" +
                                  LookedIn(tried));
-@@ -7117,9 +7473,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
+@@ -7117,9 +7469,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
      float fps = 0.0f;
      if (!c.WantFloat("a frame rate", cmd, fps))
          return false;
@@ -599285,7 +603566,7 @@ index 4ef35e3..921d018 100644
      return true;
  }
  
-@@ -7782,6 +8140,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
+@@ -7782,6 +8136,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
              if (!c.WantFloat("a position epsilon", sub, c.in.physWeldPosition)) return false;
          } else if (o == "$weldnormal") {
              if (!c.WantFloat("a normal epsilon", sub, c.in.physWeldNormal)) return false;
@@ -599295,7 +603576,7 @@ index 4ef35e3..921d018 100644
          } else if (o == "$concave") {
              c.in.physLegacyConcave = true;
          } else if (o == "$convexhullcountoverride") {
-@@ -8076,8 +8437,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
+@@ -8076,8 +8433,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
      }
  
      std::string expectedText;
@@ -599306,7 +603587,7 @@ index 4ef35e3..921d018 100644
      bool expected = false;
      if (_stricmp(expectedText.c_str(), "true") == 0)
          expected = true;
-@@ -8153,7 +8514,12 @@ bool SpliceInclude(Ctx& c) {
+@@ -8153,7 +8510,12 @@ bool SpliceInclude(Ctx& c) {
      Token pathTok = c.toks[p++];
      if (!pathTok.expanded && !ExpandVars(c, pathTok))
          return false;
@@ -599320,7 +603601,7 @@ index 4ef35e3..921d018 100644
  
      bool localDir = false, optional = false;
      while (p < c.toks.size() && !c.toks[p].quoted && c.toks[p].line == cmd.line &&
-@@ -8161,7 +8527,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8161,7 +8523,7 @@ bool SpliceInclude(Ctx& c) {
          const std::string& o = c.toks[p].text;
          if (_stricmp(o.c_str(), "localdir") == 0)
              localDir = true;
@@ -599329,7 +603610,7 @@ index 4ef35e3..921d018 100644
              optional = true;
          else
              return c.Fail(c.toks[p].line, "$include: unknown parameter \"" + o +
-@@ -8177,7 +8543,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8177,7 +8539,7 @@ bool SpliceInclude(Ctx& c) {
      if (relPath.is_absolute()) {
          tries.push_back(relPath);
      } else {
@@ -599338,7 +603619,7 @@ index 4ef35e3..921d018 100644
          // stock resolves every $include against the root script's dir, so a
          // nested one often carries the whole path down from there
          if (c.curDir != c.scriptDir)
-@@ -8397,9 +8763,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
+@@ -8397,9 +8759,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
          return false;
      if (PinnedByDefVar(c, cmd, name))
          return true;
@@ -599354,7 +603635,7 @@ index 4ef35e3..921d018 100644
      c.variables[name] = value;
      return true;
  }
-@@ -8420,6 +8789,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
+@@ -8420,6 +8785,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
      return true;
  }
  
@@ -599408,7 +603689,7 @@ index 4ef35e3..921d018 100644
  bool IsCommandName(const std::string& name); // the kCommands lookup, below
  
  // $definemacro <name> [<param>[=<default>] ...] <body> $endmacro.
-@@ -8757,9 +9173,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8757,9 +9169,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
              taken = true;
              chosen = std::move(body);
          }
@@ -599420,7 +603701,7 @@ index 4ef35e3..921d018 100644
      }
      if (!c.Eof() && !c.Cur().quoted && _stricmp(c.Cur().text.c_str(), "$else") == 0) {
          const Token els = c.toks[c.pos++];
-@@ -8774,6 +9191,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8774,6 +9187,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
  }
  
  bool CmdIf(Ctx& c, const Token& cmd) { return IfChain(c, cmd, false); }
@@ -599463,7 +603744,7 @@ index 4ef35e3..921d018 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,19 +9312,73 @@ struct Command {
+@@ -8859,19 +9308,73 @@ struct Command {
      bool (*fn)(Ctx&, const Token&);
  };
  
@@ -599537,7 +603818,7 @@ index 4ef35e3..921d018 100644
      {"$else", CmdElifOutside},
      {"$switch", CmdSwitch},
      {"$case", CmdCaseOutside},
-@@ -8887,6 +9394,7 @@ constexpr Command kCommands[] = {
+@@ -8887,6 +9390,7 @@ constexpr Command kCommands[] = {
      {"$body", CmdLegacyBody},
      {"$bodygroup", CmdLegacyBody},
      {"$model", CmdModel},
@@ -599545,7 +603826,7 @@ index 4ef35e3..921d018 100644
      {"$modelgrouppreset", CmdModelGroupPreset},
      {"$bodygrouppreset", CmdModelGroupPreset},
      {"$datamodeljoints", CmdDataModelJoints},
-@@ -8905,6 +9413,7 @@ constexpr Command kCommands[] = {
+@@ -8905,6 +9409,7 @@ constexpr Command kCommands[] = {
      {"$includemodel", CmdIncludeModel},
      {"$cmdlist", CmdCmdList},
      {"$defaultfps", CmdDefaultFps},
@@ -599553,7 +603834,7 @@ index 4ef35e3..921d018 100644
      {"$motionrollback", CmdMotionRollback},
      {"$nosequence", CmdNoSequence},
      {"$defaultfadein", CmdDefaultFadeIn},
-@@ -8927,11 +9436,43 @@ constexpr Command kCommands[] = {
+@@ -8927,11 +9432,43 @@ constexpr Command kCommands[] = {
      {"$vtxformat", CmdVtxFormat},
      {"$nodx80", CmdNoDx80},
      {"$modelbudget", CmdModelBudget},
@@ -599597,7 +603878,7 @@ index 4ef35e3..921d018 100644
      {"$surfaceprop", CmdSurfaceProp},
      {"$contents", CmdContents},
      {"$jointcontents", CmdJointContents},
-@@ -8977,6 +9518,7 @@ constexpr Command kCommands[] = {
+@@ -8977,6 +9514,7 @@ constexpr Command kCommands[] = {
      {"$jigglebone", CmdJiggleBone},
      {"$culljigglebones", CmdCullJiggleBones},
      {"$driverbone", CmdDriverBone},
@@ -599605,7 +603886,7 @@ index 4ef35e3..921d018 100644
      {"$driveraimat", CmdDriverAimAt},
      {"$proceduralbones", CmdProceduralBones},
      {"$realignbones", CmdRealignBones},
-@@ -8989,6 +9531,7 @@ constexpr Command kCommands[] = {
+@@ -8989,6 +9527,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},
@@ -599613,7 +603894,7 @@ index 4ef35e3..921d018 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
-@@ -9140,9 +9683,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9140,9 +9679,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      seedDirs(includeDirs, c.launchIncludeDirs);
      seedDirs(fileDirs, c.launchSearchDirs);
  
@@ -599626,7 +603907,7 @@ index 4ef35e3..921d018 100644
      // the root of the $include cycle check
      std::error_code ec;
      const fs::path canon = fs::weakly_canonical(path, ec);
-@@ -9170,6 +9716,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9170,6 +9712,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      out.upAxisY = source::DmxUpAxisY();
  
      // $renamemorph: before anything below resolves a morph by name

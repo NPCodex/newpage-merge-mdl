@@ -1990,7 +1990,6 @@ bool CmdModel(Ctx& c, const Token& cmd) {
     }
     if(bindOneBone) for(auto& v:src->vertex) { v.boneweight.numbones=1; v.boneweight.weight[0]=1.0f; }
     std::map<int,int> materialRemap;
-    const auto oldMeshes=src->mesh;
     for(int material:src->meshindex) {
         if(material<0 || material>=static_cast<int>(c.in.mats.materialToTexture.size())) continue;
         const auto oldTexture=c.in.mats.textures[c.in.mats.materialToTexture[material]];
@@ -2003,15 +2002,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         materialRemap[material]=name==oldTexture.name ? material :
             c.in.mats.UseTextureAsMaterial(c.in.mats.LookupTexture(name.c_str(),oldTexture.relative));
     }
-    std::set<int> editedMaterialIds;
-    for(const auto& entry:materialRemap) if(!editedMaterialIds.insert(entry.second).second)
-        return c.Fail(cmd.line,"material rename merges mesh ranges; use distinct target materials");
-    for(int& material:src->meshindex) {
-        const int old=material; material=materialRemap[old];
-        if(material>=static_cast<int>(src->mesh.size())) src->mesh.resize(material+1);
-        src->mesh[material]=oldMeshes[old];
+    if (!renameMaterials.empty() || !materialPrefix.empty()) {
+        std::vector<int> map(c.in.mats.materialToTexture.size());
+        for(size_t i=0;i<map.size();++i) map[i]=int(i);
+        for(const auto& entry:materialRemap) map[entry.first]=entry.second;
+        source::RemapMaterials(*src,map);
     }
-    for(auto& v:src->vertex) v.material=materialRemap[v.material];
     cm::CompileInput::InModel model;
     model.name = part.name;
     model.source = src;

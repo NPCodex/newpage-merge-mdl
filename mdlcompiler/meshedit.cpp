@@ -241,6 +241,44 @@ void FillMeshes(Source& out, const std::vector<MFace>& faces) {
 
 } // namespace
 
+void RemapMaterials(Source& src, const std::vector<int>& materialMap) {
+    std::vector<MFace> faces;
+    for (int k = 0; k < src.nummeshes; ++k) {
+        const int old = src.meshindex[k];
+        const auto& mesh = src.mesh[old];
+        for (int i = mesh.faceoffset; i < mesh.faceoffset + mesh.numfaces; ++i) {
+            const auto& f = src.face[i];
+            faces.push_back({materialMap.at(old), f.a + uint32_t(mesh.vertexoffset),
+                             f.b + uint32_t(mesh.vertexoffset), f.c + uint32_t(mesh.vertexoffset),
+                             src.faceTag.empty() ? uint16_t(0) : src.faceTag[i]});
+        }
+    }
+    auto vertices = std::move(src.vertex);
+    std::vector<int> order(vertices.size()), remap(vertices.size());
+    for (size_t i = 0; i < vertices.size(); ++i) {
+        order[i] = int(i);
+        vertices[i].material = materialMap.at(vertices[i].material);
+    }
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+        return vertices[a].material < vertices[b].material;
+    });
+    src.vertex.resize(vertices.size());
+    const auto parts = src.vertexPart;
+    for (size_t i = 0; i < order.size(); ++i) {
+        remap[order[i]] = int(i);
+        src.vertex[i] = vertices[order[i]];
+        if (!parts.empty()) src.vertexPart[i] = parts[order[i]];
+    }
+    for (auto& f : faces) { f.a = remap[f.a]; f.b = remap[f.b]; f.c = remap[f.c]; }
+    std::stable_sort(faces.begin(), faces.end(), [](const MFace& a, const MFace& b) {
+        return a.material < b.material;
+    });
+    for (auto& morph : src.morphs)
+        for (auto& va : morph.vanims) va.vertex = remap.at(va.vertex);
+    FillMeshes(src, faces);
+    CalcModelTangentSpaces(src);
+}
+
 void WeldVertices(Source& src, WeldMode mode, bool sharp, float sharpAngle) {
     const int n = static_cast<int>(src.vertex.size());
     if (mode == WeldMode::None || n == 0)

@@ -152,6 +152,9 @@ class AutomationTests(unittest.TestCase):
             (source / 'libs/nvtristrip').mkdir()
             for name in ('README.txt', 'SOURCE.md'):
                 (source / 'libs/nvtristrip' / name).write_text('dependency provenance')
+            (source / 'libs/meshoptimizer').mkdir()
+            for name in ('LICENSE.md', 'SOURCE.md'):
+                (source / 'libs/meshoptimizer' / name).write_text('meshopt provenance')
             (root / 'manifest.json').write_text('{}')
             (root / 'StudioMDL-CE.exe').write_text('reference only')
             sync.package(argparse.Namespace(dist=dist, source=source, output=root / 'out.zip',
@@ -163,6 +166,8 @@ class AutomationTests(unittest.TestCase):
                 self.assertIn('NewPageMergeMDL/libs/vendor/LICENSE', archive.namelist())
                 for name in ('README.txt', 'SOURCE.md'):
                     self.assertIn('NewPageMergeMDL/libs/nvtristrip/' + name, archive.namelist())
+                for name in ('LICENSE.md', 'SOURCE.md'):
+                    self.assertIn('NewPageMergeMDL/libs/meshoptimizer/' + name, archive.namelist())
                 self.assertFalse(any('StudioMDL-CE' in name for name in archive.namelist()))
 
     def test_checksums_verify_actual_artifacts_and_are_idempotent(self):

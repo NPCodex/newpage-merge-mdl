@@ -251,6 +251,7 @@ def prepare(args):
         'Includes NvTriStrip legacy ordering, LOD replacement validation, '
         'DMX finite-number checks, safe oversized animation encoding and long PHY strings. '
         'Includes checked body/skin capacity, synchronized global clamping, local-hierarchy retention, DMX corner validation and opt-in concave collision decomposition. 512 final bones remain unsupported; '
+        'Includes model-scoped material merging, meshopt glTF decoding and static unskinned GPU instance expansion. '
         'see RESEARCH.md for measured performance and validation scope.\n\n'
         'Both platform builds and compatibility tests must pass before publication. '
         'The attached source archive is the actual merged build input; '
@@ -284,7 +285,7 @@ def package(args):
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         # Preserve bundled third-party license notices.
         for path in sorted((Path(args.source) / 'libs').rglob('*')):
-            nv_notice = path.parent.name == 'nvtristrip' and path.name in {'README.txt', 'SOURCE.md'}
+            nv_notice = path.parent.name in {'nvtristrip', 'meshoptimizer'} and path.name in {'README.txt', 'SOURCE.md'}
             if path.is_file() and ('license' in path.name.lower() or 'copying' in path.name.lower() or nv_notice):
                 archive.write(path, Path('NewPageMergeMDL') / path.relative_to(args.source))
 
