@@ -3,7 +3,7 @@ Reference binaries are provided locally by the user and never redistributed.
 """
 import argparse,json,struct,subprocess
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('compiler');p.add_argument('--reference',required=True);p.add_argument('--work',required=True)
+p=argparse.ArgumentParser();p.add_argument('compiler');p.add_argument('--reference',required=True);p.add_argument('--work',required=True);p.add_argument('--dmx-profile',choices=['native','ce','neko'],default='native')
 a=p.parse_args();root=Path(a.work).resolve();root.mkdir(parents=True,exist_ok=True)
 nodes='0 "root" -1\n1 "upper" 0\n2 "hand" 1\n3 "helper" 0\n'
 pose='0 0 0 0 0 0 0\n1 0 0 2 0 0 0\n2 0 0 2 0 0 0\n3 0 2 0 .2 .3 .4\n'
@@ -23,6 +23,10 @@ cases={
  'rig_combined':'$attachment grip hand 1 2 3\n$ikchain arm hand\n$lod 10 { replacebone hand upper }\n$jigglebone helper { is_flexible { length 10 tip_mass 1 pitch_stiffness 100 yaw_stiffness 100 pitch_constraint -10 30 yaw_constraint -20 40 } }\n',
  'face_stereo':'$model face mesh.smd { flexfile face.vta {\nflexpair Smile .5 frame 1\n}\nflexcontroller test range 0 1 left right\n%SmileL = left\n%SmileR = right\n}\n'
 }
+cases['face_rig']=cases['face']+cases['rig_combined']
+cases['face_stereo_rig']=cases['face_stereo']+cases['rig_combined']
+cases['face_dependency']=cases['face_stereo'].replace('%SmileR = right','%SmileR = %SmileL * 0.5')
+cases['eyelid_rig']=cases['eyelid']+cases['rig_combined']
 (root/'face.dmx').write_bytes((Path(__file__).parent/'fixtures/ce-facial.dmx').read_bytes())
 vta='version 1\nnodes\n'+nodes+'end\nskeleton\ntime 0\n'+pose+'time 1\n'+pose+'time 2\n'+pose+'end\nvertexanimation\ntime 0\n'
 for bone in range(4):
@@ -54,7 +58,7 @@ def summary(path):
    op,value=struct.unpack_from('<2i',d,rule+relative+k*8)
    if op==1:value=struct.unpack_from('<f',d,rule+relative+k*8+4)[0]
    elif op==2:value=result['controllers'][value][0]
-   elif op==12:value=result['descriptors'][value]
+   elif op==3:value=result['descriptors'][value]
    ops.append([op,value])
   result['rules'].append([result['descriptors'][target],ops])
  result['eyes']=[]
@@ -70,13 +74,16 @@ def close(x,y):
  if isinstance(x,(tuple,list)) and isinstance(y,(tuple,list)):return len(x)==len(y) and all(close(a,b) for a,b in zip(x,y))
  if isinstance(x,(int,float)) and isinstance(y,(int,float)):return abs(x-y)<2e-4
  return x==y
-report={'schema':1,'reference':str(Path(a.reference).resolve()),'cases':[]}
+report={'schema':1,'reference':str(Path(a.reference).resolve()),'dmx_profile':a.dmx_profile,'cases':[]}
 for name,options in cases.items():
- qc=root/(name+'.qc');qc.write_text('$modelname '+name+'\n'+('' if name in ('face','eyelid','dmx','dmx_explicit','dmx_multi','face_stereo') else '$body body mesh.smd\n')+options+definitions+'$sequence idle mesh.smd\n')
+ qc=root/(name+'.qc');qc.write_text('$modelname '+name+'\n'+('' if name.startswith(('face','eyelid','dmx')) else '$body body mesh.smd\n')+options+definitions+'$sequence idle mesh.smd\n')
  outputs={}
  for label,compiler in [('project',a.compiler),('reference',a.reference)]:
   game=root/label;game.mkdir(exist_ok=True);(game/'gameinfo.txt').write_text('GameInfo { game fixture FileSystem { SteamAppId 220 SearchPaths { game "|gameinfo_path|." } } }')
-  result=subprocess.run([str(Path(compiler).resolve()),'-game',str(game),str(qc)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=90)
+  input_qc=qc
+  if label=='project' and a.dmx_profile!='native':
+   input_qc=root/(name+'-profile.qc');input_qc.write_text('$dmxcompatibility '+a.dmx_profile+'\n'+qc.read_text())
+  result=subprocess.run([str(Path(compiler).resolve()),'-game',str(game),str(input_qc)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=90)
   (root/(name+'-'+label+'.log')).write_bytes(result.stdout)
   mdl=game/'models'/f'{name}.mdl'
   if result.returncode or not mdl.exists():raise RuntimeError(name+' '+label+' failed; see isolated logs')

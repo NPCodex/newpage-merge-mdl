@@ -239,7 +239,7 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
                         auto joints=Attribute(primitive.attributes,primitive.attributes_count,cgltf_attribute_type_joints,set);
                         auto w=Values(Attribute(primitive.attributes,primitive.attributes_count,cgltf_attribute_type_weights,set),4);
                         if(!joints || w.empty()) continue;
-                        for(unsigned v=0;v<mesh->mNumVertices;++v) { cgltf_uint ids[4]; if(!cgltf_accessor_read_uint(joints,v,ids,4)) throw std::runtime_error("invalid glTF joint stream"); for(int k=0;k<4;++k) { if(ids[k]>=mesh->mNumBones) throw std::runtime_error("glTF joint index out of bounds"); if(w[v*4+k]>0) weights[ids[k]].push_back(aiVertexWeight(v,w[v*4+k])); } }
+                        for(unsigned v=0;v<mesh->mNumVertices;++v) { cgltf_uint ids[4]; if(!cgltf_accessor_read_uint(joints,v,ids,4)) throw std::runtime_error("invalid glTF joint stream"); for(int k=0;k<4;++k) { if(ids[k]>=mesh->mNumBones) throw std::runtime_error("glTF joint index out of bounds"); if(!std::isfinite(w[v*4+k]) || w[v*4+k]<0) throw std::runtime_error("invalid glTF skin weight"); if(w[v*4+k]>0) weights[ids[k]].push_back(aiVertexWeight(v,w[v*4+k])); } }
                     }
                     for(unsigned b=0;b<mesh->mNumBones;++b) {
                         auto bone=mesh->mBones[b]=new aiBone(); bone->mName=aiString(names.at(n->skin->joints[b]));

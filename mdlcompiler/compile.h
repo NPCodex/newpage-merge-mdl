@@ -1115,6 +1115,9 @@ enum class Archetype {
 // Script-level inputs the compile stage needs (filled by the .pulsemdl loader).
 struct CompileInput {
     std::string outname;
+    // Reference DMX policies differ; native preserves existing project behavior.
+    enum class DmxCompatibility { Native, Ce, Neko };
+    DmxCompatibility dmxCompatibility = DmxCompatibility::Native;
     // CE switches are opt-in, preserving existing PulseModel defaults.
     struct CeOptions {
         bool overrideControllers=false, duplicateControllers=false, inverseFlexes=false;

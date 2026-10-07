@@ -1,4 +1,8 @@
-# v1.2.6 当前验证
+# v1.2.7 当前验证
+
+146 项兼容回归、20 项自动化回归；显式 CE/Neko 模式共 28 项对照一致，StudioMDL++ 七项动画对照继续通过。Claudia 真实材质、面部近景、生成减面 LOD 与物理验证通过；Hair 原始输出不变。数据摘要：`tests/reports/v1.2.7-validation.json`；范围及复现见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。
+
+# v1.2.6 历史验证
 
 138 项兼容回归、20 项自动化回归；七项新结果及未完成范围见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。历史验证记录保留如下。
 

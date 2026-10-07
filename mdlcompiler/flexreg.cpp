@@ -151,6 +151,8 @@ struct ExprLexer {
 // reprocess duplicate to drop. d is a 4-byte union, so comparing d.index also
 // covers a CONST's value bits.
 bool RuleExists(const cm::CompileInput& in, const cm::FlexRule& rule) {
+    if (in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Neko)
+        return false;
     for (const cm::FlexRule& r : in.flexrules) {
         if (r.flex != rule.flex || r.ops.size() != rule.ops.size())
             continue;
@@ -573,7 +575,7 @@ void AddFlexControllersForSource(cm::CompileInput& in, source::Source* src) {
 
         auto addController = [&](const std::string& name) -> int {
             int existing = FindFlexControllerByName(in, name.c_str());
-            if (existing >= 0)
+            if (existing >= 0 && in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Native)
                 return existing;
             cm::FlexController fc;
             fc.name = name;
@@ -770,7 +772,7 @@ bool AddBodyFlexRuleForKey(cm::CompileInput& in, source::Source* src,
                            const source::CombinationRule& srcRule, int nFlexDesc,
                            const std::vector<int>& remapToGlobal, std::string* err) {
     for (const cm::FlexRule& r : in.flexrules)
-        if (r.flex == nFlexDesc)
+        if (r.flex == nFlexDesc && in.dmxCompatibility != cm::CompileInput::DmxCompatibility::Neko)
             return true; // one rule per desc
 
     if (in.flexrules.size() >= static_cast<size_t>(lim::kMaxFlexRules)) {
@@ -820,6 +822,8 @@ bool AddBodyFlexRuleForKey(cm::CompileInput& in, source::Source* src,
 
 // reference AddBodyFlexRules
 bool AddBodyFlexRulesForSource(cm::CompileInput& in, source::Source* src, std::string* err) {
+    if (in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Ce && src->bakedController.empty())
+        return true;
     // resolve the EYELID remaps' eyes-updown controller (exact-name match)
     for (source::ControllerRemap& remap : src->controllerRemaps) {
         if (remap.type == source::RemapType::Eyelid && !remap.eyesUpDownFlexName.empty()) {

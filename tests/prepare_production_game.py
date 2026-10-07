@@ -11,11 +11,34 @@ import subprocess
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('compiler');p.add_argument('--qc',action='append',required=True)
 p.add_argument('--game',required=True);p.add_argument('--work',required=True)
+p.add_argument('--material-dir',help='Optional complete local material directory, copied into an isolated namespace')
+p.add_argument('--material-prefix',help='QC/VMT path of that directory, for example models/author/model')
+p.add_argument('--name',default='hair',help='Isolated output prefix')
+p.add_argument('--test-lod-factor',type=float,help='Add an isolated decimated LOD for verification; never changes original QC')
 a=p.parse_args();game=Path(a.game).resolve();work=Path(a.work).resolve();work.mkdir(parents=True,exist_ok=True)
+if bool(a.material_dir)!=bool(a.material_prefix):p.error('--material-dir and --material-prefix are required together')
+if not a.name.replace('_','').isalnum():p.error('--name must be a simple alphanumeric prefix')
+if a.test_lod_factor is not None and not 0<a.test_lod_factor<1:p.error('--test-lod-factor must be within (0,1)')
+destination_prefix='models/newpage_production_validation/'+a.name
+if a.material_dir:
+    material_source=Path(a.material_dir).resolve()
+    target=game/'materials'/destination_prefix
+    payloads=[]
+    for source in material_source.rglob('*'):
+        if not source.is_file():continue
+        content=source.read_bytes()
+        if source.suffix.lower()=='.vmt':content=content.decode('utf-8-sig').replace(a.material_prefix,destination_prefix).encode('utf-8')
+        destination=target/source.relative_to(material_source)
+        if destination.exists() and destination.read_bytes()!=content:raise RuntimeError('refusing to overwrite different material: '+str(destination))
+        payloads.append((destination,content))
+    if not payloads:raise RuntimeError('material directory is empty')
+    for destination,content in payloads:destination.parent.mkdir(parents=True,exist_ok=True);destination.write_bytes(content)
 models=[]
 for i,qc in enumerate(a.qc):
-    qc=Path(qc).resolve();name='hair_player' if i==0 else 'hair_npc'
+    qc=Path(qc).resolve();name=a.name+('_player' if i==0 else '_npc' if i==1 else '_'+str(i))
     text=qc.read_text(encoding='utf-8-sig')+'\n$modelname newpage_production_validation/'+name+'.mdl\n$OutDir "'+game.as_posix()+'"\n'
+    if a.material_dir:text=text.replace(a.material_prefix,destination_prefix)
+    if a.test_lod_factor is not None:text+='\n$lod 20 { decimateallmodel '+str(a.test_lod_factor)+' }\n'
     result=subprocess.run([str(Path(a.compiler).resolve()),str(qc),'-stdin','-game',str(game)],input=text,text=True,capture_output=True,errors='replace')
     (work/(name+'.log')).write_text(result.stdout+result.stderr,encoding='utf-8')
     if result.returncode:raise RuntimeError('production compile failed: '+str(qc))

@@ -2842,6 +2842,46 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
 
 bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legacyVtx,
                      bool writeDx80, std::string* err) {
+    // Fail before touching output files if a compile stage produced invalid data.
+    auto invalid=[&](const std::string& detail) { if(err) *err="output validation: "+detail; return false; };
+    auto index=[](int value,size_t count) { return value>=0 && static_cast<size_t>(value)<count; };
+    auto finite=[](const pm::Vector3& v) { return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z); };
+    for(size_t b=0;b<m.bones.size();++b) {
+        int parent=m.bones[b].parent;
+        if(parent < -1 || (parent>=0 && (!index(parent,m.bones.size()) || parent==static_cast<int>(b))))
+            return invalid("invalid parent for bone '"+m.bones[b].name+"'");
+        size_t steps=0; int ancestor=parent;
+        while(ancestor>=0) {
+            if(!index(ancestor,m.bones.size()) || ++steps>m.bones.size()) return invalid("cyclic bone hierarchy");
+            ancestor=m.bones[ancestor].parent;
+        }
+    }
+    for(const auto& part:m.bodyparts) for(int model:part.modelIndices)
+        if(!index(model,m.models.size())) return invalid("invalid bodygroup model index");
+    for(const auto& model:m.models) {
+        for(const auto& vertex:model.vertices) {
+            if(!finite(vertex.position) || !finite(vertex.normal)) return invalid("non-finite geometry in model '"+model.name+"'");
+            if(vertex.boneweight.numbones<0 || vertex.boneweight.numbones>3) return invalid("invalid vertex influence count");
+            for(int k=0;k<vertex.boneweight.numbones;++k)
+                if(!index(vertex.boneweight.bone[k],m.bones.size()) || !std::isfinite(vertex.boneweight.weight[k]) || vertex.boneweight.weight[k]<0)
+                    return invalid("invalid vertex bone or weight");
+        }
+        for(const auto& mesh:model.outMeshes) {
+            if(mesh.vertexoffset<0 || mesh.numvertices<0 || static_cast<size_t>(mesh.vertexoffset)+mesh.numvertices>model.vertices.size())
+                return invalid("invalid mesh vertex range");
+            for(const auto& faces:mesh.lodFaces) for(const auto& f:faces)
+                if(f.a>=static_cast<unsigned>(mesh.numvertices) || f.b>=static_cast<unsigned>(mesh.numvertices) || f.c>=static_cast<unsigned>(mesh.numvertices))
+                    return invalid("invalid LOD triangle index");
+        }
+    }
+    for(const auto& rule:m.flexrules) {
+        if(!index(rule.flex,m.flexdescs.size())) return invalid("invalid flex rule target");
+        for(const auto& op:rule.ops) {
+            if(op.op==1 && !std::isfinite(op.d.value)) return invalid("non-finite flex constant");
+            if(op.op==2 && !index(op.d.index,m.flexcontrollers.size())) return invalid("invalid flex controller reference");
+            if(op.op==3 && !index(op.d.index,m.flexdescs.size())) return invalid("invalid flex descriptor reference");
+        }
+    }
     // Both the VVD skin indices and MDL bone-name lookup table store bytes.
     if (m.bones.size() > 256) {
         if (err) *err = "standard MDL/VVD byte-index tables cannot encode more than 256 output bones; "

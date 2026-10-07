@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..941a16a 100644
+index fed7eaf..506b903 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..941a16a 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.6 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.7 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -601603,7 +601603,7 @@ index bdb0c90..127fd1c 100644
      out.skinref.assign(out.numskinfamilies, std::vector<int16_t>(nummaterials));
      for (auto& row : out.skinref)
 diff --git a/mdlcompiler/compile.h b/mdlcompiler/compile.h
-index a9b8bb8..ede32ac 100644
+index a9b8bb8..b031aee 100644
 --- a/mdlcompiler/compile.h
 +++ b/mdlcompiler/compile.h
 @@ -59,6 +59,9 @@ struct Attachment {
@@ -601658,10 +601658,13 @@ index a9b8bb8..ede32ac 100644
      std::string outname; // e.g. "testmodel/testcube" (no extension)
      bool forceWriteVertexData = false; // $forcewritevertexdata - save the empty .vvd/.vtx when there is no geometry
      int gflags = 0;
-@@ -1107,6 +1115,19 @@ enum class Archetype {
+@@ -1107,6 +1115,22 @@ enum class Archetype {
  // Script-level inputs the compile stage needs (filled by the .pulsemdl loader).
  struct CompileInput {
      std::string outname;
++    // Reference DMX policies differ; native preserves existing project behavior.
++    enum class DmxCompatibility { Native, Ce, Neko };
++    DmxCompatibility dmxCompatibility = DmxCompatibility::Native;
 +    // CE switches are opt-in, preserving existing PulseModel defaults.
 +    struct CeOptions {
 +        bool overrideControllers=false, duplicateControllers=false, inverseFlexes=false;
@@ -601678,7 +601681,7 @@ index a9b8bb8..ede32ac 100644
      Archetype archetype = Archetype::General;
      bool autoCenter = false; // $autocenter
      bool forceWriteVertexData = false; // $forcewritevertexdata
-@@ -1151,6 +1172,10 @@ struct CompileInput {
+@@ -1151,6 +1175,10 @@ struct CompileInput {
      // $modelbudget: per-model ceilings, capped at the pulselimits.h values (a
      // budget above those is rejected at parse time). Bones default to 255 - the
      // last bone a uint8 weight/RLE index can reach - not the 1024 hard cap.
@@ -601689,7 +601692,7 @@ index a9b8bb8..ede32ac 100644
      int budgetBones = 255;
      int budgetMaterials = lim::kMaxSkins;
  
-@@ -1196,6 +1221,8 @@ struct CompileInput {
+@@ -1196,6 +1224,8 @@ struct CompileInput {
      // $alwayscollapse: force-collapse these bones. $donotcollapse wins.
      std::vector<std::string> alwaysCollapse;
      bool cullJiggleBones = false; // $culljigglebones
@@ -601698,7 +601701,7 @@ index a9b8bb8..ede32ac 100644
      std::vector<std::string> limitRotationBones;
      // $renamebone <from> <to>, script order. Applied to the final bone table at
      // the very end of the compile, so every other command still names the
-@@ -1277,6 +1304,7 @@ struct CompileInput {
+@@ -1277,6 +1307,7 @@ struct CompileInput {
      std::vector<PhysicsCollidePair> physCollidePairs;
      PhysicsBuildMode physBuildMode = PhysicsBuildMode::Auto;
      bool physLegacyConcave = false;
@@ -601706,7 +601709,7 @@ index a9b8bb8..ede32ac 100644
      bool physLegacyConcavePerJoint = false;
      bool physConvexHullCountOverride = false;
      // physicsmarkuplist container scalars - the per-body DEFAULTS a child
-@@ -1349,6 +1377,7 @@ struct CompileInput {
+@@ -1349,6 +1380,7 @@ struct CompileInput {
          source::Source* source = nullptr; // null = blank
      };
      struct InBodyPart {
@@ -601714,7 +601717,7 @@ index a9b8bb8..ede32ac 100644
          std::string name;
          std::vector<InModel> models;
      };
-@@ -1401,7 +1430,7 @@ struct CompileInput {
+@@ -1401,7 +1433,7 @@ struct CompileInput {
          // Weights/Subtract carry names, resolved in the compile stage.
          struct InCmd {
              enum Kind { Weights, Subtract, Reverse, FixupLoop, Angle, Align, Match,
@@ -601723,7 +601726,7 @@ index a9b8bb8..ede32ac 100644
                  Motion, RefMotion, CopyPose, TransformBone, NumFrames,
                  IkFixup, LocalHierarchy, Derivative, NoAnim, LinearDelta,
                  Compress, CounterRotate, ForceBonePosRot, MatchPosition } kind = Weights;
-@@ -1429,6 +1458,7 @@ struct CompileInput {
+@@ -1429,6 +1461,7 @@ struct CompileInput {
              int copyEndFrame = 0;
              float fadeIn = 0.0f, fadeOut = 0.0f;
              bool copyPos = true, copyRot = true;
@@ -601731,7 +601734,7 @@ index a9b8bb8..ede32ac 100644
              AnimBoneTransform xform; // TransformBone
              InIkRule ikfixup;        // IkFixup
              // LocalHierarchy: bone in `alignBone`, new parent in `name`
-@@ -1452,6 +1482,8 @@ struct CompileInput {
+@@ -1452,6 +1485,8 @@ struct CompileInput {
          // `blockname <name>`: which clip inside the source to sample. "" picks
          // the first non-BindPose clip, the way an untagged animation does.
          std::string blockname;
@@ -601740,7 +601743,7 @@ index a9b8bb8..ede32ac 100644
          // per-animation transform, overriding the model-wide one. Consumed by
          // ConvertAnimation exactly like the model defaults are.
          Vector3 adjust;               // `origin x y z`
-@@ -1469,6 +1501,7 @@ struct CompileInput {
+@@ -1469,6 +1504,7 @@ struct CompileInput {
          std::vector<InIkRule> ikrules;
          bool nocull = false;   // `nocull`: exempt from $animationcullmethod
          // `ignoretransformbone <angles|position>`, see Anim
@@ -602072,7 +602075,7 @@ index 0dc82de..aadfead 100644
  } // namespace pulse::source
  
 diff --git a/mdlcompiler/flexreg.cpp b/mdlcompiler/flexreg.cpp
-index fe77451..15354c0 100644
+index fe77451..ddf75ff 100644
 --- a/mdlcompiler/flexreg.cpp
 +++ b/mdlcompiler/flexreg.cpp
 @@ -20,6 +20,7 @@
@@ -602083,7 +602086,25 @@ index fe77451..15354c0 100644
  #include <cstdlib>
  #include <cstring>
  
-@@ -646,8 +647,31 @@ bool AddBodyFlexData(cm::CompileInput& in, source::Source* src, int imodel, std:
+@@ -150,6 +151,8 @@ struct ExprLexer {
+ // reprocess duplicate to drop. d is a 4-byte union, so comparing d.index also
+ // covers a CONST's value bits.
+ bool RuleExists(const cm::CompileInput& in, const cm::FlexRule& rule) {
++    if (in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Neko)
++        return false;
+     for (const cm::FlexRule& r : in.flexrules) {
+         if (r.flex != rule.flex || r.ops.size() != rule.ops.size())
+             continue;
+@@ -572,7 +575,7 @@ void AddFlexControllersForSource(cm::CompileInput& in, source::Source* src) {
+ 
+         auto addController = [&](const std::string& name) -> int {
+             int existing = FindFlexControllerByName(in, name.c_str());
+-            if (existing >= 0)
++            if (existing >= 0 && in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Native)
+                 return existing;
+             cm::FlexController fc;
+             fc.name = name;
+@@ -646,8 +649,31 @@ bool AddBodyFlexData(cm::CompileInput& in, source::Source* src, int imodel, std:
          cm::FlexKey fk;
          fk.source = src;
          fk.animationname = key.name;
@@ -602115,7 +602136,7 @@ index fe77451..15354c0 100644
          if (key.stereo) {
              int descL = AddFlexdesc(in, key.name + "L", err);
              int descR = AddFlexdesc(in, key.name + "R", err);
-@@ -716,7 +740,7 @@ void AddBodyFlexFetchRule(source::Source* src, cm::FlexRule& rule, int rawIndex,
+@@ -716,7 +742,7 @@ void AddBodyFlexFetchRule(source::Source* src, cm::FlexRule& rule, int rawIndex,
  
          case source::RemapType::NWay: {
              int nRemapCount = static_cast<int>(remap.rawControls.size());
@@ -602124,7 +602145,25 @@ index fe77451..15354c0 100644
              if (remapLocalIndex == 0) {
                  pushConst(-11.0f);
                  pushConst(-10.0f);
-@@ -830,7 +854,13 @@ bool RegisterManualLists(cm::CompileInput& in, const ManualFlex& manual, std::st
+@@ -746,7 +772,7 @@ bool AddBodyFlexRuleForKey(cm::CompileInput& in, source::Source* src,
+                            const source::CombinationRule& srcRule, int nFlexDesc,
+                            const std::vector<int>& remapToGlobal, std::string* err) {
+     for (const cm::FlexRule& r : in.flexrules)
+-        if (r.flex == nFlexDesc)
++        if (r.flex == nFlexDesc && in.dmxCompatibility != cm::CompileInput::DmxCompatibility::Neko)
+             return true; // one rule per desc
+ 
+     if (in.flexrules.size() >= static_cast<size_t>(lim::kMaxFlexRules)) {
+@@ -796,6 +822,8 @@ bool AddBodyFlexRuleForKey(cm::CompileInput& in, source::Source* src,
+ 
+ // reference AddBodyFlexRules
+ bool AddBodyFlexRulesForSource(cm::CompileInput& in, source::Source* src, std::string* err) {
++    if (in.dmxCompatibility == cm::CompileInput::DmxCompatibility::Ce && src->bakedController.empty())
++        return true;
+     // resolve the EYELID remaps' eyes-updown controller (exact-name match)
+     for (source::ControllerRemap& remap : src->controllerRemaps) {
+         if (remap.type == source::RemapType::Eyelid && !remap.eyesUpDownFlexName.empty()) {
+@@ -830,7 +858,13 @@ bool RegisterManualLists(cm::CompileInput& in, const ManualFlex& manual, std::st
      for (const ManualFlex::Controller& mc : manual.controllers) {
          // QC Option_Flexcontroller reuses an existing name with a warning and
          // does NOT update it
@@ -602139,7 +602178,7 @@ index fe77451..15354c0 100644
              std::fprintf(stderr,
                           "warning: morph controller '%s' already defined, reusing existing "
                           "entry\n", mc.name.c_str());
-@@ -1098,6 +1128,8 @@ bool ApplyDominations(cm::CompileInput& in, const ManualFlex& manual, std::strin
+@@ -1098,6 +1132,8 @@ bool ApplyDominations(cm::CompileInput& in, const ManualFlex& manual, std::strin
  
  } // namespace
  
@@ -602148,7 +602187,7 @@ index fe77451..15354c0 100644
  bool RegisterFlex(cm::CompileInput& in, const ManualFlex& manual, std::string* err,
                    const FaceMarkup* face) {
      ApplyDataModelFlex(in, manual.datamodel);
-@@ -1161,7 +1193,65 @@ bool RegisterFlex(cm::CompileInput& in, const ManualFlex& manual, std::string* e
+@@ -1161,7 +1197,65 @@ bool RegisterFlex(cm::CompileInput& in, const ManualFlex& manual, std::string* e
              return false;
      }
  
@@ -602229,7 +602268,7 @@ index 3b9da38..4f1fa56 100644
  // RegisterFlex(); nothing in here is format-specific.
 diff --git a/mdlcompiler/gltfscene.cpp b/mdlcompiler/gltfscene.cpp
 new file mode 100644
-index 0000000..1937a8e
+index 0000000..25d5d92
 --- /dev/null
 +++ b/mdlcompiler/gltfscene.cpp
 @@ -0,0 +1,367 @@
@@ -602474,7 +602513,7 @@ index 0000000..1937a8e
 +                        auto joints=Attribute(primitive.attributes,primitive.attributes_count,cgltf_attribute_type_joints,set);
 +                        auto w=Values(Attribute(primitive.attributes,primitive.attributes_count,cgltf_attribute_type_weights,set),4);
 +                        if(!joints || w.empty()) continue;
-+                        for(unsigned v=0;v<mesh->mNumVertices;++v) { cgltf_uint ids[4]; if(!cgltf_accessor_read_uint(joints,v,ids,4)) throw std::runtime_error("invalid glTF joint stream"); for(int k=0;k<4;++k) { if(ids[k]>=mesh->mNumBones) throw std::runtime_error("glTF joint index out of bounds"); if(w[v*4+k]>0) weights[ids[k]].push_back(aiVertexWeight(v,w[v*4+k])); } }
++                        for(unsigned v=0;v<mesh->mNumVertices;++v) { cgltf_uint ids[4]; if(!cgltf_accessor_read_uint(joints,v,ids,4)) throw std::runtime_error("invalid glTF joint stream"); for(int k=0;k<4;++k) { if(ids[k]>=mesh->mNumBones) throw std::runtime_error("glTF joint index out of bounds"); if(!std::isfinite(w[v*4+k]) || w[v*4+k]<0) throw std::runtime_error("invalid glTF skin weight"); if(w[v*4+k]>0) weights[ids[k]].push_back(aiVertexWeight(v,w[v*4+k])); } }
 +                    }
 +                    for(unsigned b=0;b<mesh->mNumBones;++b) {
 +                        auto bone=mesh->mBones[b]=new aiBone(); bone->mName=aiString(names.at(n->skin->joints[b]));
@@ -602614,20 +602653,21 @@ index 0000000..dcf70a5
 +std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights=false);
 +}
 diff --git a/mdlcompiler/main.cpp b/mdlcompiler/main.cpp
-index 710c49b..f4d3c40 100644
+index 710c49b..e1c91f3 100644
 --- a/mdlcompiler/main.cpp
 +++ b/mdlcompiler/main.cpp
-@@ -4,6 +4,9 @@
+@@ -4,6 +4,10 @@
  //   mdlcompiler <file.pulseqc> [-game <dir>] [-pause]
  
  #include <cctype>
 +#include <algorithm>
 +#include <filesystem>
 +#include <fstream>
++#include <iomanip>
  #include <chrono>
  #include <cstdio>
  #include <cstdlib>
-@@ -22,6 +25,15 @@
+@@ -22,6 +26,15 @@
  #include "pulselimits.h"
  #include "qcloader.h"
  #include "writer.h"
@@ -602643,7 +602683,7 @@ index 710c49b..f4d3c40 100644
  
  #ifdef _WIN32
  #include <fcntl.h>
-@@ -35,23 +47,34 @@ using pulse::fatal::Fail;
+@@ -35,23 +48,34 @@ using pulse::fatal::Fail;
  static const char*& g_stage = pulse::fatal::g_stage;
  
  static void PrintHeader() {
@@ -602685,7 +602725,7 @@ index 710c49b..f4d3c40 100644
      std::printf("                dx80 is only written when the vtx format is 0\n");
      std::printf("  -includesearchdir <dir>\n");
      std::printf("                extra fallback dir for $include, searched after any\n");
-@@ -64,6 +87,9 @@ static int Usage() {
+@@ -64,6 +88,9 @@ static int Usage() {
      std::printf("                define a .pulseqc script variable ($name$) before the\n");
      std::printf("                script runs; repeatable. The script cannot override it\n");
      std::printf("  -striplods    ignore all $lod and $shadowlod commands\n");
@@ -602695,7 +602735,7 @@ index 710c49b..f4d3c40 100644
      std::printf("  -forcewritevertexdata\n");
      std::printf("                save .vvd/.vtx even when the model has no geometry;\n");
      std::printf("                same as $forcewritevertexdata in the script\n");
-@@ -83,6 +109,8 @@ static int Usage() {
+@@ -83,6 +110,8 @@ static int Usage() {
      std::printf("                @dep <script|include|source> <fnv1a-64 hex> <absolute path>\n");
      std::printf("  -pause        wait for a keypress before exiting (drag-and-drop runs)\n");
      std::printf("  -perfmetrics  print wall time in ms for each stage of the compile\n");
@@ -602704,7 +602744,7 @@ index 710c49b..f4d3c40 100644
      return 1;
  }
  
-@@ -197,9 +225,12 @@ static int RunCompile(int argc, char** argv) {
+@@ -197,9 +226,12 @@ static int RunCompile(int argc, char** argv) {
      g_stage = "command line";
      const char* script = nullptr;
      std::string outdir;
@@ -602717,7 +602757,7 @@ index 710c49b..f4d3c40 100644
      int launchMinLod = -1;
      bool stripLods = false;
      bool forceWriteVertexData = false;
-@@ -209,19 +240,58 @@ static int RunCompile(int argc, char** argv) {
+@@ -209,19 +241,58 @@ static int RunCompile(int argc, char** argv) {
      bool dumpProcedural = false;
      bool scriptFromStdin = false;
      bool dumpDependencies = false;
@@ -602776,7 +602816,7 @@ index 710c49b..f4d3c40 100644
          } else if (std::strcmp(argv[i], "-defvar") == 0) {
              // a .pulseqc $definevariable, set from the launch line and pinned
              if (i + 2 >= argc)
-@@ -255,6 +325,24 @@ static int RunCompile(int argc, char** argv) {
+@@ -255,6 +326,24 @@ static int RunCompile(int argc, char** argv) {
                  return Fail("bad option", "-minlod needs a non-negative LOD index, got \"" +
                                                value + "\"");
              }
@@ -602801,16 +602841,17 @@ index 710c49b..f4d3c40 100644
          } else if (std::strcmp(argv[i], "-nodx80") == 0) {
              noDx80 = true;
          } else if (std::strcmp(argv[i], "-striplods") == 0) {
-@@ -274,6 +362,8 @@ static int RunCompile(int argc, char** argv) {
+@@ -274,6 +363,9 @@ static int RunCompile(int argc, char** argv) {
              pulse::dependencies::g_enabled = true;
          } else if (std::strcmp(argv[i], "-dumpmaterials") == 0) {
              dumpMaterials = true;
 +        } else if(std::strcmp(argv[i],"-perfjson")==0 && i+1<argc) {
 +            perfJson=argv[++i];
++            pulse::perf::g_enabled = true;
          } else if (std::strcmp(argv[i], "-perfmetrics") == 0) {
              pulse::perf::g_enabled = true;
          } else if (std::strcmp(argv[i], "-pause") == 0) {
-@@ -307,16 +397,34 @@ static int RunCompile(int argc, char** argv) {
+@@ -307,16 +399,34 @@ static int RunCompile(int argc, char** argv) {
                      std::string(script) + ": only .pulseqc/.qc compile scripts are supported");
  
      std::string err;
@@ -602845,7 +602886,7 @@ index 710c49b..f4d3c40 100644
      if (forceWriteVertexData)
          input.forceWriteVertexData = true;
      if (stripLods)
-@@ -362,6 +470,11 @@ static int RunCompile(int argc, char** argv) {
+@@ -362,6 +472,11 @@ static int RunCompile(int argc, char** argv) {
      }
  
      if (!verify) {
@@ -602857,7 +602898,7 @@ index 710c49b..f4d3c40 100644
          g_stage = "write";
          // dx80 only ships with the legacy archetype; Alien Swarm+ (archetype 1)
          // dropped DirectX 8, and $nodx80 / -nodx80 opt out explicitly.
-@@ -374,6 +487,18 @@ static int RunCompile(int argc, char** argv) {
+@@ -374,6 +489,18 @@ static int RunCompile(int argc, char** argv) {
          pulse::dependencies::Print();
      auto tWrite = Clock::now();
      g_stage = "done";
@@ -602876,7 +602917,7 @@ index 710c49b..f4d3c40 100644
  
      // lodFlag is a bit per LOD. The pool is shared, so a decimated LOD adds no
      // verts to it - only a replacemodel LOD does. Per-LOD = verts it draws.
-@@ -398,6 +523,17 @@ static int RunCompile(int argc, char** argv) {
+@@ -398,6 +525,24 @@ static int RunCompile(int argc, char** argv) {
          pulse::perf::Record("total", "whole compile", ms(t0, tWrite));
          pulse::perf::Report();
      }
@@ -602889,12 +602930,19 @@ index 710c49b..f4d3c40 100644
 +#endif
 +        metrics<<"{\"schema\":1,\"version\":\""<<PULSEMODEL_VERSION<<"\",\"load_ms\":"<<ms(t0,tLoad)
 +               <<",\"compile_ms\":"<<ms(tLoad,tCompile)<<",\"write_ms\":"<<ms(tCompile,tWrite)<<",\"total_ms\":"<<ms(t0,tWrite)
-+               <<",\"peak_working_set_bytes\":"<<peak<<",\"bones\":"<<model.bones.size()<<",\"vertices\":"<<vertsPool<<"}\n";
++               <<",\"peak_working_set_bytes\":"<<peak<<",\"bones\":"<<model.bones.size()<<",\"vertices\":"<<vertsPool<<",\"stages\":[";
++        bool first=true;
++        for(const auto& entry:pulse::perf::g_entries) {
++            if(!first) metrics<<","; first=false;
++            metrics<<"{\"tag\":"<<std::quoted(entry.tag)<<",\"name\":"<<std::quoted(entry.name)
++                   <<",\"ms\":"<<entry.ms<<",\"calls\":"<<entry.calls<<"}";
++        }
++        metrics<<"]}\n";
 +    }
      return 0;
  }
  
-@@ -430,6 +566,14 @@ int main(int argc, char** argv) {
+@@ -430,6 +575,14 @@ int main(int argc, char** argv) {
      } catch (...) {
          rc = Fail("internal error", "unknown C++ exception");
      }
@@ -603064,7 +603112,7 @@ index d460e13..cca5a2a 100644
              // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
              if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index 4ef35e3..0db9595 100644
+index 4ef35e3..6bef468 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
 @@ -29,7 +29,9 @@
@@ -603085,7 +603133,16 @@ index 4ef35e3..0db9595 100644
  constexpr int kStudioLocal = 0x0200;
  constexpr int kStudioHidden = 0x0400;
  constexpr int kStudioOverride = 0x0800;
-@@ -153,6 +156,33 @@ bool Tokenize(const std::string& s, const std::string& file,
+@@ -81,6 +84,8 @@ struct Token {
+     // parameter). Only conditions care: an expanded operand is a literal value,
+     // never the name of another variable to look up.
+     bool expanded = false;
++    std::string origin;
++    std::string macroTrace;
+ };
+ 
+ // keyvalues1 lexing: whitespace-separated words, "quoted strings", `//` `;` `#`
+@@ -153,6 +158,33 @@ bool Tokenize(const std::string& s, const std::string& file,
          }
          out.push_back(std::move(t));
      }
@@ -603119,16 +603176,25 @@ index 4ef35e3..0db9595 100644
      return true;
  }
  
-@@ -170,6 +200,8 @@ struct Ctx {
+@@ -170,6 +202,9 @@ struct Ctx {
      cm::CompileInput& in;
      fs::path scriptDir; // root script's directory
      std::string file;
 +    std::string commandFile;
++    std::string commandMacro;
 +    std::vector<std::string> commandParents;
      std::string rootFile; // `file` for the root script; an $include changes `file`, not this
      std::vector<Token> toks;
      size_t pos = 0;
-@@ -215,9 +247,15 @@ struct Ctx {
+@@ -208,6 +243,7 @@ struct Ctx {
+     std::map<std::string, std::vector<Token>> rendermeshCmdlists; // $rendermeshcmdlist, keyed lowercased
+     std::map<std::string, std::string> variables; // $definevariable, case-sensitive, shared across $include
+     struct Macro {
++        std::string file;
+         std::vector<std::string> params;
+         std::map<std::string, std::string> defaults;
+         std::vector<Token> body;
+@@ -215,9 +251,15 @@ struct Ctx {
      std::map<std::string, Macro> macros; // keyed lowercased
      int macroExpansions = 0; // runaway-recursion guard
      std::vector<std::string> lockedVars; // -defvar names; locked against $definevariable
@@ -603144,20 +603210,21 @@ index 4ef35e3..0db9595 100644
      float defaultMotionRollback = 0.3f; // seed for a new anim's motionrollback
      float defaultFadeIn = 0.2f;
      float defaultFadeOut = 0.2f;
-@@ -288,7 +326,11 @@ struct Ctx {
+@@ -288,7 +330,12 @@ struct Ctx {
  
      bool Fail(int line, const std::string& msg) {
          if (abortErr) return false; // keep the first $include error, not a cascade
 -        if (err) *err = file + "(" + std::to_string(line) + "): " + msg;
 +        if (err) {
 +            *err = (commandFile.empty()?file:commandFile) + "(" + std::to_string(line) + "): " + msg;
++            *err += commandMacro;
 +            for(auto it=commandParents.rbegin();it!=commandParents.rend();++it)
 +                *err += "\n  included from " + *it;
 +        }
          return false;
      }
  
-@@ -315,8 +357,8 @@ struct Ctx {
+@@ -315,8 +362,8 @@ struct Ctx {
          try {
              size_t used = 0;
              const float v = std::stof(s, &used);
@@ -603168,7 +603235,7 @@ index 4ef35e3..0db9595 100644
              value = v;
          } catch (const std::exception&) {
              return Fail(cmd.line, cmd.text + " expects " + what + ", got \"" + s + "\"");
-@@ -409,6 +451,7 @@ fs::path FindSourceFile(const Ctx& c, const std::string& filename,
+@@ -409,6 +456,7 @@ fs::path FindSourceFile(const Ctx& c, const std::string& filename,
              return p;
      }
      if (tried) *tried = std::move(cands);
@@ -603176,7 +603243,7 @@ index 4ef35e3..0db9595 100644
      return {};
  }
  
-@@ -453,7 +496,7 @@ std::string WithDmxExtension(const std::string& s) {
+@@ -453,7 +501,7 @@ std::string WithDmxExtension(const std::string& s) {
  std::string WithSourceExtension(const Ctx& c, const std::string& s) {
      if (HasExtension(s))
          return s;
@@ -603185,7 +603252,7 @@ index 4ef35e3..0db9595 100644
          if (!FindSourceFile(c, s + ext, nullptr).empty())
              return s + ext;
      return s + ".dmx";
-@@ -477,13 +520,19 @@ bool IsFbxPath(const std::string& s) {
+@@ -477,13 +525,19 @@ bool IsFbxPath(const std::string& s) {
  }
  
  // The edits one $rendermesh { } body asks for (meshedit.h).
@@ -603205,7 +603272,7 @@ index 4ef35e3..0db9595 100644
      bool noMorph = false;
      // $inflate <amount> [material|mesh <name>...] in script order; tag 0 = no mesh scope
      struct Inflate {
-@@ -537,7 +586,8 @@ std::shared_ptr<pulse::dmx::Datamodel> LoadDmxCached(Ctx& c, const fs::path& ful
+@@ -537,7 +591,8 @@ std::shared_ptr<pulse::dmx::Datamodel> LoadDmxCached(Ctx& c, const fs::path& ful
  
  source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                             bool morphSource = false, MeshEdit* edit = nullptr,
@@ -603215,7 +603282,7 @@ index 4ef35e3..0db9595 100644
      const bool priv = edit != nullptr;
      const bool animOnly = kind == source::LoadKind::Animation;
      // a collision hull is never drawn, so keep its materials out of the model's
-@@ -546,7 +596,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -546,7 +601,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
      source::MaterialTable& mats =
          kind == source::LoadKind::Collision ? c.physMats : c.in.mats;
  
@@ -603225,7 +603292,7 @@ index 4ef35e3..0db9595 100644
      if (!priv) {
          auto it = c.sourceCache.find(key);
          if (it != c.sourceCache.end() && it->second->kind >= kind)
-@@ -578,6 +629,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -578,6 +634,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
      // and the SMD path derives cdtextures from it
      src->filename = filename;
      src->kind = kind;
@@ -603233,7 +603300,7 @@ index 4ef35e3..0db9595 100644
  
      if (IsSmdPath(filename)) {
          std::printf("%s\n", head.c_str());
-@@ -611,7 +663,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -611,7 +668,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
              return nullptr;
          }
          if (!source::LoadFbxSource(full.string(), *src, mats, c.in.scale, &loadErr, morphSource,
@@ -603242,7 +603309,7 @@ index 4ef35e3..0db9595 100644
              c.Fail(line, "cannot load \"" + full.string() + "\": " + loadErr);
              return nullptr;
          }
-@@ -635,6 +687,13 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -635,6 +692,13 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                      return nullptr;
                  }
          }
@@ -603256,7 +603323,7 @@ index 4ef35e3..0db9595 100644
      } else {
          auto dm = LoadDmxCached(c, full, &loadErr);
          if (!dm) {
-@@ -645,7 +704,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -645,7 +709,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                      dm->encoding.c_str(), dm->encoding_version);
          PULSE_PERF("load", "dmx -> source");
          if (!source::LoadDmxSource(*dm, *src, mats, c.in.scale, &loadErr, morphSource,
@@ -603265,7 +603332,7 @@ index 4ef35e3..0db9595 100644
              c.Fail(line, "cannot parse \"" + full.string() + "\": " + loadErr);
              return nullptr;
          }
-@@ -690,6 +749,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
+@@ -690,6 +754,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
          source::CullUnskinnedBones(*src, edit->boneCull);
      }
  
@@ -603274,7 +603341,7 @@ index 4ef35e3..0db9595 100644
      c.in.sources.push_back(std::move(src));
      source::Source* loaded = c.in.sources.back().get();
      if (!priv) {
-@@ -740,7 +801,7 @@ bool CmdRenderMesh(Ctx& c, const Token& cmd) {
+@@ -740,7 +806,7 @@ bool CmdRenderMesh(Ctx& c, const Token& cmd) {
      if (c.rendermeshes.count(name))
          return c.Fail(cmd.line, "duplicate $rendermesh \"" + name + "\"");
  
@@ -603283,7 +603350,7 @@ index 4ef35e3..0db9595 100644
      edit.name = name;
      if (!c.Eof() && !c.Cur().quoted && c.Cur().text == "{") {
          ++c.pos;
-@@ -1221,6 +1282,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
+@@ -1221,6 +1287,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
              return c.Fail(cmd.line, "$modelgroup \"" + name + "\" already exists");
      const std::string where = "$modelgroup \"" + name + "\"";
      cm::CompileInput::InBodyPart part;
@@ -603291,7 +603358,7 @@ index 4ef35e3..0db9595 100644
      part.name = name;
  
      // One choice: the $rendermesh names to the end of `line`, plus the optional
-@@ -1264,7 +1326,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
+@@ -1264,7 +1331,7 @@ bool CmdModelGroup(Ctx& c, const Token& cmd) {
              if (!src && (ext == ".dmx" || ext == ".smd" || ext == ".fbx")) {
                  if (std::find(refNames.begin(), refNames.end(), r.text) != refNames.end())
                      return c.Fail(r.line, where + ": mesh \"" + r.text + "\" is listed twice");
@@ -603300,7 +603367,7 @@ index 4ef35e3..0db9595 100644
                  edit.name = r.text;
                  src = LoadSource(c, r.text, r.line, /*morphSource=*/true, &edit);
                  if (!src)
-@@ -1536,7 +1598,7 @@ bool CmdDataModelJoints(Ctx& c, const Token& cmd) {
+@@ -1536,7 +1603,7 @@ bool CmdDataModelJoints(Ctx& c, const Token& cmd) {
          return false;
  
      bool jiggle = false, procedural = false, hitboxes = false, attachments = false;
@@ -603309,7 +603376,7 @@ index 4ef35e3..0db9595 100644
          const Token t = c.toks[c.pos++];
          const std::string o = Lower(t.text);
          if (o == "jigglebones")
-@@ -1741,10 +1803,12 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
+@@ -1741,10 +1808,12 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
  // (legacy noautodmxrules) - the morph deltas stay on the Source either way.
  // `file` must already be extension-resolved. null return = failure (reported).
  source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& file,
@@ -603324,7 +603391,7 @@ index 4ef35e3..0db9595 100644
      const float defaultScale = c.in.scale;
      c.in.scale = importScale;
      source::Source* src = LoadSource(c, file, entry.line, /*morphSource=*/true, &edit);
-@@ -1753,7 +1817,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
+@@ -1753,7 +1822,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
          return nullptr;
      if (flip)
          source::FlipNormals(*src);
@@ -603333,7 +603400,7 @@ index 4ef35e3..0db9595 100644
          auto dm = LoadRigDmx(c, entry, file, "studio rig");
          if (!dm)
              return nullptr;
-@@ -1771,8 +1835,10 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
+@@ -1771,8 +1840,10 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string&
  }
  
  // $body and $bodygroup load private, file-only choices with automatic DMX rig imports.
@@ -603344,7 +603411,7 @@ index 4ef35e3..0db9595 100644
      if (!c.Want("a name", cmd, part.name))
          return false;
      const std::string where = cmd.text + " \"" + part.name + "\"";
-@@ -1781,37 +1847,16 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
+@@ -1781,37 +1852,16 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
              return c.Fail(cmd.line, where + " already exists");
  
      auto studio = [&](const Token& entry, bool inlineBody) -> bool {
@@ -603392,7 +603459,7 @@ index 4ef35e3..0db9595 100644
          part.models.push_back(std::move(model));
          return true;
      };
-@@ -1859,6 +1904,7 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
+@@ -1859,6 +1909,7 @@ bool CmdLegacyBody(Ctx& c, const Token& cmd) {
  // frame-addressed eyelid) are SMD-only; a DMX carries its own delta states.
  bool CmdModel(Ctx& c, const Token& cmd) {
      cm::CompileInput::InBodyPart part;
@@ -603400,7 +603467,7 @@ index 4ef35e3..0db9595 100644
      if (!c.Want("a name", cmd, part.name))
          return false;
      const std::string where = cmd.text + " \"" + part.name + "\"";
-@@ -1874,7 +1920,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1874,7 +1925,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
      // inline studio flags up to the '{' or the next command
      bool flip = false;
      float importScale = c.in.scale;
@@ -603416,7 +603483,7 @@ index 4ef35e3..0db9595 100644
          const Token option = *c.Next();
          const std::string o = Lower(option.text);
          if (option.quoted) {
-@@ -1886,6 +1939,26 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1886,6 +1944,26 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                  return false;
              if (!std::isfinite(importScale) || importScale <= 0.0f)
                  return c.Fail(option.line, where + ": scale must be finite and greater than 0");
@@ -603443,7 +603510,7 @@ index 4ef35e3..0db9595 100644
          } else if (o == "subd") {
              // no quad subdivision in this compiler (matches importqc); accepted
          } else if (o == "faces") {
-@@ -1917,16 +1990,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1917,16 +1995,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              } else if (t.text == "}") {
                  if (--depth == 0)
                      break;
@@ -603486,7 +603553,7 @@ index 4ef35e3..0db9595 100644
      cm::CompileInput::InModel model;
      model.name = part.name;
      model.source = src;
-@@ -1942,6 +2039,9 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1942,6 +2044,9 @@ bool CmdModel(Ctx& c, const Token& cmd) {
      std::map<std::string, std::vector<source::VtaFlexOption>> vtaByFile; // file -> shapes
      std::string vcaFile, vcaName;
      int vtaLine = 0, vcaLine = 0;
@@ -603496,7 +603563,7 @@ index 4ef35e3..0db9595 100644
  
      auto atEnd = [&] { return c.Eof() || (!c.Cur().quoted && c.Cur().text == "}"); };
      auto sameLine = [&](int line) { return !atEnd() && c.Cur().line == line; };
-@@ -1950,7 +2050,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -1950,7 +2055,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          return lo == "eyeball" || lo == "eyelid" || lo == "dmxeyelid" || lo == "flexfile" ||
                 lo == "flex" || lo == "flexpair" || lo == "defaultflex" || lo == "vcafile" ||
                 lo == "localvar" || lo == "mouth" || lo == "flexcontroller" ||
@@ -603506,7 +603573,7 @@ index 4ef35e3..0db9595 100644
      };
      // A `%name =` at the cursor starts a NEW rule; a bare `%name` is a fetch
      // operand, so a rule expression reads across lines until the next statement.
-@@ -2009,6 +2110,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2009,6 +2115,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          if (o == "eyeball") {
              FaceMarkup::Entry e;
              e.kind = FaceMarkup::Kind::Eyeball;
@@ -603519,7 +603586,7 @@ index 4ef35e3..0db9595 100644
              std::string iris;
              if (!c.Want("an eyeball name", t, e.eyeball.name) ||
                  !c.Want("a bone name", t, e.eyeball.bonename) ||
-@@ -2081,6 +2188,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2081,6 +2193,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              continue;
          }
  
@@ -603534,7 +603601,7 @@ index 4ef35e3..0db9595 100644
          // flexfile <file> - the VTA the following flex/flexpair/defaultflex read
          if (o == "flexfile") {
              if (!c.Want("a .vta filename", t, flexfile))
-@@ -2092,9 +2207,23 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2092,9 +2212,23 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          // flex/flexpair/defaultflex <name> [<split>] frame <N> [position f] [decay f]
          // Each names one VTA frame; a split routes to the stereo-split machinery.
          if (o == "flex" || o == "flexpair" || o == "defaultflex") {
@@ -603558,7 +603625,7 @@ index 4ef35e3..0db9595 100644
              float split = 0.0f;
              bool hasSplit = false;
              if (o == "defaultflex") {
-@@ -2123,6 +2252,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2123,6 +2257,10 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                      ++c.pos;
                      if (!c.WantFloat("a decay", t, fo.decay))
                          return false;
@@ -603569,7 +603636,7 @@ index 4ef35e3..0db9595 100644
                  } else if (k == "split") {
                      ++c.pos;
                      if (!c.WantFloat("a split", t, split))
-@@ -2135,6 +2268,15 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2135,6 +2273,15 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              if (!sawFrame)
                  return c.Fail(t.line, where + ": " + o + " \"" + fo.name +
                                            "\" needs a frame <N> - a .vta names nothing");
@@ -603585,7 +603652,7 @@ index 4ef35e3..0db9595 100644
              if (fo.frame == 0)
                  continue; // frame 0 is the VTA basis (the rest pose), not a delta
              if (hasSplit && split != 0.0f)
-@@ -2168,6 +2310,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2168,6 +2315,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                  return false;
              FaceMarkup::Entry e;
              e.kind = FaceMarkup::Kind::Eyelid;
@@ -603593,7 +603660,7 @@ index 4ef35e3..0db9595 100644
              const char dtc = type.empty() ? '?' : static_cast<char>(std::tolower(type[0]));
              if (dtc == 'u')      e.eyelid.upper = true;
              else if (dtc == 'l') e.eyelid.upper = false;
-@@ -2186,6 +2329,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2186,6 +2334,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                      if (e.eyelid.delta[slot] == "-")
                          e.eyelid.delta[slot].clear();
                      e.eyelid.target[slot] *= c.in.scale;
@@ -603601,7 +603668,7 @@ index 4ef35e3..0db9595 100644
                      haveSlot[slot] = true;
                  } else if (ko == "split") {
                      if (!c.WantFloat("a split distance", t, e.eyelid.split)) return false;
-@@ -2270,6 +2414,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2270,6 +2419,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                  source::VtaFlexOption fo;
                  fo.name = e.eyelid.basedesc + "_lid_" + kLidSlot[i];
                  fo.frame = frame[i];
@@ -603609,7 +603676,7 @@ index 4ef35e3..0db9595 100644
                  e.eyelid.delta[i] = fo.name;
                  vtaByFile[vtafile].push_back(std::move(fo));
              }
-@@ -2277,6 +2422,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2277,6 +2427,14 @@ bool CmdModel(Ctx& c, const Token& cmd) {
              continue;
          }
  
@@ -603624,7 +603691,7 @@ index 4ef35e3..0db9595 100644
          if (o == "noautodmxrules")
              continue; // handled by the pre-scan above
          if (o == "attachment")
-@@ -2309,6 +2462,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
+@@ -2309,6 +2467,40 @@ bool CmdModel(Ctx& c, const Token& cmd) {
          if (!source::LoadVtaMorphs(full.string(), *src, importScale, kv.second, &err))
              return c.Fail(vtaLine, "cannot load \"" + full.string() + "\": " + err);
      }
@@ -603665,7 +603732,7 @@ index 4ef35e3..0db9595 100644
      if (!vcaFile.empty()) {
          std::vector<fs::path> tried;
          const fs::path full = FindSourceFile(c, vcaFile, &tried);
-@@ -2358,6 +2545,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
+@@ -2358,6 +2550,8 @@ bool ParseIkRule(Ctx& c, const Token& cmd, std::vector<cm::CompileInput::InIkRul
  //    1 - consumed as an option
  //    0 - not an animation option (caller treats it as a filename / seq ref)
  //   -1 - error, c.err set (includes a known-but-unsupported option)
@@ -603674,7 +603741,7 @@ index 4ef35e3..0db9595 100644
  int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
      if (t.quoted)
          return 0; // a quoted token is always a filename
-@@ -2589,7 +2778,21 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2589,7 +2783,21 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
      // blockname <name>: sample a specific clip out of a multi-clip source. The
      // reference also resets the frame range to that clip's, which the compile
      // stage does by clamping to whichever clip is picked.
@@ -603697,7 +603764,7 @@ index 4ef35e3..0db9595 100644
          if (!c.Want("a source clip name", t, a.blockname))
              return -1;
          return 1;
-@@ -2744,13 +2947,56 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
+@@ -2744,13 +2952,56 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
              return 1;
          }
      }
@@ -603755,7 +603822,7 @@ index 4ef35e3..0db9595 100644
          a.cmds.push_back(std::move(cmd));
          return 1;
      }
-@@ -3168,21 +3414,70 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
+@@ -3168,21 +3419,70 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
      if (bindpose) {
          a.bindpose = true;
          a.endframe = 0; // one frame unless `numframes` says otherwise
@@ -603834,7 +603901,7 @@ index 4ef35e3..0db9595 100644
  bool CmdAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, false); }
  bool CmdBindPoseAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, true); }
  
-@@ -3225,6 +3520,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
+@@ -3225,6 +3525,10 @@ bool CmdIncludeModel(Ctx& c, const Token& cmd) {
      std::string name;
      if (!c.Want("a compiled .mdl path", cmd, name))
          return false;
@@ -603845,7 +603912,7 @@ index 4ef35e3..0db9595 100644
      // must name a .mdl - a source .dmx/.smd or a bare name would compile fine
      // and leave a reference the engine silently fails to resolve
      if (name.size() < 4 || _stricmp(name.c_str() + name.size() - 4, ".mdl") != 0)
-@@ -4120,6 +4419,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
+@@ -4120,6 +4424,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
              if (_stricmp(o.c_str(), "autoplay") == 0) { seq.flags |= kStudioAutoplay; continue; }
              if (_stricmp(o.c_str(), "hidden") == 0) { seq.flags |= kStudioHidden; continue; }
              if (_stricmp(o.c_str(), "realtime") == 0) { seq.flags |= kStudioRealtime; continue; }
@@ -603853,7 +603920,7 @@ index 4ef35e3..0db9595 100644
              if (_stricmp(o.c_str(), "post") == 0) { seq.flags |= kStudioPost; continue; }
              if (_stricmp(o.c_str(), "delta") == 0) {
                  seq.flags |= kStudioDelta | kStudioPost;
-@@ -4557,6 +4857,37 @@ bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
+@@ -4557,6 +4862,37 @@ bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
  // $modelbudget { bones <n> materials <n> } - set the compile ceilings for this
  // model. Braces are optional for a single field. The pulselimits.h value is the
  // cap; bones default to 255 and must be raised here to go past it.
@@ -603891,7 +603958,7 @@ index 4ef35e3..0db9595 100644
  bool CmdModelBudget(Ctx& c, const Token& cmd) {
      const bool braced = !c.Eof() && !c.Cur().quoted && c.Cur().text == "{";
      if (braced)
-@@ -4852,6 +5183,12 @@ bool CmdUpAxis(Ctx& c, const Token& cmd) {
+@@ -4852,6 +5188,12 @@ bool CmdUpAxis(Ctx& c, const Token& cmd) {
      if (!c.Want("an axis", cmd, axis))
          return false;
  
@@ -603904,7 +603971,7 @@ index 4ef35e3..0db9595 100644
      pm::RadianEuler r{0.0f, 0.0f, pm::kPiF / 2.0f};
      if (_stricmp(axis.c_str(), "x") == 0)
          r.y = pm::kPiF / 2.0f; // 90 about y moves x into z
-@@ -5398,6 +5735,16 @@ bool CmdCullJiggleBones(Ctx& c, const Token&) {
+@@ -5398,6 +5740,16 @@ bool CmdCullJiggleBones(Ctx& c, const Token&) {
      return true;
  }
  
@@ -603921,7 +603988,7 @@ index 4ef35e3..0db9595 100644
  // $hierarchy <child> <parent> (Cmd_ForcedHierarchy, "$heirarchy" is stock's own
  // misspelling and works too): reparent a bone. Applied once the global bone
  // table exists, so it can join two source skeletons that were exported apart.
-@@ -5830,6 +6177,29 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
+@@ -5830,6 +6182,29 @@ bool CmdDriverBone(Ctx& c, const Token& cmd) {
  // attachment name if one matches and otherwise a bone name. The inline form of
  // a VRD <aimconstraint>; the parent and the base position both come from the
  // skeleton, so neither is asked for.
@@ -603951,7 +604018,7 @@ index 4ef35e3..0db9595 100644
  bool CmdDriverAimAt(Ctx& c, const Token& cmd) {
      cm::AimAtBone ab;
      ab.autobasepos = true;
-@@ -5887,7 +6257,10 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
+@@ -5887,7 +6262,10 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
                                  filename + "\"");
  
      std::vector<fs::path> tried;
@@ -603962,7 +604029,7 @@ index 4ef35e3..0db9595 100644
      if (full.empty())
          return c.Fail(cmd.line, "cannot find \"" + filename + "\" - looked in:" +
                                  LookedIn(tried));
-@@ -7117,9 +7490,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
+@@ -7117,9 +7495,11 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
      float fps = 0.0f;
      if (!c.WantFloat("a frame rate", cmd, fps))
          return false;
@@ -603976,7 +604043,7 @@ index 4ef35e3..0db9595 100644
      return true;
  }
  
-@@ -7782,6 +8157,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
+@@ -7782,6 +8162,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
              if (!c.WantFloat("a position epsilon", sub, c.in.physWeldPosition)) return false;
          } else if (o == "$weldnormal") {
              if (!c.WantFloat("a normal epsilon", sub, c.in.physWeldNormal)) return false;
@@ -603986,7 +604053,7 @@ index 4ef35e3..0db9595 100644
          } else if (o == "$concave") {
              c.in.physLegacyConcave = true;
          } else if (o == "$convexhullcountoverride") {
-@@ -8076,8 +8454,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
+@@ -8076,8 +8459,8 @@ bool CmdQcAssert(Ctx& c, const Token& cmd) {
      }
  
      std::string expectedText;
@@ -603997,7 +604064,7 @@ index 4ef35e3..0db9595 100644
      bool expected = false;
      if (_stricmp(expectedText.c_str(), "true") == 0)
          expected = true;
-@@ -8145,6 +8523,8 @@ bool ExpandVars(Ctx& c, Token& t) {
+@@ -8145,6 +8528,8 @@ bool ExpandVars(Ctx& c, Token& t) {
  // an included file - source filenames, $proceduralbones - stays relative to the
  // ROOT script's directory, matching how stock keeps cddir pinned to the top.
  bool SpliceInclude(Ctx& c) {
@@ -604006,7 +604073,7 @@ index 4ef35e3..0db9595 100644
      const Token cmd = c.toks[c.pos]; // the $include token
      size_t p = c.pos + 1;
      if (p >= c.toks.size() || (!c.toks[p].quoted && c.toks[p].text[0] == '$'))
-@@ -8153,7 +8533,12 @@ bool SpliceInclude(Ctx& c) {
+@@ -8153,7 +8538,12 @@ bool SpliceInclude(Ctx& c) {
      Token pathTok = c.toks[p++];
      if (!pathTok.expanded && !ExpandVars(c, pathTok))
          return false;
@@ -604020,7 +604087,7 @@ index 4ef35e3..0db9595 100644
  
      bool localDir = false, optional = false;
      while (p < c.toks.size() && !c.toks[p].quoted && c.toks[p].line == cmd.line &&
-@@ -8161,7 +8546,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8161,7 +8551,7 @@ bool SpliceInclude(Ctx& c) {
          const std::string& o = c.toks[p].text;
          if (_stricmp(o.c_str(), "localdir") == 0)
              localDir = true;
@@ -604029,7 +604096,7 @@ index 4ef35e3..0db9595 100644
              optional = true;
          else
              return c.Fail(c.toks[p].line, "$include: unknown parameter \"" + o +
-@@ -8177,7 +8562,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8177,7 +8567,7 @@ bool SpliceInclude(Ctx& c) {
      if (relPath.is_absolute()) {
          tries.push_back(relPath);
      } else {
@@ -604038,7 +604105,7 @@ index 4ef35e3..0db9595 100644
          // stock resolves every $include against the root script's dir, so a
          // nested one often carries the whole path down from there
          if (c.curDir != c.scriptDir)
-@@ -8202,6 +8587,7 @@ bool SpliceInclude(Ctx& c) {
+@@ -8202,6 +8592,7 @@ bool SpliceInclude(Ctx& c) {
              break;
          }
      }
@@ -604046,7 +604113,7 @@ index 4ef35e3..0db9595 100644
      if (full.empty()) {
          c.toks.erase(c.toks.begin() + c.pos, c.toks.begin() + directiveEnd);
          for (Ctx::IncludeFrame& f : c.includeFrames)
-@@ -8397,9 +8783,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
+@@ -8397,9 +8788,12 @@ bool CmdDefineVariable(Ctx& c, const Token& cmd) {
          return false;
      if (PinnedByDefVar(c, cmd, name))
          return true;
@@ -604062,7 +604129,7 @@ index 4ef35e3..0db9595 100644
      c.variables[name] = value;
      return true;
  }
-@@ -8420,6 +8809,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
+@@ -8420,6 +8814,53 @@ bool CmdRedefineVariable(Ctx& c, const Token& cmd) {
      return true;
  }
  
@@ -604116,7 +604183,29 @@ index 4ef35e3..0db9595 100644
  bool IsCommandName(const std::string& name); // the kCommands lookup, below
  
  // $definemacro <name> [<param>[=<default>] ...] <body> $endmacro.
-@@ -8757,9 +9193,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8441,6 +8882,7 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
+                                 "built-in $" + name + " - pick another name");
+ 
+     Ctx::Macro m;
++    m.file=c.commandFile.empty()?c.file:c.commandFile;
+     while (!c.AtCommand()) {
+         const std::string declaration = c.toks[c.pos++].text;
+         const size_t equal = declaration.find('=');
+@@ -8513,8 +8955,12 @@ bool ExpandMacro(Ctx& c, const Token& cmd, const Ctx::Macro& m) {
+         args.push_back(std::move(a));
+     }
+     std::vector<Token> body = m.body;
+-    for (Token& t : body)
++    for (Token& t : body) {
+         SubstMacroParams(t, m.params, args);
++        if(t.origin.empty()) t.origin=m.file;
++        t.macroTrace += "\n  expanded " + cmd.text + " at " +
++            (cmd.origin.empty()?c.file:cmd.origin) + "(" + std::to_string(cmd.line) + ")" + cmd.macroTrace;
++    }
+     c.SpliceAt(c.pos, body);
+     return true;
+ }
+@@ -8757,9 +9203,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
              taken = true;
              chosen = std::move(body);
          }
@@ -604128,7 +604217,7 @@ index 4ef35e3..0db9595 100644
      }
      if (!c.Eof() && !c.Cur().quoted && _stricmp(c.Cur().text.c_str(), "$else") == 0) {
          const Token els = c.toks[c.pos++];
-@@ -8774,6 +9211,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8774,6 +9221,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
  }
  
  bool CmdIf(Ctx& c, const Token& cmd) { return IfChain(c, cmd, false); }
@@ -604171,12 +604260,23 @@ index 4ef35e3..0db9595 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,19 +9332,73 @@ struct Command {
+@@ -8859,19 +9342,84 @@ struct Command {
      bool (*fn)(Ctx&, const Token&);
  };
  
 +bool CmdCeOption(Ctx& c, const Token& cmd) {
 +    const std::string name=Lower(cmd.text.substr(1));
++    if(name=="dmxcompatibility") {
++        std::string mode;
++        if(!c.Want("native, ce or neko",cmd,mode)) return false;
++        mode=Lower(mode);
++        if(mode=="native") c.in.dmxCompatibility=cm::CompileInput::DmxCompatibility::Native;
++        else if(mode=="ce") c.in.dmxCompatibility=cm::CompileInput::DmxCompatibility::Ce;
++        else if(mode=="neko") c.in.dmxCompatibility=cm::CompileInput::DmxCompatibility::Neko;
++        else return c.Fail(cmd.line,"$dmxcompatibility expects native, ce or neko");
++        c.in.flexCullMethod=mode=="native"?cm::FlexCullMethod::RulesOnly:cm::FlexCullMethod::None;
++        return true;
++    }
 +    if(name=="overrideflexcontrollers") { c.in.ce.overrideControllers=!c.in.ce.overrideControllers; return true; }
 +    if(name=="allowduplicationflexcontrollers") { c.in.ce.duplicateControllers=!c.in.ce.duplicateControllers; return true; }
 +    if(name=="addinvstudioflexes") { c.in.ce.inverseFlexes=!c.in.ce.inverseFlexes; return true; }
@@ -604245,7 +604345,7 @@ index 4ef35e3..0db9595 100644
      {"$else", CmdElifOutside},
      {"$switch", CmdSwitch},
      {"$case", CmdCaseOutside},
-@@ -8887,6 +9414,7 @@ constexpr Command kCommands[] = {
+@@ -8887,6 +9435,7 @@ constexpr Command kCommands[] = {
      {"$body", CmdLegacyBody},
      {"$bodygroup", CmdLegacyBody},
      {"$model", CmdModel},
@@ -604253,7 +604353,7 @@ index 4ef35e3..0db9595 100644
      {"$modelgrouppreset", CmdModelGroupPreset},
      {"$bodygrouppreset", CmdModelGroupPreset},
      {"$datamodeljoints", CmdDataModelJoints},
-@@ -8905,6 +9433,7 @@ constexpr Command kCommands[] = {
+@@ -8905,6 +9454,7 @@ constexpr Command kCommands[] = {
      {"$includemodel", CmdIncludeModel},
      {"$cmdlist", CmdCmdList},
      {"$defaultfps", CmdDefaultFps},
@@ -604261,7 +604361,7 @@ index 4ef35e3..0db9595 100644
      {"$motionrollback", CmdMotionRollback},
      {"$nosequence", CmdNoSequence},
      {"$defaultfadein", CmdDefaultFadeIn},
-@@ -8927,11 +9456,43 @@ constexpr Command kCommands[] = {
+@@ -8927,11 +9477,44 @@ constexpr Command kCommands[] = {
      {"$vtxformat", CmdVtxFormat},
      {"$nodx80", CmdNoDx80},
      {"$modelbudget", CmdModelBudget},
@@ -604276,6 +604376,7 @@ index 4ef35e3..0db9595 100644
      {"$mostlyopaque", CmdMostlyOpaque},
 +    {"$overrideflexcontrollers", CmdCeOption},
 +    {"$allowduplicationflexcontrollers", CmdCeOption},
++    {"$dmxcompatibility", CmdCeOption},
 +    {"$addinvstudioflexes", CmdCeOption},
 +    {"$zeroflexdecay", CmdCeOption},
 +    {"$defaqscale", CmdCeOption},
@@ -604305,7 +604406,7 @@ index 4ef35e3..0db9595 100644
      {"$surfaceprop", CmdSurfaceProp},
      {"$contents", CmdContents},
      {"$jointcontents", CmdJointContents},
-@@ -8977,6 +9538,7 @@ constexpr Command kCommands[] = {
+@@ -8977,6 +9560,7 @@ constexpr Command kCommands[] = {
      {"$jigglebone", CmdJiggleBone},
      {"$culljigglebones", CmdCullJiggleBones},
      {"$driverbone", CmdDriverBone},
@@ -604313,7 +604414,7 @@ index 4ef35e3..0db9595 100644
      {"$driveraimat", CmdDriverAimAt},
      {"$proceduralbones", CmdProceduralBones},
      {"$realignbones", CmdRealignBones},
-@@ -8989,6 +9551,7 @@ constexpr Command kCommands[] = {
+@@ -8989,6 +9573,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},
@@ -604321,16 +604422,19 @@ index 4ef35e3..0db9595 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
-@@ -9039,6 +9602,8 @@ bool RunCommands(Ctx& c) {
+@@ -9039,7 +9624,11 @@ bool RunCommands(Ctx& c) {
          if (!ExpandCommandVars(c))
              return false;
  
 +        c.commandFile=c.file; c.commandParents.clear();
 +        for(const auto& frame:c.includeFrames) c.commandParents.push_back(frame.savedFile);
          const Token cmd = c.toks[c.pos];
++        if(!cmd.origin.empty()) c.commandFile=cmd.origin;
++        c.commandMacro=cmd.macroTrace;
          if (cmd.quoted || cmd.text[0] != '$')
              return c.Fail(cmd.line, "expected a $command, got \"" + cmd.text + "\"");
-@@ -9140,9 +9705,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+         c.pos++;
+@@ -9140,9 +9729,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      seedDirs(includeDirs, c.launchIncludeDirs);
      seedDirs(fileDirs, c.launchSearchDirs);
  
@@ -604343,7 +604447,7 @@ index 4ef35e3..0db9595 100644
      // the root of the $include cycle check
      std::error_code ec;
      const fs::path canon = fs::weakly_canonical(path, ec);
-@@ -9170,6 +9738,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9170,6 +9762,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      out.upAxisY = source::DmxUpAxisY();
  
      // $renamemorph: before anything below resolves a morph by name
@@ -604543,10 +604647,10 @@ index 0000000..d9dcfc2
 +}
 diff --git a/mdlcompiler/sceneloader.cpp b/mdlcompiler/sceneloader.cpp
 new file mode 100644
-index 0000000..7842fbe
+index 0000000..53bb685
 --- /dev/null
 +++ b/mdlcompiler/sceneloader.cpp
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,308 @@
 +#include "sceneloader.h"
 +#include "dependencies.h"
 +#include "gltfscene.h"
@@ -604688,6 +604792,15 @@ index 0000000..7842fbe
 +            if(bake){clip.numframes=1+int(std::ceil(duration*options.sampleRate));clip.endframe=clip.numframes-1;
 +                if(clip.numframes>4096)throw std::runtime_error("BakeSceneAnimation exceeds 4096 sampled frames");bakedAnimation=animation;}
 +            clip.frames.resize(clip.numframes);
++            // Check immutable keys once, rather than for every sampled frame.
++            if(!bake) for(unsigned ch=0;ch<animation->mNumChannels;++ch) {
++                auto channel=animation->mChannels[ch]; auto i=byName.find(channel->mNodeName.C_Str());
++                if(i==byName.end()) throw std::runtime_error("animation node not found");
++                aiVector3D s,p; aiQuaternion q; nodes[i->second]->mTransformation.Decompose(s,q,p);
++                for(unsigned k=0;k<channel->mNumScalingKeys;++k)
++                    if((channel->mScalingKeys[k].mValue-s).SquareLength()>1e-10f)
++                        throw std::runtime_error("animated scene scaling must be baked into vertex animation before MDL import");
++            }
 +            for(int f=0;f<clip.numframes;++f) {
 +                double time=std::min(duration,double(f)/options.sampleRate)*rate;
 +                std::vector<aiMatrix4x4> locals; for(auto n:nodes) locals.push_back(n->mTransformation);
@@ -604696,9 +604809,6 @@ index 0000000..7842fbe
 +                    if(i==byName.end()) throw std::runtime_error("animation node not found");
 +                    int b=i->second; out.localBone[b].isNonSkeletal=false;
 +                    aiVector3D s,p; aiQuaternion q; locals[b].Decompose(s,q,p);
-+                    for(unsigned k=0;!bake&&k<channel->mNumScalingKeys;++k)
-+                        if((channel->mScalingKeys[k].mValue-s).SquareLength()>1e-10f)
-+                            throw std::runtime_error("animated scene scaling must be baked into vertex animation before MDL import");
 +                    auto lerp=[](aiVector3D x,aiVector3D y,float t) { return x+(y-x)*t; };
 +                    p=Sample(channel->mPositionKeys,channel->mNumPositionKeys,time,p,lerp);
 +                    s=Sample(channel->mScalingKeys,channel->mNumScalingKeys,time,s,lerp);
@@ -604743,6 +604853,16 @@ index 0000000..7842fbe
 +            for(unsigned v=0;v<mesh->mNumVertices;++v) {
 +                auto& w=weights[v];
 +                auto& imported=importedWeights[v];
++                // The same joint can occur in multiple JOINTS streams. Sum it
++                // before selecting the strongest influences, otherwise valid
++                // input loses weight and spends multiple slots on one bone.
++                size_t unique=0;
++                for(size_t k=0;k<imported.size();++k) {
++                    size_t j=0; for(;j<unique;++j) if(imported[j].first==imported[k].first) break;
++                    if(j<unique) imported[j].second+=imported[k].second;
++                    else imported[unique++]=imported[k];
++                }
++                imported.resize(unique);
 +                std::stable_sort(imported.begin(),imported.end(),[](const auto& a,const auto& b){return a.second>b.second;});
 +                for(size_t k=0;k<imported.size() && k<pulse::limits::kMaxSrcBoneWeights;++k) {
 +                    w.bone[k]=imported[k].first; w.weight[k]=imported[k].second; ++w.numbones;
@@ -605200,7 +605320,7 @@ index 59b9b29..ba6f374 100644
      }
      BLOCK "VarFileInfo"
 diff --git a/mdlcompiler/writemdl.cpp b/mdlcompiler/writemdl.cpp
-index 3288136..c7deae3 100644
+index 3288136..98d756a 100644
 --- a/mdlcompiler/writemdl.cpp
 +++ b/mdlcompiler/writemdl.cpp
 @@ -20,6 +20,9 @@
@@ -605315,10 +605435,50 @@ index 3288136..c7deae3 100644
              srcanim.flags |= fmt::STUDIO_FRAMEANIM;
              destanimdesc->flags |= fmt::STUDIO_FRAMEANIM;
          }
-@@ -2803,6 +2842,51 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
+@@ -2803,6 +2842,91 @@ bool SaveFile(const std::filesystem::path& path, const void* data, size_t len, s
  
  bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legacyVtx,
                       bool writeDx80, std::string* err) {
++    // Fail before touching output files if a compile stage produced invalid data.
++    auto invalid=[&](const std::string& detail) { if(err) *err="output validation: "+detail; return false; };
++    auto index=[](int value,size_t count) { return value>=0 && static_cast<size_t>(value)<count; };
++    auto finite=[](const pm::Vector3& v) { return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z); };
++    for(size_t b=0;b<m.bones.size();++b) {
++        int parent=m.bones[b].parent;
++        if(parent < -1 || (parent>=0 && (!index(parent,m.bones.size()) || parent==static_cast<int>(b))))
++            return invalid("invalid parent for bone '"+m.bones[b].name+"'");
++        size_t steps=0; int ancestor=parent;
++        while(ancestor>=0) {
++            if(!index(ancestor,m.bones.size()) || ++steps>m.bones.size()) return invalid("cyclic bone hierarchy");
++            ancestor=m.bones[ancestor].parent;
++        }
++    }
++    for(const auto& part:m.bodyparts) for(int model:part.modelIndices)
++        if(!index(model,m.models.size())) return invalid("invalid bodygroup model index");
++    for(const auto& model:m.models) {
++        for(const auto& vertex:model.vertices) {
++            if(!finite(vertex.position) || !finite(vertex.normal)) return invalid("non-finite geometry in model '"+model.name+"'");
++            if(vertex.boneweight.numbones<0 || vertex.boneweight.numbones>3) return invalid("invalid vertex influence count");
++            for(int k=0;k<vertex.boneweight.numbones;++k)
++                if(!index(vertex.boneweight.bone[k],m.bones.size()) || !std::isfinite(vertex.boneweight.weight[k]) || vertex.boneweight.weight[k]<0)
++                    return invalid("invalid vertex bone or weight");
++        }
++        for(const auto& mesh:model.outMeshes) {
++            if(mesh.vertexoffset<0 || mesh.numvertices<0 || static_cast<size_t>(mesh.vertexoffset)+mesh.numvertices>model.vertices.size())
++                return invalid("invalid mesh vertex range");
++            for(const auto& faces:mesh.lodFaces) for(const auto& f:faces)
++                if(f.a>=static_cast<unsigned>(mesh.numvertices) || f.b>=static_cast<unsigned>(mesh.numvertices) || f.c>=static_cast<unsigned>(mesh.numvertices))
++                    return invalid("invalid LOD triangle index");
++        }
++    }
++    for(const auto& rule:m.flexrules) {
++        if(!index(rule.flex,m.flexdescs.size())) return invalid("invalid flex rule target");
++        for(const auto& op:rule.ops) {
++            if(op.op==1 && !std::isfinite(op.d.value)) return invalid("non-finite flex constant");
++            if(op.op==2 && !index(op.d.index,m.flexcontrollers.size())) return invalid("invalid flex controller reference");
++            if(op.op==3 && !index(op.d.index,m.flexdescs.size())) return invalid("invalid flex descriptor reference");
++        }
++    }
 +    // Both the VVD skin indices and MDL bone-name lookup table store bytes.
 +    if (m.bones.size() > 256) {
 +        if (err) *err = "standard MDL/VVD byte-index tables cannot encode more than 256 output bones; "
@@ -605367,7 +605527,7 @@ index 3288136..c7deae3 100644
      Buf buf(kFileBuffer);
  
      fmt::studiohdr_t* phdr = buf.Reserve<fmt::studiohdr_t>();
-@@ -3028,6 +3112,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3028,6 +3152,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::vector<uint8_t> phyBuf =
          BuildPhy(m, reinterpret_cast<fmt::studiohdr_t*>(mdlBuf.data())->checksum);
  
@@ -605397,7 +605557,7 @@ index 3288136..c7deae3 100644
      // save. Reference hardcodes a "models/" root in the disk path (not in the
      // header name), so $modelname stays prefix-free and the .mdl bytes match.
      std::filesystem::path base =
-@@ -3049,6 +3156,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3049,6 +3196,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          return path;
      };
  

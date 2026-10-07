@@ -263,3 +263,9 @@ The fast glTF/GLB/VRM path decodes meshopt compressed buffer views using the bun
 ## v1.2.4 resources and baking
 
 See [VALIDATION.md](VALIDATION.md) for mounts, Draco, vertex-cache QC/playback, ragdolls, reference differentials and repeatable performance reports. VTA eyelid poses no longer create an orphan generic descriptor before their actual eyelid registration.
+
+## v1.2.7 explicit reference flex policies
+
+`$dmxcompatibility native|ce|neko` selects flex registration behavior. Native is the default and retains controller/rule deduplication and automatic DMX rules. CE preserves per-body controllers and omits automatic combination rules; Neko preserves per-body controllers and repeated rules. Explicit QC expressions remain supported. Generated scene-baking playback rules are retained in all modes. Selecting a reference mode sets `$flexcullmethod none`; a later explicit `$flexcullmethod` can override that choice. Use this command before model declarations for clarity. It does not claim complete byte-level reference parity. Twenty-eight bounded reference comparisons cover DMX, VTA, stereo, descriptor dependencies, eyelids, IK, LOD, attachments and jiggle combinations.
+
+Scene import merges repeated influences of the same joint before weight selection and rejects negative/non-finite glTF weights. `-perfjson` retains schema 1 and adds `stages` entries with `tag`, `name`, `ms` and `calls`; stage scopes can overlap and must not be summed as exclusive timings. Macro errors show the definition file/line and expansion call chain. Writer preflight rejects invalid geometry, bone hierarchies, bodygroup/LOD/flex indices before output files are touched.

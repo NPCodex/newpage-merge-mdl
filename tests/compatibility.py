@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from scene_fixtures import scene_bytes,skinned_scene_bytes
 from extended_cases import ExtendedCases
+from validate_outputs import validate
 
 COMPILER = str(Path(sys.argv.pop(1)).resolve())
 
@@ -126,6 +127,8 @@ class Compatibility(ExtendedCases,unittest.TestCase):
         qc=self.write('scene.qc',text)
         result=subprocess.run([COMPILER,str(qc),'-game',str(self.root),*args],capture_output=True,text=True,errors='replace')
         self.assertEqual(result.returncode==0,success,result.stdout+result.stderr)
+        if success:
+            for mdl in (self.root/'models').rglob('*.mdl'):validate(mdl)
         return result.stdout+result.stderr
 
     def scene_fixture(self,kind='gltf',**options):

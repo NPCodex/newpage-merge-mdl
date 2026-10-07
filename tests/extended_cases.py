@@ -2,6 +2,72 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def test_output_validator_rejects_truncation_offsets_and_checksum_mismatch(self):
+  from validate_outputs import validate
+  self.scene_qc('$modelname integrity\n$body m mesh.smd\n')
+  path=self.root/'models/integrity.mdl';original=path.read_bytes()
+  for field,value in [(76,len(original)+1),(160,len(original)-1),(236,-1)]:
+   broken=bytearray(original);struct.pack_into('<i',broken,field,value);path.write_bytes(broken)
+   with self.assertRaises(ValueError):validate(path)
+  path.write_bytes(original);vvd=self.root/'models/integrity.vvd';data=bytearray(vvd.read_bytes());data[8]^=1;vvd.write_bytes(data)
+  with self.assertRaisesRegex(ValueError,'checksum'):validate(path)
+
+ def test_dmx_reference_profiles_preserve_distinct_rules_and_controllers(self):
+  self.write('face.dmx',(Path(__file__).parent/'fixtures/ce-facial.dmx').read_text())
+  for mode,controllers,rules in [('native',1,1),('ce',2,0),('neko',2,2)]:
+   self.scene_qc('$modelname face\n$dmxcompatibility '+mode+'\n$model a face.dmx\n$model b face.dmx\n')
+   data=self.ce_data();self.assertEqual(len(data[0]),controllers);self.assertEqual(len(data[3]),rules)
+  self.scene_qc('$modelname face\n$dmxcompatibility neko\n$model a face.dmx {\n%smile = smile\n}\n')
+  self.assertEqual(len(self.ce_data()[3]),2)
+
+ def test_dmx_profile_rejects_typo_and_preserves_output(self):
+  self.scene_qc('$modelname face\n$body m mesh.smd\n');old=self.mdl('face')
+  self.assertIn('expects native, ce or neko',self.scene_qc('$modelname face\n$dmxcompatibility unknown\n',success=False))
+  self.assertEqual(self.mdl('face'),old)
+
+ def test_nested_macro_errors_report_definition_and_invocation(self):
+  self.write('defs.qci','$definemacro inner\n$scale invalid\n$endmacro\n$definemacro outer\n$inner\n$endmacro\n')
+  text=self.scene_qc('$include defs.qci\n$outer\n',success=False)
+  self.assertIn('defs.qci(2)',text);self.assertIn('expanded $inner',text)
+  self.assertIn('expanded $outer',text);self.assertIn('scene.qc(2)',text)
+
+ def test_gltf_negative_skin_weight_is_rejected_before_output(self):
+  from scene_fixtures import skinned_scene_bytes
+  doc=json.loads(skinned_scene_bytes());weights=doc['meshes'][0]['primitives'][0]['attributes']['WEIGHTS_0']
+  view=doc['bufferViews'][doc['accessors'][weights]['bufferView']]
+  blob=bytearray(base64.b64decode(doc['buffers'][0]['uri'].split(',')[1]));struct.pack_into('<f',blob,view['byteOffset'],-.1)
+  doc['buffers'][0]['uri']='data:application/octet-stream;base64,'+base64.b64encode(blob).decode();self.write('scene.gltf',json.dumps(doc))
+  text=self.scene_qc('$modelname negative\n$body m scene.gltf\n',success=False)
+  self.assertIn('invalid glTF skin weight',text);self.assertFalse((self.root/'models/negative.mdl').exists())
+
+ def test_repeated_joint_streams_are_merged_before_skin_culling(self):
+  from scene_fixtures import skinned_scene_bytes
+  doc=json.loads(skinned_scene_bytes());attrs=doc['meshes'][0]['primitives'][0]['attributes']
+  attrs['JOINTS_1']=attrs['JOINTS_0'];attrs['WEIGHTS_1']=attrs['WEIGHTS_0']
+  self.write('scene.gltf',json.dumps(doc));self.scene_qc('$modelname repeated\n$body m scene.gltf InNode MeshA\n')
+  data=(self.root/'models/repeated.vvd').read_bytes();start=struct.unpack_from('<i',data,56)[0]
+  for i in range(3):
+   self.assertEqual(data[start+i*48+15],1);self.assertAlmostEqual(struct.unpack_from('<f',data,start+i*48)[0],1)
+
+ def test_baked_defaults_respect_node_override_on_shared_morph_mesh(self):
+  doc=json.loads(self.scene_fixture().read_text());doc['meshes'][0]['weights']=[1];doc['nodes'][1]['weights']=[.5]
+  for kind in ('gltf','glb','vrm'):
+   variant=copy.deepcopy(doc)
+   if kind=='gltf':self.write('scene.gltf',json.dumps(variant))
+   else:
+    binary=base64.b64decode(variant['buffers'][0].pop('uri').split(',')[1]);binary+=b'\0'*((-len(binary))%4)
+    if kind=='vrm':variant['extensionsUsed']=['VRM'];variant['extensions']={'VRM':{'specVersion':'0.0','meta':{'title':'Self-authored fixture'}}}
+    text=json.dumps(variant).encode();text+=b' '*((-len(text))%4)
+    chunks=struct.pack('<II',len(text),0x4e4f534a)+text+struct.pack('<II',len(binary),0x004e4942)+binary
+    (self.root/('scene.'+kind)).write_bytes(struct.pack('<III',0x46546c67,2,len(chunks)+12)+chunks)
+   for node,expected in [('MeshA',.125),('MeshB',.25)]:
+    self.scene_qc('$modelname baked\n$UpAxis z gltf\n$body m scene.'+kind+' InNode '+node+' BakeSceneAnimation Move SceneSampleRate 1\n')
+    d,flex=self.first_mesh_flex('baked');self.assertTrue(any(abs(struct.unpack_from('<3e',d,v+4)[2]-expected)<1e-4 for v in flex))
+
+ def test_ce_profile_keeps_baked_scene_playback_rules(self):
+  self.scene_fixture();self.scene_qc('$modelname baked\n$dmxcompatibility ce\n$body m scene.gltf InNode MeshA BakeSceneAnimation Move SceneSampleRate 2\n')
+  self.assertGreater(len(self.ce_data('baked')[3]),0)
+
  def test_mount_search_order_preserves_script_and_explicit_paths(self):
   mesh=(self.root/'mesh.smd').read_text();self.write('mount/mounted.smd',mesh)
   self.write('gameinfo.txt','GameInfo { FileSystem { SearchPaths { game "|gameinfo_path|mount" } } }')
@@ -115,6 +181,8 @@ class ExtendedCases:
   metrics=json.loads((self.root/'metrics.json').read_text());self.assertEqual(metrics['schema'],1)
   self.assertGreater(metrics['peak_working_set_bytes'],0);self.assertEqual(metrics['vertices'],3)
   self.assertAlmostEqual(metrics['total_ms'],metrics['load_ms']+metrics['compile_ms']+metrics['write_ms'],delta=.01)
+  self.assertTrue(metrics['stages']);self.assertTrue(any(s['tag']=='pass' for s in metrics['stages']))
+  self.assertTrue(all(s['ms']>=0 and s['calls']>0 for s in metrics['stages']))
 
  def test_vta_eyelid_does_not_leave_unbound_pose_descriptors(self):
   self.ce_fixture()

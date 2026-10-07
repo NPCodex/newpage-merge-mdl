@@ -84,6 +84,8 @@ struct Token {
     // parameter). Only conditions care: an expanded operand is a literal value,
     // never the name of another variable to look up.
     bool expanded = false;
+    std::string origin;
+    std::string macroTrace;
 };
 
 // keyvalues1 lexing: whitespace-separated words, "quoted strings", `//` `;` `#`
@@ -201,6 +203,7 @@ struct Ctx {
     fs::path scriptDir; // root script's directory
     std::string file;
     std::string commandFile;
+    std::string commandMacro;
     std::vector<std::string> commandParents;
     std::string rootFile; // `file` for the root script; an $include changes `file`, not this
     std::vector<Token> toks;
@@ -240,6 +243,7 @@ struct Ctx {
     std::map<std::string, std::vector<Token>> rendermeshCmdlists; // $rendermeshcmdlist, keyed lowercased
     std::map<std::string, std::string> variables; // $definevariable, case-sensitive, shared across $include
     struct Macro {
+        std::string file;
         std::vector<std::string> params;
         std::map<std::string, std::string> defaults;
         std::vector<Token> body;
@@ -328,6 +332,7 @@ struct Ctx {
         if (abortErr) return false; // keep the first $include error, not a cascade
         if (err) {
             *err = (commandFile.empty()?file:commandFile) + "(" + std::to_string(line) + "): " + msg;
+            *err += commandMacro;
             for(auto it=commandParents.rbegin();it!=commandParents.rend();++it)
                 *err += "\n  included from " + *it;
         }
@@ -8877,6 +8882,7 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
                                 "built-in $" + name + " - pick another name");
 
     Ctx::Macro m;
+    m.file=c.commandFile.empty()?c.file:c.commandFile;
     while (!c.AtCommand()) {
         const std::string declaration = c.toks[c.pos++].text;
         const size_t equal = declaration.find('=');
@@ -8949,8 +8955,12 @@ bool ExpandMacro(Ctx& c, const Token& cmd, const Ctx::Macro& m) {
         args.push_back(std::move(a));
     }
     std::vector<Token> body = m.body;
-    for (Token& t : body)
+    for (Token& t : body) {
         SubstMacroParams(t, m.params, args);
+        if(t.origin.empty()) t.origin=m.file;
+        t.macroTrace += "\n  expanded " + cmd.text + " at " +
+            (cmd.origin.empty()?c.file:cmd.origin) + "(" + std::to_string(cmd.line) + ")" + cmd.macroTrace;
+    }
     c.SpliceAt(c.pos, body);
     return true;
 }
@@ -9334,6 +9344,17 @@ struct Command {
 
 bool CmdCeOption(Ctx& c, const Token& cmd) {
     const std::string name=Lower(cmd.text.substr(1));
+    if(name=="dmxcompatibility") {
+        std::string mode;
+        if(!c.Want("native, ce or neko",cmd,mode)) return false;
+        mode=Lower(mode);
+        if(mode=="native") c.in.dmxCompatibility=cm::CompileInput::DmxCompatibility::Native;
+        else if(mode=="ce") c.in.dmxCompatibility=cm::CompileInput::DmxCompatibility::Ce;
+        else if(mode=="neko") c.in.dmxCompatibility=cm::CompileInput::DmxCompatibility::Neko;
+        else return c.Fail(cmd.line,"$dmxcompatibility expects native, ce or neko");
+        c.in.flexCullMethod=mode=="native"?cm::FlexCullMethod::RulesOnly:cm::FlexCullMethod::None;
+        return true;
+    }
     if(name=="overrideflexcontrollers") { c.in.ce.overrideControllers=!c.in.ce.overrideControllers; return true; }
     if(name=="allowduplicationflexcontrollers") { c.in.ce.duplicateControllers=!c.in.ce.duplicateControllers; return true; }
     if(name=="addinvstudioflexes") { c.in.ce.inverseFlexes=!c.in.ce.inverseFlexes; return true; }
@@ -9467,6 +9488,7 @@ constexpr Command kCommands[] = {
     {"$mostlyopaque", CmdMostlyOpaque},
     {"$overrideflexcontrollers", CmdCeOption},
     {"$allowduplicationflexcontrollers", CmdCeOption},
+    {"$dmxcompatibility", CmdCeOption},
     {"$addinvstudioflexes", CmdCeOption},
     {"$zeroflexdecay", CmdCeOption},
     {"$defaqscale", CmdCeOption},
@@ -9605,6 +9627,8 @@ bool RunCommands(Ctx& c) {
         c.commandFile=c.file; c.commandParents.clear();
         for(const auto& frame:c.includeFrames) c.commandParents.push_back(frame.savedFile);
         const Token cmd = c.toks[c.pos];
+        if(!cmd.origin.empty()) c.commandFile=cmd.origin;
+        c.commandMacro=cmd.macroTrace;
         if (cmd.quoted || cmd.text[0] != '$')
             return c.Fail(cmd.line, "expected a $command, got \"" + cmd.text + "\"");
         c.pos++;

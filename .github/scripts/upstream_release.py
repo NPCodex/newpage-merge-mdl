@@ -253,7 +253,7 @@ def prepare(args):
         'Includes checked body/skin capacity, synchronized global clamping, local-hierarchy retention, DMX corner validation and opt-in concave collision decomposition. '
         'Includes model-scoped material merging, meshopt glTF decoding and static unskinned GPU instance expansion. '
         'see RESEARCH.md for measured performance and validation scope.\n\n'
-        'Fixes procedural ragdoll collision bodies and adds explicit copy weightlists, include diagnostics, long-scene sampling optimization and packaged-binary regression gates. Includes ordered AppID/VPK resource mounting, direct Draco glTF import, '
+        'Adds explicit CE/Neko flex compatibility profiles, expanded facial/rig differential tests, real-material GMod face/decimated-LOD validation, macro provenance, repeated-joint weight fixes, serialized output checks and detailed performance JSON. Retains procedural ragdoll fixes, explicit copy weightlists and packaged-binary regression gates. Includes ordered AppID/VPK resource mounting, direct Draco glTF import, '
         'sampled scale/morph-weight vertex animation with a GMod Lua playback helper, '
         'per-bone ragdoll decomposition, expanded reference differentials, actual GMod '
         'geometry/LOD/facial/physics checks and phase/memory benchmark reports. '

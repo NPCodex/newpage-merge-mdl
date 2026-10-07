@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -364,6 +365,7 @@ static int RunCompile(int argc, char** argv) {
             dumpMaterials = true;
         } else if(std::strcmp(argv[i],"-perfjson")==0 && i+1<argc) {
             perfJson=argv[++i];
+            pulse::perf::g_enabled = true;
         } else if (std::strcmp(argv[i], "-perfmetrics") == 0) {
             pulse::perf::g_enabled = true;
         } else if (std::strcmp(argv[i], "-pause") == 0) {
@@ -532,7 +534,14 @@ static int RunCompile(int argc, char** argv) {
 #endif
         metrics<<"{\"schema\":1,\"version\":\""<<PULSEMODEL_VERSION<<"\",\"load_ms\":"<<ms(t0,tLoad)
                <<",\"compile_ms\":"<<ms(tLoad,tCompile)<<",\"write_ms\":"<<ms(tCompile,tWrite)<<",\"total_ms\":"<<ms(t0,tWrite)
-               <<",\"peak_working_set_bytes\":"<<peak<<",\"bones\":"<<model.bones.size()<<",\"vertices\":"<<vertsPool<<"}\n";
+               <<",\"peak_working_set_bytes\":"<<peak<<",\"bones\":"<<model.bones.size()<<",\"vertices\":"<<vertsPool<<",\"stages\":[";
+        bool first=true;
+        for(const auto& entry:pulse::perf::g_entries) {
+            if(!first) metrics<<","; first=false;
+            metrics<<"{\"tag\":"<<std::quoted(entry.tag)<<",\"name\":"<<std::quoted(entry.name)
+                   <<",\"ms\":"<<entry.ms<<",\"calls\":"<<entry.calls<<"}";
+        }
+        metrics<<"]}\n";
     }
     return 0;
 }

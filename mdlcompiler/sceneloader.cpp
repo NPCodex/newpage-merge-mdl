@@ -139,6 +139,15 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
             if(bake){clip.numframes=1+int(std::ceil(duration*options.sampleRate));clip.endframe=clip.numframes-1;
                 if(clip.numframes>4096)throw std::runtime_error("BakeSceneAnimation exceeds 4096 sampled frames");bakedAnimation=animation;}
             clip.frames.resize(clip.numframes);
+            // Check immutable keys once, rather than for every sampled frame.
+            if(!bake) for(unsigned ch=0;ch<animation->mNumChannels;++ch) {
+                auto channel=animation->mChannels[ch]; auto i=byName.find(channel->mNodeName.C_Str());
+                if(i==byName.end()) throw std::runtime_error("animation node not found");
+                aiVector3D s,p; aiQuaternion q; nodes[i->second]->mTransformation.Decompose(s,q,p);
+                for(unsigned k=0;k<channel->mNumScalingKeys;++k)
+                    if((channel->mScalingKeys[k].mValue-s).SquareLength()>1e-10f)
+                        throw std::runtime_error("animated scene scaling must be baked into vertex animation before MDL import");
+            }
             for(int f=0;f<clip.numframes;++f) {
                 double time=std::min(duration,double(f)/options.sampleRate)*rate;
                 std::vector<aiMatrix4x4> locals; for(auto n:nodes) locals.push_back(n->mTransformation);
@@ -147,9 +156,6 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
                     if(i==byName.end()) throw std::runtime_error("animation node not found");
                     int b=i->second; out.localBone[b].isNonSkeletal=false;
                     aiVector3D s,p; aiQuaternion q; locals[b].Decompose(s,q,p);
-                    for(unsigned k=0;!bake&&k<channel->mNumScalingKeys;++k)
-                        if((channel->mScalingKeys[k].mValue-s).SquareLength()>1e-10f)
-                            throw std::runtime_error("animated scene scaling must be baked into vertex animation before MDL import");
                     auto lerp=[](aiVector3D x,aiVector3D y,float t) { return x+(y-x)*t; };
                     p=Sample(channel->mPositionKeys,channel->mNumPositionKeys,time,p,lerp);
                     s=Sample(channel->mScalingKeys,channel->mNumScalingKeys,time,s,lerp);
@@ -194,6 +200,16 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
             for(unsigned v=0;v<mesh->mNumVertices;++v) {
                 auto& w=weights[v];
                 auto& imported=importedWeights[v];
+                // The same joint can occur in multiple JOINTS streams. Sum it
+                // before selecting the strongest influences, otherwise valid
+                // input loses weight and spends multiple slots on one bone.
+                size_t unique=0;
+                for(size_t k=0;k<imported.size();++k) {
+                    size_t j=0; for(;j<unique;++j) if(imported[j].first==imported[k].first) break;
+                    if(j<unique) imported[j].second+=imported[k].second;
+                    else imported[unique++]=imported[k];
+                }
+                imported.resize(unique);
                 std::stable_sort(imported.begin(),imported.end(),[](const auto& a,const auto& b){return a.second>b.second;});
                 for(size_t k=0;k<imported.size() && k<pulse::limits::kMaxSrcBoneWeights;++k) {
                     w.bone[k]=imported[k].first; w.weight[k]=imported[k].second; ++w.numbones;

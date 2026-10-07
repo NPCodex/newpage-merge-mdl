@@ -14,6 +14,9 @@ for _, path in ipairs(config.models) do
         table.insert(report.materials,{model=path,missing=missing})
         table.insert(pending,{model=path,name="neutral",skin=0})
         table.insert(pending,{model=path,name="expression",skin=0,expression=true})
+        table.insert(pending,{model=path,name="face_neutral",skin=0,face=true})
+        table.insert(pending,{model=path,name="face_repeat",skin=0,face=true})
+        table.insert(pending,{model=path,name="face_expression",skin=0,face=true,expression=true})
         if probe:SkinCount()>1 then table.insert(pending,{model=path,name="last_skin",skin=probe:SkinCount()-1}) end
         for _,group in ipairs(probe:GetBodyGroups()) do
             if group.num>1 then
@@ -62,6 +65,13 @@ local function nextCase()
     if lo.x==math.huge then lo,hi=model:GetModelBounds() end
     target=(lo+hi)*.5
     camera=target+Vector(0,-math.max((hi-lo):Length()+40,50)*1.6,10)
+    if current.face then
+        local bone=model:LookupBone("ValveBiped.Bip01_Head1")
+        if bone then target=model:GetBonePosition(bone);camera=target+Vector(25,-5,2) end
+    end
+    local meshes=util.GetModelMeshes(current.model,current.lod or 0)
+    current.triangles=0
+    for _,mesh in ipairs(meshes or {}) do current.triangles=current.triangles+#mesh.triangles/3 end
     current.bones=model:GetBoneCount();current.flexes=model:GetFlexNum();current.skin=model:GetSkin()
     ready=RealTime()+.2
 end
