@@ -313,3 +313,11 @@ Legacy continuation macros end at a noncontinued line or a blank physical line; 
 | `$cloth`, `$clothplanecollision` | Still rejected. Real FE node/constraint construction, control backsolving, plane binding and CSGO FE extended-header serialization are not implemented. |
 
 The 31 supported entries include legacy warning aliases and existing native behavior, not 31 new algorithms or full CSGO parity. Nineteen targeted cases inspect output controllers/flags, geometry, UV/tangents, hierarchy, bounding boxes, physics output changes, lookup, attachment/bodygroup indices, virtual morphs and pre-write remap errors. These are native output regressions against the inspected command contracts; they are not new CE/CSGO binary differential or in-game certification. Reference programs/source files and user model assets are excluded from this repository.
+
+## v1.2.16: target game VTX selection
+
+`-game` gameinfo FileSystem/SteamAppId 730 and 1012110 select extended VTX (33-byte strip groups, 35-byte strips), even when SearchPaths is absent. Unknown/missing targets retain legacy defaults. Explicit pulseqc vtx_archetype or QC $vtxformat wins over detection, and CLI -vtxformat wins over both. Explicit legacy selection for these targets warns. Full VTX does not emit DX80.
+
+The installed CSGO/MCV loaders require the extended layout for the tested v49 models. Deploy complete matching MDL/VVD/VTX/PHY sets: model viewers may resolve sidecars through the game's model mount even when an MDL was opened using an absolute path. Use unique canonical model names and matching sidecars for isolated tests. Relative HLMV input that falls back to error.mdl is not runtime evidence. See tests/reports/v1.2.16-validation.json for bounded results.
+
+For CSGO player tests, preserve the player/custom_player path category when giving the model a unique name. Moving this fixture into a generic model directory selected old weapon-sequence behavior; an extra stock animation include was unnecessary when the original QC was tested under its correct path.

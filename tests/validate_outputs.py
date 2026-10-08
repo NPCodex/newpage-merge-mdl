@@ -34,7 +34,7 @@ class Reader:
         return range(start, start + count * size, size)
 
 
-def validate(path):
+def validate(path, vtx_format=None):
     path = Path(path)
     mdl = Reader(path)
     mdl.span(0, 1, 408)
@@ -112,16 +112,27 @@ def validate(path):
         vtx.span(0, 1, 36)
         if vtx.integer(0) != 7 or vtx.integer(16) != checksum:
             raise ValueError('VTX version/checksum mismatch')
-        for body in vtx.table(28, 8):
-            for model in vtx.table(body, 8, body):
-                for lod in vtx.table(model, 12, model):
-                    for mesh in vtx.table(lod, 9, lod):
-                        for group in vtx.table(mesh, 25, mesh):
-                            vertices = list(vtx.table(group, 9, group))
-                            for at in vtx.table(group + 8, 2, group):
-                                if struct.unpack_from('<H', vtx.data, at)[0] >= len(vertices):
-                                    raise ValueError('Invalid VTX strip-group vertex index')
-                            list(vtx.table(group + 16, 27, group))
+        def check_layout(full):
+            group_size,strip_size=(33,35) if full else (25,27)
+            for body in vtx.table(28,8):
+                for model in vtx.table(body,8,body):
+                    for lod in vtx.table(model,12,model):
+                        for mesh in vtx.table(lod,9,lod):
+                            for group in vtx.table(mesh,group_size,mesh):
+                                vertices=list(vtx.table(group,9,group));indices=list(vtx.table(group+8,2,group))
+                                for at in indices:
+                                    if struct.unpack_from('<H',vtx.data,at)[0]>=len(vertices):raise ValueError('Invalid VTX strip-group vertex index')
+                                for strip in vtx.table(group+16,strip_size,group):
+                                    count,first,verts,base=struct.unpack_from('<4i',vtx.data,strip)
+                                    if count<0 or first<0 or first+count>len(indices) or verts<0 or base<0 or base+verts>len(vertices):raise ValueError('Invalid VTX strip range')
+                                    list(vtx.table(strip+19,8,strip))
+                                    if full:list(vtx.table(strip+27,2,strip))
+                                if full:list(vtx.table(group+25,2,group))
+        failures=[]
+        for full in ([bool(vtx_format)] if vtx_format is not None else [False,True]):
+            try:check_layout(full);break
+            except (ValueError,struct.error) as error:failures.append(str(error))
+        else:raise ValueError('No valid VTX layout: '+ '; '.join(failures))
     return {'model': path.name, 'bones': len(bones), 'vertices': vertex_total}
 
 

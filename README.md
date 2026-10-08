@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.15
+# NewPageMergeMDL v1.2.16
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.15**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.16**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -12,6 +12,14 @@
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态和后续顺序见 [五编译器功能清单](FEATURE_MATRIX.md)。
+
+## v1.2.16：CSGO / MCV 加载崩溃修复
+
+`-game` 指向含 `gameinfo.txt` 的游戏目录时，SteamAppId 730（CSGO legacy）和 1012110（MCV）自动选择扩展 VTX：strip-group / strip 分别为 33 / 35 字节。此前默认的 25 / 27 字节布局会被这两款游戏错误解释，即使 MDL 都是 v49，HLMV 和游戏仍可能崩溃。其他目标保留旧默认值；显式 `$vtxformat` / pulseqc `vtx_archetype` 仍优先于检测，CLI `-vtxformat` 优先级最高。对这两个目标强制旧布局会警告。
+
+同一个编译器即可输出这两个目标，不需要另外的编译器。编译时使用实际游戏目录，例如 `NewPageMergeMDL model.qc -game ".../csgo"` 或 `-game ".../vietnam"`；只设置 OutDir 而没有 gameinfo 目标时，请显式加 `-vtxformat 1`。CSGO 玩家模型保留 `player/custom_player/` 路径；测试时移到普通模型目录会触发旧动画流程，原 QC 无需添加额外玩家动画引用。部署完整的 `.mdl` / `.vvd` / `.dx90.vtx` / `.phy` 文件集，混用旧 VTX 仍会崩溃。
+
+182 项兼容和 20 项自动化回归通过。Yvette 的身体与三份手臂 QC、MCV 的身体/手臂/腿部 QC 均重新编译，并用两款游戏各自的 HLMV 加载；七份输出各监测 15 秒，无访问异常。实际角色渲染及 Yvette 引用动画另经观察。MCV 在 mcv_camp / mcv_bridge 验证玩家、第一人称手臂、机器人、布娃娃及地图重载；CSGO 在 de_dust2 / ar_baggage 验证玩家/机器人、11 种皮肤 × 18 种身体组合（原生动态实体分批加载）、正常玩家死亡及地图重载。运行记录见 [v1.2.16 验证报告](tests/reports/v1.2.16-validation.json)。Plum 保持原布局，126 骨骼、572,277 顶点结构检查通过。这是指定模型和场景的覆盖，不代表所有游戏/模型已验证。
 
 ## v1.2.15：CSGO 指令兼容（31 个入口，布料仍未完成）
 
@@ -174,7 +182,7 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 
 ## 未完成与已知问题
 
-以下按 v1.2.15 的实现及已有验证记录整理；“未验证”表示测试覆盖不足，不表示该功能尚未实现。
+以下按 v1.2.16 的实现及已有验证记录整理；“未验证”表示测试覆盖不足，不表示该功能尚未实现。
 
 | 内容 | 当前状态与剩余工作 |
 | --- | --- |
@@ -184,7 +192,7 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 | 额外扩展：VRM 运行时行为 | 不作为五者整合的先决条件；完整弹簧骨和专有表情映射的运行时语义尚未实现；已有 VRM 导入与默认形态键权重回归不代表完整 VRM 行为兼容。 |
 | 导入格式与插值覆盖 | glTF 后备路径的 STEP/CUBICSPLINE 丢失问题已修复并验证；尚未逐一覆盖所有 Assimp 格式、复杂 FBX/VRM 层级及其他格式的插值。 |
 | 复杂 rig 与碰撞覆盖 | 已有 IK、jiggle、驱动骨、corrective、眼睑、联合面部 rig 和按骨骼 VHACD 回归；任意复杂层级、硬边、自定义法线、控制器重映射和复杂碰撞仍需具体模型验证。单骨权重仍属实验功能。 |
-| 跨游戏与参考覆盖 | 已验证指定 GMod 样例，其他游戏和材质着色仍需独立测试；尚未覆盖所有参考编译器的语法边界、诊断文本和性能场景。 |
+| 跨游戏与参考覆盖 | 已验证指定 GMod、CSGO legacy 与 MCV 样例；其他模型、游戏和材质着色仍需独立测试；尚未覆盖所有参考编译器的语法边界、诊断文本和性能场景。 |
 
 v1.2.8 生产验证改用 Plum：原始 Hair QC 编译及文件结构检查通过；新增材质在 GMod 加载无缺失，28 个截图状态包含身体组、皮肤和表情，18 个布娃娃刚体稳定。首帧增加材质预热后复测通过。后续不再使用 Claudia 作为生产测试模型。详见 [v1.2.8 验证记录](tests/reports/v1.2.8-validation.json)。
 

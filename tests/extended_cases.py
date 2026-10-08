@@ -2,6 +2,20 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def test_target_game_selects_full_vtx_without_changing_qc(self):
+  from validate_outputs import validate
+  for app in (730,1012110):
+   self.write('gameinfo.txt',f'"GameInfo" {{ "FileSystem" {{ "SteamAppId" "{app}" }} }}')
+   output=self.scene_qc('$modelname profile\n$body m mesh.smd\n')
+   self.assertIn('Target game: using extended',output);self.assertIn('VTX format: 1',output);validate(self.root/'models/profile.mdl',vtx_format=1)
+   self.assertFalse((self.root/'models/profile.dx80.vtx').exists())
+   output=self.scene_qc('$modelname legacy\n$vtxformat 0\n$body m mesh.smd\n')
+   self.assertIn('incompatible with this target game',output);validate(self.root/'models/legacy.mdl',vtx_format=0)
+   output=self.scene_qc('$modelname override\n$vtxformat 0\n$body m mesh.smd\n','-vtxformat','1')
+   self.assertIn('VTX format: 1',output);validate(self.root/'models/override.mdl',vtx_format=1)
+  self.write('gameinfo.txt','"GameInfo" { "FileSystem" { "SteamAppId" "4000" } }')
+  output=self.scene_qc('$modelname gmodprofile\n$body m mesh.smd\n');self.assertIn('VTX format: 0',output);validate(self.root/'models/gmodprofile.mdl',vtx_format=0)
+
  def csgo_bone_table(self,name):
   data=self.mdl(name);count,start=struct.unpack_from('<2i',data,156);bones={}
   for i in range(count):

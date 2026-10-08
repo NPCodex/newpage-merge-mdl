@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.15
+# NewPageMergeMDL v1.2.16
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.15.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.16.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -14,6 +14,14 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+
+## v1.2.16: CSGO / MCV loading crash fix
+
+When `-game` supplies a gameinfo.txt with SteamAppId 730 (CSGO legacy) or 1012110 (MCV), the compiler automatically selects extended VTX headers: 33-byte strip groups and 35-byte strips. The former 25/27-byte default is misinterpreted by these loaders and can crash HLMV or the game even though the MDL version is 49. Other targets keep their defaults. Explicit QC `$vtxformat` / pulseqc `vtx_archetype` override detection; CLI `-vtxformat` has highest priority. Forcing legacy layout for these targets emits a warning.
+
+One compiler supports both targets. Use the actual `.../csgo` or `.../vietnam` directory with `-game`; for OutDir-only builds without a detected game target, add `-vtxformat 1`. Deploy the complete MDL/VVD/DX90 VTX/PHY set. Mixing a new MDL with an old VTX can still crash. Preserve the CSGO player/custom_player model path: an ordinary test-model directory selects the old player-animation behavior. The original QC needs no extra stock-player animation include.
+
+All 182 compatibility and 20 automation tests pass. Yvette body/three arms QCs and MCV body/arms/legs QCs compile and load in their respective installed HLMV tools; all seven outputs survive 15-second debugger checks without access violations. Actual character rendering and Yvette included-animation playback were separately observed. MCV tests cover players, first-person arms, bots, ragdolls and map reload on mcv_camp/mcv_bridge. CSGO tests on de_dust2/ar_baggage cover player/bot replacement, 11 skins × 18 body combinations in bounded native-entity batches, normal player death and map reload. See the [v1.2.16 report](tests/reports/v1.2.16-validation.json) for CSGO runtime evidence. Plum retains legacy output and passes structural validation with 126 bones / 572,277 vertices. These are bounded model/scenario checks, not universal game compatibility.
 
 ## v1.2.15: CSGO QC compatibility (31 entries; cloth remains unfinished)
 
@@ -176,7 +184,7 @@ See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESE
 
 ## Unfinished features and known issues
 
-This list reflects v1.2.15 implementation and existing validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
+This list reflects v1.2.16 implementation and existing validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
 
 | Area | Current status and remaining work |
 | --- | --- |
@@ -186,7 +194,7 @@ This list reflects v1.2.15 implementation and existing validation records. “Un
 | Extra extension: VRM runtime behavior | These are not prerequisites for five-compiler integration. Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
 | Import format and interpolation coverage | Lost STEP/CUBICSPLINE semantics on the glTF fallback are fixed and tested. Other Assimp formats, complex FBX/VRM hierarchies and interpolation in other formats still need coverage. |
 | Complex rig and collision coverage | IK, jiggle, drivers, correctives, eyelids, combined facial rigs and per-bone VHACD have regressions. Arbitrary complex hierarchies, hard edges, authored normals, controller remapping and complex collisions still need model-specific checks. Single-bone weighting remains experimental. |
-| Cross-game and reference coverage | Specific GMod samples are tested. Other games and shaders need independent checks; not all reference compiler syntax edge cases, diagnostic text or performance scenarios are covered. |
+| Cross-game and reference coverage | Specific GMod, CSGO legacy and MCV samples are tested. Other models, games and shaders need independent checks; not all reference compiler syntax edge cases, diagnostic text or performance scenarios are covered. |
 
 v1.2.8 production validation uses Plum. Its original Hair QC and serialized output checks pass. Supplied materials load in GMod without missing entries; 28 captures cover bodygroups, skins and facial changes, and all 18 ragdoll bodies settle stably. The initial capture was retested with material warm-up. Future production validation uses Plum rather than Claudia. See the [v1.2.8 validation record](tests/reports/v1.2.8-validation.json).
 

@@ -4918,6 +4918,7 @@ bool CmdVtxFormat(Ctx& c, const Token& cmd) {
         return false;
     if (c.in.vtxArchetype != 0 && c.in.vtxArchetype != 1)
         return c.Fail(cmd.line, "unknown $vtxformat (expected 0 or 1)");
+    c.in.vtxArchetypeSet = true;
     return true;
 }
 

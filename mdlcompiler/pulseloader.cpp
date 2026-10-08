@@ -171,6 +171,7 @@ bool LoadPulseScript(const char* path, cm::CompileInput& out, std::string* err) 
     // vtx_archetype: which .vtx StripGroup layout to write (replaces the old
     // -vtxformat switch). 0 = legacy (TF2/L4D2), 1 = full (SFM/CS:GO).
     out.vtxArchetype = root->GetInt("vtx_archetype", 0);
+    out.vtxArchetypeSet = root->Get("vtx_archetype") != nullptr;
     if (out.vtxArchetype != 0 && out.vtxArchetype != 1) {
         if (err) *err = "unknown vtx_archetype (expected 0 or 1)";
         return false;

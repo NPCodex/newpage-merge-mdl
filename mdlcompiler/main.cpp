@@ -68,6 +68,7 @@ static int Usage() {
     std::printf("  -modelname <path>   overrides $modelname\n");
     std::printf("  -vtxformat <0|1>\n");
     std::printf("                .vtx layout, overriding the script's $vtxformat.\n");
+    std::printf("                Unset: -game SteamAppId 730/1012110 selects extended layout 1.\n");
     std::printf("                0 = legacy (TF2/L4D2/GMod/HL2), 1 = full (SFM/CS:GO/ASW)\n");
     std::printf("  -nodx80       skip the DirectX 8 .dx80.vtx output (also $nodx80).\n");
     std::printf("  -noremap      use script sequence order instead of preserving existing .mdl order\n");
@@ -443,8 +444,15 @@ static int RunCompile(int argc, char** argv) {
                             ? modelname.substr(0, dot)
                             : modelname;
     }
+    const int targetVtx=pulse::resources::TargetVtxFormat();
     if (vtxFormat >= 0)
         input.vtxArchetype = vtxFormat;
+    else if (!input.vtxArchetypeSet && targetVtx >= 0) {
+        input.vtxArchetype=targetVtx;
+        std::printf("Target game: using extended VTX layout from gameinfo SteamAppId\n");
+    }
+    if(targetVtx>=0 && input.vtxArchetype!=targetVtx)
+        std::fprintf(stderr,"WARNING: explicit legacy VTX layout is incompatible with this target game; use -vtxformat 1 or remove the override\n");
     if (noDx80)
         input.noDx80 = true;
     input.stopAfterProcedural = dumpProcedural;

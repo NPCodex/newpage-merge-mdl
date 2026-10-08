@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.14。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.16。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
@@ -128,3 +128,7 @@ The v1.2.12 batch recovers and implements CE replacemodel reverse from binary co
 新增 controller、runtime bone flags、prefix/substr alias、reparent/realign/center、bbox/UV/tangent、collision grid、source append、attachment/bodygroup、CONTENT、naming、no-sequence、strict remap 和 in-memory OBJ VTA/VCA 输出回归。181 项完整兼容、20 项自动化测试及 Plum/Yvette 编译结构检查通过；未取得 CSGO cloth 或游戏内行为验证，不宣称全面 CSGO 移植。
 
 Next: build the real CSGO finite-element cloth pipeline and plane collision data, then validate the applicable extended-header layout and runtime. Complete quad/SubD geometry import remains beyond the global `$subd` command flag. These open items take precedence over unrelated tooling work.
+
+## v1.2.16：目标游戏 VTX 布局 / Target-game VTX layout
+
+CSGO legacy / MCV 的 `gameinfo.txt` SteamAppId 自动选择扩展布局，CLI / QC 显式选择保留。旧布局造成的指定模型加载崩溃已修复；不要混装 MDL 和旧 VTX。七份模型经对应 HLMV 监测，实际角色与引用动画经观察，并记录游戏内限定场景；详见 tests/reports/v1.2.16-validation.json。布料、完整 SubD 和其他既有未完成项不因本轮加载修复而标为完成。

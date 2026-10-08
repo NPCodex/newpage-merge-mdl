@@ -62,7 +62,7 @@ const KV* Child(const std::vector<KV>& nodes,const std::string& name){for(const 
 struct Entry {uint16_t archive=0;uint32_t offset=0,length=0;std::vector<char> preload;};
 struct Mount {fs::path path;bool loaded=false;uint64_t dataStart=0;std::map<std::string,Entry> entries;};
 struct State {
- std::vector<Mount> mounts;std::vector<fs::path> contentRoots;bool contentSearch=false;fs::path cache;
+ std::vector<Mount> mounts;std::vector<fs::path> contentRoots;bool contentSearch=false;int targetVtx=-1;fs::path cache;
  ~State(){if(!cache.empty()){std::error_code ec;auto parent=fs::temp_directory_path(ec).lexically_normal();
   if(!ec&&cache.parent_path()==parent&&cache.filename().string().rfind("newpage-mount-",0)==0)fs::remove_all(cache,ec);}}
 } state;
@@ -125,9 +125,11 @@ fs::path AppDirectory(const fs::path& steam,const std::string& id) {
 }
 bool Initialize(const std::string& gameDirectory,const std::string& steamDirectory,std::string* err) {
  try {
-  state.mounts.clear();state.contentRoots.clear();state.contentSearch=false;if(gameDirectory.empty())return true;
+  state.mounts.clear();state.contentRoots.clear();state.contentSearch=false;state.targetVtx=-1;if(gameDirectory.empty())return true;
   fs::path game=fs::absolute(FilePath(gameDirectory));auto kv=ReadKV(game/"gameinfo.txt");if(kv.empty())return true;
   const auto root=Child(kv,"gameinfo");const auto system=root?Child(root->children,"filesystem"):nullptr;
+  const auto app=system?Child(system->children,"steamappid"):nullptr;
+  if(app && (app->value=="730" || app->value=="1012110"))state.targetVtx=1;
   const auto search=system?Child(system->children,"searchpaths"):nullptr;if(!search)return true;
   auto steam=SteamRoot(steamDirectory);std::map<std::string,fs::path> apps;
   for(const auto& n:search->children){auto key=Lower(n.key);if(key.find("game")==std::string::npos&&key.find("mod")==std::string::npos&&key!="content")continue;
@@ -144,6 +146,7 @@ bool Initialize(const std::string& gameDirectory,const std::string& steamDirecto
   }return true;
  }catch(const std::exception& e){if(err)*err="resource mount: "+std::string(e.what());return false;}
 }
+int TargetVtxFormat(){return state.targetVtx;}
 void EnableContentSearch(){state.contentSearch=true;}
 fs::path Find(const fs::path& input) {
  fs::path relative=input;

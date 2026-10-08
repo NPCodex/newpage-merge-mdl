@@ -1,0 +1,247 @@
+{
+  "schema": 1,
+  "version": "1.2.16",
+  "compatibility_tests": 182,
+  "automation_tests": 20,
+  "compiler_sha256": "92529606f02c40f633ff7351bb08a745b1973df8442f2a1d7f6bf5fdbac214b5",
+  "root_cause": {
+    "legacy_vtx_strip_group_bytes": 25,
+    "legacy_vtx_strip_bytes": 27,
+    "required_strip_group_bytes": 33,
+    "required_strip_bytes": 35,
+    "mdl_version": 49,
+    "target_appids": [
+      730,
+      1012110
+    ],
+    "old_layout_observation": "MCV studiorender interpreted legacy fields as full headers, causing a huge allocation and access violation."
+  },
+  "compiled_models": [
+    {
+      "model": "playermodel_compile.mdl",
+      "bones": 144,
+      "vertices": 65902,
+      "target": "csgo",
+      "qc": "playermodel_compile.qc",
+      "auto_layout": true
+    },
+    {
+      "model": "viewarms_compile1.mdl",
+      "bones": 40,
+      "vertices": 3453,
+      "target": "csgo",
+      "qc": "viewarms_compile1.qc",
+      "auto_layout": true
+    },
+    {
+      "model": "viewarms_compile2.mdl",
+      "bones": 40,
+      "vertices": 4736,
+      "target": "csgo",
+      "qc": "viewarms_compile2.qc",
+      "auto_layout": true
+    },
+    {
+      "model": "viewarms_compile3.mdl",
+      "bones": 40,
+      "vertices": 3046,
+      "target": "csgo",
+      "qc": "viewarms_compile3.qc",
+      "auto_layout": true
+    },
+    {
+      "model": "player.mdl",
+      "bones": 139,
+      "vertices": 72216,
+      "target": "mcv",
+      "qc": "player.qc",
+      "auto_layout": true
+    },
+    {
+      "model": "player_arms.mdl",
+      "bones": 47,
+      "vertices": 14660,
+      "target": "mcv",
+      "qc": "player_arms.qc",
+      "auto_layout": true
+    },
+    {
+      "model": "player_legs.mdl",
+      "bones": 34,
+      "vertices": 15109,
+      "target": "mcv",
+      "qc": "player_legs.qc",
+      "auto_layout": true
+    }
+  ],
+  "hlmv": [
+    {
+      "qc": "playermodel_compile.qc",
+      "target": "csgo",
+      "survived_seconds": 15,
+      "access_violations": 0
+    },
+    {
+      "qc": "viewarms_compile1.qc",
+      "target": "csgo",
+      "survived_seconds": 15,
+      "access_violations": 0
+    },
+    {
+      "qc": "viewarms_compile2.qc",
+      "target": "csgo",
+      "survived_seconds": 15,
+      "access_violations": 0
+    },
+    {
+      "qc": "viewarms_compile3.qc",
+      "target": "csgo",
+      "survived_seconds": 15,
+      "access_violations": 0
+    },
+    {
+      "qc": "player.qc",
+      "target": "mcv",
+      "survived_seconds": 15,
+      "access_violations": 0
+    },
+    {
+      "qc": "player_arms.qc",
+      "target": "mcv",
+      "survived_seconds": 15,
+      "access_violations": 0
+    },
+    {
+      "qc": "player_legs.qc",
+      "target": "mcv",
+      "survived_seconds": 15,
+      "access_violations": 0
+    }
+  ],
+  "visual_observations": [
+    "Actual Yvette and Yvonne geometry displayed, rather than error.mdl.",
+    "Yvette included strafe animation plays in CSGO HLMV.",
+    "CSGO player/custom_player canonical-path output displays weapon/locomotion poses.",
+    "MCV first-person arms and world-model rendering observed."
+  ],
+  "runtime": {
+    "csgo": {
+      "maps": [
+        "de_dust2",
+        "ar_baggage"
+      ],
+      "player_and_bot_replacement": true,
+      "max_replaced_players_in_final_run": 10,
+      "variants": [
+        {
+          "skin": 0,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 1,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 2,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 3,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 4,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 5,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 6,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 7,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 8,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 9,
+          "body_combinations": 18,
+          "native_spawn": true
+        },
+        {
+          "skin": 10,
+          "body_combinations": 18,
+          "native_spawn": true
+        }
+      ],
+      "variant_strategy": "18 native prop_dynamic_create entities per skin; last named model checked and script errors rejected for every batch",
+      "normal_player_death": true,
+      "map_reload": true,
+      "all_arms_preCached": true,
+      "first_person_arm_replacement_verified": false
+    },
+    "mcv": {
+      "maps": [
+        "mcv_camp",
+        "mcv_bridge"
+      ],
+      "temporary_teams_paths": [
+        "model_world",
+        "model_player",
+        "viewmodel"
+      ],
+      "actual_player_model_name_checked": true,
+      "world_arms_legs_model_sets_mounted": true,
+      "first_person_arms_observed": true,
+      "bots": true,
+      "ragdoll_entity_model_and_origin_checked": true,
+      "map_reload": true
+    }
+  },
+  "rejected_test_methods": [
+    {
+      "method": "ent_create prop_ragdoll",
+      "reason": "Both candidate and Valve stock Phoenix fail at server.dll+0x3108b4 with a null model pointer before model keyvalues are assigned; replaced by normal player death testing."
+    },
+    {
+      "method": "198 simultaneous variants on a populated map",
+      "reason": "Engine Error ED_Alloc: no free edicts; replaced by 11 batches of 18 entities."
+    },
+    {
+      "method": "CSGO player fixture outside player/custom_player",
+      "reason": "Triggers the old player-animation path and missing idle_upper warnings. Original QC works under the canonical custom_player directory without an extra stock-model include."
+    }
+  ],
+  "plum": {
+    "bones": 126,
+    "vertices": 572277,
+    "vtx_format": 0,
+    "serialized_validation": "pass"
+  },
+  "cleanup": {
+    "restored_or_removed_fixture_files": 56,
+    "all_backup_hashes_match": true,
+    "temporary_models_removed": true,
+    "original_qc_inputs_preserved": true
+  },
+  "limitations": [
+    "Bounded model/scenario evidence, not a guarantee for every game/model/shader.",
+    "CSGO arms passed compile, structural, HLMV and precache checks; first-person arms replacement was not exercised.",
+    "No cloth or complete quad/SubD implementation added in this fix."
+  ]
+}
