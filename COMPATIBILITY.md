@@ -46,7 +46,7 @@ into unconditional `$alwayscollapse` and protects vertex bones unless
   Performance relative to other compilers has not been benchmarked.
 - `-nodx80`, animation/sequence `reverse`, optional activity weight (-1), numeric
   `$contents`, optional attachment origin, extensionless collision/LOD sources.
-- Macro defaults, `$endmacro`, duplicate-macro errors, global-variable fallback.
+- Macro defaults, `$endmacro`, legacy single/double-backslash continuations, duplicate-macro errors, global-variable fallback.
   Defaults and fallback also pass the regression suite.
 - Animation culling with `nocull`, warnings for missing weightlist bones,
   selected-render-mesh `$bbox`, unused render-material removal, no `.sw.vtx`.
@@ -80,7 +80,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 158 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 161 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -277,3 +277,7 @@ Scene import merges repeated influences of the same joint before weight selectio
 ### CE LOD replacement winding (v1.2.12)
 
 `$lod 10 {` followed by `replacemodel mesh.smd low.smd reverse` on its own line reverses the replacement triangle winding. The option is case-insensitive; normals and cached geometry for ordinary replacements are preserved. Three CE reference compiles and DX80/DX90 regressions confirm bounded behavior. The changelog-only replacemesh command remains unconfirmed.
+
+### User game QC regression (v1.2.13)
+
+Legacy continuation macros end at a noncontinued line or a blank physical line; quoted backslashes remain literal. Attachment/hitbox/hitgroup references accept final rename aliases before bone retention, including chained renames. Actual source names take precedence; ambiguous aliases remain unresolved. Case-only renames update output spelling and physics names without false collision errors. Distinct-bone name collisions still fail. Supplied Insurgency 2 and Military Conflict: Vietnam models compile unmodified, with independent serialized-table checks; the game mount matches the supplied logs (Insurgency for both). No in-game validation for these two games is claimed.

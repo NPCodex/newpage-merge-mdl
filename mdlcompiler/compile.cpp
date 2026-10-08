@@ -10603,6 +10603,40 @@ bool ConvertIkRule(const CompileInput& input, const CompileInput::InIkRule& ir,
 }
 
 bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+    // Attachment/hitbox scripts may use the final $renamebone spelling.
+    // Resolve that alias before retention and mapping, while keeping source
+    // names intact for animation, collision and the final rename pass.
+    if (!input.boneRenames.empty()) {
+        std::vector<std::pair<std::string, std::string>> aliases;
+        for (const auto& source : input.sources) {
+            for (const auto& bone : source->localBone) {
+                std::string renamed = bone.name;
+                for (const auto& rename : input.boneRenames)
+                    if (_stricmp(renamed.c_str(), rename.first.c_str()) == 0)
+                        renamed = rename.second;
+                aliases.emplace_back(bone.name, std::move(renamed));
+            }
+        }
+        auto resolve = [&](std::string& name) {
+            // An actual source spelling takes precedence over an alias.
+            for (const auto& alias : aliases)
+                if (_stricmp(name.c_str(), alias.first.c_str()) == 0)
+                    return;
+            const std::string* original = nullptr;
+            for (const auto& alias : aliases) {
+                if (_stricmp(name.c_str(), alias.second.c_str()) != 0)
+                    continue;
+                if (original && _stricmp(original->c_str(), alias.first.c_str()) != 0)
+                    return; // Ambiguous: retain the normal diagnostic.
+                original = &alias.first;
+            }
+            if (original) name = *original;
+        };
+        for (auto& attachment : input.attachments) resolve(attachment.bonename);
+        for (auto& set : input.hitboxsets)
+            for (auto& box : set.hitboxes) resolve(box.bonename);
+        for (auto& group : input.hitgroups) resolve(group.first);
+    }
     Ctx ctx;
     ctx.in = &input;
     ctx.out = &out;
@@ -11958,7 +11992,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                         rename.first.c_str());
             continue;
         }
-        if (out.FindBone(rename.second.c_str()) != -1) {
+        const int existing = out.FindBone(rename.second.c_str());
+        if (existing != -1 && existing != b) {
             if (err)
                 *err = "$renamebone: \"" + rename.second + "\" is already a bone of "
                        "this model";

@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "version": "1.2.13",
+  "compatibility_tests": 161,
+  "automation_tests": 20,
+  "compiler_sha256": "f62bdbd7937664860cb6654a4918a450975d5bca622bbf6bd1f7625867bb579a",
+  "user_models": {
+    "mcv": {
+      "returncode": 0,
+      "models": [
+        {
+          "model": "yvonne.mdl",
+          "bones": 139,
+          "vertices": 72216
+        }
+      ],
+      "sha256": {
+        "models/player/ub/endfield/yvonne.dx80.vtx": "4b1e4205052b50b5e9ac46cfc9ca9861126f3493e0335dac679029266efb4a13",
+        "models/player/ub/endfield/yvonne.dx90.vtx": "fd6c4fc4439469992e046ea21b9fac227eaae89a1335980b5625c3d6d8e92494",
+        "models/player/ub/endfield/yvonne.mdl": "ad18761aee53e07155ca0080b3a1e335d8ff81b98b99e6425f041e6a8c57cc0d",
+        "models/player/ub/endfield/yvonne.phy": "ceab1a86cbad0a236cf44165e7fce2e1aa52ff14e52a1137ef8c9304b62e6cc1",
+        "models/player/ub/endfield/yvonne.vvd": "02ca33b92157dd8bbdc3440f9b3b5552fe38ae8ae47ae967cd5f4e2021f3a505"
+      }
+    },
+    "ins": {
+      "returncode": 0,
+      "models": [
+        {
+          "model": "security_light.mdl",
+          "bones": 85,
+          "vertices": 6018
+        }
+      ],
+      "sha256": {
+        "models/characters/security_light.dx80.vtx": "c5361889d0c2ed4255135137bcb60c02cf3dc3edaf42bb36039477079b7246f1",
+        "models/characters/security_light.dx90.vtx": "635edb0f15414cd531a197413b199141865ad596eff86ee758b8455a480ec0f9",
+        "models/characters/security_light.mdl": "55c0c4531e65782833f05c077038519a1422d8ae84e9a3b6a2037622334ddf16",
+        "models/characters/security_light.phy": "9d7fc340487c613965bd1badb255b1b39c78806816c61b640e4cbf1036589029",
+        "models/characters/security_light.vvd": "653e5e06a1f0c58c4635414ecc8301f7e63726fc0e05efa059d79c2ad4c5cd75"
+      }
+    }
+  },
+  "plum": {
+    "model": "plum_v1213_player.mdl",
+    "bones": 126,
+    "vertices": 572277
+  },
+  "plum_outputs_sha256": {
+    "plum_v1213_player.dx80.vtx": "5ee3ea53d710c576ab5a0751084c78b72682d72f25b8e5a9774dc8fa0f4cbe14",
+    "plum_v1213_player.dx90.vtx": "eef0a4fbeeeb925526c814fbb62a0fa56303424940de08ff394e984bbbd2f97e",
+    "plum_v1213_player.mdl": "7c5a2c51d8561a1b97c68be9120a1794ed69ef43ef9794b7fb7dfd3a855b40db",
+    "plum_v1213_player.phy": "46d42fa97e9f9a8f043f9ee48426e49c7bfd801ec7a174bfb342ebd44abcadbf",
+    "plum_v1213_player.vvd": "e7cfcd8f1ba1dd8e4fefc4924111fd06e15ff0f19f9e6e7aa661bbcda24c5836"
+  },
+  "game_validation": "Compilation and serialized output validation only; no new in-game checks in this batch."
+}

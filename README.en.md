@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.12
+# NewPageMergeMDL v1.2.13
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.12.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.13.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -14,6 +14,10 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+
+## v1.2.13: Insurgency 2 / Military Conflict: Vietnam QC fixes
+
+Restores legacy single/double-backslash macro continuations alongside `$endmacro`. Attachments, hitboxes and hitgroups accept final `$renamebone` aliases before bone retention; case-only bone renames are allowed, while collisions with a different bone remain errors. Both supplied original QC/QCI sets compile without input changes and pass MDL/VVD/VTX structure validation. All 161 compatibility and 20 automation tests pass. In-game behavior in these two games has not been tested in this batch.
 
 ## v1.2.12: CE LOD option recovered through binary analysis
 

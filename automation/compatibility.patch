@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..21645ca 100644
+index fed7eaf..0b760f5 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,9 @@
@@ -11,7 +11,7 @@ index fed7eaf..21645ca 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.12 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.13 LANGUAGES CXX C)
  
  # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
  # with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -600515,7 +600515,7 @@ index fcff31d..f190108 100644
 +
 +set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")
 diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
-index bdb0c90..1612f07 100644
+index bdb0c90..067b387 100644
 --- a/mdlcompiler/compile.cpp
 +++ b/mdlcompiler/compile.cpp
 @@ -1,6 +1,7 @@
@@ -601466,7 +601466,48 @@ index bdb0c90..1612f07 100644
          SigVal(s, c.copyPos);
          SigVal(s, c.copyRot);
          SigStr(s, c.xform.bone);
-@@ -10310,6 +10617,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10296,6 +10603,40 @@ bool ConvertIkRule(const CompileInput& input, const CompileInput::InIkRule& ir,
+ }
+ 
+ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
++    // Attachment/hitbox scripts may use the final $renamebone spelling.
++    // Resolve that alias before retention and mapping, while keeping source
++    // names intact for animation, collision and the final rename pass.
++    if (!input.boneRenames.empty()) {
++        std::vector<std::pair<std::string, std::string>> aliases;
++        for (const auto& source : input.sources) {
++            for (const auto& bone : source->localBone) {
++                std::string renamed = bone.name;
++                for (const auto& rename : input.boneRenames)
++                    if (_stricmp(renamed.c_str(), rename.first.c_str()) == 0)
++                        renamed = rename.second;
++                aliases.emplace_back(bone.name, std::move(renamed));
++            }
++        }
++        auto resolve = [&](std::string& name) {
++            // An actual source spelling takes precedence over an alias.
++            for (const auto& alias : aliases)
++                if (_stricmp(name.c_str(), alias.first.c_str()) == 0)
++                    return;
++            const std::string* original = nullptr;
++            for (const auto& alias : aliases) {
++                if (_stricmp(name.c_str(), alias.second.c_str()) != 0)
++                    continue;
++                if (original && _stricmp(original->c_str(), alias.first.c_str()) != 0)
++                    return; // Ambiguous: retain the normal diagnostic.
++                original = &alias.first;
++            }
++            if (original) name = *original;
++        };
++        for (auto& attachment : input.attachments) resolve(attachment.bonename);
++        for (auto& set : input.hitboxsets)
++            for (auto& box : set.hitboxes) resolve(box.bonename);
++        for (auto& group : input.hitgroups) resolve(group.first);
++    }
+     Ctx ctx;
+     ctx.in = &input;
+     ctx.out = &out;
+@@ -10310,6 +10651,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                    : RadianEuler{0.0f, 0.0f, static_cast<float>(kPiD / 2.0)};
  
      out.outname = input.outname;
@@ -601474,7 +601515,7 @@ index bdb0c90..1612f07 100644
      out.forceWriteVertexData = input.forceWriteVertexData;
      out.mats = &input.mats;
      // gamedatalist. CompiledModel already defaults surfaceprop to "default";
-@@ -10328,6 +10636,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10328,6 +10670,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      out.zeroFramesHighres = input.zeroFramesHighres;
      out.minZeroFramePosDelta = input.minZeroFramePosDelta;
      out.boneSaveFrames = input.boneSaveFrames;
@@ -601482,7 +601523,7 @@ index bdb0c90..1612f07 100644
      out.bbox[0] = input.bbox[0];
      out.bbox[1] = input.bbox[1];
      out.bboxset = input.bboxSet;
-@@ -10400,12 +10709,32 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10400,12 +10743,32 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      }
  
      // ---- build models/bodyparts + anims/sequences from the script input ----
@@ -601518,7 +601559,7 @@ index bdb0c90..1612f07 100644
          for (const auto& im : bp.models) {
              Model model;
              model.name = im.source ? im.name : "blank";
-@@ -10441,10 +10770,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10441,10 +10804,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             ch.first + "\" (" + std::to_string(nummodels) + " choices)";
                  return false;
              }
@@ -601538,7 +601579,7 @@ index bdb0c90..1612f07 100644
          }
          out.bodygrouppresets.push_back(std::move(preset));
      }
-@@ -10467,6 +10803,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10467,6 +10837,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          a.fudgeloop = ia.fudgeloop;
          a.noAutoIK = ia.noAutoIK;
          a.nocull = ia.nocull;
@@ -601546,7 +601587,7 @@ index bdb0c90..1612f07 100644
          a.ignoreTransformAngles = ia.ignoreTransformAngles;
          a.ignoreTransformPosition = ia.ignoreTransformPosition;
          a.motiontype = ia.motiontype;
-@@ -10703,6 +11040,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10703,6 +11074,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  cmd.forceRot = ic.forceRot;
                  break;
              case InCmd::RefMotion:
@@ -601554,7 +601595,7 @@ index bdb0c90..1612f07 100644
              case InCmd::AppendAnim:
              case InCmd::WorldspaceBlend:
              case InCmd::MatchBlend:
-@@ -10714,7 +11052,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10714,7 +11086,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                      "\" in " + a.name;
                      return false;
                  }
@@ -601568,7 +601609,7 @@ index bdb0c90..1612f07 100644
                             : (ic.kind == InCmd::Match)      ? AnimCmd::Match
                             : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
                             : (ic.kind == InCmd::WorldspaceBlend)
-@@ -10722,6 +11066,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10722,6 +11100,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
                                                             : AnimCmd::AppendAnim;
                  cmd.matchPre = ic.matchPre;
@@ -601586,7 +601627,7 @@ index bdb0c90..1612f07 100644
                  cmd.matchPost = ic.matchPost;
                  cmd.worldLoops = ic.worldLoops;
                  cmd.motiontype = ic.motiontype;
-@@ -11161,7 +11516,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11161,7 +11550,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // resulting replacebone chains are flattened before any vertex is remapped
      // (reference: after RealignBones)
      ExpandLodBoneCollapses(ctx);
@@ -601595,7 +601636,7 @@ index bdb0c90..1612f07 100644
  
      { PULSE_TIME_PASS("RemapVertices"); RemapVertices(ctx); }
      if (!input.bboxMeshes.empty()) {
-@@ -11256,7 +11611,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11256,7 +11645,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // (RemapVertexAnimations, GenerateVertexAveragedAttachments, CullFlex) has
      // to have had its say first. What follows only ever takes min/max over all
      // vertices, which duplication cannot change.
@@ -601604,7 +601645,7 @@ index bdb0c90..1612f07 100644
  
      { PULSE_TIME_PASS("SetupHitBoxes"); if (!SetupHitBoxes(ctx, err)) return false; }
      { PULSE_TIME_PASS("CompressAnimations"); CompressAnimations(ctx); }
-@@ -11575,6 +11930,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11575,6 +11964,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          return false;
      }
      out.numskinref = nummaterials;
@@ -601620,8 +601661,18 @@ index bdb0c90..1612f07 100644
      out.numskinfamilies = 1 + static_cast<int>(families.size());
      out.skinref.assign(out.numskinfamilies, std::vector<int16_t>(nummaterials));
      for (auto& row : out.skinref)
+@@ -11594,7 +11992,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+                         rename.first.c_str());
+             continue;
+         }
+-        if (out.FindBone(rename.second.c_str()) != -1) {
++        const int existing = out.FindBone(rename.second.c_str());
++        if (existing != -1 && existing != b) {
+             if (err)
+                 *err = "$renamebone: \"" + rename.second + "\" is already a bone of "
+                        "this model";
 diff --git a/mdlcompiler/compile.h b/mdlcompiler/compile.h
-index a9b8bb8..fa195ea 100644
+index a9b8bb8..7354b0c 100644
 --- a/mdlcompiler/compile.h
 +++ b/mdlcompiler/compile.h
 @@ -59,6 +59,9 @@ struct Attachment {
@@ -601720,7 +601771,7 @@ index a9b8bb8..fa195ea 100644
      int budgetBones = 255;
      int budgetMaterials = lim::kMaxSkins;
  
-@@ -1196,6 +1227,8 @@ struct CompileInput {
+@@ -1196,10 +1227,12 @@ struct CompileInput {
      // $alwayscollapse: force-collapse these bones. $donotcollapse wins.
      std::vector<std::string> alwaysCollapse;
      bool cullJiggleBones = false; // $culljigglebones
@@ -601728,7 +601779,13 @@ index a9b8bb8..fa195ea 100644
 +    std::vector<std::string> alwaysCollapsePrefixes;
      std::vector<std::string> limitRotationBones;
      // $renamebone <from> <to>, script order. Applied to the final bone table at
-     // the very end of the compile, so every other command still names the
+-    // the very end of the compile, so every other command still names the
+-    // source bone.
++    // the very end of the compile. Attachments/hitboxes additionally accept
++    // final aliases; source names remain intact during the compile passes.
+     std::vector<std::pair<std::string, std::string>> boneRenames;
+     // $transformbone, script order. Applied as one batch after the bone table
+     // is built, so the command is position-independent.
 @@ -1277,6 +1310,7 @@ struct CompileInput {
      std::vector<PhysicsCollidePair> physCollidePairs;
      PhysicsBuildMode physBuildMode = PhysicsBuildMode::Auto;
@@ -603289,7 +603346,7 @@ index d460e13..cca5a2a 100644
              // sequence-level delta = STUDIO_DELTA|STUDIO_POST; predelta = DELTA
              if (e->GetBool("delta", false)) seq.flags |= kStudioDelta | kStudioPost;
 diff --git a/mdlcompiler/qcloader.cpp b/mdlcompiler/qcloader.cpp
-index 4ef35e3..b310953 100644
+index 4ef35e3..757a1cf 100644
 --- a/mdlcompiler/qcloader.cpp
 +++ b/mdlcompiler/qcloader.cpp
 @@ -29,7 +29,9 @@
@@ -604561,15 +604618,47 @@ index 4ef35e3..b310953 100644
  bool IsCommandName(const std::string& name); // the kCommands lookup, below
  
  // $definemacro <name> [<param>[=<default>] ...] <body> $endmacro.
-@@ -8441,6 +8978,7 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
+@@ -8441,7 +8978,11 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
                                  "built-in $" + name + " - pick another name");
  
      Ctx::Macro m;
+-    while (!c.AtCommand()) {
 +    m.file=c.commandFile.empty()?c.file:c.commandFile;
-     while (!c.AtCommand()) {
++    auto continuation = [](const Token& token) {
++        return !token.quoted && (token.text == "\\" || token.text == "\\\\");
++    };
++    while (!c.AtCommand() && !continuation(c.Cur())) {
          const std::string declaration = c.toks[c.pos++].text;
          const size_t equal = declaration.find('=');
-@@ -8513,8 +9051,12 @@ bool ExpandMacro(Ctx& c, const Token& cmd, const Ctx::Macro& m) {
+         const std::string p = declaration.substr(0, equal);
+@@ -8466,6 +9007,26 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
+     // body up to the matching $endmacro - a nested $definemacro takes its own
+     const bool savedRaw = c.rawCollect;
+     c.rawCollect = true;
++    if (!c.Eof() && continuation(c.Cur())) {
++        // Stock QC macros end at the first non-continued (or blank) line.
++        // Both a single backslash and the conventional double spelling occur
++        // in shipped scripts. Preserve physical lines for body diagnostics.
++        int previousLine = c.toks[c.pos++].line;
++        while (!c.Eof() && c.toks[c.pos].line == previousLine + 1) {
++            const int bodyLine = c.toks[c.pos].line;
++            bool continued = false;
++            while (!c.Eof() && c.toks[c.pos].line == bodyLine) {
++                Token token = c.toks[c.pos++];
++                if (continuation(token)) continued = true;
++                else m.body.push_back(std::move(token));
++            }
++            previousLine = bodyLine;
++            if (!continued) break;
++        }
++        c.rawCollect = savedRaw;
++        c.macros[key] = std::move(m);
++        return true;
++    }
+     for (int depth = 1;;) {
+         if (c.Eof()) {
+             c.rawCollect = savedRaw;
+@@ -8513,8 +9074,12 @@ bool ExpandMacro(Ctx& c, const Token& cmd, const Ctx::Macro& m) {
          args.push_back(std::move(a));
      }
      std::vector<Token> body = m.body;
@@ -604583,7 +604672,7 @@ index 4ef35e3..b310953 100644
      c.SpliceAt(c.pos, body);
      return true;
  }
-@@ -8757,9 +9299,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8757,9 +9322,10 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
              taken = true;
              chosen = std::move(body);
          }
@@ -604595,7 +604684,7 @@ index 4ef35e3..b310953 100644
      }
      if (!c.Eof() && !c.Cur().quoted && _stricmp(c.Cur().text.c_str(), "$else") == 0) {
          const Token els = c.toks[c.pos++];
-@@ -8774,6 +9317,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
+@@ -8774,6 +9340,42 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
  }
  
  bool CmdIf(Ctx& c, const Token& cmd) { return IfChain(c, cmd, false); }
@@ -604638,7 +604727,7 @@ index 4ef35e3..b310953 100644
  bool CmdIfdef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true); }
  bool CmdIfndef(Ctx& c, const Token& cmd) { return IfChain(c, cmd, true, /*negate=*/true); }
  
-@@ -8859,19 +9438,101 @@ struct Command {
+@@ -8859,19 +9461,101 @@ struct Command {
      bool (*fn)(Ctx&, const Token&);
  };
  
@@ -604740,7 +604829,7 @@ index 4ef35e3..b310953 100644
      {"$else", CmdElifOutside},
      {"$switch", CmdSwitch},
      {"$case", CmdCaseOutside},
-@@ -8887,6 +9548,7 @@ constexpr Command kCommands[] = {
+@@ -8887,6 +9571,7 @@ constexpr Command kCommands[] = {
      {"$body", CmdLegacyBody},
      {"$bodygroup", CmdLegacyBody},
      {"$model", CmdModel},
@@ -604748,7 +604837,7 @@ index 4ef35e3..b310953 100644
      {"$modelgrouppreset", CmdModelGroupPreset},
      {"$bodygrouppreset", CmdModelGroupPreset},
      {"$datamodeljoints", CmdDataModelJoints},
-@@ -8905,6 +9567,7 @@ constexpr Command kCommands[] = {
+@@ -8905,6 +9590,7 @@ constexpr Command kCommands[] = {
      {"$includemodel", CmdIncludeModel},
      {"$cmdlist", CmdCmdList},
      {"$defaultfps", CmdDefaultFps},
@@ -604756,7 +604845,7 @@ index 4ef35e3..b310953 100644
      {"$motionrollback", CmdMotionRollback},
      {"$nosequence", CmdNoSequence},
      {"$defaultfadein", CmdDefaultFadeIn},
-@@ -8927,11 +9590,44 @@ constexpr Command kCommands[] = {
+@@ -8927,11 +9613,44 @@ constexpr Command kCommands[] = {
      {"$vtxformat", CmdVtxFormat},
      {"$nodx80", CmdNoDx80},
      {"$modelbudget", CmdModelBudget},
@@ -604801,7 +604890,7 @@ index 4ef35e3..b310953 100644
      {"$surfaceprop", CmdSurfaceProp},
      {"$contents", CmdContents},
      {"$jointcontents", CmdJointContents},
-@@ -8977,6 +9673,7 @@ constexpr Command kCommands[] = {
+@@ -8977,6 +9696,7 @@ constexpr Command kCommands[] = {
      {"$jigglebone", CmdJiggleBone},
      {"$culljigglebones", CmdCullJiggleBones},
      {"$driverbone", CmdDriverBone},
@@ -604809,7 +604898,7 @@ index 4ef35e3..b310953 100644
      {"$driveraimat", CmdDriverAimAt},
      {"$proceduralbones", CmdProceduralBones},
      {"$realignbones", CmdRealignBones},
-@@ -8989,6 +9686,7 @@ constexpr Command kCommands[] = {
+@@ -8989,6 +9709,7 @@ constexpr Command kCommands[] = {
      {"$bonemerge", CmdBoneMerge},
      {"$donotcollapse", CmdDoNotCollapse},
      {"$alwayscollapse", CmdAlwaysCollapse},
@@ -604817,7 +604906,7 @@ index 4ef35e3..b310953 100644
      {"$hierarchy", CmdHierarchy},
      {"$heirarchy", CmdHierarchy}, // stock's misspelling, same command
      {"$ambientboost", CmdAmbientBoost},
-@@ -9039,7 +9737,11 @@ bool RunCommands(Ctx& c) {
+@@ -9039,7 +9760,11 @@ bool RunCommands(Ctx& c) {
          if (!ExpandCommandVars(c))
              return false;
  
@@ -604829,7 +604918,7 @@ index 4ef35e3..b310953 100644
          if (cmd.quoted || cmd.text[0] != '$')
              return c.Fail(cmd.line, "expected a $command, got \"" + cmd.text + "\"");
          c.pos++;
-@@ -9140,9 +9842,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9140,9 +9865,12 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      seedDirs(includeDirs, c.launchIncludeDirs);
      seedDirs(fileDirs, c.launchSearchDirs);
  
@@ -604842,7 +604931,7 @@ index 4ef35e3..b310953 100644
      // the root of the $include cycle check
      std::error_code ec;
      const fs::path canon = fs::weakly_canonical(path, ec);
-@@ -9170,6 +9875,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
+@@ -9170,6 +9898,13 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
      out.upAxisY = source::DmxUpAxisY();
  
      // $renamemorph: before anything below resolves a morph by name

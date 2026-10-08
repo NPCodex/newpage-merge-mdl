@@ -8979,7 +8979,10 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
 
     Ctx::Macro m;
     m.file=c.commandFile.empty()?c.file:c.commandFile;
-    while (!c.AtCommand()) {
+    auto continuation = [](const Token& token) {
+        return !token.quoted && (token.text == "\\" || token.text == "\\\\");
+    };
+    while (!c.AtCommand() && !continuation(c.Cur())) {
         const std::string declaration = c.toks[c.pos++].text;
         const size_t equal = declaration.find('=');
         const std::string p = declaration.substr(0, equal);
@@ -9004,6 +9007,26 @@ bool CmdDefineMacro(Ctx& c, const Token& cmd) {
     // body up to the matching $endmacro - a nested $definemacro takes its own
     const bool savedRaw = c.rawCollect;
     c.rawCollect = true;
+    if (!c.Eof() && continuation(c.Cur())) {
+        // Stock QC macros end at the first non-continued (or blank) line.
+        // Both a single backslash and the conventional double spelling occur
+        // in shipped scripts. Preserve physical lines for body diagnostics.
+        int previousLine = c.toks[c.pos++].line;
+        while (!c.Eof() && c.toks[c.pos].line == previousLine + 1) {
+            const int bodyLine = c.toks[c.pos].line;
+            bool continued = false;
+            while (!c.Eof() && c.toks[c.pos].line == bodyLine) {
+                Token token = c.toks[c.pos++];
+                if (continuation(token)) continued = true;
+                else m.body.push_back(std::move(token));
+            }
+            previousLine = bodyLine;
+            if (!continued) break;
+        }
+        c.rawCollect = savedRaw;
+        c.macros[key] = std::move(m);
+        return true;
+    }
     for (int depth = 1;;) {
         if (c.Eof()) {
             c.rawCollect = savedRaw;

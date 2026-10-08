@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.12
+# NewPageMergeMDL v1.2.13
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.12**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.13**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -12,6 +12,10 @@
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态和后续顺序见 [五编译器功能清单](FEATURE_MATRIX.md)。
+
+## v1.2.13：叛乱 2 / 军事冲突：越南 QC 修复
+
+恢复传统单/双反斜杠续行宏，保留 `$endmacro` 语法；修复附件、命中盒及 hitgroup 使用 `$renamebone` 最终名称时的解析，并允许仅修改骨骼名称大小写。真实不同骨骼的重名仍报错。两份用户原始 QC/QCI 无需修改即可编译，MDL/VVD/VTX 结构检查通过；161 项兼容、20 项自动化回归通过。本轮不代表这两款游戏内表现已验证。
 
 ## v1.2.12：反向分析补齐 CE LOD 选项
 

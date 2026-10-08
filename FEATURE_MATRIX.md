@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.12。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.13。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
@@ -36,7 +36,7 @@
 | AppID 资源挂载 | 已实现 resources.cpp：Steam 安装路径、gameinfo 搜索顺序及 VPK。 |
 | `-nodx80`、取消 SW VTX、未使用材质清理 | 已实现。 |
 | `reverse`、`match pos/rot`、`copy`、动画条件 | 已实现；copy 命名 weightlist 等七个姿态/FPS 对照通过。原生 copy 通道扩展另有语义。 |
-| 宏默认值、`$endmacro`、全局变量回退 | 已实现；重复宏报错、重复变量警告与 `$setvariable` 已实现。 |
+| 宏默认值、`$endmacro`、全局变量回退 | 已实现；v1.2.13 恢复传统单/双反斜杠续行宏。重复宏报错、重复变量警告与 `$setvariable` 已实现。 |
 | 数字 contents、可选 activity weight/attachment offset | 已实现 QC 解析。 |
 | `-noremap`、`-cullanims`/`nocull`、`gmtime` | 已实现；UTC 播放需模组支持。 |
 | 选择网格计算 bbox、大位移边界框 | 已实现；参考警告阈值和诊断文本仍需对照。 |
@@ -112,3 +112,7 @@ The v1.2.10 batch resolves sampled Neko driver/helper world poses against model 
 The v1.2.11 batch retains Assimp geometry while sampling original glTF animations; STEP and CUBICSPLINE loss is fixed. Other-format interpolation and complex hierarchy coverage remain open.
 
 The v1.2.12 batch recovers and implements CE replacemodel reverse from binary control flow and actual reference outputs; the separately advertised replacemesh entry remains unresolved.
+
+## v1.2.13：实际游戏 QC 兼容修复
+
+叛乱 2 / 军事冲突：越南的原始 QC 编译及输出结构检查通过：传统续行宏、改名后附件/命中盒/hitgroup 引用、仅大小写骨骼改名已修复。游戏内渲染/物理仍未在这两款游戏验证；不是新增的五编译器行为全覆盖声明。

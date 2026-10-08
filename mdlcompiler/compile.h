@@ -1231,8 +1231,8 @@ struct CompileInput {
     std::vector<std::string> alwaysCollapsePrefixes;
     std::vector<std::string> limitRotationBones;
     // $renamebone <from> <to>, script order. Applied to the final bone table at
-    // the very end of the compile, so every other command still names the
-    // source bone.
+    // the very end of the compile. Attachments/hitboxes additionally accept
+    // final aliases; source names remain intact during the compile passes.
     std::vector<std::pair<std::string, std::string>> boneRenames;
     // $transformbone, script order. Applied as one batch after the bone table
     // is built, so the command is position-independent.

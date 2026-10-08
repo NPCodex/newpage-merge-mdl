@@ -2,6 +2,38 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def test_case_only_bone_rename_and_real_collision(self):
+  self.scene_qc('$modelname case_rename\n$body m mesh.smd\n$renamebone root ROOT\n')
+  data=self.mdl('case_rename');bone=struct.unpack_from('<i',data,160)[0];name=bone+struct.unpack_from('<i',data,bone)[0]
+  self.assertEqual(data[name:data.index(b'\0',name)],b'ROOT')
+  output=self.scene_qc('$modelname collision\n$body m mesh.smd\n$bonecullmethod none\n$renamebone root unused_child\n',success=False)
+  self.assertIn('already a bone',output)
+
+ def test_renamed_attachment_and_hitbox_references_keep_unweighted_bones(self):
+  for reference in ('unused_child','FINAL'):
+   for chained in (False,True):
+    renames='$renamebone unused_child intermediate\n$renamebone intermediate final\n' if chained else '$renamebone unused_child final\n'
+    self.scene_qc('$modelname renamed_refs\n$body m mesh.smd\n$attachment eyes '+reference+' 0 0 0\n$hbox 1 '+reference+' -1 -2 -3 1 2 3\n'+renames)
+    data=self.mdl('renamed_refs');count,start=struct.unpack_from('<2i',data,156)
+    names=[]
+    for i in range(count):
+     bone=start+i*216;offset=bone+struct.unpack_from('<i',data,bone)[0];names.append(data[offset:data.index(b'\0',offset)].decode())
+    target=names.index('final');attachments=struct.unpack_from('<i',data,244)[0]
+    self.assertEqual(struct.unpack_from('<i',data,attachments+8)[0],target)
+    hset=struct.unpack_from('<i',data,176)[0];box=hset+struct.unpack_from('<i',data,hset+8)[0]
+    self.assertEqual(struct.unpack_from('<i',data,box)[0],target)
+
+ def test_legacy_continuation_macros_end_on_blank_or_plain_line(self):
+  for slashes in ('\\','\\\\'):
+   for ending in ('plain','blank'):
+    first=['$definemacro settings value '+slashes,'$scale $value$ '+(slashes if ending=='blank' else '')]
+    text='\n'.join(first)+'\n'+('\n' if ending=='blank' else '')
+    text+='$definemacro name model '+slashes+'\n$modelname $model$\n$name legacy_macro\n$settings 2\n$body m mesh.smd\n'
+    with self.subTest(slashes=slashes,ending=ending):
+     self.scene_qc(text)
+     data=(self.root/'models/legacy_macro.vvd').read_bytes();start=struct.unpack_from('<i',data,56)[0]
+     self.assertAlmostEqual(max(struct.unpack_from('<f',data,start+i*48+16)[0] for i in range(3)),2)
+
  def test_ce_lod_replacemodel_reverse_is_private_and_case_insensitive(self):
   self.write('low.smd',(self.root/'mesh.smd').read_text())
   for option in ('reverse','ReVeRsE'):
