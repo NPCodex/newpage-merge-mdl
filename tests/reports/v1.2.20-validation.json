@@ -1,0 +1,199 @@
+{
+  "schema": 1,
+  "version": "1.2.20",
+  "build_platform": "Windows x64; llvm-mingw UCRT; static C++ runtime",
+  "compiler_sha256": "06702a4ec4c2b5bc91cb12b392c0a4dfca86af17480069100b2f808fd4ffcdde",
+  "source_kind": "maintained local working tree; uncommitted",
+  "suites": {
+    "compatibility": {
+      "tests": 248,
+      "log_sha256": "58e3be9a85e2fdbb81f351ff3f173372de31d078f3862b68d876af5da5879136"
+    },
+    "automation": {
+      "tests": 20,
+      "log_sha256": "05c4aa90bc969e8b0e549cd102448fca13a0c0d14f054f73026c2289f2b237a5"
+    },
+    "content_mounts": {
+      "tests": 6,
+      "log_sha256": "e0f08f9fd03b07f4dd092921546c916dfdfaf4f63e1b4d97995a98b634615b63"
+    }
+  },
+  "implemented": [
+    "Bounded FE settings, animation attraction, curvature rods/hinges, ground and world collision data, zero-gravity engine compatibility",
+    "Authored quad import, native SubD topology and quad decompiler roundtrip; default offline Catmull-Clark subdivision for retail renderer compatibility",
+    "Point/Orient/Aim/Parent weighted constraint baking into ordinary animation",
+    "Scoped DMX dependency evaluation, layered logs, connections, expressions and pack/unpack operators"
+  ],
+  "production": {
+    "original_qc_unchanged": true,
+    "qc_sha256": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783",
+    "compiler_sha256": "06702a4ec4c2b5bc91cb12b392c0a4dfca86af17480069100b2f808fd4ffcdde",
+    "bones": 126,
+    "vertices": 572277,
+    "physics_bodies": 18,
+    "mdl_mass": 30.0,
+    "phy_totalmass": 30.0,
+    "resolved_materials": 65,
+    "missing_materials": [],
+    "missing_referenced_textures": [],
+    "evidence_sha256": "5ff9a580bb710a958a23236049d13ec7fe364fcc9a5265961f2a76f78ccd6e7e",
+    "supplied_materials": {
+      "path": "C:\\Users\\Kud\\Desktop\\gmod\\materials",
+      "files": 249,
+      "vmt_files": 131,
+      "vtf_files": 118,
+      "unchanged": true
+    }
+  },
+  "runtime": {
+    "game": "Installed CSGO legacy; offline -insecure local de_dust2",
+    "fixtures": "Self-authored diagnostic meshes and animations only",
+    "cloth": {
+      "tested": [
+        "20-point stock/NP proxies with one driven bone",
+        "explicit 121-frame root animation",
+        "gravity_scale 0 encoding",
+        "root-bound Z=40 collision plane",
+        "16-unit entity translation and reset",
+        "map reload with three cloth models"
+      ],
+      "observed": "Visible cloth poses change and follow entity movement; zero-gravity and plane variants load and remain visible after map reload.",
+      "limits": [
+        "One fitted bone gives rigid section motion, not per-proxy-vertex deformation.",
+        "Plane collision serializes and the sample animates; numerical proxy contact and absence of all rendered-vertex penetration are not established.",
+        "Stock/NP SIMD solve packet ordering differs; no frame-by-frame dynamic equivalence claim.",
+        "Engine-supplied world sphere/capsule colliders were not exercised."
+      ],
+      "fixed": "CSGO treats descriptor gravity_scale 0 as 1; compiler writes descriptor 1 and per-node gravity 0."
+    },
+    "constraints": {
+      "discovery": "Stock and initial NP procedural records 8/9/10/12 did not drive helper bones in installed runtime; source CalcProceduralBone has no cases for these types.",
+      "fix": "Compile-time Point/Orient/Aim/Parent constraint baking into ordinary animation, removing ALWAYS_PROCEDURAL flag from these slaves.",
+      "observed": "At approximately 1s and 3s samples, blue point helper follows target height, yellow orient changes direction, magenta aim points toward weighted target, cyan parent follows translated/rotated target. The stock metadata-only sample leaves these helpers ineffective.",
+      "map_reload": true,
+      "limitations": "Baking evaluates source frames before later QC processing; runtime blends and IK do not re-solve constraints."
+    },
+    "evidence": [
+      {
+        "file": "cloth-normal-zero-plane-moved.png",
+        "sha256": "de307a03036c361dc9a33840deb88ed2747334997be9b50a4c62f72836a72451"
+      },
+      {
+        "file": "cloth-normal-zero-plane-settled.png",
+        "sha256": "85d6adec6f40297238ab44ab202cb8d67b93dd73b5fe60fa325b054ea369eb04"
+      },
+      {
+        "file": "cloth-stock-np-near.png",
+        "sha256": "d0a9b560ba8264b1a162b2b003760c3c26bdc600bd032a446a131bd847070e88"
+      },
+      {
+        "file": "constraint-baked-phase1.png",
+        "sha256": "e2bc92026d65c1c1895c03e6aeb4a6300b137fd1d8afbe39e8409c08fff9ef90"
+      },
+      {
+        "file": "constraint-baked-phase3.png",
+        "sha256": "62b74372daf301f888c75ed52fd3e4e58060cc1138ca4d117b001a5fea093188"
+      },
+      {
+        "file": "constraint-np-phase1.png",
+        "sha256": "960e315cba79d2eabc4afd6f102c438a10a33217576294efc69eb2d1f6de0496"
+      },
+      {
+        "file": "constraint-np-phase3.png",
+        "sha256": "3efcc7f1e3075f13de29ce7e553b8136387045cc7fabe029a5699a6bf643c91c"
+      },
+      {
+        "file": "constraint-stock-phase1.png",
+        "sha256": "78bab3b9c597caf3c0234d4529ded473af50e6bfb379975d0d94e3b564647122"
+      },
+      {
+        "file": "constraint-stock-phase3.png",
+        "sha256": "93c2a96972bc54b0874632836f473fa3349ea3a9ddb6ae4832d16d7247626ddc"
+      },
+      {
+        "file": "reload-cloth-and-constraints.png",
+        "sha256": "c297f98459e6430b2e98f2d0cdb731a3fcd4abedbdc0c795ac24015d1044241d"
+      },
+      {
+        "file": "subd-baked-model-wireframe.png",
+        "sha256": "73f36b554819e5da35bcc964f518a93035d8d2f129dd18b0200147006ea14e0f"
+      },
+      {
+        "file": "subd-baked-solid.png",
+        "sha256": "c67b94ddeb06fb1f7edc8c0fca739a36910f381987ffdc093f15a1f5c3f2277d"
+      },
+      {
+        "file": "subd-baked-wireframe.png",
+        "sha256": "5d90d0a5c229b52ba2ec2fe70f50f380ffd284f72a475e9431a51f9af3751c9c"
+      }
+    ],
+    "cleanup": {
+      "unchanged_registered_files_removed": 187,
+      "task_engine_log_archived_and_removed": true,
+      "game_exited_normally": true,
+      "archived_sensitivity_restored": 2.5
+    },
+    "subd": {
+      "default": "Two-pass offline Catmull-Clark baked into ordinary triangles",
+      "observed": "Rounded cube and curved grid both render as smooth surfaces in CSGO; model-only wireframe confirms subdivided triangles.",
+      "final_binary_matches_observed_models": [
+        {
+          "model": "baked_smooth_cube",
+          "final_binary_matches_observed_model": true,
+          "sha256": {
+            "baked_smooth_cube.dx90.vtx": "be1221176bee7b7d0c916fcfc1d29052d72b8a62100bb72440efce54f7246d14",
+            "baked_smooth_cube.mdl": "8b333ee8ca1d331cbeb8d023c2a1b31b623fd1fb236fbf5f50f8a47b9c42eb8b",
+            "baked_smooth_cube.vvd": "18d766bc82726b5555133250c17b3d057ba676fab2efe7f92a233083ff122bdf"
+          }
+        },
+        {
+          "model": "baked_curved_grid",
+          "final_binary_matches_observed_model": true,
+          "sha256": {
+            "baked_curved_grid.dx90.vtx": "771cb39e88f239ad19e045201e9ede9d5a56b10da0f9fd43086c4fbb2fae14ba",
+            "baked_curved_grid.mdl": "3380dddbce2a89703e061a67e2f7bdd5cb1bbbf2ecd88788a4f399b5c45c50ec",
+            "baked_curved_grid.vvd": "df8403d9a030fec8f6a973116a6f355fd12b6a93ad0c40dc9805e5c31b024c4d"
+          }
+        }
+      ],
+      "native": "Stock/NP native cube/grid all reproduce a null-buffer viewer crash; explicitly opt-in native export only for supported renderers."
+    }
+  },
+  "reference_cloth": {
+    "nodes": 22,
+    "static_nodes": 5,
+    "fit_matrices": 1,
+    "fit_weights": 16,
+    "inverse_mass_error": 0,
+    "rod_max_numeric_error": 2.9802322387695312e-08,
+    "backsolve_center_offset_weights_match": true,
+    "solver_packet_order_equal": false,
+    "framewise_equivalence_claimed": false
+  },
+  "reference_native_subd": {
+    "cases": [
+      "single quad",
+      "3x3 grid"
+    ],
+    "normalized_topology_centers_valence_boundary_corners_gaps_uv_one_ring_match": true,
+    "bytewise_equal": false,
+    "native_retail_renderer_supported": false,
+    "retail_failure": "Stock and NP native cube/grid AV at studiorender.dll+0x43cad after LockSubDBuffer returns null; installed materialsystem stub bytes 33 C0 C2 04 00."
+  },
+  "limits": [
+    "FE is limited to supported proxy maps and valid anchored skeletal meshes; a fitted bone does not reproduce every simulated vertex.",
+    "World sphere/capsule flags require runtime-supplied colliders, not verified here.",
+    "Native SubD requires a renderer with implemented SubD support; installed CSGO legacy/HLMV does not provide it.",
+    "Constraint baking occurs before later QC processing; runtime blends/IK and later QC edits do not re-solve constraints.",
+    "No new Linux execution or universal compiler/runtime parity is claimed."
+  ],
+  "remaining_outside_this_scope": [
+    "AxisInterp import and material teeth flags",
+    "Additional DMX operator/curve types and broader cloth proxy schemas"
+  ],
+  "focused_test_counts": {
+    "cloth": 16,
+    "subd": 17,
+    "dmx_including_5_existing": 21
+  }
+}

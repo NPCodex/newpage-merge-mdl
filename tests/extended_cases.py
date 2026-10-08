@@ -100,9 +100,9 @@ class ExtendedCases:
 
  def test_csgo_runtime_flags_and_header_flags(self):
   for directive,flag in [('$bonealwayssetup unused_child',0x80000),('$screenalign unused_child sphere',8),('$screenalign unused_child cylinder',16),('$worldalign unused_child',32)]:
-   self.run_qc('$modelname flags\n'+directive+'\n$obsolete\n$subd\n')
+   self.run_qc('$modelname flags\n'+directive+'\n$obsolete\n')
    data,bones=self.csgo_bone_table('flags');self.assertTrue(struct.unpack_from('<i',data,bones['unused_child'][1]+160)[0]&flag)
-   self.assertEqual(struct.unpack_from('<i',data,152)[0]&((1<<9)|(1<<19)),(1<<9)|(1<<19))
+   self.assertEqual(struct.unpack_from('<i',data,152)[0]&(1<<9),1<<9)
 
  def test_csgo_prefix_and_substring_renames_resolve_references(self):
   source=(self.root/'mesh.smd').read_text().replace('"root"','"PrePreRoot"').replace('"unused_child"','"PrePreHelper"');self.write('prefixed.smd',source)

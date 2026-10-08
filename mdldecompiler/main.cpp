@@ -76,7 +76,7 @@ int Usage() {
     std::printf("                keyvalues2 text\n");
     std::printf("  -dmxmodel <n> the `format model` version they declare: 15 (default),\n");
     std::printf("                1, 18, or 22 for Source 2 modeldoc\n");
-    std::printf("  -nomesh       skip the mesh .dmx, the .phy hull and the .vrd; the script\n");
+    std::printf("  -nomesh       skip mesh .dmx, .phy hulls, .vrd and .bones; the script\n");
     std::printf("                still lists their commands\n");
     std::printf("  -noanimation  skip the animation clip files; the script still lists them\n");
     std::printf("  -declaresequence\n");
@@ -814,6 +814,70 @@ void WriteAimAtBones(Qc& q, const Mdl& m) {
         q.Line("$driveraimat \"" + names[i] + "\" \"" + target + "\" " + V3(ab->upvector) + " " +
                V3(ab->aimvector));
     }
+}
+
+// AxisInterp stores six helper poses separately from quat-interpolation VRD
+// triggers. Validate before creating output so a bad record cannot silently
+// erase a previously exported procedural definition.
+bool BuildAxisInterpFile(const Mdl& m,std::string& text,std::string& error) {
+    const auto& h=*m.hdr;
+    if(h.numbones<=0)return true;
+    const auto* bones=m.At<fm::mstudiobone_t>(m.buf.data(),h.boneindex,h.numbones);
+    if(!bones){error="invalid AxisInterp bone table";return false;}
+    const auto names=BoneNames(m);
+    auto quoted=[](const std::string& name) {
+        std::string out="\"";
+        for(char c:name){if(c=='\\'||c=='\"')out+='\\';out+=c;}
+        return out+'\"';
+    };
+    for(int i=0;i<h.numbones;++i) {
+        if(bones[i].proctype!=fm::STUDIO_PROC_AXISINTERP)continue;
+        auto invalid=[&](const char* reason){error="AxisInterp '"+names[i]+"': "+reason;return false;};
+        const int64_t offset=int64_t(reinterpret_cast<const char*>(&bones[i])-m.buf.data())+bones[i].procindex;
+        if(!bones[i].procindex||offset<0||uint64_t(offset)>m.buf.size()||
+           sizeof(fm::mstudioaxisinterpbone_t)>m.buf.size()-size_t(offset))return invalid("record outside model bounds");
+        const auto* a=reinterpret_cast<const fm::mstudioaxisinterpbone_t*>(m.buf.data()+size_t(offset));
+        if(a->control<0||a->control>=i)return invalid("invalid control bone index or order");
+        if(a->axis<0||a->axis>2)return invalid("invalid selected axis");
+        const int parent=bones[i].parent,controlParent=bones[a->control].parent;
+        if(parent<0||parent>=h.numbones||parent==i||controlParent< -1||controlParent>=h.numbones||controlParent==a->control)
+            return invalid("invalid parent bone index");
+        std::string block="bone "+quoted(names[i])+" "+quoted(names[parent])+" "+quoted(names[a->control])+" "+
+            quoted(controlParent<0?std::string("-"):names[controlParent])+" "+std::to_string(a->axis+1)+"\n";
+        // Stock ignores type. Our importer uses this marker to retain the
+        // stored root-control basis instead of rotating its six slots again.
+        block+="type compiled\nbasepos 0 0 0\n";
+        for(int slot=0;slot<6;++slot) {
+            const auto& p=a->pos[slot];auto rotation=a->quat[slot];
+            if(!std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z)||
+               !std::isfinite(rotation.x)||!std::isfinite(rotation.y)||!std::isfinite(rotation.z)||!std::isfinite(rotation.w))
+                return invalid("non-finite pose");
+            const double norm=double(rotation.x)*rotation.x+double(rotation.y)*rotation.y+double(rotation.z)*rotation.z+double(rotation.w)*rotation.w;
+            if(std::fabs(norm-1)>0.001)return invalid("pose quaternion is not normalized");
+            pm::QuaternionNormalize(rotation);pm::RadianEuler angles;pm::QuaternionAngles(rotation,angles);
+            block+="axis "+std::to_string(slot)+" "+V3(p)+" "+V3Deg(angles)+"\n";
+        }
+        // The stock legacy scanner mishandles the optional version line.
+        if(text.empty())text="proceduralbones\n";
+        text+=block;
+    }
+    if(!text.empty())text+="end\n";
+    return true;
+}
+
+bool WriteAxisInterpBones(Qc& q,const std::string& dir,const std::string& text,std::string& error) {
+    if(text.empty())return true;
+    const std::string name=BaseName(dir)+"_axis.bones";
+    if(!g_nomesh) {
+        const auto path=(std::filesystem::path(dir)/name).string();
+        std::FILE* f=std::fopen(path.c_str(),"wb");
+        if(!f){error="cannot write AxisInterp file '"+path+"'";return false;}
+        const bool written=std::fwrite(text.data(),1,text.size(),f)==text.size();
+        const bool closed=std::fclose(f)==0;
+        if(!written||!closed){error="could not finish AxisInterp file '"+path+"'";return false;}
+        std::printf("\naxis-interpolation bones:\n  wrote %s\n",name.c_str());
+    }
+    q.Blank();q.Line("$proceduralbones \""+name+"\"");return true;
 }
 
 // $proceduralbones + the .vrd it names - the file form of $driverbone and
@@ -2888,6 +2952,8 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
     std::string err;
     if (!ReadFile(in.c_str(), m, forceVersion, err))
         return Fail("read error", err);
+    std::string axisInterpText;
+    if(!STAGE(BuildAxisInterpFile,m,axisInterpText,err))return Fail("read error",err);
     const auto tRead = Clock::now();
 
     const fm::studiohdr_t& h = *m.hdr;
@@ -3027,6 +3093,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
         STAGE(WriteHitboxes, q, m);
     STAGE(WriteBones, q, m);
     STAGE(WriteBoneMerges, q, m);
+    // AxisInterp has no corresponding DMX joint operator or inline QC form.
+    // Keep its file even when other procedural categories move to joints DMX.
+    if(!STAGE(WriteAxisInterpBones,q,dir,axisInterpText,err)) {
+        std::fclose(f);return Fail("write error",err);
+    }
     // stock has neither $driverbone nor $driveraimat - only the .vrd file form
     if (!joints.procedural && g_studiomdl) {
         STAGE(WriteProceduralBones, q, m, dir);

@@ -63,7 +63,7 @@ const KV* Child(const std::vector<KV>& nodes,const std::string& name){for(const 
 struct Entry {uint16_t archive=0;uint32_t offset=0,length=0;std::vector<char> preload;};
 struct Mount {fs::path path;bool loaded=false;uint64_t dataStart=0;std::map<std::string,Entry> entries;};
 struct State {
- std::vector<Mount> mounts,contentMounts;bool contentSearch=false,csgoTarget=false;int targetVtx=-1;fs::path cache;
+ std::vector<Mount> mounts,contentMounts;bool contentSearch=false,csgoTarget=false;int targetVtx=-1;fs::path cache,gameDirectory;
  ~State(){if(!cache.empty()){std::error_code ec;auto parent=fs::temp_directory_path(ec).lexically_normal();
   if(!ec&&cache.parent_path()==parent&&cache.filename().string().rfind("newpage-mount-",0)==0)fs::remove_all(cache,ec);}}
 } state;
@@ -151,7 +151,8 @@ fs::path AppDirectory(const fs::path& steam,const std::string& id) {
 }
 bool Initialize(const std::string& gameDirectory,const std::string& steamDirectory,std::string* err) {
  try {
-  state.mounts.clear();state.contentMounts.clear();state.contentSearch=false;state.csgoTarget=false;state.targetVtx=-1;if(gameDirectory.empty())return true;
+  state.mounts.clear();state.contentMounts.clear();state.contentSearch=false;state.csgoTarget=false;state.targetVtx=-1;state.gameDirectory.clear();if(gameDirectory.empty())return true;
+  state.gameDirectory=fs::absolute(FilePath(gameDirectory));
   fs::path game=fs::absolute(FilePath(gameDirectory));auto kv=ReadKV(game/"gameinfo.txt");if(kv.empty())return true;
   const auto root=Child(kv,"gameinfo");const auto system=root?Child(root->children,"filesystem"):nullptr;
   const auto app=system?Child(system->children,"steamappid"):nullptr;
@@ -193,6 +194,50 @@ fs::path Find(const fs::path& input) {
   std::ofstream out(output,std::ios::binary);out.write(e.preload.data(),e.preload.size());f.seekg(offset);
   char buffer[65536];uint32_t left=e.length;while(left){size_t size=std::min<size_t>(left,sizeof(buffer));f.read(buffer,size);out.write(buffer,size);if(!f||!out)throw std::runtime_error("cannot extract VPK resource");left-=uint32_t(size);}
   dependencies::Note(archive.string());return output;
+ }
+ return {};
+}
+namespace {
+fs::path MaterialPath(const std::string& name) {
+ auto relative=FilePath(name).lexically_normal();
+ if(!SafeRelative(relative))return {};
+ auto key=Lower(relative.generic_string());
+ if(key.rfind("materials/",0)!=0)relative=fs::path("materials")/relative;
+ if(Lower(relative.extension().string())!=".vmt")relative+=".vmt";
+ if(auto path=Find(relative);!path.empty())return path;
+ // Minimal -game directories without gameinfo still have a material root.
+ if(state.mounts.empty()&&!state.gameDirectory.empty()) {
+  auto path=state.gameDirectory/relative;std::error_code ec;
+  if(fs::is_regular_file(path,ec))return path;
+ }
+ return {};
+}
+std::optional<std::string> ClientShader(const fs::path& path,std::set<fs::path>& active) {
+ if(active.size()>=32||!active.insert(path).second)throw std::runtime_error("cyclic or deeply nested VMT include");
+ const auto kv=ReadKV(path);
+ if(kv.size()!=1)throw std::runtime_error("VMT requires one shader block");
+ auto params=kv.front().children;
+ std::optional<std::string> value;
+ if(Lower(kv.front().key)=="patch") {
+  const auto include=Child(params,"include");
+  if(!include)throw std::runtime_error("Patch material is missing include");
+  auto base=MaterialPath(include->value);
+  if(base.empty())throw std::runtime_error("Patch include not found: "+include->value);
+  value=ClientShader(base,active);
+  if(const auto insert=Child(params,"insert"))
+   if(const auto shader=Child(insert->children,"$clientshader");shader&&!value)value=shader->value;
+  if(const auto replace=Child(params,"replace"))
+   if(const auto shader=Child(replace->children,"$clientshader");shader&&value)value=shader->value;
+ } else if(const auto shader=Child(params,"$clientshader"))value=shader->value;
+ active.erase(path);return value;
+}
+}
+std::optional<std::string> MaterialClientShader(const std::string& material,const std::vector<std::string>& directories) {
+ for(const auto& directory:directories) {
+  const auto path=MaterialPath((FilePath(directory)/FilePath(material)).generic_string());
+  if(path.empty())continue;
+  try {std::set<fs::path> active;return ClientShader(path,active);}
+  catch(const std::exception& e){std::fprintf(stderr,"warning: material %s: %s\n",path.string().c_str(),e.what());return {};}
  }
  return {};
 }

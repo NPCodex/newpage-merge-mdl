@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.18
+# NewPageMergeMDL v1.2.22
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.18.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.22.** The compiler, decompiler and bundled tools share this
 version.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -15,13 +15,69 @@ and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
 
+## v1.2.22: all 11 fixed CSGO porting packages complete
+
+**A1–A7 and B1–B4 are complete** within the [fixed CSGO scope](CSGO_PORTING_SCOPE.md). This closes the 11-package scope; the compatibility boundaries and validation coverage below do not add new porting packages.
+
+- **Cloth input and fitting:** per-document Y/Z `upAxis` for cloth and plane proxies, final FE initialization `prerotate`, `flex_borders`, multiweight fixed points, mixed fixed/dynamic fitting, influence thresholds and sparse-cloud strategies. Quad ordering/crossings are repaired, and overly bent all-dynamic quads split along their shorter diagonal.
+- **Advanced FE and render projection:** two-node stretch capsules, per-node internal/external spheres and planes, collision masks and rigid stickiness; explicit rods/springs, faceless bone-chain ropes, follow/FTL, local response, mass, volume feedback, smoothing and legacy settings. Surface projection supports two-sided volume, envelopes, island filters, unskinned proxies and automatic roots, producing actual render skinning.
+- **DMX skeletal animation:** Rotation and two-bone IK join Point/Orient/Aim/Parent/Twist in one per-frame dependency graph, including animated targets, weights and rotation parameters. QAngle/VMatrix/Color/String/Time logs, six Pack/Unpack operators, reverse sampling, nested clips and FilmClip/track/shot skeletal inputs bake to ordinary animation.
+- **Flex and materials:** DMX flex expressions expand `$variables$` in the active QC context while preserving command-line `-defvar` precedence. VMT `$clientShader "MouthShader"` sets MDL material and VTX teeth markers, including skin families and material renames.
+
+See the [cloth authoring guide](CSGO_CLOTH_AUTHORING.md), [DMX input guide](CSGO_DMX_INPUTS.md) and [COMPATIBILITY.md](COMPATIBILITY.md) for syntax, defaults, source distinctions and limits. The `advanced`, projection and fitting controls are tool extensions; not all authoring syntax is accepted by stock studiomdl.
+
+Final local validation passes **325 compatibility, 20 automation and 6 content-mount regressions**. Original Plum QC/materials are unchanged: **126 bones, 572,277 vertices, 18 physics bodies, matching 30 kg MDL/PHY totals, and 65 materials with none missing**. Offline CSGO loaded and ran **10 cloth and 2 rig fixtures**, with observed projection/mixed-boundary deformation, ropes and Rotation/IK motion changes. After `changelevel de_dust2`, all 10 cloth and 2 rig fixtures were recreated and confirmed ready with captures. Six game settings were restored and read back, the game exited normally, and 62 registered temporary files were removed after hash checks. Advanced collision has structural and loading/running evidence, without quantitative collision A/B. These results do not establish frame-by-frame stock parity, zero penetration or exact in-game bone angles. See [VALIDATION.md](VALIDATION.md).
+
+## v1.2.21 historical record: bound colliders, sparse cloth, AxisInterp / Twist and DMX curves
+
+- **Bone-bound colliders:** `$cloth { sphere ... capsule ... }` emits model-owned spheres and tapered capsules that follow animated bones, including scale, bone renaming and axis remapping.
+- **Additional cloth bindings:** one-point, two-point or collinear controls can backsolve bones from adjacent faces. `cloth_anchor_free_rotate` and `cloth_use_rods` are supported. The latter replaces selected faces with distance rods, an explicitly defined completion of an empty reference branch.
+- **Corrective bones:** legacy `$proceduralbones` files import six AxisInterp poses and emit native procedural records. DMX Twist uses the reference rotation algorithm to bake ordinary animation without requiring the game's disabled-by-default Twist switch.
+- **DMX curves and compressed animation:** bounded Float / Vector3 / Quaternion curve evaluation and three-component RLE Vector3 / Quaternion logs. Corrupt data fails before replacing existing output.
+
+See [COMPATIBILITY.md](COMPATIBILITY.md) for syntax, curve modes and limits, and [VALIDATION.md](VALIDATION.md) for evidence. Historical sections retain each version's behavior at that time.
+
+At v1.2.21, **285 compatibility, 20 automation and 6 content-mount regressions passed**. Original Plum inputs/materials are unchanged. AxisInterp also survives decompilation and stock recompilation. Numeric, structural and in-game evidence is in the [v1.2.21 report](tests/reports/v1.2.21-validation.json).
+
+Offline `de_dust2` checks in **CSGO 1.38.8.1 / 8802** showed seven cloth21 fixtures loading, deforming multiple bones and moving with their entities. Four additional sphere/capsule `contact_on/off` fixtures, using zero gravity and identical visible shells, showed distinct collision responses. Native NP/stock AxisInterp fixtures matched visually at synchronized nominal phases of 0.5/1 seconds. Forward/inverse Twist played in both directions using ordinary baked animation. All seven cloth, four contact and four procedural fixtures loaded again after a map reload. These observations do not establish contact on every frame, zero penetration at every point, exact in-game bone angles or complete stock parity.
+
+## v1.2.20 historical record: FE extensions, SubD baking and DMX constraints and animation
+
+This historical section records the four v1.2.20 compilation paths; see v1.2.22 and the authoring guides above for current extensions:
+
+- **FE cloth settings:** `$cloth { ... }` supports damping/wind, cross-face bending rods and rigid edge hinges. New DMX maps provide animation attraction, node radii and ground settings. `gravity_scale 0` becomes zero per-node gravity because the engine replaces a zero descriptor scale with 1. `world_collision` emits native world sphere/capsule flags, collision trees and radii; collision requires runtime colliders.
+- **Quad SubD baking:** `$subd`, `$model name mesh.dmx subd` or DMX `subdivisionSurface=true` default to two Catmull-Clark iterations and ordinary triangles; `$subd levels 1..3` selects the iteration count. UV seams are preserved, skin weights and position morphs are interpolated, and normals are recomputed. Explicit `$subd native` retains native patches for renderers with working SubD support. The tested CSGO legacy HLMV crashes while rendering native patches, so this mode emits a warning.
+- **CSGO rig constraint baking with multiple targets:** `$datamodeljoints rig.dmx proceduralbones` imports Point / Orient / Aim / Parent and solves target weights, offsets and Aim parameters into ordinary skeletal animation for CSGO AppID 730 targets. Records 8/9/10/12 are retained as rig metadata because the engine ignores them; slaves do not carry `BONE_ALWAYS_PROCEDURAL`. At v1.2.20, Twist, dependency cycles, missing bones, raw delta inputs and dependencies on runtime procedural bones failed explicitly; the current seven-class scope is described above.
+- **DMX animation evaluation:** ordinary `$sequence name anim.dmx` evaluates the active clip's multi-hop connections, expressions, Vector/Quaternion Pack/Unpack and Transform operators offline, including layered logs, step segments and clip time transforms, then bakes ordinary bone frames. This works for all targets. At v1.2.20, unsupported connected operators, compressed logs and curve-type interpolation failed explicitly; subsequent extensions are documented in the current DMX input guide.
+
+These are bounded implementations; [COMPATIBILITY.md](COMPATIBILITY.md) lists syntax, numeric rules and rejected inputs. Added regressions inspect actual MDL/VTX records, decompile/recompile output and animation values. See [VALIDATION.md](VALIDATION.md) for complete test, production-model and runtime evidence. Loading or matching structural data alone does not establish complete runtime parity.
+
+Older version sections preserve their implementation and validation state at the time. Current capabilities are described by v1.2.22 and the compatibility-boundaries table.
+
+Final Windows validation: **248 compatibility, 20 automation and 6 content-mount tests passed**. Original Plum inputs/materials remain unchanged; bounded in-game cloth, baked SubD and constraint animation results are recorded in [v1.2.20 validation](tests/reports/v1.2.20-validation.json).
+
+## v1.2.19: automatic mass, appended collision sources and CSGO FE cloth
+
+This section records v1.2.19 behavior; later cloth settings and SubD support are described above under v1.2.20.
+
+`$automass` / `$calculatemass` now compute mass from mounted surface density and shell thickness, fixing the former 1 kg result for every body. Manifest files, VPK/archive chunks, base inheritance, later property overrides and `$jointsurfaceprop` are supported. MDL and PHY store the same total mass. Explicit `$mass` retains its PHY distribution rules, including the reference 1 kg minimum per body.
+
+`$addconvexsrc` accepts a same-line quoted `offset pos[...] angle[...] scale[...]` and `concave`. Transforms and scaling follow physics-source coordinates. With the global `$concave` enabled, concave-marked sources merge with the root before welding and unmarked extras remain independent convex hulls. Without that gate, all geometry forms one convex hull. Shared render sources are preserved.
+
+`$cloth proxy.dmx` / `$clothplanecollision planes.dmx` now serialize real FE data for skeletal models targeting CSGO AppID 730 through `-game`, with extended VTX. The bounded path supports explicit `cloth_enable`, triangle/quad proxies, fixed points, node constraints, weighted bone backsolving and bone-bound infinite one-sided planes, with at most 4096 proxy points. At v1.2.19, every simulated component needed an anchor; fixed points required one bone; a bone could not bind both fixed and simulated points; each driven bone needed at least three non-collinear simulated points. At v1.2.19, settings blocks, unknown cloth maps and other targets were rejected; native SubD and in-game cloth motion were not certified. See v1.2.22 and the cloth guide above for current multiweight anchors, mixed fits and sparse-cloud behavior, and [COMPATIBILITY.md](COMPATIBILITY.md) for data requirements.
+
+All **209 compatibility and 20 automation tests** pass locally on Windows, including six mass, six appended-source and ten FE cases. Six separate CONTENT mount regressions also pass. The unchanged original Plum QC compiles in isolation and passes structural checks: 126 bones, 572,277 vertices, 18 physics bodies and matching 30 kg MDL/PHY totals. CSGO HLMV loads quad and triangle cloth fixtures with planes for 15 seconds each without access violations; all six temporary game files were removed. These checks establish bounded loading stability, not in-game cloth motion or complete CSGO parity. See [VALIDATION.md](VALIDATION.md) and the [v1.2.19 validation record](tests/reports/v1.2.19-validation.json).
+
+Stock CSGO default-surface tetrahedra with edges 10 and 20 produce total masses of 5.462355 and 43.698837 kg, matching this compiler to six printed decimal places. An equivalent-geometry cloth comparison matches fixed nodes, inverse masses, fixed offsets and plane constraints within floating-point precision. Bone backsolving uses different algorithms, so deformation equivalence remains unverified.
+
+
 ## v1.2.18: CSGO LOD skinning and CONTENT mounts
 
 For CSGO legacy (gameinfo SteamAppId 730), lower LODs inherit skin weights from the nearest root-model vertex; ties use UV, normal and source index. `$skinnedLODs` preserves authored lower-LOD weights. Other games retain their defaults. Spatial lookup precedes the existing LOD bone remapping. Two-stage root/higher-LOD tolerance matching checks position, UVs, normals, weights and tangents. Small UV-boundary fixtures match the installed stock CSGO StudioMDL; this is not whole-file parity for arbitrary models.
 
-`$contentrootrelative` supports CONTENT `*` / `?` patterns, VPKs and archive chunks. Loose directory files precede archives; GAME lookup precedes CONTENT, which remains opt-in. All 187 compatibility and six mount tests pass; Plum and Yvette compile and pass structural checks. No new in-game validation was performed. Cloth, full SubD and complete bone-collapse parity remain open.
+`$contentrootrelative` supports CONTENT `*` / `?` patterns, VPKs and archive chunks. Loose directory files precede archives; GAME lookup precedes CONTENT, which remains opt-in. All 187 compatibility and six mount tests pass; Plum and Yvette compile and pass structural checks. No new in-game validation was performed. At v1.2.18, cloth, full SubD and complete bone-collapse parity were still open.
 
-Supply the correct `-game` directory for CSGO/MCV, even with a separate OutDir; `-vtxformat` alone only selects VTX layout. CSGO/MCV targets now use a 256-byte extended header with a zero FE pointer slot before bodygroup presets. Other targets retain their layout. Installed stock models confirm this span. Each game's preset fixture survives 15 seconds under its HLMV/debugger without access violations; temporary game files were removed. This fixes the serialization prerequisite, not the full cloth pipeline.
+Supply the correct `-game` directory for CSGO/MCV, even with a separate OutDir; `-vtxformat` alone only selects VTX layout. CSGO/MCV targets now use a 256-byte extended header with an FE pointer slot that was zero at v1.2.18, before bodygroup presets. Other targets retain their layout. Installed stock models confirm this span. Each game's preset fixture survives 15 seconds under its HLMV/debugger without access violations; temporary game files were removed. This fixes the serialization prerequisite, not the full cloth pipeline.
 
 ## v1.2.17: startup description correction
 
@@ -35,13 +91,13 @@ One compiler supports both targets. Use the actual `.../csgo` or `.../vietnam` d
 
 All 182 compatibility and 20 automation tests pass. Yvette body/three arms QCs and MCV body/arms/legs QCs compile and load in their respective installed HLMV tools; all seven outputs survive 15-second debugger checks without access violations. Actual character rendering and Yvette included-animation playback were separately observed. MCV tests cover players, first-person arms, bots, ragdolls and map reload on mcv_camp/mcv_bridge. CSGO tests on de_dust2/ar_baggage cover player/bot replacement, 11 skins × 18 body combinations in bounded native-entity batches, normal player death and map reload. See the [v1.2.16 report](tests/reports/v1.2.16-validation.json) for CSGO runtime evidence. Plum retains legacy output and passes structural validation with 126 bones / 572,277 vertices. These are bounded model/scenario checks, not universal game compatibility.
 
-## v1.2.15: CSGO QC compatibility (31 entries; cloth remains unfinished)
+## v1.2.15: CSGO QC compatibility (31 entries; cloth was unfinished then)
 
 Implements 31 of the previously missing 33 command entries: bone controllers/runtime flags, prefix/substr renaming, bind-axis and center adjustments, bounding-box policies, collision precision, appended sources, attachment replacement, CONTENT lookup, internal/physics naming, and virtual VTA generation from OBJ frames. Output changes are serialized into MDL/VVD/PHY. Virtual VTA supports flexfile, native `$vta` and VCA without intermediate files and rejects changed frame topology.
 
 This is not 31 new algorithms. `$externaltextures` warns and ignores as in the reference; `$gamma` has no texture-processing use in this Source pipeline; `$skinnedLODs` corresponds to the existing native per-LOD skin preservation policy. `$insertbone` reparents without inserting a bone, matching the enabled reference code. `$subd` emits the subdivision-surface header flag; the complete quad/SubD importer has not been ported.
 
-`$cloth` and `$clothplanecollision` remain **unimplemented and rejected**. They require finite-element nodes, constraints, control-bone backsolving and the CSGO extended-header data, rather than a jigglebone or keyvalues substitute. All 19 new targeted cases, 181 compatibility tests and 20 automation tests pass. Plum (126 bones, 572,277 vertices) and Yvette compile and pass serialized-output checks. No CSGO in-game validation is claimed. See [COMPATIBILITY.md](COMPATIBILITY.md) and the [validation record](tests/reports/v1.2.15-validation.json).
+At v1.2.15, `$cloth` and `$clothplanecollision` were **unimplemented and rejected**; v1.2.19 adds the bounded FE path described above. They require finite-element nodes, constraints, control-bone backsolving and the CSGO extended-header data, rather than a jigglebone or keyvalues substitute. All 19 new targeted cases, 181 compatibility tests and 20 automation tests pass. Plum (126 bones, 572,277 vertices) and Yvette compile and pass serialized-output checks. No CSGO in-game validation is claimed. See [COMPATIBILITY.md](COMPATIBILITY.md) and the [validation record](tests/reports/v1.2.15-validation.json).
 
 ## v1.2.14: CSGO QC triangle-order compatibility
 
@@ -85,7 +141,7 @@ Adds explicit copy weightlists, fixes procedural collision geometry causing unst
 
 ## v1.2.5: Hair QC compilation fix
 
-Correct overly strict bodygroup validation; add final-product and preset-integer regressions. The current suite has 128 compatibility tests.
+Correct overly strict bodygroup validation; add final-product and preset-integer regressions. The suite then had 128 compatibility tests.
 
 ## v1.2.4: seven improvements
 
@@ -97,7 +153,7 @@ Correct overly strict bodygroup validation; add final-product and preset-integer
 - Actual GMod Alyx loading, faces/eyelids and forced LOD, plus authored vertex-animation and two-body physics/ground-contact tests. White material override isolates geometry; authored shaders are not comprehensively certified.
 - `-perfjson` phase timings/peak working set and isolated repeated production benchmarks with deterministic output checksums.
 
-**146 compatibility tests and 20 automation tests.** Usage and bounded results: [VALIDATION.md](VALIDATION.md).
+At v1.2.7: **146 compatibility tests and 20 automation tests.** Usage and bounded results: [VALIDATION.md](VALIDATION.md).
 
 ## Inherited PulseModel features
 
@@ -153,7 +209,7 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 
 - The compiler, decompiler and utilities share the NewPageMergeMDL project naming and current project version; compiler startup messages and redirected logs are plain text, without a colored banner.
 - Automatic PulseModel integration through a maintained patch, followed by Windows/Linux builds, tests and GitHub Release publication. Conflicts or failed checks stop publication. New closed-source CE/++/Neko features require manual analysis.
-- 146 compatibility tests and 20 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
+- The current 325 compatibility, 20 automation and 6 content-mount regressions pass and inspect actual outputs. Historical checks compiled the supplied complete `survivor_teenangst.qc` with mixed DMX/GLB bodies and the user-provided Alyx QC. User models and reference compiler binaries are not redistributed.
 
 ## v1.2.3: fewer incomplete features
 
@@ -194,13 +250,15 @@ See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESE
 - Added multi-bone DMX morph, split flex/LOD and collision rename/parent regressions. The supplied extreme model compiles with 126 bones and 572277 VVD vertices. Subsequent v1.2.6/v1.2.7 checks cover GMod geometry and physics; material validation still lacks assets.
 - Automatic releases increment patch versions and recognize existing versioned tags. See [RESEARCH.md](RESEARCH.md) for investigation results and remaining work.
 
-## Unfinished features and known issues
+## Compatibility boundaries and validation coverage
 
-This list reflects v1.2.18 implementation and existing validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
+This list reflects v1.2.22 implementation and validation. All 11 fixed CSGO porting packages are complete. This table records runtime requirements, validation boundaries and integration limits from other sources; “unverified” does not mean a porting package is unimplemented.
 
-| Area | Current status and remaining work |
+| Area | Current status and boundaries |
 | --- | --- |
-| CSGO cloth and SubD | `$cloth` / `$clothplanecollision` are unimplemented; `$subd` provides the global header flag only. Complete quad/SubD import and cloth in-game verification remain unfinished. |
+| CSGO cloth | `flex_borders`, `prerotate`, mixed fitting, multiweight anchors, advanced FE, ropes and render-skinning projection are implemented. The target remains skeletal CSGO AppID 730 with extended VTX. Plane proxies require rigid single-bone binding; sparse fits need valid adjacent bases. World collision needs game-supplied colliders and volume feedback needs FitMatrix. Advanced collision lacks quantitative A/B or frame-by-frame zero-penetration proof. See the [cloth guide](CSGO_CLOTH_AUTHORING.md). |
+| SubD | Offline Catmull-Clark baking is the default: authored DMX quads, 1–3 iterations and ordinary triangles. Native patches require explicit `$subd native` and extended VTX; the tested CSGO legacy/HLMV native path crashes. Non-manifold input, triangle decimation, excessive growth and unsupported morph/merged-part combinations are rejected. |
+| DMX rig and animation evaluation | Point/Orient/Aim/Parent/Rotation/IK/Twist bake through a unified graph. External rig import remains CSGO-only; runtime IK/blending and later QC edits do not re-solve authoring constraints. Raw delta inputs, runtime-procedural dependencies and `$centerbonesonverts` combinations remain rejected. Value types, reverse sampling and nested timelines are expanded; compressed logs remain Vector3/Quaternion-only. Full SFM sessions and track crossfades are outside scope. AxisInterp rejects unrepresentable control-axis changes. See the [DMX guide](CSGO_DMX_INPUTS.md). |
 | Integration gaps | CE replacemesh semantics remain unconfirmed. Separate/animated Neko parents and differing pose hierarchies are fixed and compared with reference output. Additional formats and rig combinations beyond tested cases still need coverage; power-loss/forced termination recovery remains incomplete. See FEATURE_MATRIX.md. |
 | Extra extension: skinned instances and mesh swaps | These are not prerequisites for five-compiler integration. Skinned `EXT_mesh_gpu_instancing` and animated mesh swaps remain unsupported. Static unskinned instances are supported. |
 | Extra extension: VRM runtime behavior | These are not prerequisites for five-compiler integration. Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
@@ -262,11 +320,9 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 python -m unittest discover -s tests -p test_automation.py
 ```
 
-There are 181 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
-and 20 automation tests. Tests inspect MDL/VVD data and decompile animations to
-check positions, rotations and conditions. The user-provided Alyx QC compiled
-successfully with 113 bones and 27,571 VVD vertices; this does not cover in-game
-loading or rendering.
+All 325 compatibility, 20 automation and 6 content-mount regressions pass. Temporary SMD/QC and synthetic DMX fixtures inspect MDL/VVD/VTX/FE data and decompile animations to check positions, rotations and conditions. Current production validation uses unchanged original Plum QC/materials: 126 bones, 572,277 vertices, 18 physics bodies, matching 30 kg totals and 65 materials with none missing. See v1.2.22 above and [VALIDATION.md](VALIDATION.md) for runtime coverage.
+
+Historically, the user-provided Alyx QC compiled successfully with 113 bones and 27,571 VVD vertices; that compile check alone did not cover in-game loading or rendering.
 
 ## Credits and license
 

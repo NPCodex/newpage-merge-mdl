@@ -1,12 +1,14 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.18。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.22。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
 “待确认”表示资料不足或参考程序未复现。未列出的历史缺陷不能自动算作已修复。
 兼容性测试通过也不等于所有格式、模型、游戏均通过。
+
+本轮 CSGO 固定范围 A1–A7/B1–B4 共 11 包已全部完成；原可选扩展 B 区已获授权并交付。完整范围与排除项见 [CSGO_PORTING_SCOPE.md](CSGO_PORTING_SCOPE.md)，新增布料语法见 [CSGO_CLOTH_AUTHORING.md](CSGO_CLOTH_AUTHORING.md)。
 
 ## 需求来源 / Requirement sources
 
@@ -17,6 +19,7 @@
 | NekoMDL | 用户提供的中文版 ChangeLog.txt v2.3.0、NewCommands.qci 和参考程序。历史版本条目按当前行为复核，不能假定旧实现仍有效。 |
 | StudioMDL 2013 | [Cra0 原始页面](https://cra0.net/blog/posts/archived/2014/studiomdl-2013/)。2012 libs / 2013 两包的 EXE SHA256 相同，作为同一来源；不同依赖配置单独记录。 |
 | StudioMDL++ | [Tools 页面中 StudioMDL++ 的专属 Changelog](https://ficool2.github.io/HammerPlusPlus-Website/tools.html)，以及用户提供的 Oct 3 2026 参考程序。其他工具的条目不能算作 StudioMDL++ 需求。 |
+| CSGO Source1 补充移植 | 参考树 `f82112a2388b841d72cb62ca48ab1846dfcc11c8` 的活跃编译与 FE 构造路径；v1.2.22 的 11 个固定功能包见 [完成清单](CSGO_PORTING_SCOPE.md)。其底层能力扩展不计作第六个“五编译器”需求来源。 |
 
 ## PulseModel：保留基础功能 / Preserved foundation
 
@@ -90,7 +93,7 @@
 
 ## 后续工作顺序 / Next integration work
 
-1. **实际 QC 兼容缺口**：CE replacemesh 的真实语义；超出已验证案例的导入/骨骼差异。每项先取得参考输出，再接入统一管线。
+1. **维护已完成的 CSGO 固定范围**：A1–A7/B1–B4 全 11 包已交付，当前没有以“可选”保留的未完成包；只按具体资产反例处理后续缺陷，不自动扩展范围。122 个参考顶层 QC 名称均有入口，但名称覆盖及本轮完成均不等于全量行为等价。CE replacemesh 的真实语义及其他编译器差异另按所属来源核对。
 2. **导入覆盖**：对 Neko 明确列出的 Assimp 场景格式优先验证真实几何/蒙皮/形态键/动画组合；glTF 后备 STEP/CUBICSPLINE 差异已修复；继续核对其他格式的可复现插值差异。
 3. **已实现功能组合**：验证面部块、材质重命名、网格分割与 LOD 同时使用；必要的回归用于证明移植功能，不新增无关测试体系课题。
 4. **参考环境**：按游戏依赖恢复 StudioMDL 2013 对照，复核页面公开能力；两包只计一个功能来源。
@@ -123,11 +126,11 @@ The v1.2.12 batch recovers and implements CE replacemodel reverse from binary co
 
 ## v1.2.15：此前 33 个 CSGO 缺失入口的逐项处理
 
-本轮补上 31 个入口，剩余 `$cloth` / `$clothplanecollision` 两个入口仍未实现，不计为完成。支持入口中包含 reference warning-only 的 `$externaltextures`、无纹理处理用途的 `$gamma`，以及既有 native LOD 蒙皮行为的 `$skinnedLODs`；不能据此称为 31 个新算法。`$insertbone` 只执行参考中启用的 reparent 行为，`$subd` 仅完成全局 header flag，完整 quad/SubD 导入仍是另一个未完成子功能。详细语法/行为差异见 COMPATIBILITY.md，全部 33 个名字与状态记录于 tests/reports/v1.2.15-validation.json。
+v1.2.15 当时补上 31 个入口，剩余 `$cloth` / `$clothplanecollision` 两个入口当时未实现；v1.2.19 新增下文列出的限定 FE 路径。支持入口中包含 reference warning-only 的 `$externaltextures`、无纹理处理用途的 `$gamma`，以及既有 native LOD 蒙皮行为的 `$skinnedLODs`；不能据此称为 31 个新算法。`$insertbone` 只执行参考中启用的 reparent 行为，v1.2.15 的 `$subd` 当时仅提供全局 header flag，完整 quad/SubD 导入当时尚未实现；v1.2.20 的新路径见下文。详细语法/行为差异见 COMPATIBILITY.md，全部 33 个名字与状态记录于 tests/reports/v1.2.15-validation.json。
 
 新增 controller、runtime bone flags、prefix/substr alias、reparent/realign/center、bbox/UV/tangent、collision grid、source append、attachment/bodygroup、CONTENT、naming、no-sequence、strict remap 和 in-memory OBJ VTA/VCA 输出回归。181 项完整兼容、20 项自动化测试及 Plum/Yvette 编译结构检查通过；未取得 CSGO cloth 或游戏内行为验证，不宣称全面 CSGO 移植。
 
-Next: build the real CSGO finite-element cloth pipeline and plane collision data, then validate the applicable extended-header layout and runtime. Complete quad/SubD geometry import remains beyond the global `$subd` command flag. These open items take precedence over unrelated tooling work.
+Historical v1.2.15 next step was real FE cloth and plane data. v1.2.19 added that core; v1.2.20 extends its settings and adds native quad/SubD geometry. Remaining limits are listed in the latest section below.
 
 ## v1.2.16：目标游戏 VTX 布局 / Target-game VTX layout
 
@@ -135,6 +138,80 @@ CSGO legacy / MCV 的 `gameinfo.txt` SteamAppId 自动选择扩展布局，CLI /
 
 ## v1.2.18：CONTENT 与 CSGO LOD 权重
 
-CONTENT 通配符、VPK 和分卷查找已补齐，并保留按需启用和查找优先级。CSGO AppID 730 默认按根模型最近顶点传递低 LOD 权重，`$skinnedLODs` 保留作者权重；其他目标保持原行为。187 项兼容回归、6 项专项及 Plum/Yvette 编译结构验证通过。复杂组合下的容差匹配与骨骼折叠全面对照、FE 布料及原生 quad/SubD 输出仍未完成，不以这两个子功能替代全部移植。
+CONTENT 通配符、VPK 和分卷查找已补齐，并保留按需启用和查找优先级。CSGO AppID 730 默认按根模型最近顶点传递低 LOD 权重，`$skinnedLODs` 保留作者权重；其他目标保持原行为。187 项兼容回归、6 项专项及 Plum/Yvette 编译结构验证通过。v1.2.18 当时尚未完成复杂组合下的容差匹配与骨骼折叠全面对照、FE 布料及原生 quad/SubD 输出，不以这两个子功能替代全部移植。
 
-CSGO / MCV 目标还修正为 256 字节扩展头，保留 FE 指针槽（当前为零），身体组预设写入正确偏移；其他目标保留原布局。两款游戏的预设样例分别通过 15 秒 HLMV 调试器监测，无访问异常，临时游戏文件已清理。这是布料序列化前置修正，不代表 FE 布料功能完成。
+CSGO / MCV 目标还修正为 256 字节扩展头，保留 FE 指针槽（v1.2.18 当时为零），身体组预设写入正确偏移；其他目标保留原布局。两款游戏的预设样例分别通过 15 秒 HLMV 调试器监测，无访问异常，临时游戏文件已清理。这是布料序列化前置修正，不代表 FE 布料功能完成。
+
+## v1.2.19：真实质量、附加碰撞源与限定 FE 布料
+
+本节保留 v1.2.19 当时的实现与验证；当前扩展和限制见下文 v1.2.22 及固定范围清单。
+
+| 功能 | v1.2.19 当时状态与剩余范围 |
+| --- | --- |
+| `$automass` / `$calculatemass` | 已实现按挂载的 density/thickness 计算总质量；manifest、VPK/分卷、base 继承、重复定义覆盖、骨骼 surfaceprop 与 MDL/PHY 总质量一致。保留参考的 volume×massbias 分配及每刚体 1 kg 下限。 |
+| `$addconvexsrc` | 已实现 quoted offset 的位置/角度/缩放、活动源缩放补偿、独立源副本和 concave 标记；全局 `$concave` 下合并标记源后跨文件焊接，未启用时合为单凸体；`$collisionjoints` 忽略附加源。offset 依据历史源码，安装的原版会警告并忽略 offset，未声称原版二进制/VPhysics hull/drag 等同。 |
+| `$cloth` | 已实现 CSGO AppID 730 骨骼目标的显式 cloth_enable 三角形/四边形 DMX 代理、固定点、FE 元素及加权控制骨回算和扩展头序列化。上限 4096 代理点；按 `$cloth` 指令当时的 scale 导入；锚定连通分量、单骨固定点、分离固定/动态控制骨及非共线拟合要求明确检查。 |
+| `$clothplanecollision` | 已实现骨骼绑定的无限单面碰撞平面；每面要求共面且同骨绑定，同一 DMX 的多个网格分别选择各模拟点前方最远的有效平面。不是有限三角形碰撞网格。 |
+| 布料剩余项 | v1.2.19 当时拒绝 settings 块、未知 maps 和其他游戏目标；没有动态游戏内布料运动认证，也没有完整 CSGO 布料行为/逐字节等同声明。 |
+| 原生 Quad/SubD | v1.2.19 当时未实现完整导入与 patch topology；FE 四边形代理不等于渲染网格的 SubD 输出。 |
+
+209 项兼容回归、20 项自动化回归通过，包括 6 项质量、6 项附加碰撞源和 10 项 FE 专项，另有 6 项 CONTENT 挂载回归通过。quad/tri 含 plane 样例各经 CSGO HLMV 15 秒检查，无访问异常；6 个临时游戏文件全部清理。Plum 原 QC 哈希不变，隔离编译/结构检查通过，MDL/PHY 总质量均为 30 kg。HLMV 加载、输出结构及旧版本游戏记录不替代本版动态布料游戏验证。
+
+原版 CSGO 默认材质四面体边长 10/20 的总质量为 5.462355/43.698837 kg，与当前工具相同到打印 6 位小数。同几何布料对照确认固定节点、逆质量、2 个固定偏移和 4 个平面约束一致（法线仅有浮点误差）；stock NodeBase/ReverseOffset 与当前加权 FitMatrix 回算不同，变形等价仍未验证。
+
+## v1.2.20：FE 扩展、Quad/SubD 烘焙、DMX rig 与动画求值
+
+本节记录 v1.2.20 的历史范围；表中的拒绝项只描述该版本，后续扩展见下文 v1.2.21/v1.2.22。`flex_borders`、`prerotate`、混合骨拟合及固定点多权重现已由 v1.2.22 完成。
+
+| 功能 | v1.2.20 当时实现 | v1.2.20 当时边界 |
+| --- | --- | --- |
+| FE 设置与弯曲 | `$cloth { ... }` 写出局部响应、拉伸、重力、风力、阻力及速度平滑参数；共享边产生 scalar/SIMD 杆，支持曲率范围和刚性轴向铰链。新增动画位置/力吸引及目标偏移。 | 当时要求 4096 代理点内、锚定连通分量、单骨固定点、分离固定/动态骨及非共线拟合。`flex_borders`、`prerotate`、`cloth_use_rods`、`cloth_anchor_free_rotate` 在 v1.2.20 尚未支持，已由 v1.2.21/v1.2.22 接入。非零速度平滑率启用一次迭代，与参考 QC 默认零迭代有意不同。 |
+| FE 碰撞与零重力 | 新增 ground 参数分组、节点半径、碰撞树掩码；`world_collision` 启用世界 sphere/capsule flags。`gravity_scale 0` 编码为节点 gravity=0、descriptor scale=1，避开引擎旧默认值回退。 | 世界球体/胶囊需要运行时提供碰撞体，不等于编译器已生成这些形状；plane 仍为无限单面平面。仅 CSGO AppID 730 骨骼模型/扩展 VTX。 |
+| Quad/SubD | `$subd`、`$model ... subd` 或 DMX `subdivisionSurface=true` 默认两轮 Catmull-Clark 烘焙普通三角形；`$subd levels 1..3` 调轮数，传播蒙皮/位置 morph、保留 UV 接缝并重算法线。`$subd native` 显式输出原生 patch。 | 烘焙要求 authored quad，每源最多 262144 refined quads；拒绝非流形、冲突焊接权重/morph、normal-only morph及融合部件身份。原生模式仅供可用的SubD renderer：已测CSGO legacy/HLMV会崩溃并有编译警告；要求扩展VTX、每mesh/LOD≤8192 patches、valence≤16、每patch≤52环引用，不接受levels。 |
+| CSGO 多目标 rig | `$datamodeljoints rig.dmx proceduralbones` 或全 rig 导入 Point/Orient/Aim/Parent，按多个目标、权重、偏移、base pose、Aim up 和骨骼依赖逐帧烘焙普通骨骼动画；支持保骨、改名和 realign。 | 限 CSGO 骨骼目标。引擎忽略 8/9/10/12，记录仅作元数据，slave 不设 ALWAYS_PROCEDURAL。烘焙在 QC 动画操作之前，不会随运行时 IK/混合或后续 QC 修改重算。Twist、reverse、raw delta、运行时程序骨依赖、centerbonesonverts组合、缺骨、非法权重、依赖环及冲突报错。 |
+| DMX 动画求值 | 当前 DmeChannelsClip 的多跳 Connection、Expression、Vector/Quaternion Pack/Unpack、Transform 算子逐帧求值；处理分层 log、线性/slerp/阶梯采样及 clip 时间变换，烘焙普通骨骼帧，适用于所有目标。 | 不支持的连接算子、curve-type 插值、压缩 log、无效键/类型、环和冲突 writer 报错；不是完整 SFM 求值器。 |
+
+功能回归核对实际序列化数据、SubD 反编译再编译和动画数值。20 点 FE 对照中，stock 与本工具均走 16 权重 FitMatrix，初始化点/逆质量/中心偏移一致，20 条杆仅有浮点误差；单 quad 与 grid 的 SubD 邻域字段亦经归一化对照。此类结构证据与游戏内动态证据分开记录，最终测试与运行场景见 [VALIDATION.md](VALIDATION.md)。
+
+本版最终 Windows 验证：248 项兼容、20 项自动化、6 项挂载测试通过，Plum 原始资产不变。游戏内布料、默认 SubD 烘焙及四类约束烘焙的实际覆盖和限制见 [VALIDATION.md](VALIDATION.md)。
+
+
+## v1.2.21：绑定碰撞体、布料绑定与动画扩展
+
+本节保留 v1.2.21 的历史实现和验证；本轮完成状态见下一节。
+
+| 功能 | 本版实现 | 明确边界 |
+| --- | --- | --- |
+| 绑定球体/胶囊 | `$cloth` 块中的 `sphere` / `capsule`；骨局部中心、半径、指令时缩放、保骨/改名/轴重映射；真实 FE rigid collider 数据。 | CSGO 骨骼模型；≤1024 个；禁止绑定动态布料骨和运行时程序骨；近包含胶囊由引擎近似为大球；不保证每帧所有渲染点零穿透。 |
+| 稀疏布料与 maps | 单点/双点/共线控制点使用邻接 NodeBase+ReverseOffset；自由旋转固定代理点；指定面改为完整距离杆图并去重。 | 要求非退化邻接；不改变现有有效 FitMatrix；杆面规则补全参考空分支，不宣称完全等同参考 builder。 |
+| AxisInterp | legacy `$proceduralbones` 六轴姿态读入和原生程序骨写出，支持保骨/改名、缩放、可表达的轴重映射。 | 依赖排序、父骨匹配和cardinal轴限制；不可表达的变换明确报错。 |
+| Twist | DMX parent/child + 多slave、inverse、bind/up参数，按参考求解后烘焙普通动画。 | 不依赖游戏默认关闭的Twist开关；运行时IK/混合和后续QC不重算；reverse rig、原始delta及程序骨依赖拒绝。 |
+| DMX曲线/压缩 | Float 0–15曲线，Vector3/Quaternion 0–13/hold；三通道RLE日志输入解码；异常流保留旧输出。 | mode14仅Float；压缩限Vector3/Quaternion；不是任意SFM求值器或新MDL输出压缩。 |
+
+最终测试、原版数值对照、Plum 和游戏验证见 [VALIDATION.md](VALIDATION.md)。
+
+本版最终 285 项兼容、20 项自动化、6 项挂载回归通过；AxisInterp 默认QC/PulseQC/datamodeljoints反编译回环及stock重编译通过。CSGO 1.38.8.1 / 8802 离线 `de_dust2` 已观察 7 个 cloth21 样例加载、多骨变形及移动；零重力、相同可见壳的 4 个 sphere/capsule `contact_on/off` 样例呈现不同碰撞响应。原生 AxisInterp NP/stock 在同步 0.5/1 秒名义相位视觉一致，正向/inverse Twist 的正负方向播放正常，仍为普通烘焙动画。地图重载后，7 个布料、4 个接触对照及 4 个程序骨样例均重新载入。尚未证明逐帧接触、全点无穿透、精确游戏骨角或 stock 全量等价。
+
+## v1.2.22：CSGO 固定 11 包全部完成
+
+| 包 | 已完成能力 | 验证入口与保留边界 |
+| --- | --- | --- |
+| A1：完成 | 布料/平面代理按自身 Y/Z-up 转换；`prerotate pitch yaw roll` 旋转最终 FE 初始姿态。 | [cloth_scope_cases.py](tests/cloth_scope_cases.py)：主模型/代理混合轴与非零旋转。prerotate 不重建此前生成的局部约束。 |
+| A2：完成 | `flex_borders`、固定/动态混合 Fit、固定点多权重、拟合阈值及可调小点云门限。 | 同一 scope 模块检查静态/动态权重分区、运行时中心与稀疏回解；实机观察混合边界变形。默认 flex_borders=false、影响阈值 .05、门限 3，设 8 可采用参考小点云分界。 |
+| A3：完成 | quad 顺序/交叉修正、弯曲容差及全动态弯曲面沿短对角线拆分。 | 同一 scope 模块检查 topology/rest shape；退化、非流形和代理锚定要求保留。 |
+| A4：完成 | Rotation、两段骨 IK 与 Point/Orient/Aim/Parent/Twist 动画图依赖求值。 | [procedural_scope_cases.py](tests/procedural_scope_cases.py) 及 CSGO Rotation/IK 姿态变化；输出普通烘焙动画，后续 QC、运行时 IK/混合不重新求解。 |
+| A5：完成 | QAngle/VMatrix 日志值与 Pack/Unpack 算子。 | [dmx_scope_cases.py](tests/dmx_scope_cases.py)；VMatrix 使用正确的 4×4 输入/输出索引语义，修正参考实现问题。 |
+| A6：完成 | DMX flex expression `$变量$` 在 QC 上下文展开。 | [csgo_closure_cases.py](tests/csgo_closure_cases.py)；保留有效规则，无法解析明确报错，替代旧版整条丢弃行为。 |
+| A7：完成 | MouthShader texture flags/used 与 VTX `MESH_IS_TEETH`。 | 同一 closure 模块覆盖 skin family、材质重命名及输出标记；既有 `$mouth` 保留。 |
+| B1：完成 | 高级双节点 stretch capsule、逐节点 in/out sphere/plane、mask、rigid/stretch capsule stickiness。 | [cloth_advanced_cases.py](tests/cloth_advanced_cases.py)；真实 FE 记录、骨改名/重新对齐及运行样例。逐节点 sphere/plane 不开放运行时不消费的粘附参数。 |
+| B2：完成 | 显式 rod/spring、无面 rope 朝向、follow/FTL、质量/倍率、局部响应、体积反馈、平滑迭代、世界半径及 legacy stretch/质量 damping/uninertial/OS offset。 | 同一 advanced 模块及独立多骨绳链实跑；体积反馈需 FitMatrix，世界碰撞需游戏供给碰撞体。局部平移数组保留精确作者值，并处理运行时非均匀响应的入口条件。 |
+| B3：完成 | 代理最近表面/双侧体积投射、envelope、连通岛、无蒙皮代理与自动根骨。 | [cloth_projection_cases.py](tests/cloth_projection_cases.py) 检查最终 VVD 权重、两侧比例、错过保留蒙皮及折叠后骨数限制；实机多骨变形。最多三个最终权重，双侧绑定保留每侧贡献。 |
+| B4：完成 | Color/String/Time 日志、Color Pack/Unpack、倒放、嵌套 clip 时间映射及 FilmClip/track/shot 输入。 | [dmx_scope_cases.py](tests/dmx_scope_cases.py) 的连接和时间采样数值验证；扩展输入不等于完整 SFM 会话求值器。 |
+
+本版最终 325 项 compatibility、20 项 automation、6 项 mount 验证通过。原始 Plum 隔离编译与结构检查通过：126 骨、572277 顶点、18 个物理刚体、质量 30 kg、65 材质，原始资产保持不变。
+
+10 个布料和 2 个 rig 样例已在 CSGO 离线实跑，观察代理/投射多骨变形、混合边界变形、高级碰撞可见壳与绳链，以及 Rotation/IK 姿态变化。本轮执行 `changelevel de_dust2` 后，10 个布料（READY10）与 2 个 rig（READY2）重新创建并经截图确认；6 项设置恢复并读回核对，正常 `quit` 后进程退出码为 0，62 个登记临时文件经哈希核对后删除。高级碰撞证据仍限于加载/运行与输出结构，未作定量接触效果或零穿透认证。详细记录见 [VALIDATION.md](VALIDATION.md)。
+
+固定排除项为 Source2、引擎运行时 solver、SFM 编辑器、已知崩溃的原生 SubD renderer、参考中未接通或空 TODO 路径、无活跃求解分支的 reverse rig，以及无范围上限的逐帧/逐字节对齐。默认离线 SubD 烘焙和已实现的 inverse Twist 不属于这些排除项。上述边界不再拆成新的待移植批次。
+
+English: v1.2.22 completes all eleven authorized CSGO scope packages, including the four originally optional extensions. The final 325 compatibility, 20 automation and 6 mount checks pass. Ten cloth and two rig fixtures ran in offline CSGO and were recreated and visually confirmed after map reload. Advanced collision evidence remains structural and observational, without quantitative contact guarantees. See the fixed scope and cloth authoring guide for supported inputs and exclusions.

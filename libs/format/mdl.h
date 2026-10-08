@@ -167,13 +167,44 @@ struct mstudiobone_t {
 };
 static_assert(sizeof(mstudiobone_t) == 216, "mstudiobone_t layout");
 
-// mstudiobone_t::proctype. Only QUATINTERP and JIGGLE are produced; the rest
-// are listed so the value space is documented in one place.
+// mstudiobone_t::proctype. Constraint records are retained as rig metadata;
+// their motion is baked because the CSGO runtime does not evaluate these types.
 inline constexpr int32_t STUDIO_PROC_AXISINTERP = 1;
 inline constexpr int32_t STUDIO_PROC_QUATINTERP = 2;
 inline constexpr int32_t STUDIO_PROC_AIMATBONE = 3;
 inline constexpr int32_t STUDIO_PROC_AIMATATTACH = 4;
 inline constexpr int32_t STUDIO_PROC_JIGGLE = 5;
+inline constexpr int32_t STUDIO_PROC_POINT_CONSTRAINT = 8;
+inline constexpr int32_t STUDIO_PROC_ORIENT_CONSTRAINT = 9;
+inline constexpr int32_t STUDIO_PROC_AIM_CONSTRAINT = 10;
+inline constexpr int32_t STUDIO_PROC_PARENT_CONSTRAINT = 12;
+
+struct mstudioconstraintslave_t {
+    int32_t bone;
+    Vector3 position;
+    Quaternion orientation;
+};
+struct mstudioconstrainttarget_t {
+    int32_t bone;
+    float weight;
+    Vector3 offset;
+    Quaternion rotation;
+};
+struct mstudioconstraint_t {
+    mstudioconstraintslave_t slave;
+    int32_t targetCount, targetIndex;
+};
+struct mstudioaimconstraint_t {
+    mstudioconstraint_t base;
+    Quaternion aimOffset;
+    Vector3 up;
+    int16_t upSpaceTarget;
+    uint8_t upType, unused;
+};
+static_assert(sizeof(mstudioconstraintslave_t)==32, "constraint slave layout");
+static_assert(sizeof(mstudioconstrainttarget_t)==36, "constraint target layout");
+static_assert(sizeof(mstudioconstraint_t)==40, "constraint layout");
+static_assert(sizeof(mstudioaimconstraint_t)==72, "aim constraint layout");
 
 // Procedural bone data for STUDIO_PROC_QUATINTERP, reached through
 // mstudiobone_t::procindex (a byte offset relative to the owning bone).
@@ -182,6 +213,13 @@ inline constexpr int32_t STUDIO_PROC_JIGGLE = 5;
 // driven bone is blended toward `pos`/`quat`. inv_tolerance is the reciprocal
 // of the trigger's angular influence in RADIANS, so a wider tolerance yields a
 // smaller value.
+struct mstudioaxisinterpbone_t {
+    int32_t control, axis;
+    Vector3 pos[6];
+    Quaternion quat[6];
+};
+static_assert(sizeof(mstudioaxisinterpbone_t) == 176, "mstudioaxisinterpbone_t layout");
+
 struct mstudioquatinterpinfo_t {
     float inv_tolerance; // 1 / radian angle of trigger influence
     Quaternion trigger;  // control orientation to match

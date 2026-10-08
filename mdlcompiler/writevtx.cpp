@@ -155,6 +155,7 @@ struct Strip {
     int numStripGroupIndices = 0;
     int numStripGroupVerts = 0;
     int numBones = 0;
+    int topologyOffset = 0, numTopologyIndices = 0;
 };
 
 struct StripGroup {
@@ -162,6 +163,7 @@ struct StripGroup {
     std::vector<Strip> strips;
     std::vector<fmt::vtx::Vertex_t> verts;
     std::vector<uint16_t> indices;
+    std::vector<uint16_t> topology;
 };
 
 struct VtxMesh {
@@ -664,7 +666,7 @@ void BuildHWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
 
 // BuildSWSkinnedStrips - one software-skinned tri-list strip: no hardware bone
 // palette, no bone-state changes, every group vert copied. dx80 flexed groups
-// (clamped to 1 bone) land here. Reference tri-list path only; SubD is unused.
+// (clamped to 1 bone) land here. Native SubD uses BuildSubdGroup below.
 void BuildSWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
                           std::vector<fmt::vtx::Vertex_t>& vertices, StripGroup* pStripGroup) {
     pStripGroup->strips.emplace_back();
@@ -695,6 +697,38 @@ bool MeshHasFlexedVerts(fmt::mstudiomesh_t* pStudioMesh) {
             return true;
     }
     return false;
+}
+
+// Native subdivision uses software skinning so the patch neighborhood stays
+// intact across flex/palette boundaries. REG and EXTRA strips share one vertex
+// table; the triangle optimizer must never reorder their four-corner records.
+StripGroup BuildSubdGroup(Builder& b, const subd::Mesh& mesh,
+                         fmt::mstudiomodel_t* model, fmt::mstudiomesh_t* studioMesh,
+                         bool flexed) {
+    StripGroup group;
+    if(flexed)group.flags=fmt::vtx::STRIPGROUP_IS_FLEXED|fmt::vtx::STRIPGROUP_IS_DELTA_FLEXED;
+    int maxBones=0;
+    for(uint16_t original:mesh.vertices) {
+        fmt::vtx::Vertex_t vertex{};vertex.origMeshVertID=original;
+        const auto& bw=b.vvdVertex(model,studioMesh->vertexoffset+original)->m_BoneWeights;
+        vertex.numBones=bw.numbones;maxBones=std::max(maxBones,int(bw.numbones));
+        for(int k=0;k<3;++k) {vertex.boneWeightIndex[k]=uint8_t(k);vertex.boneID[k]=k<bw.numbones?bw.bone[k]:255;}
+        group.verts.push_back(vertex);
+    }
+    for(const auto& patch:mesh.patches) {
+        uint8_t flags=patch.regular?fmt::vtx::STRIP_IS_QUADLIST_REG:fmt::vtx::STRIP_IS_QUADLIST_EXTRA;
+        if(group.strips.empty() || group.strips.back().flags!=flags) {
+            group.strips.emplace_back();auto& strip=group.strips.back();strip.flags=flags;
+            strip.stripGroupIndexOffset=int(group.indices.size());
+            strip.stripGroupVertexOffset=0;strip.numStripGroupVerts=int(group.verts.size());
+            strip.topologyOffset=int(group.topology.size());strip.numBones=maxBones;
+        }
+        auto& strip=group.strips.back();strip.numStripGroupIndices+=4;strip.numIndices+=4;
+        strip.numTopologyIndices+=int(patch.topology.size());
+        group.indices.insert(group.indices.end(),patch.indices.begin(),patch.indices.end());
+        group.topology.insert(group.topology.end(),patch.topology.begin(),patch.topology.end());
+    }
+    return group;
 }
 
 // ProcessStripGroup
@@ -870,6 +904,7 @@ void PostProcessStripGroup(StripGroup* src, std::vector<StripGroup>& out) {
 
 std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
                               std::vector<uint8_t>& vvdBuf, bool legacyVtx, bool dx80) {
+    if (legacyVtx && (m.gflags & (1<<19)))throw std::runtime_error("SubD requires extended VTX topology headers");
     Builder b;
     b.m = &m;
     b.mdlBuf = &mdlBuf;
@@ -951,10 +986,18 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
                                                                  : nullptr;
 
             VtxMesh& newMesh = b.models[t.modelIdx].modelLODs[lodID].meshes[t.meshID];
-            // ComputeMeshFlags: a non-zero materialtype
-            // means the eyeball pass claimed this mesh. MESH_IS_TEETH needs
-            // $mouth teeth material matching, which is not implemented.
+            // Any skin-family texture using MouthShader marks the mesh as teeth.
+            // Check final material names and the serialized texture table.
             newMesh.flags = pStudioMesh->materialtype != 0 ? kMeshIsEyes : 0;
+            const auto* textures=reinterpret_cast<const fmt::mstudiotexture_t*>(tb.mdlBuf->data()+tb.hdr()->textureindex);
+            for(const auto& skin:m.skinref) {
+                const int ref=pStudioMesh->material;
+                if(ref>=0 && ref<static_cast<int>(skin.size())) {
+                    const int texture=skin[ref];
+                    if(texture>=0 && texture<tb.hdr()->numtextures && textures[texture].flags)
+                        newMesh.flags|=kMeshIsTeeth;
+                }
+            }
 
             // removemodel / removemesh leave the mesh header in place
             // with no strip groups: the per-LOD mesh count has to stay
@@ -968,6 +1011,13 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
             const std::vector<source::SrcFace>& meshFaces = outMesh.lodFaces[lodID];
             if (meshFaces.empty())
                 continue;
+
+            if (!outMesh.subdLods.empty()) {
+                const auto& patches=outMesh.subdLods[lodID];
+                if (!patches.patches.empty())newMesh.stripGroups.push_back(BuildSubdGroup(tb,patches,pStudioModel,pStudioMesh,
+                    scriptLod.facialAnimation && MeshHasFlexedVerts(pStudioMesh)));
+                continue;
+            }
 
             std::vector<bool> facesProcessed(meshFaces.size(), false);
 
@@ -1021,7 +1071,7 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
     int totalBodyParts = phdr->numbodyparts;
     int totalModels = 0, totalModelLODs = 0, totalMeshes = 0;
     int totalStripGroups = 0, totalStrips = 0, totalVerts = 0, totalIndices = 0;
-    int totalBoneStateChanges = 0;
+    int totalBoneStateChanges = 0, totalTopologyIndices = 0;
     for (VtxModel& mo : b.models) {
         totalModels++;
         for (VtxModelLOD& lod : mo.modelLODs) {
@@ -1032,6 +1082,7 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
                     totalStripGroups++;
                     totalVerts += static_cast<int>(sg.verts.size());
                     totalIndices += static_cast<int>(sg.indices.size());
+                    totalTopologyIndices += static_cast<int>(sg.topology.size());
                     for (Strip& st : sg.strips) {
                         totalStrips++;
                         totalBoneStateChanges += st.numBoneStateChanges;
@@ -1091,7 +1142,7 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
         totalMaterialReplacements * sizeof(fmt::vtx::MaterialReplacementHeader_t);
     size_t topologyOffset =
         materialReplacementsListOffset + numLODs * sizeof(fmt::vtx::MaterialReplacementListHeader_t);
-    size_t endOfFile = topologyOffset; // legacy: no topology block
+    size_t endOfFile = topologyOffset + sizeof(uint16_t) * totalTopologyIndices;
 
     // reference section report, deferred to save time
     {
@@ -1165,7 +1216,7 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
     }
 
     int curModel = 0, curLOD = 0, curMesh = 0, curStrip = 0, curStripGroup = 0;
-    int curVert = 0, curIndex = 0, curBoneStateChange = 0;
+    int curVert = 0, curIndex = 0, curBoneStateChange = 0, curTopology = 0;
     int deltaModel = 0, deltaLOD = 0, deltaMesh = 0, deltaStrip = 0, deltaStripGroup = 0;
     int deltaVert = 0, deltaIndex = 0, deltaBoneStateChange = 0;
 
@@ -1198,6 +1249,10 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
                                    sg.indices.size() * sizeof(uint16_t));
                             deltaIndex += static_cast<int>(sg.indices.size());
                         }
+
+                        if (!sg.topology.empty())
+                            memcpy(out.data()+topologyOffset+size_t(curTopology)*sizeof(uint16_t),
+                                   sg.topology.data(),sg.topology.size()*sizeof(uint16_t));
 
                         for (size_t stripID = 0; stripID < sg.strips.size(); stripID++) {
                             Strip& strip = sg.strips[stripID];
@@ -1241,8 +1296,8 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
                                     (boneStateChangesOffset +
                                      curBoneStateChange * sizeof(fmt::vtx::BoneStateChangeHeader_t)) -
                                     stripFileOffset);
-                                sh.numTopologyIndices = 0;
-                                sh.topologyOffset = 0;
+                                sh.numTopologyIndices = strip.numTopologyIndices;
+                                sh.topologyOffset = strip.topologyOffset;
                                 memcpy(out.data() + stripFileOffset, &sh, sizeof(sh));
                             }
                             deltaStrip++;
@@ -1270,14 +1325,14 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
                             fmt::vtx::StripGroupHeader_t sgh{};
                             sgh.numVerts = static_cast<int32_t>(sg.verts.size());
                             sgh.numIndices = static_cast<int32_t>(sg.indices.size());
-                            sgh.numTopologyIndices = 0;
+                            sgh.numTopologyIndices = static_cast<int32_t>(sg.topology.size());
                             sgh.numStrips = static_cast<int32_t>(sg.strips.size());
                             sgh.flags = sg.flags;
                             sgh.vertOffset = static_cast<int32_t>(
                                 (vertsOffset + curVert * sizeof(fmt::vtx::Vertex_t)) - sgFileOffset);
                             sgh.indexOffset = static_cast<int32_t>(
                                 (indicesOffset + curIndex * sizeof(uint16_t)) - sgFileOffset);
-                            sgh.topologyOffset = static_cast<int32_t>(topologyOffset - sgFileOffset);
+                            sgh.topologyOffset = static_cast<int32_t>(topologyOffset + size_t(curTopology)*sizeof(uint16_t) - sgFileOffset);
                             sgh.stripOffset = static_cast<int32_t>(
                                 (stripsOffset + curStrip * stripSize) - sgFileOffset);
                             memcpy(out.data() + sgFileOffset, &sgh, sizeof(sgh));
@@ -1289,6 +1344,7 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
                         deltaVert = 0;
                         curIndex += deltaIndex;
                         deltaIndex = 0;
+                        curTopology += static_cast<int>(sg.topology.size());
                     }
                     // WriteMesh
                     {

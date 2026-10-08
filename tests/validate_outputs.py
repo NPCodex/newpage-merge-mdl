@@ -122,14 +122,35 @@ def validate(path, vtx_format=None):
                                 vertices=list(vtx.table(group,9,group));indices=list(vtx.table(group+8,2,group))
                                 for at in indices:
                                     if struct.unpack_from('<H',vtx.data,at)[0]>=len(vertices):raise ValueError('Invalid VTX strip-group vertex index')
+                                topology=list(vtx.table(group+25,2,group)) if full else []
                                 for strip in vtx.table(group+16,strip_size,group):
                                     count,first,verts,base=struct.unpack_from('<4i',vtx.data,strip)
                                     if count<0 or first<0 or first+count>len(indices) or verts<0 or base<0 or base+verts>len(vertices):raise ValueError('Invalid VTX strip range')
                                     list(vtx.table(strip+19,8,strip))
-                                    if full:list(vtx.table(strip+27,2,strip))
-                                if full:list(vtx.table(group+25,2,group))
+                                    flags=vtx.data[strip+18]
+                                    if full:
+                                        nt,to=struct.unpack_from('<2i',vtx.data,strip+27)
+                                        if nt<0 or to<0 or to+nt>len(topology):raise ValueError('Invalid VTX strip topology range')
+                                        if flags in (2,4):
+                                            if len(indices)>8192*4:raise ValueError('SubD strip group exceeds renderer patch capacity')
+                                            if count%4 or not nt:raise ValueError('Invalid SubD control index count')
+                                            cursor=to
+                                            for patch in range(count//4):
+                                                if cursor+60>to+nt:raise ValueError('Truncated SubD topology header')
+                                                head=struct.unpack_from('<60H',vtx.data,topology[cursor])
+                                                total=sum(head[:4]);end=cursor+60+total
+                                                if end>to+nt or total>52:raise ValueError('Invalid SubD one-ring size')
+                                                for corner in range(4):
+                                                    if head[corner]<4 or head[4+corner]>=head[corner] or head[12+corner]>=head[corner]:raise ValueError('Invalid SubD one-ring metadata')
+                                                if max(head[44:60])>=vertex_total:raise ValueError('Invalid SubD UV vertex')
+                                                ring=struct.unpack_from('<'+'H'*total,vtx.data,topology[cursor+60])
+                                                if max(ring)>=len(vertices):raise ValueError('Invalid SubD one-ring vertex')
+                                                if flags==2 and (head[8:12]!=(4,)*4 or any(head[16:24])):raise ValueError('Irregular patch in regular SubD strip')
+                                                cursor=end
+                                            if cursor!=to+nt:raise ValueError('Extra SubD topology records')
+                                    elif flags in (2,4):raise ValueError('SubD requires extended VTX')
         failures=[]
-        for full in ([bool(vtx_format)] if vtx_format is not None else [False,True]):
+        for full in ([bool(vtx_format)] if vtx_format is not None else ([True] if mdl.integer(152)&(1<<19) else [False,True])):
             try:check_layout(full);break
             except (ValueError,struct.error) as error:failures.append(str(error))
         else:raise ValueError('No valid VTX layout: '+ '; '.join(failures))

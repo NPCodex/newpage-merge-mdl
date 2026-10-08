@@ -11,12 +11,25 @@ import tempfile
 import unittest
 from scene_fixtures import scene_bytes,skinned_scene_bytes
 from extended_cases import ExtendedCases
+from physics_mass_cases import PhysicsMassCases
+from physics_extra_cases import PhysicsExtraCases
+from cloth_cases import ClothCases
+from subd_cases import SubdCases
+from dmx_dependency_cases import DmxDependencyCases
+from procedural_cases import ProceduralCases
+from axis_export_cases import AxisExportCases
+from csgo_closure_cases import CsgoClosureCases
+from cloth_advanced_cases import ClothAdvancedCases
+from cloth_scope_cases import ClothScopeCases
+from dmx_scope_cases import DmxScopeCases
+from procedural_scope_cases import ProceduralScopeCases
+from cloth_projection_cases import ClothProjectionCases
 from validate_outputs import validate
 
 COMPILER = str(Path(sys.argv.pop(1)).resolve())
 
 
-class Compatibility(ExtendedCases,unittest.TestCase):
+class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,SubdCases,DmxDependencyCases,ProceduralCases,AxisExportCases,CsgoClosureCases,ClothAdvancedCases,ClothScopeCases,DmxScopeCases,ProceduralScopeCases,ClothProjectionCases,unittest.TestCase):
     def test_merged_materials_keep_geometry_flexes_and_lods(self):
         import json,copy
         doc=json.loads(scene_bytes());doc['materials'].append({'name':'Second'})

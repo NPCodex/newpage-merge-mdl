@@ -14,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
 #include <map>
 #include <tuple>
@@ -246,6 +247,7 @@ struct Ctx {
     std::map<std::string, std::vector<Token>> lodCmdlists; // $lodcmdlist, keyed lowercased
     std::map<std::string, std::vector<Token>> rendermeshCmdlists; // $rendermeshcmdlist, keyed lowercased
     std::map<std::string, std::string> variables; // $definevariable, case-sensitive, shared across $include
+    const std::map<std::string,std::string>* flexVariables=nullptr;
     struct Macro {
         std::string file;
         std::vector<std::string> params;
@@ -596,11 +598,34 @@ std::shared_ptr<pulse::dmx::Datamodel> LoadDmxCached(Ctx& c, const fs::path& ful
     return dm;
 }
 
+bool ExpandVars(Ctx& c, Token& t,const std::map<std::string,std::string>* context=nullptr);
+
+// Lookahead can process a following redefine before a source is loaded.
+// A DMX import owns the variables effective at its filename, like a QC token.
+struct FlexImportContext {
+    Ctx& c;
+    const std::map<std::string,std::string>* previous;
+    std::map<std::string,std::string> values;
+    explicit FlexImportContext(Ctx& c):c(c),previous(c.flexVariables),values(c.variables){c.flexVariables=&values;}
+    ~FlexImportContext(){c.flexVariables=previous;}
+};
+
+bool ExpandFlexRules(Ctx& c, std::vector<source::SrcFlexRule>& rules, int line) {
+    for (auto& rule : rules) {
+        Token expression;
+        expression.text = rule.expr;
+        expression.line = line;
+        if (!ExpandVars(c, expression,c.flexVariables)) return false;
+        rule.expr = std::move(expression.text);
+    }
+    return true;
+}
+
 source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
                            bool morphSource = false, MeshEdit* edit = nullptr,
                            source::LoadKind kind = source::LoadKind::Model,
                            const source::SceneOptions* sceneOptions=nullptr,
-                           bool proceduralPoseOnly=false) {
+                           bool proceduralPoseOnly=false,bool expandFlex=true) {
     const bool priv = edit != nullptr;
     const bool animOnly = kind == source::LoadKind::Animation;
     // a collision hull is never drawn, so keep its materials out of the model's
@@ -612,6 +637,11 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
     const source::SceneOptions& scene = sceneOptions ? *sceneOptions : (edit ? edit->sceneOptions : c.sceneOptions);
     std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate);
     if (proceduralPoseOnly) key += "|procedural-pose";
+    // Sources may contain flex expressions. A later variable definition must
+    // not reuse expressions expanded under a previous import's QC context.
+    for (const auto& variable : (c.flexVariables?*c.flexVariables:c.variables))
+        key += "|var:" + std::to_string(variable.first.size()) + ":" + variable.first +
+               ":" + std::to_string(variable.second.size()) + ":" + variable.second;
     for (const auto& rename : c.morphRenames) if (rename.sourceOnly)
         key += "|morph:" + std::to_string(rename.from.size()) + ":" + rename.from +
                ":" + std::to_string(rename.to.size()) + ":" + rename.to;
@@ -747,6 +777,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
         }
     }
 
+    if (expandFlex && !ExpandFlexRules(c, src->dmeFlexRules, line)) return nullptr;
+
     // Neko's RenameMorph is a raw FBX/glTF-name map, not a rewrite of QC
     // declarations. Apply the latest definition once, before named flex lookup.
     // A later mapping never renames a previously loaded private body choice.
@@ -839,6 +871,7 @@ bool CmdRenderMesh(Ctx& c, const Token& cmd) {
     std::string name, file;
     if (!c.Want("a name", cmd, name) || !c.Want("a source filename", cmd, file))
         return false;
+    FlexImportContext flexContext(c);
     if (c.rendermeshes.count(name))
         return c.Fail(cmd.line, "duplicate $rendermesh \"" + name + "\"");
 
@@ -1801,6 +1834,7 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
     std::string file;
     if (!c.Want("a source filename", cmd, file))
         return false;
+    FlexImportContext flexContext(c);
 
     bool controllers = false, correctives = false, dominators = false, rules = false;
     while (!c.AtCommand()) {
@@ -1842,6 +1876,7 @@ bool CmdDataModelFlexes(Ctx& c, const Token& cmd) {
         return false;
     if (!source::LoadDmxFlexRig(*dm, rig, &err))
         return c.Fail(cmd.line, "$datamodelflexes \"" + file + "\": " + err);
+    if (rules && !ExpandFlexRules(c, rig.rules, cmd.line)) return false;
     MergeFlexRig(c.manual.datamodel, rig, controllers, correctives, dominators, rules);
     return true;
 }
@@ -1859,7 +1894,8 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& 
     if(processing) edit.ceProcessing=*processing;
     const float defaultScale = c.in.scale;
     c.in.scale = importScale;
-    source::Source* src = LoadSource(c, file, entry.line, /*morphSource=*/true, &edit);
+    source::Source* src = LoadSource(c, file, entry.line, /*morphSource=*/true, &edit,
+                                   source::LoadKind::Model,nullptr,false,importFlexRig);
     c.in.scale = defaultScale;
     if (!src)
         return nullptr;
@@ -1876,6 +1912,7 @@ source::Source* LoadStudioSource(Ctx& c, const Token& entry, const std::string& 
             c.Fail(entry.line, "\"" + file + "\": " + err);
             return nullptr;
         }
+        if (importFlexRig && !ExpandFlexRules(c, rig.rules, entry.line)) return nullptr;
         if (importFlexRig)
             MergeFlexRig(c.manual.datamodel, rig, true, true, true, true);
     }
@@ -1963,6 +2000,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
     std::string file;
     if (!c.Want("a source filename", cmd, file))
         return false;
+    FlexImportContext flexContext(c);
     file = WithSourceExtension(c, file);
 
     // inline studio flags up to the '{' or the next command
@@ -2008,7 +2046,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         } else if(o=="renamematbyprefix") {
             if(!c.Want("a material prefix",option,materialPrefix)) return false;
         } else if (o == "subd") {
-            // no quad subdivision in this compiler (matches importqc); accepted
+            c.in.csgo.subd = true;
         } else if (o == "faces") {
             float a, b;
             if (!c.WantFloat("a faces arg", option, a) || !c.WantFloat("a faces arg", option, b))
@@ -6366,11 +6404,7 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
     std::string filename;
     if (!c.Want("a .vrd file name", cmd, filename))
         return false;
-    // the non-.vrd branch of Load_ProceduralBones reads axis-interp bones, a
-    // different procedural type with no backend here
-    if (_stricmp(pulse::FilePath(filename).extension().string().c_str(), ".vrd") != 0)
-        return c.Fail(cmd.line, "$proceduralbones expects a .vrd file, got \"" +
-                                filename + "\"");
+    const bool axisFormat = _stricmp(pulse::FilePath(filename).extension().string().c_str(), ".vrd") != 0;
 
     std::vector<fs::path> tried;
     const auto savedSourceDirs=c.sourceDirStack;
@@ -6384,6 +6418,67 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
     std::ifstream f(full.string(), std::ios::binary);
     if (!f)
         return c.Fail(cmd.line, "cannot open \"" + full.string() + "\"");
+
+    if (axisFormat) {
+        cm::AxisInterpBone* axis = nullptr;
+        unsigned slots = 0;
+        bool block = false, found = false;
+        pm::Vector3 base{};
+        std::string line;
+        auto complete = [&]() { return !axis || slots == 63; };
+        while (std::getline(f, line)) {
+            std::istringstream row(line);
+            std::string key; row >> key; key = Lower(key);
+            if (key.empty() || key.rfind("//",0)==0) continue;
+            if (key == "version") {
+                int version = 0;
+                if (!(row >> version) || version != 1) return c.Fail(cmd.line,"axisinterp expects version 1");
+            } else if (key == "proceduralbones") block = true;
+            else if (key == "end") {
+                if (!complete()) return c.Fail(cmd.line,"axisinterp needs all six axis poses");
+                axis = nullptr; block = false;
+            } else if (!block) return c.Fail(cmd.line,"axisinterp expected proceduralbones block");
+            else if (key == "bone") {
+                if (!complete()) return c.Fail(cmd.line,"axisinterp needs all six axis poses");
+                cm::AxisInterpBone value; int selected = 0;
+                if (!(row >> std::quoted(value.name) >> std::quoted(value.parentName) >>
+                      std::quoted(value.controlName) >> std::quoted(value.controlParentName) >> selected) ||
+                    selected < 1 || selected > 3 || value.name.empty() || value.controlName.empty())
+                    return c.Fail(cmd.line,"axisinterp bone expects four names and axis 1..3");
+                value.axis = selected - 1;
+                c.in.axisinterpbones.push_back(std::move(value));
+                if(c.in.axisinterpbones.size()>static_cast<size_t>(pulse::limits::kMaxProceduralBones))
+                    return c.Fail(cmd.line,"too many axisinterp bones");
+                axis=&c.in.axisinterpbones.back(); slots=0; found=true;
+            } else if (key == "basepos") {
+                if (!(row >> base.x >> base.y >> base.z) || !std::isfinite(base.x) ||
+                    !std::isfinite(base.y) || !std::isfinite(base.z)) return c.Fail(cmd.line,"invalid axisinterp basepos");
+            } else if (key == "axis") {
+                int i=-1; pm::Vector3 p, degrees;
+                if (!axis || !(row >> i >> p.x >> p.y >> p.z >> degrees.x >> degrees.y >> degrees.z) ||
+                    i<0 || i>5 || (slots&(1u<<i))) return c.Fail(cmd.line,"axisinterp axis needs a unique index 0..5 and six floats");
+                for(int k=0;k<3;++k) {
+                    (&p.x)[k]=((&p.x)[k]+(&base.x)[k])*c.in.scale;
+                    if(!std::isfinite((&p.x)[k])||!std::isfinite((&degrees.x)[k]))
+                        return c.Fail(cmd.line,"non-finite axisinterp pose");
+                }
+                axis->position[i]=p;
+                pm::AngleQuaternion({DegToRad(degrees.x),DegToRad(degrees.y),DegToRad(degrees.z)},axis->rotation[i]);
+                slots|=1u<<i;
+            } else if (key == "type") {
+                std::string kind;row>>kind;
+                // Stock treats type as decoration. This marker retains a
+                // decompiled root-control table in its existing model axes.
+                if(Lower(kind)=="compiled") {
+                    if(!axis)return c.Fail(cmd.line,"axisinterp type compiled needs a bone");
+                    axis->controlInModelSpace=true;
+                }
+            } else if (key != "display") return c.Fail(cmd.line,"unknown axisinterp directive: "+key);
+        }
+        if(!found||!complete())return c.Fail(cmd.line,"axisinterp needs all six axis poses");
+        if(block)return c.Fail(cmd.line,"axisinterp block missing end");
+        return true;
+    }
 
     cm::ProceduralBone* cur = nullptr;
     // set only INSIDE an <aimconstraint> block - see the header comment
@@ -6851,6 +6946,7 @@ bool ParseReplaceModel(Ctx& c, const Token& cmd, cm::ScriptLod& lod) {
         // normals and keep cached files/rendermesh aliases private to this LOD.
         auto privateSource = std::make_unique<source::Source>(*r.source);
         for (auto& face : privateSource->face) std::swap(face.b, face.c);
+        for (auto& quad : privateSource->quads) std::swap(quad.vertex[1], quad.vertex[3]);
         r.source = privateSource.get();
         c.in.sources.push_back(std::move(privateSource));
     }
@@ -8229,6 +8325,72 @@ void RemovePhysicsPair(Ctx& c, const std::string& a, const std::string& b) {
                 pairs.end());
 }
 
+bool ParseExtraCollisionOptions(Ctx& c, const Token& cmd, cm::PhysicsShape& shape) {
+    if (!c.Eof() && c.Cur().line == cmd.line &&
+        Lower(c.Cur().text).rfind("offset", 0) == 0) {
+        const Token option = c.toks[c.pos++];
+        pm::Vector3 position{}, angles{};
+        float scale = 1.0f;
+        const std::string text = Lower(option.text);
+        const char* cursor = text.c_str();
+        auto skipSpace = [&]() {
+            while (std::isspace(static_cast<unsigned char>(*cursor))) ++cursor;
+        };
+        auto literal = [&](const char* expected) {
+            skipSpace();
+            const size_t length = std::strlen(expected);
+            if (std::strncmp(cursor, expected, length) != 0) return false;
+            cursor += length;
+            return true;
+        };
+        auto number = [&](float& value) {
+            skipSpace();
+            char* end = nullptr;
+            value = std::strtof(cursor, &end);
+            if (end == cursor) return false;
+            cursor = end;
+            return true;
+        };
+        if (!option.quoted || !literal("offset") || !literal("pos[") ||
+            !number(position.x) || !number(position.y) || !number(position.z) ||
+            !literal("]") || !literal("angle[") || !number(angles.x) ||
+            !number(angles.y) || !number(angles.z) || !literal("]") ||
+            !literal("scale[") || !number(scale) || !literal("]") ||
+            (skipSpace(), *cursor != '\0'))
+            return c.Fail(option.line, "malformed $addconvexsrc offset; expected quoted "
+                          "offset pos[ x y z ] angle[ pitch yaw roll ] scale[ value ]");
+        if (!std::isfinite(position.x) || !std::isfinite(position.y) ||
+            !std::isfinite(position.z) || !std::isfinite(angles.x) ||
+            !std::isfinite(angles.y) || !std::isfinite(angles.z) ||
+            !std::isfinite(scale) || scale == 0.0f || c.in.scale == 0.0f)
+            return c.Fail(option.line, "$addconvexsrc offset must be finite with nonzero scale");
+        const float ratio = scale / c.in.scale;
+        if (!std::isfinite(ratio) || ratio == 0.0f)
+            return c.Fail(option.line, "$addconvexsrc offset scale is out of range");
+
+        // CJointedModel::AddConvexSrc: convert the authored offset from model
+        // axes to the SMD physics source axes. Position is not globally scaled.
+        pm::matrix3x4 local, convert;
+        pm::AngleMatrixDeg(angles, local);
+        for (int row = 0; row < 3; ++row)
+            for (int col = 0; col < 3; ++col) local.m[row][col] *= ratio;
+        local.m[0][3] = position.x;
+        local.m[1][3] = position.y;
+        local.m[2][3] = position.z;
+        convert.m[0][0] = 0; convert.m[0][1] = -1;
+        convert.m[1][0] = 1; convert.m[1][1] = 0;
+        shape.sourceOffset = pm::ConcatTransforms(
+            convert, pm::ConcatTransforms(local, pm::MatrixInvert(convert)));
+        shape.sourceOffsetSet = true;
+        shape.sourceOffsetMirrored = ratio < 0.0f;
+    }
+    if (!c.Eof() && c.Cur().line == cmd.line && Lower(c.Cur().text) == "concave") {
+        shape.concave = true;
+        ++c.pos;
+    }
+    return true;
+}
+
 bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
     std::string file;
     if (!c.Want("a collision source filename", cmd, file))
@@ -8243,6 +8405,7 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
     if (!LoadPhysicsFileShape(c, cmd, file, shape))
         return false;
     const size_t mainShape = c.in.physShapes.size();
+    shape.legacyCollisionGroup = static_cast<int>(mainShape);
     c.in.physShapes.push_back(std::move(shape));
     c.in.physBuildMode = mode;
 
@@ -8388,6 +8551,8 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
             extraShape.maxConvex = maxConvex;
             extraShape.remove2d = remove2d;
             if (!LoadPhysicsFileShape(c, sub, extra, extraShape)) return false;
+            extraShape.legacyCollisionGroup = static_cast<int>(mainShape);
+            if (!ParseExtraCollisionOptions(c, sub, extraShape)) return false;
             c.in.physShapes.push_back(std::move(extraShape));
         } else if (o == "$generate" || o == "$generatemodel" || o == "$generatejoint" ||
                    o == "$addgeneratechild") {
@@ -8400,6 +8565,9 @@ bool CmdLegacyCollision(Ctx& c, const Token& cmd, cm::PhysicsBuildMode mode) {
     for (size_t i = mainShape; i < c.in.physShapes.size(); i++) {
         c.in.physShapes[i].maxConvex = maxConvex;
         c.in.physShapes[i].remove2d = remove2d;
+        if (i != mainShape)
+            c.in.physShapes[i].concave = c.in.physShapes[i].concave &&
+                mode == cm::PhysicsBuildMode::Single && c.in.physLegacyConcave;
     }
     c.in.physShapes[mainShape].concave =
         mode == cm::PhysicsBuildMode::Single ? c.in.physLegacyConcave
@@ -8613,7 +8781,7 @@ size_t VarRefEnd(const std::string& s, size_t i) {
 }
 
 // Rewrite every $name$ in a token to its $definevariable value.
-bool ExpandVars(Ctx& c, Token& t) {
+bool ExpandVars(Ctx& c, Token& t,const std::map<std::string,std::string>* context) {
     if (t.text.find('$') == std::string::npos)
         return true;
     std::string out;
@@ -8624,8 +8792,9 @@ bool ExpandVars(Ctx& c, Token& t) {
             continue;
         }
         const std::string name = t.text.substr(i + 1, e - i - 1);
-        auto it = c.variables.find(name);
-        if (it == c.variables.end())
+        const auto& variables=context?*context:c.variables;
+        auto it = variables.find(name);
+        if (it == variables.end())
             return c.Fail(t.line, "unknown variable \"$" + name + "$\" - no "
                                   "$definevariable for it above this line");
         out += it->second;
@@ -9564,7 +9733,19 @@ bool CmdCsgo(Ctx& c, const Token& cmd) {
     auto& o=c.in.csgo;
     if(name=="$skinnedlods") { o.skinnedLods=true; return true; }
     if(name=="$zbrush") { o.zbrush=true; return true; }
-    if(name=="$subd") { o.subd=true; return true; }
+    if(name=="$subd") {
+        o.subd=true;o.subdNative=false;o.subdLevels=2;
+        if(!c.AtCommand()) {
+            const Token option=*c.Next();const std::string mode=Lower(option.text);
+            if(mode=="native"&&!option.quoted)o.subdNative=true;
+            else if(mode=="levels"&&!option.quoted) {
+                if(!c.WantInt("subdivision levels from 1 to 3",option,o.subdLevels))return false;
+                if(o.subdLevels<1||o.subdLevels>3)return c.Fail(option.line,"$subd levels must be from 1 to 3");
+            } else return c.Fail(option.line,"$subd accepts 'native' or 'levels 1..3'");
+        }
+        if(!c.AtCommand())return c.Fail(c.Cur().line,"$subd native does not accept levels; use one subdivision mode");
+        return true;
+    }
     if(name=="$appendsource") {
         if(c.in.bodyparts.empty()||c.in.bodyparts.front().models.empty()||!c.in.bodyparts.front().models.front().source)
             return c.Fail(cmd.line,"appendsource requires a preceding first model");
@@ -9752,7 +9933,109 @@ bool CmdFakeVta(Ctx& c,const Token& cmd) {
     c.fakeVtas[Lower(name)]=std::move(frames);return true;
 }
 
+bool CmdCloth(Ctx& c, const Token& cmd) {
+    const bool plane = Lower(cmd.text) == "$clothplanecollision";
+    auto advanced = [&](const Token& entry) {
+        if (c.Eof() || c.Cur().quoted || c.Cur().text != "{")
+            return c.Fail(entry.line, "cloth advanced expects '{'");
+        ++c.pos;
+        int depth=1;
+        std::vector<std::string> tokens;
+        while (!c.Eof() && depth) {
+            Token token=c.Cur();++c.pos;
+            if (!token.quoted && token.text=="{")++depth;
+            if (!token.quoted && token.text=="}")--depth;
+            if (depth)tokens.push_back(token.text);
+        }
+        if (depth)return c.Fail(entry.line,"cloth advanced missing closing brace");
+        std::string error;
+        if (!pulse::cloth::ParseAdvanced(c.in.clothSettings.advanced,tokens,c.in.scale,&error))
+            return c.Fail(entry.line,error);
+        for (const auto& bone:pulse::cloth::AdvancedReferencedBones(c.in.clothSettings.advanced))
+            c.in.bonemarkups.push_back({bone,true,false});
+        return true;
+    };
+    if (!plane && !c.Eof() && !c.Cur().quoted && Lower(c.Cur().text)=="advanced") {
+        const Token entry=c.Cur();++c.pos;
+        return advanced(entry);
+    }
+    if (!c.Eof() && !c.Cur().quoted && c.Cur().text == "{") {
+        if (plane) return c.Fail(cmd.line, "clothplanecollision expects a DMX proxy file");
+        ++c.pos;
+        while (!c.Eof() && (c.Cur().quoted || c.Cur().text != "}")) {
+            Token key = c.Cur(); ++c.pos;
+            const std::string shape = Lower(key.text);
+            if (shape=="advanced") {if (!advanced(key)) return false;continue;}
+            if (shape=="prerotate") {
+                auto& rotation=c.in.clothSettings.prerotate;
+                if (!c.WantFloat("pitch",key,rotation.x) || !c.WantFloat("yaw",key,rotation.y) ||
+                    !c.WantFloat("roll",key,rotation.z))return false;
+                if (!std::isfinite(rotation.x)||!std::isfinite(rotation.y)||!std::isfinite(rotation.z))
+                    return c.Fail(key.line,"cloth prerotate requires finite angles");
+                rotation={rotation.z*pm::kDeg2Rad,rotation.x*pm::kDeg2Rad,rotation.y*pm::kDeg2Rad};
+                continue;
+            }
+            if (shape == "sphere" || shape == "capsule") {
+                pulse::cloth::RigidCollider collider;
+                collider.type = shape == "sphere" ? pulse::cloth::RigidCollider::Type::Sphere : pulse::cloth::RigidCollider::Type::Capsule;
+                if (!c.Want("a collider bone", key, collider.bone)) return false;
+                if (!std::isfinite(c.in.scale) || c.in.scale <= 0)
+                    return c.Fail(key.line, "cloth collider scale must be finite and positive");
+                for (int j = 0; j < (shape == "sphere" ? 1 : 2); ++j) {
+                    auto& p = collider.center[j];
+                    if (!c.WantFloat("center x", key, p.x) || !c.WantFloat("center y", key, p.y) ||
+                        !c.WantFloat("center z", key, p.z) || !c.WantFloat("radius", key, collider.radius[j])) return false;
+                    p.x *= c.in.scale; p.y *= c.in.scale; p.z *= c.in.scale;
+                    collider.radius[j] *= c.in.scale;
+                    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) ||
+                        !std::isfinite(collider.radius[j]) || collider.radius[j] <= 0)
+                        return c.Fail(key.line, "cloth collider requires finite centers and positive radii");
+                }
+                if (shape == "sphere") { collider.center[1] = collider.center[0]; collider.radius[1] = collider.radius[0]; }
+                c.in.bonemarkups.push_back({collider.bone, true, false});
+                c.in.clothSettings.colliders.push_back(std::move(collider));
+                continue;
+            }
+            if (c.Eof() || (!c.Cur().quoted && (c.Cur().text == "}" || c.Cur().text == "{" || c.Cur().text[0] == '$')))
+                return c.Fail(key.line, "cloth setting " + key.text + " needs a value");
+            const std::string value = c.Cur().text; ++c.pos;
+            std::string error;
+            if (!pulse::cloth::SetSetting(c.in.clothSettings, key.text, value, &error)) return c.Fail(key.line, error);
+        }
+        if (c.Eof()) return c.Fail(cmd.line, "cloth settings missing closing brace");
+        ++c.pos;
+        return true;
+    }
+    std::string filename;
+    if (!c.Want("a cloth DMX proxy filename", cmd, filename)) return false;
+    auto dm = LoadRigDmx(c, cmd, filename, plane ? "cloth collision planes" : "cloth proxy");
+    if (!dm) return false;
+    pulse::cloth::Proxy proxy;
+    std::string error;
+    if (!pulse::cloth::ReadProxy(*dm, plane, proxy, &error, &c.in.clothSettings))
+        return c.Fail(cmd.line, filename + ": " + error);
+    if (!std::isfinite(c.in.scale) || c.in.scale <= 0)
+        return c.Fail(cmd.line, "cloth proxy scale must be finite and positive");
+    // Match the render importer: each file captures the scale at its command.
+    // A later $scale must not resize previously loaded cloth or collision data.
+    for (auto& point : proxy.points) {
+        point.position.x *= c.in.scale;
+        point.position.y *= c.in.scale;
+        point.position.z *= c.in.scale;
+        point.collisionRadius *= c.in.scale;
+        if (!std::isfinite(point.position.x) || !std::isfinite(point.position.y) ||
+            !std::isfinite(point.position.z) || !std::isfinite(point.collisionRadius))
+            return c.Fail(cmd.line, "non-finite scaled cloth proxy position");
+    }
+    for (const auto& bone : proxy.bones)
+        c.in.bonemarkups.push_back({bone, true, false});
+    c.in.clothProxies.push_back(std::move(proxy));
+    return true;
+}
+
 constexpr Command kCommands[] = {
+    {"$cloth", CmdCloth},
+    {"$clothplanecollision", CmdCloth},
     {"$fakevta", CmdFakeVta},
     {"$skinnedlods", CmdCsgo},
     {"$zbrush", CmdCsgo},

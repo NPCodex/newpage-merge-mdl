@@ -54,6 +54,12 @@ struct SrcFace {
     uint32_t a = 0, b = 0, c = 0;
 };
 
+// Authored DMX control quads, kept independently of fallback triangles.
+struct SrcQuad {
+    uint32_t vertex[4] = {}; // mesh-relative, reverse authored winding
+    int material = 0;
+};
+
 // Per-material vertex/face range, indexed by material.
 struct SrcMesh {
     int numvertices = 0;
@@ -78,6 +84,9 @@ struct SrcBonePose {
 // "BindPose" (frame 0 = bind transforms) plus one entry per DmeChannelsClip.
 struct SourceAnim {
     std::string name;
+    // Operators already evaluated while loading an authored DMX clip. The
+    // later external-rig pass must not replace animated parameters with defaults.
+    std::vector<std::string> bakedRigOperators;
     int startframe = 0;
     int endframe = 0;
     int numframes = 1;
@@ -232,6 +241,8 @@ struct Source {
     std::vector<const Source*> mergedParts;
     std::vector<int> vertexPart; // parallel to vertex; index into mergedParts
     std::vector<SrcFace> face;
+    std::vector<SrcQuad> quads;
+    bool subdivisionSurface = false;
     // parallel to face: low byte $decimatemesh group, high byte $inflate mesh group; empty = none
     std::vector<uint16_t> faceTag;
     // Indexed by material id, so sized to kMaxSkins by whichever loader fills

@@ -231,6 +231,9 @@ def prepare(args):
     for name in ('README.md', 'README.en.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md', 'AGENTS.md', '.gitignore'):
         shutil.copy2(ROOT / name, candidate / name)
     stamp_version(candidate, base_version, state['project_version'])
+    for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md'):
+        if (ROOT / name).is_file():
+            shutil.copy2(ROOT / name, candidate / name)
     run(sys.executable, candidate / '.github/scripts/refresh_overlay.py', '--base-repository', candidate)
     state['build_overlay_sha256'] = sha256(candidate / 'automation/compatibility.patch')
     state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -289,6 +292,11 @@ def package(args):
         for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
             archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
+        for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md'):
+            if (Path(args.source) / name).is_file():
+                archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
+        for path in sorted((Path(args.source) / 'tests/reports').glob('*-validation.json')):
+            archive.write(path, Path('NewPageMergeMDL/tests/reports') / path.name)
         for path in sorted((Path(args.source) / 'integration').rglob('*')):
             if path.is_file():
                 archive.write(path, Path('NewPageMergeMDL') / path.relative_to(args.source))

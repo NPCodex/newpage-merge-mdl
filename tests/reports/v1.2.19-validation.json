@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "version": "1.2.19",
+  "compatibility_tests": 209,
+  "new_physics_tests": 12,
+  "new_cloth_tests": 10,
+  "automation_tests": 20,
+  "content_mount_tests": 6,
+  "compiler_sha256": "0f9326996e31cefb44ce584353919c36c6184d4cfc8be98cb67e5bfd03b7fdd8",
+  "implemented": [
+    "Surface-property density/thickness automatic mass with inheritance, overrides and resource mounts",
+    "Consistent MDL/PHY total mass; existing volume/massbias distribution and per-body 1 kg floor",
+    "Historical CSGO addconvexsrc offset and concave grouping semantics",
+    "Bounded CSGO FE DMX proxy compilation: pinned nodes, triangle/quad constraints, area mass, weighted control fitting, per-mesh collision planes and relative-offset serialization"
+  ],
+  "reference_automatic_mass": [
+    {
+      "tetrahedron_edge": 10,
+      "stock_mass": 5.462355,
+      "newpage_mass": 5.462355
+    },
+    {
+      "tetrahedron_edge": 20,
+      "stock_mass": 43.698837,
+      "newpage_mass": 43.698837
+    }
+  ],
+  "reference_cloth": {
+    "input": "Self-authored two-quad DMX; stock uses model18 UV cloth_enable_in_u, NewPage uses canonical cloth_enable",
+    "checks": {
+      "node_counts": true,
+      "node_positions_static_flags_and_inverse_masses": true,
+      "root_control_offsets": true,
+      "plane_parent_child_distance_offset_stickiness": true,
+      "plane_normals_within_1e_6": true,
+      "same_backsolve_target": true
+    },
+    "counts": {
+      "nodes": 8,
+      "static": 3,
+      "rotation_locked": 3
+    },
+    "plane_count": 4,
+    "plane_rest_distance": 4,
+    "backsolve_difference": "Stock selects NodeBase and ReverseOffset; NewPage emits one FitMatrix with four dynamic-point weights. Deformation equivalence is not established."
+  },
+  "hlmv": [
+    {
+      "fixture": "quad",
+      "survived_seconds": 15,
+      "access_violations": 0,
+      "temporary_files_removed": 3
+    },
+    {
+      "fixture": "tri",
+      "survived_seconds": 15,
+      "access_violations": 0,
+      "temporary_files_removed": 3
+    }
+  ],
+  "hlmv_fixture_bytes_reconfirmed_with_final_compiler": true,
+  "production": [
+    {
+      "model": "plum_dreaming_hair_p.mdl",
+      "bones": 126,
+      "vertices": 572277,
+      "path": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1219-plum\\models\\player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.mdl",
+      "mdl_mass": 30.0,
+      "physics_bodies": 18,
+      "phy_totalmass": 30.0,
+      "solid_mass_sum": 36.828571000000004,
+      "mdl_phy_mass_match": true,
+      "phy_identical_to_v1218": false,
+      "phy_comparison_v1218": {
+        "old_size": 28467,
+        "new_size": 28467,
+        "differing_bytes": 4,
+        "first_differences": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "payload_identical": true
+      }
+    }
+  ],
+  "original_plum_qc_unchanged": true,
+  "limits": [
+    "No new in-game cloth motion, deformation response or collision dynamics verification",
+    "FE support is limited to CSGO AppID730 skeletal targets and explicit supported proxy maps; settings blocks and advanced maps are rejected",
+    "Stock compiler warns and ignores addconvexsrc offsets; that feature follows historical source semantics, not installed-binary equality",
+    "HLMV results establish bounded loading only; reference comparisons establish selected serialized fields only",
+    "This local deliverable was built and tested on Windows x64; no new Linux execution is claimed"
+  ],
+  "remaining": [
+    "In-game FE cloth dynamics validation and advanced cloth settings/maps",
+    "Native quad/SubD render patch topology",
+    "Multi-target DMX point/orient/aim/parent constraints and broader animation graph evaluation",
+    "AxisInterp and material teeth flags, subject to target support"
+  ]
+}

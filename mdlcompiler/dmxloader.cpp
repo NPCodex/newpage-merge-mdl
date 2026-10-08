@@ -1,9 +1,11 @@
 // dmxloader.cpp - DMX document -> per-file Source. See dmxloader.h.
 
 #include "strcompat.h"
+#include <set>
 
 #include "perf.h"
 #include "dmxloader.h"
+#include "dmxeval.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -260,209 +262,6 @@ void LoadBindPose(const dmx::Element* model, float flScale, const BoneMap& boneM
 // their static value.
 // ---------------------------------------------------------------------------
 
-// DmeTime helpers (tier1/timeutils facts): times are int ticks of 1/10000 s.
-int RoundSecondsToTMS(float sec) {
-    return static_cast<int>(floor(10000.0f * sec + 0.5f));
-}
-int CurrentFrameRoundDown(int tms, int fps) {
-    // times within (frame*10000/fps - 1, frame*10000/fps] are on the frame
-    long long prod = static_cast<long long>(tms) * fps;
-    if (tms < 0)
-        return static_cast<int>((prod - 10000 + fps) / 10000);
-    return static_cast<int>((prod + fps) / 10000);
-}
-
-// Read a log layer's key times as ticks.
-std::vector<int> ReadTimesTicks(const dmx::Element* layer) {
-    std::vector<int> out;
-    if (!layer) return out;
-    if (auto ti = layer->GetIntArray("times")) {
-        out.assign(ti->begin(), ti->end());
-        return out;
-    }
-    if (const dmx::Attribute* a = layer->Get("times")) {
-        if (auto tt = std::get_if<std::vector<dmx::Time>>(&a->value)) {
-            out.reserve(tt->size());
-            for (const dmx::Time& t : *tt)
-                out.push_back(RoundSecondsToTMS(t.seconds));
-        }
-    }
-    return out;
-}
-
-// last key with time <= t (reference CDmeLogLayer::FindKey)
-int FindKey(const std::vector<int>& times, int t) {
-    for (int i = static_cast<int>(times.size()) - 1; i >= 0; --i)
-        if (times[i] <= t) return i;
-    return -1;
-}
-
-struct SampledChannel {
-    int bone = -1;
-    bool isPos = false;
-    std::vector<int> times;
-    const std::vector<dmx::Vector3>* vpos = nullptr;
-    const std::vector<dmx::Quaternion>* vrot = nullptr;
-
-    // Reference CDmeTypedLogLayer::GetValue: no
-    // exact-key early-out - a key hit interpolates with t=0. Interpolate<T>:
-    // Vector is `t*b + (1-t)*a` (that op order);
-    // Quaternion is QuaternionSlerp FOLLOWED BY QuaternionNormalize.
-    pm::Vector3 SamplePos(int t, const pm::Vector3& def) const {
-        if (!vpos || vpos->empty()) return def;
-        int k = FindKey(times, t);
-        if (k < 0) return ToV3((*vpos)[0]);
-        if (k + 1 >= static_cast<int>(vpos->size()) || k + 1 >= static_cast<int>(times.size()))
-            return ToV3((*vpos)[k]);
-        float frac = static_cast<float>(t - times[k]) / static_cast<float>(times[k + 1] - times[k]);
-        pm::Vector3 a = ToV3((*vpos)[k]);
-        pm::Vector3 b = ToV3((*vpos)[k + 1]);
-        return {frac * b.x + (1.0f - frac) * a.x, frac * b.y + (1.0f - frac) * a.y,
-                frac * b.z + (1.0f - frac) * a.z};
-    }
-    pm::Quaternion SampleRot(int t, const pm::Quaternion& def) const {
-        if (!vrot || vrot->empty()) return def;
-        int k = FindKey(times, t);
-        auto q = [&](int i) {
-            const dmx::Quaternion& v = (*vrot)[i];
-            return pm::Quaternion{v.x, v.y, v.z, v.w};
-        };
-        if (k < 0) return q(0);
-        if (k + 1 >= static_cast<int>(vrot->size()) || k + 1 >= static_cast<int>(times.size()))
-            return q(k);
-        float frac = static_cast<float>(t - times[k]) / static_cast<float>(times[k + 1] - times[k]);
-        pm::Quaternion r;
-        pm::QuaternionSlerp(q(k), q(k + 1), frac, r);
-        pm::QuaternionNormalize(r);
-        return r;
-    }
-};
-
-void LoadAnimations(const dmx::Element* animationList, float flScale,
-                    const BoneMap& boneMap, Source& out) {
-    auto clips = animationList->GetElementArray("animations");
-    if (!clips) return;
-
-    // transform element -> mdl bone
-    std::map<const dmx::Element*, int> transformToBone;
-    for (size_t i = 0; i < boneMap.transforms.size(); ++i)
-        transformToBone[boneMap.transforms[i]] = static_cast<int>(i);
-
-    for (const dmx::Element* clip : *clips) {
-        if (!clip) continue;
-
-        SourceAnim anim;
-        anim.name = clip->name;
-
-        // Model 22 exporters write frameRate as a float; round it to the int rate
-        int fps = clip->GetInt("frameRate", 0);
-        if (fps <= 0) fps = static_cast<int>(std::lround(clip->GetFloat("frameRate", 0.0f)));
-        if (fps <= 0) fps = 30;
-
-        // clip start/end in ticks (timeFrame: start + duration)
-        int startTms = 0;
-        int durTms = 0;
-        int offsetTms = 0;
-        if (const dmx::Element* tf = clip->GetElement("timeFrame")) {
-            auto readTicks = [&](const char* n) -> int {
-                if (const dmx::Attribute* a = tf->Get(n)) {
-                    if (auto t = std::get_if<dmx::Time>(&a->value))
-                        return RoundSecondsToTMS(t->seconds);
-                    if (auto i = std::get_if<int32_t>(&a->value)) return *i;
-                }
-                return 0;
-            };
-            startTms = readTicks("start");
-            durTms = readTicks("duration");
-            offsetTms = readTicks("offset");
-        }
-        int endTms = startTms + durTms;
-
-        anim.startframe = CurrentFrameRoundDown(startTms, fps);
-        anim.endframe = CurrentFrameRoundDown(endTms, fps);
-        anim.numframes = anim.endframe - anim.startframe + 1;
-        if (anim.numframes < 1) anim.numframes = 1;
-
-        // resolve channels onto bones
-        std::vector<SampledChannel> chans;
-        if (auto channels = clip->GetElementArray("channels")) {
-            for (const dmx::Element* c : *channels) {
-                if (!c) continue;
-                const dmx::Element* target = c->GetElement("toElement");
-                const std::string* attr = c->GetString("toAttribute");
-                if (!target || !attr) continue;
-                auto it = transformToBone.find(target);
-                if (it == transformToBone.end()) continue;
-                const dmx::Element* log = c->GetElement("log");
-                const dmx::Element* layer = nullptr;
-                if (log)
-                    if (auto layers = log->GetElementArray("layers"))
-                        if (!layers->empty()) layer = (*layers)[0];
-                if (!layer) continue;
-
-                SampledChannel ch;
-                ch.bone = it->second;
-                ch.times = ReadTimesTicks(layer);
-                if (*attr == "position") {
-                    ch.isPos = true;
-                    ch.vpos = layer->GetVector3Array("values");
-                    if (!ch.vpos) continue;
-                } else if (*attr == "orientation") {
-                    ch.isPos = false;
-                    ch.vrot = DmxQuatArray(layer, "values");
-                    if (!ch.vrot) continue;
-                } else {
-                    continue;
-                }
-                chans.push_back(std::move(ch));
-            }
-        }
-
-        // static defaults from each bone's transform element
-        std::vector<pm::Vector3> defPos(boneMap.transforms.size());
-        std::vector<pm::Quaternion> defRot(boneMap.transforms.size());
-        for (size_t i = 0; i < boneMap.transforms.size(); ++i) {
-            if (auto p = DmxVec3(boneMap.transforms[i], "position")) defPos[i] = ToV3(*p);
-            if (auto q = DmxQuat(boneMap.transforms[i], "orientation"))
-                defRot[i] = {q->x, q->y, q->z, q->w};
-        }
-
-        anim.frames.resize(anim.numframes);
-        float flOOFrameRate = 1.0f / static_cast<float>(fps);
-        for (int frame = 0; frame < anim.numframes; ++frame) {
-            // exact reference frame-time construction
-            int nSecond = frame / fps;
-            int nFraction = frame - nSecond * fps;
-            int t = startTms + nSecond * 10000 +
-                    RoundSecondsToTMS(static_cast<float>(nFraction) * flOOFrameRate);
-            // ToChildMediaTime: (t - timeFrame.start) + timeFrame.offset
-            int childT = (t - startTms) + offsetTms;
-
-            // current pose = static values overridden by channel samples
-            std::vector<pm::Vector3> pos = defPos;
-            std::vector<pm::Quaternion> rot = defRot;
-            for (const SampledChannel& ch : chans) {
-                if (ch.isPos)
-                    pos[ch.bone] = ch.SamplePos(childT, defPos[ch.bone]);
-                else
-                    rot[ch.bone] = ch.SampleRot(childT, defRot[ch.bone]);
-            }
-
-            anim.frames[frame].resize(out.numbones); // zero-init, defaultRoot stays 0
-            for (size_t i = 0; i < boneMap.transforms.size(); ++i) {
-                pm::matrix3x4 m = pm::QuaternionMatrix(rot[i], pos[i]);
-                SrcBonePose& p = anim.frames[frame][i];
-                pm::MatrixAngles(m, p.rot, p.pos);
-                p.pos.x *= flScale;
-                p.pos.y *= flScale;
-                p.pos.z *= flScale;
-            }
-        }
-
-        out.anims.push_back(std::move(anim));
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Mesh loading (reference LoadMeshes/LoadMesh/LoadVertices + UnifyIndices +
 // BuildIndividualMeshes). Temp streams accumulate across every mesh dag of the
@@ -476,6 +275,11 @@ struct TmpFace {
     uint32_t c, nc, tc;
 };
 
+struct TmpQuad {
+    int material = 0;
+    uint32_t position[4] = {}, normal[4] = {}, texcoord[4] = {};
+};
+
 struct MeshTemp {
     std::vector<pm::Vector3> vertex;   // transformed positions
     std::vector<SrcBoneWeight> bone;   // per position
@@ -483,6 +287,7 @@ struct MeshTemp {
     std::vector<pm::Vector3> normal;   // rotated normals
     std::vector<pm::Vector2> texcoord;
     std::vector<TmpFace> face;
+    std::vector<TmpQuad> quads;
 };
 
 // ---------------------------------------------------------------------------
@@ -1448,6 +1253,20 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
                              cullCorner[corner];
                 }
 
+            if (nVertexCount == 4 && !culled) {
+                TmpQuad quad; quad.material = material;
+                const int order[4] = {0, 3, 2, 1};
+                for (int k = 0; k < 4; ++k) {
+                    const int corner = (*faces)[nFirstIndex + order[k]];
+                    const int p = corner >= 0 && corner < static_cast<int>(positionIndices->size()) ? (*positionIndices)[corner] : -1;
+                    const int n = corner >= 0 && corner < static_cast<int>(normalIndices.size()) ? normalIndices[corner] : -1;
+                    const int t = texcoordIndices && corner >= 0 && corner < static_cast<int>(texcoordIndices->size()) ? (*texcoordIndices)[corner] : -1;
+                    quad.position[k] = p >= 0 ? nStartingVertex + p : 0;
+                    quad.normal[k] = n >= 0 ? nStartingNormal + n : 0;
+                    quad.texcoord[k] = t >= 0 ? nStartingTexCoord + t : 0;
+                }
+                tmp.quads.push_back(quad);
+            }
             if (nVertexCount >= 3 && !culled) {
                 ComputeTriangulatedIndices(*positions, *positionIndices, *faces, nFirstIndex,
                                            nVertexCount, triangulated);
@@ -1885,6 +1704,14 @@ void BuildIndividualMeshes(const MeshTemp& tmp, FlexTemp* flex, Source& out) {
         ufaces[i].c = AddToVlist(st, f.c, f.material, f.nc, f.tc);
     } }
 
+    std::vector<SrcQuad> unifiedQuads;
+    for (const auto& q : tmp.quads) {
+        SrcQuad quad; quad.material = q.material;
+        for (int k = 0; k < 4; ++k)
+            quad.vertex[k] = AddToVlist(st, q.position[k], q.material, q.normal[k], q.texcoord[k]);
+        unifiedQuads.push_back(quad);
+    }
+
     // reference order: UnifyIndices -> BuildVertexAnimations -> sort/remap
     if (flex)
         BuildVertexAnimations(*flex, st, out);
@@ -1961,6 +1788,11 @@ void BuildIndividualMeshes(const MeshTemp& tmp, FlexTemp* flex, Source& out) {
             out.face[i].c = static_cast<uint32_t>(v_ilistsort[ufaces[j].c] - out.mesh[m].vertexoffset);
         }
     }
+
+    out.quads = std::move(unifiedQuads);
+    for (auto& quad : out.quads)
+        for (auto& v : quad.vertex)
+            v = static_cast<uint32_t>(v_ilistsort[v] - out.mesh[quad.material].vertexoffset);
 
     // RemapVertexAnimations: vanims are MODEL relative -
     // translate creation-order listdata indices to the sorted vertex order
@@ -2253,14 +2085,7 @@ void CaptureFlexRig(const dmx::Element* comboOp, const ComboTemp& combo, FlexRig
                 } else if (rule->className == "DmeFlexRuleExpression") {
                     if (auto e = rule->GetString("expr"))
                         fr.expr = *e;
-                    // $var$ expansion inside a DMX flex rule is not supported
-                    if (fr.expr.find('$') != std::string::npos) {
-                        std::fprintf(stderr,
-                                     "warning: DMX flex rule '%s' references $variables$ - not "
-                                     "supported yet, rule dropped\n",
-                                     fr.name.c_str());
-                        continue;
-                    }
+                    // Expand in the importing QC context, never in the shared DMX.
                 } else if (rule->className == "DmeFlexRuleLocalVar") {
                     fr.isLocalVar = true;
                 } else {
@@ -2352,9 +2177,36 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
         return false;
     }
 
+    out.subdivisionSurface = !animOnly && !physicsShapes && root->GetBool("subdivisionSurface", false);
+
     const dmx::Element* model = root->GetElement("model");
     const dmx::Element* skeleton = root->GetElement("skeleton");
     if (!skeleton) skeleton = model;
+    if (!skeleton && animOnly) {
+        // SFM clips can carry their character through a scene DAG. Only one
+        // skeleton may supply this animation source; do not mix actors.
+        std::set<const dmx::Element*> seen, candidates;
+        std::vector<const dmx::Element*> pending{root};
+        for (size_t i=0;i<pending.size();++i) {
+            const auto* element=pending[i];
+            if (!element || !seen.insert(element).second)continue;
+            if (element->className=="DmeModel" ||
+                (element->className=="DmeGameModel" && element->GetElementArray("jointList"))) {
+                candidates.insert(element);
+                continue;
+            }
+            for (const char* key:{"scene","activeClip","filmClip","shot","model","skeleton","subClipTrackGroup"})
+                if (const auto* child=element->GetElement(key))pending.push_back(child);
+            for (const char* key:{"children","trackGroups","tracks","clips","shots"})
+                if (const auto* children=element->GetElementArray(key))
+                    pending.insert(pending.end(),children->begin(),children->end());
+        }
+        if (candidates.size()>1) {
+            if (err)*err="FilmClip animation contains multiple character skeletons";
+            return false;
+        }
+        if (!candidates.empty())skeleton=model=*candidates.begin();
+    }
     if (!skeleton) {
         if (err) *err = "no 'model'/'skeleton' element on root";
         return false;
@@ -2417,8 +2269,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
     if(processing && processing->computeNormals && !out.vertex.empty()) ComputeMorphNormals(out);
 
     // animations
-    if (const dmx::Element* animationList = root->GetElement("animationList"))
-        LoadAnimations(animationList, scale, boneMap, out);
+    if (!loader::EvaluateDmxAnimations(dm, root, boneMap.transforms, scale, out, err))
+        return false;
 
     return true;
 }

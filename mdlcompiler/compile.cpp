@@ -4,8 +4,10 @@
 #include "pathcompat.h"
 
 #include "compile.h"
+#include "clothprojection.h"
 #include "perf.h"
 #include "rootlodweights.h"
+#include "surfaceproperties.h"
 
 #include <algorithm>
 #include <atomic>
@@ -21,6 +23,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
 #include <utility>
 
 #include "dmxloader.h"
@@ -327,6 +330,9 @@ bool BoneIsBonemerge(const Ctx& ctx, const char* pname) {
 // tests bonename alone. A driver that nothing else keeps alive collapses out
 // and MapProceduralBones then errors on the dangling control bone.
 bool BoneIsProcedural(const Ctx& ctx, const char* pname) {
+    for(const auto& rig:ctx.out->dmxRigs)for(const auto& b:rig.bones)if(b.output&&_stricmp(b.name.c_str(),pname)==0)return true;
+    for(const auto& a:ctx.out->axisinterpbones)if(_stricmp(a.name.c_str(),pname)==0)return true;
+    for(const auto& t:ctx.out->twistbones)for(const auto& target:t.targets)if(_stricmp(target.name.c_str(),pname)==0)return true;
     for (const JiggleBone& jb : ctx.out->jigglebones)
         if (_stricmp(jb.bonename.c_str(), pname) == 0)
             return true;
@@ -336,6 +342,8 @@ bool BoneIsProcedural(const Ctx& ctx, const char* pname) {
     for (const AimAtBone& ab : ctx.out->aimatbones)
         if (ProcBoneNameMatches(ab.bonename, pname, ab.strictName))
             return true;
+    for (const auto& c : ctx.out->constraintbones)
+        if (_stricmp(c.name.c_str(), pname)==0) return true;
     return false;
 }
 
@@ -356,6 +364,28 @@ bool BoneIsProceduralControl(const Ctx& ctx, const char* pname) {
 // BoneHasAttachments.)
 bool BoneIsProceduralDependency(const Ctx& ctx, const char* pname) {
     const CompiledModel& m = *ctx.out;
+    auto related=[&](const std::string& name) {
+        for(int b=m.FindBone(name.c_str());b>=0;b=m.bones[b].parent)
+            if(_stricmp(m.bones[b].name.c_str(),pname)==0)return true;
+        return false;
+    };
+    for(const auto& a:m.axisinterpbones)
+        if(related(a.name)||related(a.parentName)||related(a.controlName)||related(a.controlParentName))return true;
+    for(const auto& t:m.twistbones) {
+        if(related(t.parentName)||related(t.childName)||related(t.grandParentName))return true;
+        for(const auto& target:t.targets)if(related(target.name))return true;
+    }
+    for(const auto& rig:m.dmxRigs)for(const auto& b:rig.bones)if(related(b.name))return true;
+    for(const auto& collider:ctx.in->clothSettings.colliders)if(related(collider.bone))return true;
+    for (const auto& c : m.constraintbones) {
+        auto related=[&](const std::string& name) {
+            for(int b=m.FindBone(name.c_str());b>=0;b=m.bones[b].parent)
+                if(_stricmp(m.bones[b].name.c_str(),pname)==0)return true;
+            return false;
+        };
+        if(related(c.name)||related(c.upName))return true;
+        for(const auto& t:c.targets)if(related(t.name))return true;
+    }
     for (const AimAtBone& ab : ctx.out->aimatbones) {
         if (FindProcBone(m, ab.bonename, ab.strictName) == -1)
             continue;
@@ -988,6 +1018,153 @@ void CullUnskinnedJiggleBones(Ctx& ctx) {
 // The reference does NOT push aimvector/upvector/basepos through srcRealign
 // (its post-realign pass only re-validates), so neither do we.
 // ---------------------------------------------------------------------------
+bool MapAxisAndTwistBones(Ctx& ctx, std::string* err) {
+    auto& m=*ctx.out;
+    auto fail=[&](const std::string& s){if(err)*err="AxisInterp/Twist: "+s;return false;};
+    std::unordered_set<int> owned;
+    for(auto& a:m.axisinterpbones) {
+        a.bone=m.FindBone(a.name.c_str());a.control=m.FindBone(a.controlName.c_str());
+        if(a.bone<0||a.control<0)return fail("missing helper/control bone for '"+a.name+"'");
+        if((m.bones[a.bone].flags&BONE_ALWAYS_PROCEDURAL)||!owned.insert(a.bone).second)
+            return fail("multiple procedural definitions for '"+a.name+"'");
+        if(m.bones[a.bone].parent<0)return fail("AxisInterp helper must have a parent: '"+a.name+"'");
+        if(a.control>=a.bone)return fail("AxisInterp control must precede helper in bone order");
+        auto sameParent=[&](int b,const std::string& n) {
+            const int p=m.bones[b].parent;
+            return n.empty()||n=="-" ? p<0 : p>=0&&_stricmp(m.bones[p].name.c_str(),n.c_str())==0;
+        };
+        if(!sameParent(a.bone,a.parentName)||!sameParent(a.control,a.controlParentName))
+            return fail("AxisInterp authored parent differs from final hierarchy; reparenting requires rebaking the six poses");
+        m.bones[a.bone].flags|=BONE_ALWAYS_PROCEDURAL;
+    }
+    for(auto& t:m.twistbones) {
+        t.parent=m.FindBone(t.parentName.c_str());t.child=m.FindBone(t.childName.c_str());
+        t.grandParent=t.grandParentName.empty()?-1:m.FindBone(t.grandParentName.c_str());
+        if(t.parent<0||t.child<0||(!t.grandParentName.empty()&&t.grandParent<0))return fail("missing Twist parent/child/ancestor");
+        for(auto& target:t.targets) {
+            target.bone=m.FindBone(target.name.c_str());
+            if(target.bone<0)return fail("missing Twist slave '"+target.name+"'");
+            if((m.bones[target.bone].flags&BONE_ALWAYS_PROCEDURAL)||!owned.insert(target.bone).second)
+                return fail("multiple procedural definitions for '"+target.name+"'");
+        }
+    }
+    return true;
+}
+
+bool RemapAxisInterpBones(Ctx& ctx,std::string* err) {
+    auto& m=*ctx.out;
+    auto fail=[&](const std::string& s){if(err)*err="AxisInterp: "+s;return false;};
+    for(auto& a:m.axisinterpbones) {
+        const auto& control=m.bones[a.control];
+        int newAxis=-1;float sign=1;
+        for(int j=0;j<3;++j) {
+            bool match=true;
+            for(int k=0;k<3;++k)if(std::fabs(std::fabs(control.srcRealign.m[k][j])-(k==a.axis?1.0f:0.0f))>1e-5f)match=false;
+            if(match){newAxis=j;sign=control.srcRealign.m[a.axis][j]<0?-1.0f:1.0f;break;}
+        }
+        if(newAxis<0)return fail("control realignment cannot preserve selected axis for '"+a.name+"'");
+        matrix3x4 parentAxes;
+        if(control.parent>=0)parentAxes=m.bones[control.parent].srcRealign;
+        else if(!a.controlInModelSpace) {
+            pm::AngleMatrix(ctx.defaultRotation,parentAxes);parentAxes=pm::MatrixInvert(parentAxes);
+            for(const auto& anim:m.anims)if(std::fabs(anim.rotation.x-ctx.defaultRotation.x)>1e-5f||
+                std::fabs(anim.rotation.y-ctx.defaultRotation.y)>1e-5f||std::fabs(anim.rotation.z-ctx.defaultRotation.z)>1e-5f)
+                return fail("root control requires a common model rotation across animations");
+        }
+        AxisInterpBone original=a;
+        for(int j=0;j<3;++j) {
+            int oldAxis=-1;float direction=1;
+            for(int k=0;k<3;++k)if(std::fabs(std::fabs(parentAxes.m[k][j])-1)<1e-5f){oldAxis=k;direction=parentAxes.m[k][j]*sign;}
+            if(oldAxis<0)return fail("control-parent realignment must preserve cardinal axes for '"+a.name+"'");
+            for(int side=0;side<2;++side) {
+                const int from=oldAxis*2+(direction<0?1-side:side),to=j*2+side;
+                auto pose=pm::QuaternionMatrix(original.rotation[from],original.position[from]);
+                pose=pm::ConcatTransforms(pm::MatrixInvert(m.bones[m.bones[a.bone].parent].srcRealign),pose);
+                pose=pm::ConcatTransforms(pose,m.bones[a.bone].srcRealign);
+                pm::MatrixAngles(pose,a.rotation[to],a.position[to]);
+            }
+        }
+        a.axis=newAxis;
+    }
+    return true;
+}
+
+bool MapConstraintBones(Ctx& ctx, std::string* err) {
+    auto& m=*ctx.out;
+    auto fail=[&](const std::string& s){if(err)*err="DMX constraint: "+s;return false;};
+    matrix3x4 world;pm::AngleMatrix(ctx.defaultRotation,world);
+    std::unordered_set<int> owned;
+    for(const auto& t:m.twistbones)for(const auto& target:t.targets)owned.insert(target.bone);
+    for(auto& c:m.constraintbones) {
+        c.bone=m.FindBone(c.name.c_str());
+        if(c.bone<0)return fail("missing slave bone '"+c.name+"'");
+        if((m.bones[c.bone].flags&BONE_ALWAYS_PROCEDURAL)||!owned.insert(c.bone).second)return fail("multiple procedural definitions for '"+c.name+"'");
+        // CSGO's CalcProceduralBone does not dispatch constraint types 8/9/10/12.
+        // These bones are baked below and must retain ordinary animation data.
+        for(auto& t:c.targets) {
+            t.bone=m.FindBone(t.name.c_str());
+            if(t.bone<0)return fail("missing target bone '"+t.name+"'");
+            if(c.kind==8)t.offset=pm::VectorRotate(t.offset,world);
+        }
+        if(!c.upName.empty()) {
+            c.upBone=m.FindBone(c.upName.c_str());
+            if(c.upBone<0)return fail("missing up-space bone '"+c.upName+"'");
+        }
+        c.up=pm::VectorRotate(c.up,world);
+    }
+    std::set<int> graphOutputs;
+    for(auto& rig:m.dmxRigs)for(auto& b:rig.bones) {
+        b.bone=m.FindBone(b.name.c_str());if(b.bone<0)return fail("missing rig bone '"+b.name+"'");
+        for(int ancestor=b.bone;ancestor>=0;ancestor=m.bones[ancestor].parent)if(m.bones[ancestor].flags&BONE_ALWAYS_PROCEDURAL)return fail("depends on runtime procedural bone '"+m.bones[ancestor].name+"'");
+        if(b.output&&!graphOutputs.insert(b.bone).second)return fail("multiple rig definitions for '"+b.name+"'");
+    }
+    std::vector<std::vector<int>> graphEdges(m.bones.size());
+    for(const auto& rig:m.dmxRigs)for(const auto& edge:rig.dependencies) {
+        int output=-1,input=-1;for(const auto& b:rig.bones){if(b.authoredName==edge.first)output=b.bone;if(b.authoredName==edge.second)input=b.bone;}
+        if(output<0||input<0)return fail("missing graph dependency bone");graphEdges[output].push_back(input);
+    }
+    // Include skeleton-parent edges when checking for indirect feedback.
+    std::vector<int> state(m.bones.size(),0);
+    auto visit=[&](auto&& self,int bone)->bool {
+        if(bone<0)return true;
+        if(state[bone]==1)return false;
+        if(state[bone]==2)return true;
+        state[bone]=1;
+        if(!self(self,m.bones[bone].parent))return false;
+        for(int input:graphEdges[bone])if(!self(self,input))return false;
+        for(const auto& c:m.constraintbones)if(c.bone==bone) {
+            for(const auto& t:c.targets)if(!self(self,t.bone))return false;
+            if(!self(self,c.upBone))return false;
+        }
+        state[bone]=2;return true;
+    };
+    for(const auto& c:m.constraintbones)if(!visit(visit,c.bone))return fail("cyclic bone dependency at '"+c.name+"'");
+    for(const auto& rig:m.dmxRigs)for(const auto& b:rig.bones)if(b.output&&!visit(visit,b.bone))return fail("cyclic bone dependency at '"+b.name+"'");
+    return true;
+}
+
+void RemapConstraintBones(Ctx& ctx) {
+    auto& m=*ctx.out;
+    matrix3x4 world;pm::AngleMatrix(ctx.defaultRotation,world);
+    auto rotation=[&](Quaternion q,int bone) {
+        matrix3x4 pose=pm::QuaternionMatrix(q,{});
+        if(m.bones[bone].parent>=0)pose=pm::ConcatTransforms(pm::MatrixInvert(m.bones[m.bones[bone].parent].srcRealign),pose);
+        pose=pm::ConcatTransforms(pose,m.bones[bone].srcRealign);
+        Vector3 ignored;pm::MatrixAngles(pose,q,ignored);return q;
+    };
+    auto translation=[&](Vector3 p,int bone) {
+        const int parent=m.bones[bone].parent;
+        return parent<0?p:pm::VectorIRotate(p,m.bones[parent].srcRealign);
+    };
+    for(auto& c:m.constraintbones) {
+        for(auto& t:c.targets)if(c.kind!=8) {
+            t.offset=translation(t.offset,t.bone);t.rotation=rotation(t.rotation,t.bone);
+        }
+        c.basePosition=m.bones[c.bone].parent<0?pm::VectorRotate(c.basePosition,world):translation(c.basePosition,c.bone);
+        c.baseRotation=rotation(c.baseRotation,c.bone);
+    }
+}
+
 bool MapAimAtBones(Ctx& ctx, std::string* err) {
     std::vector<AimAtBone>& abs = ctx.out->aimatbones;
 
@@ -1421,6 +1598,20 @@ void TagUsedBones(Ctx& ctx) {
             if (!isAttachment)
                 keepProceduralBone(ab.aimname);
         }
+        for(const auto& c:ctx.out->constraintbones) {
+            keepProceduralBone(c.name);keepProceduralBone(c.upName);
+            for(const auto& t:c.targets)keepProceduralBone(t.name);
+        }
+        for(const auto& a:ctx.out->axisinterpbones) {
+            keepProceduralBone(a.name);keepProceduralBone(a.parentName);
+            keepProceduralBone(a.controlName);keepProceduralBone(a.controlParentName);
+        }
+        for(const auto& t:ctx.out->twistbones) {
+            keepProceduralBone(t.parentName);keepProceduralBone(t.childName);keepProceduralBone(t.grandParentName);
+            for(const auto& target:t.targets)keepProceduralBone(target.name);
+        }
+        for(const auto& rig:ctx.out->dmxRigs)for(const auto& b:rig.bones)keepProceduralBone(b.name);
+        for(const auto& collider:ctx.in->clothSettings.colliders)keepProceduralBone(collider.bone);
     }
 }
 
@@ -3152,6 +3343,10 @@ void ExpandLodBoneCollapses(Ctx& ctx) {
                 collapseToParent(pb.helper);
             for (const AimAtBone& ab : m.aimatbones)
                 collapseToParent(ab.bone);
+            for (const auto& c : m.constraintbones)
+                collapseToParent(c.bone);
+            for(const auto& a:m.axisinterpbones)collapseToParent(a.bone);
+            for(const auto& t:m.twistbones)for(const auto& target:t.targets)collapseToParent(target.bone);
         }
     }
 }
@@ -3670,6 +3865,79 @@ std::vector<src::SrcFace> BuildLodFaceList(const Model& model, int lodID,
     return faces;
 }
 
+// Keep native patch topology through the existing triangle-only analysis passes.
+// Source triangles remain useful for bounds/tangents; they are never the render
+// primitive stream when the subdivision flag is set.
+bool ValidateSubdOutput(Ctx& ctx, std::string* err) {
+    if (!ctx.in->csgo.subd || !ctx.in->csgo.subdNative) return true;
+    auto reject=[&](const std::string& message) {if(err)*err="SubD: "+message;return false;};
+    for (const auto& model : ctx.out->models) {
+        if (!model.source) continue;
+        if (ctx.in->ce.legacyClamp && model.vertices.size() >= size_t(ctx.in->maxModelVerts))
+            return reject("legacy model clamping cannot split control-patch neighborhoods");
+        for (int mi=0; mi<model.source->nummeshes; ++mi) {
+            int material=model.source->meshindex[mi];
+            if (material >= int(model.meshes.size())) continue;
+            if (model.meshes[material].numvertices > ctx.in->maxMeshVerts)
+                return reject("control mesh exceeds the configured vertex capacity; split its authored patches into materials");
+        }
+        for (size_t lod=0;lod<model.lodSources.size();++lod) {
+            const auto* source=model.lodSources[lod];if(!source)continue;
+            for(int mi=0;mi<source->nummeshes;++mi) {
+                int material=source->meshindex[mi];
+                if(IsMeshRemoved(ctx,ctx.out->scriptLods[lod],material))continue;
+                const auto& mesh=source->mesh[material];
+                using Triangle=std::array<uint32_t,3>;
+                auto key=[](uint32_t a,uint32_t b,uint32_t c){Triangle t{a,b,c};std::sort(t.begin(),t.end());return t;};
+                std::map<Triangle,int> triangles;
+                for(int i=0;i<mesh.numfaces;++i) {
+                    const auto& f=source->face[mesh.faceoffset+i];++triangles[key(f.a,f.b,f.c)];
+                }
+                for(const auto& quad:source->quads)if(quad.material==material) {
+                    const auto* v=quad.vertex;
+                    for(int k=0;k<4;++k)if(v[k]>=uint32_t(mesh.numvertices))return reject("quad index no longer matches edited source vertices");
+                    Triangle a=key(v[0],v[1],v[2]),b=key(v[0],v[2],v[3]);
+                    if(triangles[a]==0 || triangles[b]==0) {a=key(v[0],v[1],v[3]);b=key(v[1],v[2],v[3]);}
+                    if(triangles[a]==0 || triangles[b]==0)return reject("authored quad topology was changed by a triangle mesh edit");
+                    --triangles[a];--triangles[b];
+                }
+                for(const auto& count:triangles)if(count.second!=0)
+                    return reject("render sources must contain only authored DMX quads; triangles, polygons and triangle decimation cannot form native patches");
+            }
+        }
+    }
+    return true;
+}
+
+bool BuildSubdOutput(Ctx& ctx, std::string* err) {
+    if (!ctx.in->csgo.subd || !ctx.in->csgo.subdNative) return true;
+    for(auto& model:ctx.out->models) {
+        if(!model.source)continue;
+        for(auto& mesh:model.outMeshes) {
+            mesh.subdLods.resize(model.lodSources.size());
+            std::vector<subd::Vertex> vertices;
+            vertices.reserve(mesh.numvertices);
+            for(int i=0;i<mesh.numvertices;++i) {
+                const auto& v=model.vertices[mesh.vertexoffset+i];vertices.push_back({v.position,v.normal});
+            }
+            for(size_t lod=0;lod<model.lodSources.size();++lod) {
+                const auto* source=model.lodSources[lod];
+                if(!source || mesh.lodFaces[lod].empty())continue;
+                const auto* sourceMesh=FindMeshByMaterial(source,mesh.material);if(!sourceMesh)continue;
+                const auto& remap=model.meshVertIndexMaps[lod];
+                std::vector<src::SrcQuad> quads;
+                for(const auto& q:source->quads)if(q.material==mesh.material) {
+                    auto quad=q;
+                    for(auto& v:quad.vertex)v=uint32_t(remap[sourceMesh->vertexoffset+v]);
+                    quads.push_back(quad);
+                }
+                if(!subd::Build(vertices,quads,mesh.subdLods[lod],err))return false;
+            }
+        }
+    }
+    return true;
+}
+
 // One mesh's worth of a split material: which of the material's vertices it
 // owns, and its triangles per LOD already reindexed into it.
 struct MeshBucket {
@@ -4067,20 +4335,62 @@ Vector3 ApplyShapeFraming(const ShapeFraming& f, Vector3 p) {
     return {p.x + f.offset.x, p.y + f.offset.y, p.z + f.offset.z};
 }
 
-void GatherShapeVerts(const PhysicsShape& shape, bool assumeWorldspace,
-                      std::vector<phys::Vec3>& out, float precision) {
+bool GatherShapeVerts(const Ctx& ctx, const PhysicsShape& shape,
+                      std::vector<phys::Vec3>& out, src::Source& weldSource, std::string* err) {
     const src::Source* ps = shape.source;
-    const bool haveGlobal = !assumeWorldspace && ps->globalVertices.size() >= ps->vertex.size();
+    const bool haveGlobal = !ctx.in->physAssumeWorldspace &&
+                           ps->globalVertices.size() >= ps->vertex.size();
     const ShapeFraming framing = MakeShapeFraming(shape);
+    const float precision = ctx.in->csgo.collisionPrecision;
+    std::vector<matrix3x4> destBoneToWorld;
+    if (shape.sourceOffsetSet && haveGlobal) {
+        std::vector<matrix3x4> srcBoneToWorld;
+        BuildRawTransformsBind(ctx, ps, srcBoneToWorld);
+        TranslateAnimations(ctx, ps, srcBoneToWorld, destBoneToWorld);
+    }
 
     out.clear();
     out.reserve(ps->vertex.size());
+    weldSource.vertex = ps->vertex;
     for (size_t i = 0; i < ps->vertex.size(); i++) {
         Vector3 p = haveGlobal ? ps->globalVertices[i].position : ps->vertex[i].position;
+        if (shape.sourceOffsetSet) {
+            auto& raw = weldSource.vertex[i];
+            raw.position = pm::VectorTransform(raw.position, shape.sourceOffset);
+            raw.normal = pm::VectorRotate(raw.normal, shape.sourceOffset);
+            p = raw.position;
+            if (haveGlobal) {
+                Vector3 mapped{};
+                bool mappedAny = false;
+                for (int n = 0; n < raw.boneweight.numbones; ++n) {
+                    const int local = raw.boneweight.bone[n];
+                    if (local < 0 || local >= static_cast<int>(ps->boneLocalToGlobal.size()))
+                        continue;
+                    const int bone = ps->boneLocalToGlobal[local];
+                    if (bone < 0 || bone >= static_cast<int>(destBoneToWorld.size())) continue;
+                    const Vector3 boneLocal = pm::VectorITransform(p, destBoneToWorld[bone]);
+                    const Vector3 world = pm::VectorTransform(boneLocal, ctx.out->bones[bone].boneToPose);
+                    mapped.x += raw.boneweight.weight[n] * world.x;
+                    mapped.y += raw.boneweight.weight[n] * world.y;
+                    mapped.z += raw.boneweight.weight[n] * world.z;
+                    mappedAny = true;
+                }
+                if (mappedAny) p = mapped;
+            }
+        }
         p = ApplyShapeFraming(framing, p);
+        const auto& raw = weldSource.vertex[i];
+        if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) ||
+            !std::isfinite(raw.position.x) || !std::isfinite(raw.position.y) ||
+            !std::isfinite(raw.position.z) || !std::isfinite(raw.normal.x) ||
+            !std::isfinite(raw.normal.y) || !std::isfinite(raw.normal.z)) {
+            if (err) *err = "physics shape \"" + shape.name + "\" has non-finite transformed geometry";
+            return false;
+        }
         if(precision>0){p.x-=std::fmod(p.x,precision);p.y-=std::fmod(p.y,precision);p.z-=std::fmod(p.z,precision);}
         out.push_back({p.x, p.y, p.z});
     }
+    return true;
 }
 
 // IsApproximatelyPlanar. A hull thinner than the epsilon is not a solid -
@@ -5424,12 +5734,24 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         }
     }
 
+    struct PreparedCollisionShape {
+        const PhysicsShape* shape = nullptr;
+        src::Source weldSource;
+        std::vector<phys::Vec3> vertices;
+        std::vector<SrcTri> faces;
+        int totalSourceFaces = 0;
+    };
+    std::vector<PreparedCollisionShape> prepared;
+    std::map<int, size_t> concaveGroups;
     for (const PhysicsShape& shape : in.physShapes) {
-        if (shape.kind != PhysicsShapeKind::FromFile)
-            continue;
-        std::vector<phys::Vec3> shapeVerts;
-        GatherShapeVerts(shape, in.physAssumeWorldspace, shapeVerts, in.csgo.collisionPrecision);
-        if (shapeVerts.empty()) {
+        if (shape.kind != PhysicsShapeKind::FromFile) continue;
+        PreparedCollisionShape item;
+        item.shape = &shape;
+        if (!GatherShapeVerts(ctx, shape, item.vertices, item.weldSource, err)) {
+            freeConvexes();
+            return false;
+        }
+        if (item.vertices.empty()) {
             if (err) *err = "physics shape \"" + shape.name + "\" has no vertices";
             freeConvexes();
             return false;
@@ -5438,15 +5760,14 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         // import_type 2 keeps only the geometry on parent_bone. Type 1 reskins
         // everything onto one bone, which is already what a single body is, so
         // it needs no filtering here.
-        std::vector<SrcTri> faces;
-        CollectSourceFaces(shape.source, faces);
-        const int totalSourceFaces = static_cast<int>(faces.size());
+        CollectSourceFaces(shape.source, item.faces);
+        item.totalSourceFaces = static_cast<int>(item.faces.size());
         if (shape.importType == PhysicsImportType::OneBoneOnly) {
-            if (!FilterFacesToBone(m, shape, faces, err)) {
+            if (!FilterFacesToBone(m, shape, item.faces, err)) {
                 freeConvexes();
                 return false;
             }
-            if (faces.empty()) {
+            if (item.faces.empty()) {
                 if (err) *err = "physics shape \"" + shape.name +
                                 "\" has import_type 2 but no geometry on bone \"" +
                                 shape.parentBone + "\"";
@@ -5454,6 +5775,36 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
                 return false;
             }
         }
+        // Mirroring changes triangle orientation. Hull generation only uses
+        // points, but our optional VHACD extension consumes oriented faces.
+        if (shape.sourceOffsetMirrored)
+            for (auto& face : item.faces) std::swap(face.b, face.c);
+
+        // ProcessSingleBody combines the root and explicitly concave extras
+        // before welding. Unmarked extras remain independently convex even
+        // when they touch this merged source.
+        if (shape.concave && shape.legacyCollisionGroup >= 0) {
+            const auto entry = concaveGroups.emplace(shape.legacyCollisionGroup, prepared.size());
+            if (!entry.second) {
+                auto& merged = prepared[entry.first->second];
+                const int base = static_cast<int>(merged.vertices.size());
+                merged.vertices.insert(merged.vertices.end(), item.vertices.begin(), item.vertices.end());
+                merged.weldSource.vertex.insert(merged.weldSource.vertex.end(),
+                    item.weldSource.vertex.begin(), item.weldSource.vertex.end());
+                for (const auto& face : item.faces)
+                    merged.faces.push_back({face.a + base, face.b + base, face.c + base});
+                merged.totalSourceFaces += item.totalSourceFaces;
+                continue;
+            }
+        }
+        prepared.push_back(std::move(item));
+    }
+
+    for (const auto& item : prepared) {
+        const PhysicsShape& shape = *item.shape;
+        const auto& shapeVerts = item.vertices;
+        const auto& faces = item.faces;
+        const int totalSourceFaces = item.totalSourceFaces;
 
         std::vector<bool> used(shapeVerts.size(), false);
         for (const SrcTri& f : faces) {
@@ -5468,7 +5819,13 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         anyConcave = anyConcave || shape.concave;
         maxConvexPieces = std::max(maxConvexPieces, shape.maxConvex);
 
-        if (in.physDecomposeConcave) {
+        // Without $concave, the legacy command encloses ALL sources in one
+        // hull. Let the shared fallback below build it from the gathered set.
+        if (in.physBuildMode == PhysicsBuildMode::Single && !in.physLegacyConcave)
+            continue;
+
+        if (in.physDecomposeConcave &&
+            (shape.legacyCollisionGroup < 0 || shape.concave)) {
             if (shape.maxConvex <= 0) {
                 if (err) *err = "$decomposeconcave requires a positive $maxconvexpieces";
                 freeConvexes(); return false;
@@ -5501,7 +5858,7 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         // the whole shape
         std::vector<std::vector<int>> islands;
         if (shape.concave) {
-            BuildIslandsForFaces(shape.source, faces, totalSourceFaces,
+            BuildIslandsForFaces(&item.weldSource, faces, totalSourceFaces,
                                  in.physWeldPosition, in.physWeldNormal, islands);
         }
         if (islands.empty()) {
@@ -5608,9 +5965,8 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
     m.physSolids.push_back(std::move(solid));
     m.bones[physBone].physicsbone = 0; // single body is always physics bone 0
 
-    // $automass leaves the total at -1, which tells the engine to derive mass
-    // from volume; every solid's own mass then floors at 1 in the writer. This
-    // is the reference's behavior (SetAutoMass).
+    // Automatic mass is resolved from mounted surface properties after all
+    // collision bodies have been assembled (reference ComputeMass).
     m.physTotalMass = in.physAutoMass ? -1.0f : in.physMass;
     m.physName = in.physName;
     m.physConcave = in.physBuildMode == PhysicsBuildMode::Auto
@@ -5744,6 +6100,17 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
         // srcRealign deltas back for the affected bones while it converts
         std::vector<SrcRealignSave> savedRealign;
         const bool overrode = PushAnimSrcRealignOverride(ctx, panim, savedRealign);
+        if(overrode&&!m.axisinterpbones.empty()) {
+            for(const auto& axis:m.axisinterpbones)for(const auto& saved:savedRealign) {
+                const bool used=saved.bone==axis.bone||saved.bone==axis.control||
+                    saved.bone==m.bones[axis.bone].parent||saved.bone==m.bones[axis.control].parent;
+                if(used&&!pm::MatricesAreEqual(saved.saved,m.bones[saved.bone].srcRealign)) {
+                    PopAnimSrcRealignOverride(ctx,savedRealign);
+                    if(err)*err="AxisInterp cannot combine its runtime basis with animation bone-basis overrides: '"+panim.name+"'";
+                    return false;
+                }
+            }
+        }
 
         int n = panim.startframe - pSourceAnim->startframe;
         for (int j = 0; j < panim.numframes; j++) {
@@ -5755,6 +6122,208 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
         if (overrode)
             PopAnimSrcRealignOverride(ctx, savedRealign);
     }
+    return true;
+}
+
+// ComputeTwistBones from the CSGO bonesetup solver. Work in authored bone axes;
+// the caller removes final srcRealign and reapplies it to the solved targets.
+Quaternion SolveTwist(const TwistBone& t,const TwistTarget& target,
+                      Quaternion parent,const matrix3x4& child) {
+    const float epsilon=FLT_EPSILON*10;
+    Quaternion childQ;Vector3 axis;pm::MatrixAngles(child,childQ,axis);
+    if(axis.x*axis.x+axis.y*axis.y+axis.z*axis.z<epsilon*epsilon)return target.rotation;
+    pm::VectorNormalize(axis);
+    const Quaternion baseInv{-t.baseRotation.x,-t.baseRotation.y,-t.baseRotation.z,t.baseRotation.w};
+    Quaternion relative;pm::QuaternionMult(baseInv,t.inverse?parent:childQ,relative);
+    Vector3 upRotated=pm::VectorRotate(t.up,pm::QuaternionMatrix(relative,{}));
+    Vector3 rotatedAxis=pm::VectorRotate(axis,pm::QuaternionMatrix(t.inverse?relative:baseInv,{}));
+    auto dot=[](Vector3 a,Vector3 b){return a.x*b.x+a.y*b.y+a.z*b.z;};
+    if(1-std::fabs(dot(rotatedAxis,t.up))<epsilon||1-std::fabs(dot(rotatedAxis,upRotated))<epsilon)return target.rotation;
+    auto project=[&](Vector3 v) {
+        const float d=dot(v,rotatedAxis);
+        Vector3 r{v.x-d*rotatedAxis.x,v.y-d*rotatedAxis.y,v.z-d*rotatedAxis.z};
+        pm::VectorNormalize(r);return r;
+    };
+    const Vector3 a=project(t.up),b=project(upRotated);
+    if(std::fabs(a.x-b.x)<=.001f&&std::fabs(a.y-b.y)<=.001f&&std::fabs(a.z-b.z)<=.001f)return target.rotation;
+    Vector3 cross{a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};
+    pm::VectorNormalize(cross);
+    const float angle=std::acos(std::clamp(dot(a,b),-1.0f,1.0f))*(dot(cross,rotatedAxis)<0?-1.0f:1.0f);
+    const float half=.5f*angle,sine=std::sin(half);
+    const Quaternion full{axis.x*sine,axis.y*sine,axis.z*sine,std::cos(half)};
+    Quaternion portion,result;pm::QuaternionScale(full,target.weight-(t.inverse?1.0f:0.0f),portion);
+    pm::QuaternionMult(portion,target.rotation,result);
+    return result;
+}
+
+// Evaluate imported rigs in authored coordinates, after the final skeleton
+// remap and before QC animation edits. One graph solves all operators from a
+// document; inter-document dependency ordering is deterministic and acyclic.
+bool BakeDmxRigAnimations(Ctx& ctx,std::string* err) {
+    auto& m=*ctx.out;auto fail=[&](const std::string& message){if(err)*err="DMX rig bake: "+message;return false;};
+    std::vector<int> order,states(m.dmxRigs.size());std::map<int,int> owners;
+    for(size_t i=0;i<m.dmxRigs.size();++i)for(const auto& b:m.dmxRigs[i].bones)if(b.output)owners[b.bone]=int(i);
+    auto visit=[&](auto&& self,int i)->bool{if(states[i]==2)return true;if(states[i]==1)return fail("cyclic rig document dependency");states[i]=1;for(const auto& b:m.dmxRigs[i].bones)if(!b.output){auto owner=owners.find(b.bone);if(owner!=owners.end()&&owner->second!=i&&!self(self,owner->second))return false;}states[i]=2;order.push_back(i);return true;};
+    for(size_t i=0;i<m.dmxRigs.size();++i)if(!visit(visit,int(i)))return false;
+    for(auto& anim:m.anims) {
+        if(anim.flags&STUDIO_DELTA)return fail("raw delta animation '"+anim.name+"' needs an absolute source pose");
+        const auto* sourceAnim=anim.src?src::FindSourceAnim(*anim.src,anim.animationname.c_str()):nullptr;
+        std::vector<SrcRealignSave> saved;const bool overrideBasis=!anim.isBindPose&&PushAnimSrcRealignOverride(ctx,anim,saved);
+        std::vector<matrix3x4> alignment;for(const auto& b:m.bones)alignment.push_back(b.srcRealign);if(overrideBasis)PopAnimSrcRealignOverride(ctx,saved);
+        matrix3x4 rootRotation;pm::AngleMatrix(anim.rotation,rootRotation);const auto inverseRoot=pm::MatrixInvert(rootRotation);
+        const float animScale=anim.ignorescale?anim.scale/ctx.in->scale:anim.scale;
+        for(int ri:order) {
+            const auto& rig=m.dmxRigs[ri];size_t baked=0;if(sourceAnim)for(const auto& id:rig.operatorIds)baked+=std::find(sourceAnim->bakedRigOperators.begin(),sourceAnim->bakedRigOperators.end(),id)!=sourceAnim->bakedRigOperators.end();
+            if(baked==rig.operatorIds.size())continue;if(baked)return fail("a source clip contains only part of an imported rig");
+            const float scale=animScale*rig.scale;if(!std::isfinite(scale)||std::fabs(scale)<1e-12f)return fail("rig animation scale must be finite and nonzero");
+            for(auto& frame:anim.sanim) {
+                std::vector<matrix3x4> world(m.bones.size());for(size_t b=0;b<m.bones.size();++b){matrix3x4 local;pm::AngleMatrix(frame[b].rot,frame[b].pos,local);world[b]=m.bones[b].parent<0?local:pm::ConcatTransforms(world[m.bones[b].parent],local);}
+                std::map<std::string,matrix3x4> authored,solved;
+                for(const auto& b:rig.bones){auto raw=pm::ConcatTransforms(inverseRoot,pm::ConcatTransforms(world[b.bone],pm::MatrixInvert(alignment[b.bone])));for(int k=0;k<3;++k)raw.m[k][3]=(raw.m[k][3]+(&anim.adjust.x)[k])/scale;authored[b.authoredName]=raw;}
+                if(!loader::EvaluateDmxRigFrame(rig,authored,solved,err))return false;
+                std::map<int,matrix3x4> outputs;
+                for(const auto& b:rig.bones)if(b.output){auto found=solved.find(b.authoredName);if(found==solved.end())return fail("rig did not produce '"+b.name+"'");auto raw=found->second;for(int k=0;k<3;++k)raw.m[k][3]=raw.m[k][3]*scale-(&anim.adjust.x)[k];outputs[b.bone]=pm::ConcatTransforms(pm::ConcatTransforms(rootRotation,raw),alignment[b.bone]);}
+                for(size_t b=0;b<m.bones.size();++b){const int parent=m.bones[b].parent;auto it=outputs.find(int(b));matrix3x4 local;if(it!=outputs.end()){world[b]=it->second;local=parent<0?world[b]:pm::ConcatTransforms(pm::MatrixInvert(world[parent]),world[b]);pm::MatrixAngles(local,frame[b].rot,frame[b].pos);}else{pm::AngleMatrix(frame[b].rot,frame[b].pos,local);world[b]=parent<0?local:pm::ConcatTransforms(world[parent],local);}}
+            }
+        }
+    }
+    std::printf("baked %zu DMX rig graphs into %zu skeletal animations\n",m.dmxRigs.size(),m.anims.size());return true;
+}
+
+// Bake the four DMX rig constraints and Twist before QC animation processing.
+// The four constraint kinds retain metadata records. Twist writes ordinary
+// animation only. Neither kind may lose its channels to BONE_ALWAYS_PROCEDURAL.
+bool BakeConstraintAnimations(Ctx& ctx, std::string* err) {
+    auto& m=*ctx.out;
+    if(m.constraintbones.empty()&&m.twistbones.empty())return m.dmxRigs.empty()?true:BakeDmxRigAnimations(ctx,err);
+    auto fail=[&](const std::string& s){if(err)*err="DMX constraint bake: "+s;return false;};
+    std::vector<const ConstraintBone*> byBone(m.bones.size(),nullptr);
+    for(const auto& c:m.constraintbones)byBone[c.bone]=&c;
+    std::vector<const TwistBone*> twistByBone(m.bones.size(),nullptr);
+    std::vector<const TwistTarget*> twistTargetByBone(m.bones.size(),nullptr);
+    for(const auto& t:m.twistbones)for(const auto& target:t.targets) {
+        twistByBone[target.bone]=&t;twistTargetByBone[target.bone]=&target;
+    }
+    std::vector<int> state(m.bones.size(),0),order;
+    auto visit=[&](auto&& self,int b,bool required)->bool {
+        if(b<0)return true;
+        if(required&&(m.bones[b].flags&BONE_ALWAYS_PROCEDURAL))return fail("depends on runtime procedural bone '"+m.bones[b].name+"'");
+        if(state[b]==2)return true;
+        if(state[b]==1)return fail("cyclic bone dependency");
+        state[b]=1;
+        if(!self(self,m.bones[b].parent,required||byBone[b]||twistByBone[b]))return false;
+        if(const auto* c=byBone[b]) {
+            for(const auto& t:c->targets)if(!self(self,t.bone,true))return false;
+            if(!self(self,c->upBone,true))return false;
+        }
+        if(const auto* t=twistByBone[b])
+            if(!self(self,t->parent,true)||!self(self,t->child,true)||!self(self,t->grandParent,true))return false;
+        state[b]=2;order.push_back(b);return true;
+    };
+    // Visit required closures first so a previously visited unrelated branch
+    // cannot conceal an unsupported procedural ancestor.
+    for(const auto& c:m.constraintbones)if(!visit(visit,c.bone,true))return false;
+    for(const auto& t:m.twistbones)for(const auto& target:t.targets)if(!visit(visit,target.bone,true))return false;
+    for(size_t b=0;b<m.bones.size();++b)if(!visit(visit,int(b),false))return false;
+    if(!m.dmxRigs.empty())return BakeDmxRigAnimations(ctx,err);
+    auto add=[](Vector3 a,Vector3 b){return Vector3{a.x+b.x,a.y+b.y,a.z+b.z};};
+    auto sub=[](Vector3 a,Vector3 b){return Vector3{a.x-b.x,a.y-b.y,a.z-b.z};};
+    auto mul=[](Vector3 a,float s){return Vector3{a.x*s,a.y*s,a.z*s};};
+    auto dot=[](Vector3 a,Vector3 b){return a.x*b.x+a.y*b.y+a.z*b.z;};
+    auto cross=[](Vector3 a,Vector3 b){return Vector3{a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};};
+    auto position=[](const matrix3x4& a){return Vector3{a.m[0][3],a.m[1][3],a.m[2][3]};};
+    auto orientation=[](const matrix3x4& a){Quaternion q;Vector3 p;pm::MatrixAngles(a,q,p);return q;};
+    auto average=[](const std::vector<Quaternion>& values,const ConstraintBone& c,float total) {
+        if(values.size()==1)return values.front();
+        Quaternion sum{0,0,0,0};
+        for(size_t i=0;i<values.size();++i) {
+            Quaternion q;pm::QuaternionAlign(values.front(),values[i],q);
+            const float r=std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z);
+            const float s=(r>0.00001f?std::atan2(r,q.w)/r:0)*(c.targets[i].weight/total);
+            sum.x+=q.x*s;sum.y+=q.y*s;sum.z+=q.z*s;
+        }
+        const float r=std::sqrt(sum.x*sum.x+sum.y*sum.y+sum.z*sum.z);
+        const float s=r>=0.00001f?std::sin(r)/r:0;
+        return Quaternion{sum.x*s,sum.y*s,sum.z*s,std::cos(r)};
+    };
+    std::vector<matrix3x4> world(m.bones.size());
+    for(auto& anim:m.anims) {
+        if(anim.flags&STUDIO_DELTA)return fail("raw delta animation '"+anim.name+"' needs an absolute source pose");
+        // RemapAnimations can opt a clip out of bone edits/realignment. Use
+        // that same effective basis when restoring authored Twist coordinates.
+        std::vector<matrix3x4> twistAlignment;
+        if(!m.twistbones.empty()) {
+            std::vector<SrcRealignSave> saved;
+            const bool overrode=!anim.isBindPose&&PushAnimSrcRealignOverride(ctx,anim,saved);
+            for(const auto& bone:m.bones)twistAlignment.push_back(bone.srcRealign);
+            if(overrode)PopAnimSrcRealignOverride(ctx,saved);
+        }
+        for(auto& frame:anim.sanim)for(int b:order) {
+            const int parent=m.bones[b].parent;
+            const matrix3x4 parentWorld=parent<0?matrix3x4{}:world[parent];
+            matrix3x4 local;pm::AngleMatrix(frame[b].rot,frame[b].pos,local);
+            world[b]=pm::ConcatTransforms(parentWorld,local);
+            if(const auto* t=twistByBone[b]) {
+                auto authoredWorld=[&](int i){return pm::ConcatTransforms(world[i],pm::MatrixInvert(twistAlignment[i]));};
+                const matrix3x4 sourceParent=authoredWorld(t->parent);
+                matrix3x4 sourceAncestor;
+                if(t->grandParent>=0)sourceAncestor=authoredWorld(t->grandParent);
+                else pm::AngleMatrix(anim.rotation,sourceAncestor);
+                const Quaternion parentQ=orientation(pm::ConcatTransforms(pm::MatrixInvert(sourceAncestor),sourceParent));
+                const matrix3x4 child=pm::ConcatTransforms(pm::MatrixInvert(sourceParent),authoredWorld(t->child));
+                const auto& target=*twistTargetByBone[b];
+                const Quaternion q=SolveTwist(*t,target,parentQ,child);
+                const float scale=anim.ignorescale?anim.scale/ctx.in->scale:anim.scale;
+                world[b]=pm::ConcatTransforms(sourceParent,pm::QuaternionMatrix(q,mul(target.position,scale)));
+                world[b]=pm::ConcatTransforms(world[b],twistAlignment[b]);
+                local=pm::ConcatTransforms(pm::MatrixInvert(parentWorld),world[b]);
+                pm::MatrixAngles(local,frame[b].rot,frame[b].pos);
+                for(int k=0;k<3;++k)if(!std::isfinite((&frame[b].pos.x)[k])||!std::isfinite((&frame[b].rot.x)[k]))return fail("non-finite Twist pose for '"+target.name+"'");
+                continue;
+            }
+            const auto* c=byBone[b];if(!c)continue;
+            const matrix3x4 base=pm::ConcatTransforms(parentWorld,pm::QuaternionMatrix(c->baseRotation,c->basePosition));
+            Vector3 p=position(base),target{};Quaternion q=orientation(base);
+            float total=0;std::vector<Quaternion> rotations;
+            for(const auto& t:c->targets) {
+                total+=t.weight;
+                const matrix3x4 transformed=pm::ConcatTransforms(world[t.bone],pm::QuaternionMatrix(t.rotation,t.offset));
+                const Vector3 tp=c->kind==12?position(transformed):add(position(world[t.bone]),t.offset);
+                target=add(target,mul(tp,t.weight));
+                rotations.push_back(orientation(transformed));
+            }
+            if(!std::isfinite(total))return fail("target weight sum is not finite");
+            if(total>0) {
+                target=mul(target,1/total);const float weight=std::min(1.0f,total);
+                if(c->kind==8||c->kind==12)p=add(mul(p,1-weight),mul(target,weight));
+                if(c->kind==9||c->kind==12) {
+                    Quaternion targetQ=average(rotations,*c,total),blended;
+                    pm::QuaternionSlerp(q,targetQ,weight,blended);q=blended;
+                } else if(c->kind==10) {
+                    Vector3 up=c->up;
+                    if(c->upType==2&&c->upBone>=0)up=sub(position(world[c->upBone]),position(base));
+                    else if(c->upType==0&&c->upBone>=0)up=pm::VectorRotate(up,world[c->upBone]);
+                    else if(c->upType==3)up=pm::VectorRotate(up,parentWorld);
+                    up=pm::VectorIRotate(up,parentWorld);
+                    Vector3 forward=sub(pm::VectorITransform(target,parentWorld),c->basePosition);
+                    if(pm::VectorNormalize(forward)<1e-7f)return fail("aim target coincides with slave '"+c->name+"'");
+                    up=sub(up,mul(forward,dot(forward,up)));
+                    if(pm::VectorNormalize(up)<1e-7f)return fail("aim up vector is parallel to direction for '"+c->name+"'");
+                    Vector3 right=cross(forward,up);pm::VectorNormalize(right);
+                    matrix3x4 basis;
+                    for(int k=0;k<3;++k){basis.m[k][0]=(&right.x)[k];basis.m[k][1]=(&forward.x)[k];basis.m[k][2]=(&up.x)[k];}
+                    const matrix3x4 aim=pm::ConcatTransforms(parentWorld,pm::ConcatTransforms(basis,pm::QuaternionMatrix(c->aimOffset,{})));
+                    Quaternion blended;pm::QuaternionSlerp(q,orientation(aim),weight,blended);q=blended;
+                }
+            }
+            world[b]=pm::QuaternionMatrix(q,p);
+            local=pm::ConcatTransforms(pm::MatrixInvert(parentWorld),world[b]);
+            pm::MatrixAngles(local,frame[b].rot,frame[b].pos);
+            for(int k=0;k<3;++k)if(!std::isfinite((&frame[b].pos.x)[k])||!std::isfinite((&frame[b].rot.x)[k]))return fail("non-finite pose for '"+c->name+"'");
+        }
+    }
+    std::printf("baked %zu DMX constraints into %zu skeletal animations\n",m.constraintbones.size(),m.anims.size());
+    if(!m.twistbones.empty())std::printf("baked %zu Twist operators into %zu skeletal animations\n",m.twistbones.size(),m.anims.size());
     return true;
 }
 
@@ -10693,6 +11262,56 @@ bool ConvertIkRule(const CompileInput& input, const CompileInput::InIkRule& ir,
 }
 
 bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+    const bool hasAdvanced=cloth::HasAdvanced(input.clothSettings.advanced);
+    const bool hasCloth=!input.clothProxies.empty()||hasAdvanced;
+    input.clothSettings.modelUpAxisY=input.upAxisY;
+    auto renameCloth=[&](auto rename) {
+        auto& a=input.clothSettings.advanced;
+        for(auto& n:a.nodes){rename(n.name);rename(n.parent);}
+        for(auto& r:a.rods)for(auto& n:r.node)rename(n);
+        for(auto& s:a.springs)for(auto& n:s.node)rename(n);
+        for(auto& r:a.ropes)for(auto& n:r)rename(n);
+        for(auto& f:a.follows){rename(f.parent);rename(f.child);}
+        for(auto& f:a.osOffsets){rename(f.parent);rename(f.child);}
+        for(auto& s:a.spheres){rename(s.parent);rename(s.child);}
+        for(auto& p:a.planes){rename(p.parent);rename(p.child);}
+        for(auto& c:a.capsules)for(auto& n:c.node)rename(n);
+        for(auto& r:a.rigids)rename(r.node);
+        rename(input.clothSettings.projection.rootBone);
+    };
+    if(!input.clothSettings.colliders.empty()&&!hasCloth) {
+        if(err)*err="cloth colliders require a cloth proxy";
+        return false;
+    }
+    if((!input.axisinterpbones.empty()||!input.twistbones.empty())&&input.archetype!=Archetype::General) {
+        if(err)*err="AxisInterp/Twist requires a skeletal model";
+        return false;
+    }
+    if((!input.axisinterpbones.empty()||!input.twistbones.empty())&&input.csgo.centerBones) {
+        if(err)*err="AxisInterp/Twist does not support $centerbonesonverts";
+        return false;
+    }
+    for (const auto& source : input.sources)
+        if (source->kind == src::LoadKind::Model && source->subdivisionSurface) input.csgo.subd = true;
+    if (input.csgo.subd && input.csgo.subdNative && input.vtxArchetype != 1) {
+        if (err) *err = "Native SubD requires extended VTX (-vtxformat 1 or a compatible -game target)";
+        return false;
+    }
+    if(input.csgo.subd && input.csgo.subdNative)
+        std::fprintf(stderr,"warning: native SubD rendering crashes in the tested CSGO legacy game and HLMV. Native output requires a renderer with working SubD support; omit 'native' to bake ordinary triangles.\n");
+    if((!input.constraintbones.empty()||!input.dmxRigs.empty())&&(!input.csgo.lodCompatibility||!input.csgo.extendedHeader||input.archetype!=Archetype::General)) {
+        if(err)*err="DMX rig constraints require a CSGO target (-game with SteamAppId 730) and a skeletal model";
+        return false;
+    }
+    if((!input.constraintbones.empty()||!input.dmxRigs.empty())&&input.csgo.centerBones) {
+        if(err)*err="DMX constraint bake does not support $centerbonesonverts";
+        return false;
+    }
+    if (hasCloth && (!input.csgo.lodCompatibility ||
+        input.vtxArchetype != 1 || input.archetype != Archetype::General)) {
+        if (err) *err = "FE cloth requires a CSGO target (-game with SteamAppId 730), extended VTX and a skeletal model";
+        return false;
+    }
     // Expand prefix/substitution rules to explicit renames. Source skeletons
     // stay untouched so cached mesh and animation mappings remain valid.
     if (!input.csgo.stripPrefixes.empty() || !input.csgo.substringRenames.empty()) {
@@ -10768,6 +11387,12 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
             resolve(proc.helperparentname);resolve(proc.driverparentname);
         }
         for (auto& aim : input.aimatbones) {resolve(aim.bonename);resolve(aim.parentname);if(std::none_of(input.attachments.begin(),input.attachments.end(),[&](const auto& a){return _stricmp(a.name.c_str(),aim.aimname.c_str())==0;}))resolve(aim.aimname);}
+        for(auto& c:input.constraintbones) {resolve(c.name);resolve(c.upName);for(auto& t:c.targets)resolve(t.name);}
+        for(auto& rig:input.dmxRigs)for(auto& b:rig.bones)resolve(b.name);
+        for(auto& a:input.axisinterpbones) {resolve(a.name);resolve(a.parentName);resolve(a.controlName);resolve(a.controlParentName);}
+        for(auto& t:input.twistbones) {resolve(t.parentName);resolve(t.childName);resolve(t.grandParentName);for(auto& target:t.targets)resolve(target.name);}
+        for(auto& collider:input.clothSettings.colliders)resolve(collider.bone);
+        renameCloth(resolve);
         for (auto& entry : input.defaultWeights) resolve(entry.bone);
         for (auto& list : input.weightlists) for (auto& entry : list.entries) resolve(entry.bone);
         for (auto& anim : input.anims) {
@@ -10785,6 +11410,11 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         for (auto& contents : input.jointContents) resolve(contents.first);
         for (auto& surface : input.jointSurfaceProps) resolve(surface.first);
         resolve(input.physRootBone);
+        for (auto& proxy : input.clothProxies) {
+            for (auto& bone : proxy.bones) resolve(bone);
+            for (auto& point : proxy.points)
+                for (auto& weight : point.weights) resolve(weight.bone);
+        }
     }
     Ctx ctx;
     ctx.in = &input;
@@ -10803,7 +11433,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     out.internalName=input.csgo.internalName;
     if(input.csgo.obsolete)out.gflags|=1<<9;
     out.csgoHeader=input.csgo.extendedHeader;
-    if(input.csgo.subd)out.gflags|=1<<19;
+    if(input.csgo.subd&&input.csgo.subdNative)out.gflags|=1<<19;
     if (input.csgo.clipTexcoords || input.csgo.zbrush) for (auto& source : input.sources) {
         if (input.csgo.clipTexcoords) for (auto& vertex : source->vertex) {
             vertex.texcoord.x=std::clamp(vertex.texcoord.x,0.0f,1.0f);
@@ -10887,6 +11517,10 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     out.jigglebones = std::move(input.jigglebones);
     out.proceduralbones = std::move(input.proceduralbones);
     out.aimatbones = std::move(input.aimatbones);
+    out.constraintbones = std::move(input.constraintbones);
+    out.dmxRigs = std::move(input.dmxRigs);
+    out.axisinterpbones = std::move(input.axisinterpbones);
+    out.twistbones = std::move(input.twistbones);
 
     // Source needs either one sequence or an $includemodel for a model to load
     // at all, so a script with neither gets the bind pose synthesized as
@@ -11595,6 +12229,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
             out.gflags |= STUDIOHDR_FLAGS_USE_SHADOWLOD_MATERIALS;
     }
     { PULSE_TIME_PASS("LoadLodSources"); LoadLodSources(ctx); }
+    if(input.csgo.subd&&!input.csgo.subdNative) {
+        std::unordered_set<src::Source*> baked;
+        for(auto& model:out.models)for(auto* source:model.lodSources)
+            if(source&&baked.insert(source).second)
+                if(!subd::Bake(*source,input.csgo.subdLevels,err))return false;
+        std::printf("baked SubD control meshes to triangles (%d Catmull-Clark levels)\n",input.csgo.subdLevels);
+    }
 
     // ---- bone pipeline (RemapBones) ----
     // $setbindpose / $setflex bake into the rest mesh first, so an archetype
@@ -11634,6 +12275,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     // both inside the same per-source TagFlexDriverBones call).
     PruneFlexDriverBones(ctx);
     CullUnskinnedJiggleBones(ctx);
+
+    if(input.clothSettings.projection.enabled) {
+        std::vector<src::Source*> renderSources;
+        for(auto& source:input.sources)
+            if(source->kind==src::LoadKind::Model&&!source->vertex.empty())renderSources.push_back(source.get());
+        std::vector<std::string> generatedBones;
+        if(!cloth::ProjectRenderVertices(input.clothProxies,renderSources,input.clothSettings,generatedBones,err))return false;
+        for(const auto& name:generatedBones)input.bonemarkups.push_back({name,true,false});
+    }
 
     { PULSE_TIME_PASS("TagUsedBones"); TagUsedBones(ctx); }
     {
@@ -11676,6 +12326,10 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     // loader filled in script order, to pick attachment-vs-bone targeting.
     if (!MapAimAtBones(ctx, err))
         return false;
+    if (!MapAxisAndTwistBones(ctx, err))
+        return false;
+    if (!MapConstraintBones(ctx, err))
+        return false;
 
     // ik chains/locks link against the final bone table BEFORE RealignBones
     // (reference: RemapBones -> LinkIKChains -> LinkIKLocks ->
@@ -11699,6 +12353,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     // straight after the realign that produced them.
     if (!RemapProceduralBones(ctx, err))
         return false;
+    RemapConstraintBones(ctx);
+    if(!RemapAxisInterpBones(ctx,err))return false;
     if (input.stopAfterProcedural)
         return true;
 
@@ -11757,10 +12413,12 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     // the model bounds.
     { PULSE_TIME_PASS("BuildCollisionModel");
       if (!BuildCollisionModel(ctx, err)) return false; }
+    if (!surfaceproperties::ResolvePhysicsMass(out, input.physAutoMass, err)) return false;
 
     // ---- animation ----
     { PULSE_TIME_PASS("RemapAnimations");
       if (!RemapAnimations(ctx, err)) return false; }
+    if (!BakeConstraintAnimations(ctx, err)) return false;
 
     std::vector<WeightList> weightlists;
     BuildAnimationWeights(ctx, weightlists);
@@ -11823,7 +12481,9 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     // (RemapVertexAnimations, GenerateVertexAveragedAttachments, CullFlex) has
     // to have had its say first. What follows only ever takes min/max over all
     // vertices, which duplication cannot change.
+    if (!ValidateSubdOutput(ctx, err)) return false;
     { PULSE_TIME_PASS("BuildOutputMeshes"); BuildOutputMeshes(ctx); ClampOutputModels(ctx); }
+    if (!BuildSubdOutput(ctx, err)) return false;
 
     { PULSE_TIME_PASS("SetupHitBoxes"); if (!SetupHitBoxes(ctx, err)) return false; }
     { PULSE_TIME_PASS("CompressAnimations"); CompressAnimations(ctx); }
@@ -12204,6 +12864,60 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
             swap(merge.first);
             swap(merge.second);
         }
+        for (auto& proxy : input.clothProxies) {
+            for (auto& bone : proxy.bones) swap(bone);
+            for (auto& point : proxy.points)
+                for (auto& weight : point.weights) swap(weight.bone);
+        }
+        for(auto& collider:input.clothSettings.colliders)swap(collider.bone);
+        renameCloth(swap);
+    }
+
+    if (hasCloth) {
+        PULSE_TIME_PASS("BuildCloth");
+        bool invalidAdvancedParent=false;
+        auto advancedParent=[&](const std::string& name) -> const Bone* {
+            const int b=out.FindBone(name.c_str());
+            if(b<0)return nullptr; // virtual FE nodes already use their final basis
+            for(int ancestor=b;ancestor>=0;ancestor=out.bones[ancestor].parent)
+                if(out.bones[ancestor].flags&BONE_ALWAYS_PROCEDURAL) {
+                    if(err)*err="advanced cloth cannot depend on runtime procedural bone '"+out.bones[ancestor].name+"'";
+                    invalidAdvancedParent=true;
+                    return nullptr;
+                }
+            return &out.bones[b];
+        };
+        // Authored collider coordinates are bone-local before source realignment.
+        auto& authored=input.clothSettings.advanced;
+        for(auto& sphere:authored.spheres)
+            if(const auto* parent=advancedParent(sphere.parent))sphere.center=pm::VectorITransform(sphere.center,parent->srcRealign);
+        for(auto& rigid:authored.rigids)
+            if(const auto* parent=advancedParent(rigid.node))
+                for(auto& center:rigid.center)center=pm::VectorITransform(center,parent->srcRealign);
+        for(auto& plane:authored.planes)if(const auto* parent=advancedParent(plane.parent)) {
+            const auto point=pm::VectorITransform({plane.normal.x*plane.offset,plane.normal.y*plane.offset,plane.normal.z*plane.offset},parent->srcRealign);
+            plane.normal=pm::VectorIRotate(plane.normal,parent->srcRealign);
+            plane.offset=plane.normal.x*point.x+plane.normal.y*point.y+plane.normal.z*point.z;
+        }
+        if(invalidAdvancedParent)return false;
+        for(auto& collider:input.clothSettings.colliders) {
+            const int b=out.FindBone(collider.bone.c_str());
+            if(b<0) {if(err)*err="cloth collider missing bone '"+collider.bone+"'";return false;}
+            for(int ancestor=b;ancestor>=0;ancestor=out.bones[ancestor].parent)
+                if(out.bones[ancestor].flags&BONE_ALWAYS_PROCEDURAL) {
+                    if(err)*err="cloth collider cannot use runtime procedural bone '"+out.bones[ancestor].name+"'";
+                    return false;
+                }
+            for(int i=0;i<2;++i)collider.center[i]=pm::VectorITransform(collider.center[i],out.bones[b].srcRealign);
+        }
+        std::vector<cloth::Bone> bones;
+        for (const auto& bone : out.bones) bones.push_back({bone.name, bone.boneToPose});
+        // FE rest positions share the raw, scaled bind space of VVD vertices
+        // and boneToPose. Origin/up-axis/rotation are applied by animation;
+        // baking them here would transform only the proxy a second time.
+        matrix3x4 importTransform;
+        if (!cloth::Build(input.clothProxies, bones, importTransform, 1.0f, out.clothData, err, &input.clothSettings))
+            return false;
     }
 
     return true;

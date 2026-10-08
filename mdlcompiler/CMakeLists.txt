@@ -2,7 +2,8 @@
 
 add_executable(mdlcompiler main.cpp dmxloader.cpp dmxrig.cpp smdloader.cpp
                fbxloader.cpp sceneloader.cpp gltfscene.cpp resources.cpp meshedit.cpp compile.cpp facemarkup.cpp
-               flexreg.cpp qcloader.cpp writemdl.cpp outputfiles.cpp writevtx.cpp writephy.cpp)
+               flexreg.cpp qcloader.cpp writemdl.cpp outputfiles.cpp writevtx.cpp writephy.cpp
+               surfaceproperties.cpp cloth.cpp clothadvanced.cpp clothprojection.cpp subd.cpp dmxeval.cpp)
 # Each tool owns its own version; there is no project-wide one.
 set(TOOL_VERSION 0.34.0)
 string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")

@@ -14,6 +14,9 @@
 #include "math/math.h"
 #include "pulselimits.h"
 #include "source.h"
+#include "dmxeval.h"
+#include "subd.h"
+#include "cloth.h"
 
 namespace pulse::compile {
 
@@ -265,6 +268,33 @@ struct ProceduralBone {
     std::vector<ProceduralBoneTrigger> triggers;
 };
 
+// Legacy six-cardinal-axis runtime interpolation ($proceduralbones, non-VRD).
+struct AxisInterpBone {
+    std::string name, parentName, controlName, controlParentName;
+    int bone = -1, control = -1, axis = 0;
+    bool controlInModelSpace = false; // decompiled root controls already use compiled model axes
+    Vector3 position[6]{};
+    Quaternion rotation[6]{};
+};
+
+// CSGO disables the Twist writer and defaults its runtime solver off. Bake
+// the reference solver into ordinary animation channels instead.
+struct TwistTarget {
+    std::string name;
+    int bone = -1;
+    float weight = 0;
+    Vector3 position{};
+    Quaternion rotation{0,0,0,1};
+};
+struct TwistBone {
+    std::string parentName, childName, grandParentName;
+    int parent = -1, child = -1, grandParent = -1;
+    bool inverse = false;
+    Vector3 up{0,1,0};
+    Quaternion baseRotation{0,0,0,1};
+    std::vector<TwistTarget> targets;
+};
+
 // one aim-at procedural bone (QC $driveraimat / VRD <aimconstraint>, reference
 // s_aimatbone_t). The engine rotates the bone so its aimvector points at a
 // target attachment or bone, so like the other procedural kinds it is tagged
@@ -293,6 +323,24 @@ struct AimAtBone {
     bool autobasepos = false;
     // see ProceduralBone::strictName
     bool strictName = true;
+};
+
+// CSGO multi-target constraints. Offsets retain their authored spaces until
+// the final skeleton has been remapped and realigned.
+struct ConstraintTarget {
+    std::string name;
+    int bone = -1;
+    float weight = 0;
+    Vector3 offset{};
+    Quaternion rotation{0,0,0,1};
+};
+struct ConstraintBone {
+    int kind = 8; // point=8, orient=9, aim=10, parent=12
+    std::string name, upName;
+    int bone = -1, upBone = -1, upType = 0;
+    Vector3 basePosition{}, up{0,0,1};
+    Quaternion baseRotation{0,0,0,1}, aimOffset{0,0,0,1};
+    std::vector<ConstraintTarget> targets;
 };
 
 // bone_cull_type: how hard the skeleton is pruned of bones nothing references.
@@ -794,6 +842,13 @@ struct PhysicsShape {
     bool concave = false;             // split disjoint mesh islands into pieces
     int maxConvex = lim::kMaxConvexPieces;
     bool remove2d = false;
+    // Legacy $collisionmodel root and $addconvexsrc entries share a weld group.
+    // The optional extra-source offset is in the reference's SMD physics space
+    // and must run before bind-space remapping, without changing a cached source.
+    int legacyCollisionGroup = -1;
+    bool sourceOffsetSet = false;
+    bool sourceOffsetMirrored = false;
+    matrix3x4 sourceOffset{};
 
     // ---- FromRender -------------------------------------------------------
     // Fraction of each generated hull's natural vertex count to keep; 1 keeps
@@ -867,7 +922,7 @@ struct PhysicsSolid {
     float volume = 0.0f;
     float surfaceArea = 0.0f;
     float massBias = 1.0f;
-    float mass = 1.0f;    // computed at write time from volume share
+    float mass = 1.0f;    // resolved after collision build from volume share
     float damping = 0.0f;
     float rotdamping = 0.0f;
     float inertia = 1.0f;
@@ -958,6 +1013,7 @@ struct OutMesh {
     // Empty where the LOD does not draw the mesh (removemesh, or the LOD's
     // source carries no geometry for the material).
     std::vector<std::vector<source::SrcFace>> lodFaces;
+    std::vector<subd::Mesh> subdLods; // native control patches and VTX topology
 };
 
 struct Model {
@@ -1009,6 +1065,7 @@ struct CompiledModel {
     std::vector<BoneController> bonecontrollers;
     std::string internalName;
     bool csgoHeader=false;
+    std::vector<uint8_t> clothData;
     bool legacyStripify = false;
     bool preserveTriangleOrder = false;
     size_t mdlLimit=0,aniLimit=0,fileLimit=0;
@@ -1070,6 +1127,10 @@ struct CompiledModel {
     std::vector<ProceduralBone> proceduralbones;
     // aim-at helpers, pruned + resolved by MapAimAtBones. Writer's order.
     std::vector<AimAtBone> aimatbones;
+    std::vector<ConstraintBone> constraintbones;
+    std::vector<loader::DmxRigDefinition> dmxRigs;
+    std::vector<AxisInterpBone> axisinterpbones;
+    std::vector<TwistBone> twistbones;
     // $includemodel names, already "models/"-prefixed. Written as
     // mstudiomodelgroup_t; the sequences themselves are linked at runtime.
     std::vector<std::string> includeModels;
@@ -1126,10 +1187,14 @@ enum class Archetype {
 
 // Script-level inputs the compile stage needs (filled by the .pulsemdl loader).
 struct CompileInput {
+    std::vector<cloth::Proxy> clothProxies;
+    cloth::Settings clothSettings;
     struct CsgoOptions {
         bool bboxOnlyVerts=false, centerBones=false, clipTexcoords=false;
         bool modelHasNoSequences=false, errorOnRemapFailure=false, obsolete=false;
         bool skinnedLods=false, zbrush=false, subd=false;
+        bool subdNative=false;
+        int subdLevels=2;
         bool rootLodWeights=false;
         bool extendedHeader=false;
         bool lodCompatibility=false;
@@ -1326,6 +1391,10 @@ struct CompileInput {
     std::vector<ProceduralBone> proceduralbones;
     // aim-at helpers ($driveraimat / VRD <aimconstraint>)
     std::vector<AimAtBone> aimatbones;
+    std::vector<ConstraintBone> constraintbones;
+    std::vector<loader::DmxRigDefinition> dmxRigs;
+    std::vector<AxisInterpBone> axisinterpbones;
+    std::vector<TwistBone> twistbones;
 
     // physics. physicsshapelist / physicsjointlist /
     // physicsmarkuplist. No shapes = no .phy.

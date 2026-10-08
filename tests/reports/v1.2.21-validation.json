@@ -1,0 +1,533 @@
+{
+  "schema": 1,
+  "version": "1.2.21",
+  "build_platform": "Windows x64; llvm-mingw UCRT; static C++ runtime",
+  "compiler_sha256": "8e7bc22d8dff7dbcb30daa63181b0dfb2498ff5ca728dd7e5399c2f2552f662f",
+  "source_kind": "maintained local working tree; uncommitted",
+  "suites": {
+    "compatibility": {
+      "tests": 285,
+      "log_sha256": "6a8e91fe94646d35cbbfbecd11a2c00fc394d438e8e745a8ebddfd720445a2a9"
+    },
+    "automation": {
+      "tests": 20,
+      "log_sha256": "6a10e8d2fd93f537268bdd517b5ea920cfb3a1f7ea8c1fd2cffd0f33ff1a2765"
+    },
+    "content_mounts": {
+      "tests": 6,
+      "log_sha256": "e0f08f9fd03b07f4dd092921546c916dfdfaf4f63e1b4d97995a98b634615b63"
+    }
+  },
+  "focused_suites": {
+    "cloth": {
+      "tests": 22,
+      "log_sha256": "f8881bb0945a6604a325fb08eefaad5d7036e1a1565bad75a3b83e28b937573a"
+    },
+    "dmx": {
+      "tests": 40,
+      "log_sha256": "29e817819fa0917ae2ac68b430a659b54ce03a53fcd234bf1144cb23a3924246"
+    },
+    "axisinterp": {
+      "tests": 6,
+      "log_sha256": "193542219777af5743addaa7158a7060225f12c1c4c6bbb24d541eb08bb75647"
+    },
+    "twist": {
+      "tests": 9,
+      "log_sha256": "37c3a10a0b1aa60acc1c074813d84682e028dc3f432b546feb008266964d3d71"
+    },
+    "axis_export": {
+      "tests": 5,
+      "log_sha256": "0d4ede3c92b574015fa8127440c8b410a383700e03d30df31b751b910711b4c9"
+    }
+  },
+  "implemented": [
+    "Bone-bound FE spheres and tapered capsules with scale/rename/axis remapping",
+    "Sparse NodeBase and ReverseOffset controls, free-rotation proxy anchors and explicit rod-face replacement",
+    "Native AxisInterp import/export and source-space Twist animation baking",
+    "DMX curve interpolation and strict Vector3/Quaternion RLE log decoding"
+  ],
+  "production": {
+    "original_qc_unchanged": true,
+    "qc_sha256": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783",
+    "compiler_sha256": "8e7bc22d8dff7dbcb30daa63181b0dfb2498ff5ca728dd7e5399c2f2552f662f",
+    "bones": 126,
+    "vertices": 572277,
+    "physics_bodies": 18,
+    "mdl_mass": 30.0,
+    "phy_totalmass": 30.0,
+    "resolved_materials": 65,
+    "missing_materials": [],
+    "missing_referenced_textures": [],
+    "supplied_materials": {
+      "path": "C:\\Users\\Kud\\Desktop\\gmod\\materials",
+      "files": 249,
+      "vmt_files": 131,
+      "vtf_files": 118,
+      "unchanged": true
+    },
+    "evidence_sha256": "7c96a6d1727f3716c8def9d67b06c4f56c825f02d9e6403bf7cbaf54b5ea3405"
+  },
+  "runtime": {
+    "game": "Installed CSGO legacy 1.38.8.1 / build 8802; offline -insecure local de_dust2",
+    "status": "passed_bounded_runtime_validation",
+    "validation_date": "2026-10-08",
+    "new_runtime_behavior_verified": true,
+    "compiler_changed_for_this_validation": false,
+    "scope": "Self-authored diagnostics only. Visual motion/loading and collision A/B response checks; not exact per-frame parity.",
+    "cloth": {
+      "fixtures": [
+        "control",
+        "free",
+        "zero",
+        "sphere",
+        "capsule",
+        "rods",
+        "anchors"
+      ],
+      "result": "All seven loaded and played idle; sparse controls visibly deform the render mesh; rod and free-anchor fixtures run; entity move/reset and reload succeed.",
+      "dynamic_bones_per_fixture": 20,
+      "sparse_binding": "20 NodeBases + 20 ReverseOffsets; no FitMatrices in the dynamic cloth fixtures",
+      "collision_ab": {
+        "sphere_off": {
+          "collider": null,
+          "same_render_shell": true,
+          "zero_gravity": true,
+          "color": "red"
+        },
+        "sphere_on": {
+          "collider": "sphere root 0 20 44 12",
+          "same_render_shell": true,
+          "zero_gravity": true,
+          "color": "green"
+        },
+        "capsule_off": {
+          "collider": null,
+          "same_render_shell": true,
+          "zero_gravity": true,
+          "color": "yellow"
+        },
+        "capsule_on": {
+          "collider": "capsule root -10 18 46 8 10 18 46 10",
+          "same_render_shell": true,
+          "zero_gravity": true,
+          "color": "blue"
+        }
+      },
+      "collision_observation": "Zero-gravity pairs share the same render shell, with only sphere/capsule collision enabled or disabled. Enabled fixtures show an outward/upward response distinct from the disabled controls. The original lower shells alone were not sufficient to judge contact.",
+      "coordinate_audit": {
+        "evidence_sha256": "7d70917f57baaa8ba9a31f01e8485db88e7dade24f8a0d20f1dabb02e4e07dc8",
+        "proxy_render_position_max_error": 0,
+        "control_bind_position_max_error": 0,
+        "static_and_reverse_offset_max_error": 0,
+        "node_base_rotation_max_error": 1.324e-07,
+        "collider_shell_coordinates_match": true
+      },
+      "limits": [
+        "No per-frame contact or zero-penetration measurement.",
+        "No separate quantitative free-anchor rotation or full stock cloth equivalence measurement.",
+        "Finite time samples and driven-root transients do not establish equilibrium shape."
+      ]
+    },
+    "axisinterp": {
+      "result": "Native NP and stock models load, move and match visually at requested nominal 0.5- and 1-second samples.",
+      "sequence": "motion",
+      "nominal_sample_seconds": [
+        0.5,
+        1.0
+      ],
+      "limit": "Timed SetPlaybackRate stops are not read-back cycle or exact in-game bone measurements."
+    },
+    "twist": {
+      "result": "Forward and inverse fixtures load and show both positive and negative corrective motion through ordinary baked animation.",
+      "requested_nominal_samples_seconds": [
+        1.0,
+        3.0
+      ],
+      "native_runtime_twist_records": false,
+      "limit": "Exact output angles remain supported by compiled/decompiled numeric evidence; no exact in-game angles were read."
+    },
+    "reload": {
+      "map": "de_dust2",
+      "completed": true,
+      "cloth_models": 7,
+      "collision_ab_models": 4,
+      "procedural_models": 4,
+      "result": "All groups recreated and rendered after changelevel."
+    },
+    "evidence": {
+      "screenshots_sha256": {
+        "axis-midpoint.png": "522cf74530dcd3500e896ac75b9a5c22480fc32b81b7a84225acb481b9a5b8be",
+        "cloth-overview.png": "a754d0465225f2aeeaf69e9a94df3ed6b732e39d1301d020c75ef651ba7fa6f2",
+        "cloth-side-review.png": "de125dd02cb3a019943f80422e6f511d621a3e4348b5373d065270abeeab42af",
+        "contact-ab-overview.png": "845f4a33a4c59e0e0ef5da0e0ab0462f80eb43b37d777c9f6a1492293ad81efe",
+        "contact-sphere-wireframe.png": "21de64b75561bc86d0c9a4da85ed711545711893f859097d62b15f9fbdecba3f",
+        "procedural-phase1-overview.png": "ebca5116091b685fe9e0ac14d1f15fbdaa190772fbce3bd58ca13fac488dbba3",
+        "reload-cloth.png": "b941f0bdf7426a3583ebadb116926c2092c6a720523aa19bcca40253de0241f0",
+        "reload-contact.png": "1fe615c795c67a9241a378483fcbb3a80a70f73311fa41abfc328af9bf6dabfb",
+        "reload-procedural.png": "5dd9da81ec01677c3c72e53be2aa3152e690540a094b22951bf780bb62f01e41",
+        "twist-negative.png": "b36fb7b21ceda9ae52bb753e43cf749d1924cecd074fe5917845960fc3f2eb67",
+        "twist-positive.png": "d2338adf20e14556b81161c4cdac005ec3ca6a90c4d398d6e7a3ba1858dbc159"
+      },
+      "console_log_sha256": "71de551b3b319e768d136c61c107ab707576ad867fd60133e422ffc67ce3d653",
+      "engine_log_sha256": "8fb92b60170084c7287b8707a8bad071c7504e3f178d669f2c3573b7970a4fe9",
+      "staging_scripts_sha256": {
+        "cloth.nut": "ac47b1d1fb1269b995c4caa2c2ab491eb21fa14bfd11a8adbd0537f445c70762",
+        "contact.nut": "c29e442bb18ed616c5a74c8f4a80b9c81b39bf2cb742ea7c4af6e2fc2042c663",
+        "procedural.nut": "cbfe9d847111f440f4c26a40395f98f8862e96e7070abedbe6006fa6bac845c3"
+      }
+    },
+    "cleanup": {
+      "unchanged_registered_files_removed": 67,
+      "registered_files_remaining": 0,
+      "task_csgo_processes_remaining": 0,
+      "task_engine_log_created": true,
+      "task_engine_log_archived_and_removed_from_game": true,
+      "game_console_commands_applied": true,
+      "game_exited_normally": true,
+      "other_game_closed_or_modified": false,
+      "restored_settings_read_back": {
+        "sensitivity": 2.5,
+        "engine_no_focus_sleep": 50,
+        "cl_drawhud": 1,
+        "r_drawviewmodel": 1,
+        "r_drawothermodels": 1,
+        "mat_wireframe": 0
+      },
+      "task_netconsole_credentials_removed": true
+    },
+    "prior_attempt": {
+      "status": "not_executed_game_busy",
+      "result": "Historical blocked launch preserved separately; superseded by this completed session.",
+      "evidence_sha256": "fcad28bf2f737efa924a610184495d8726fb70d251e2790b257d91f0a9222706"
+    },
+    "prior_evidence": "v1.2.20 results remain historical; this session adds bounded evidence for the v1.2.21 paths."
+  },
+  "prepared_cloth_fixtures": {
+    "cloth21_control": {
+      "qc": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1221-cloth\\cloth21_control.qc",
+      "color": "gray",
+      "frames": 121,
+      "fps": 30,
+      "root_z_amplitude": 4,
+      "simulated_vertex_bones": 20
+    },
+    "cloth21_free": {
+      "qc": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1221-cloth\\cloth21_free.qc",
+      "color": "red",
+      "frames": 121,
+      "fps": 30,
+      "root_z_amplitude": 4,
+      "simulated_vertex_bones": 20,
+      "nodes_static_rotlocked": [
+        46,
+        6,
+        6
+      ],
+      "bases": 20,
+      "reverse_offsets": 20,
+      "fits": 0,
+      "sphere_rigids": 0,
+      "capsule_rigids": 0,
+      "quads": 16,
+      "rods": 0
+    },
+    "cloth21_zero": {
+      "qc": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1221-cloth\\cloth21_zero.qc",
+      "color": "yellow",
+      "frames": 121,
+      "fps": 30,
+      "root_z_amplitude": 4,
+      "simulated_vertex_bones": 20,
+      "nodes_static_rotlocked": [
+        46,
+        6,
+        6
+      ],
+      "bases": 20,
+      "reverse_offsets": 20,
+      "fits": 0,
+      "sphere_rigids": 0,
+      "capsule_rigids": 0,
+      "quads": 16,
+      "rods": 0
+    },
+    "cloth21_sphere": {
+      "qc": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1221-cloth\\cloth21_sphere.qc",
+      "color": "green",
+      "frames": 121,
+      "fps": 30,
+      "root_z_amplitude": 4,
+      "simulated_vertex_bones": 20,
+      "nodes_static_rotlocked": [
+        46,
+        6,
+        6
+      ],
+      "bases": 20,
+      "reverse_offsets": 20,
+      "fits": 0,
+      "sphere_rigids": 1,
+      "capsule_rigids": 0,
+      "quads": 16,
+      "rods": 0
+    },
+    "cloth21_capsule": {
+      "qc": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1221-cloth\\cloth21_capsule.qc",
+      "color": "blue",
+      "frames": 121,
+      "fps": 30,
+      "root_z_amplitude": 4,
+      "simulated_vertex_bones": 20,
+      "nodes_static_rotlocked": [
+        46,
+        6,
+        6
+      ],
+      "bases": 20,
+      "reverse_offsets": 20,
+      "fits": 0,
+      "sphere_rigids": 0,
+      "capsule_rigids": 1,
+      "quads": 16,
+      "rods": 0
+    },
+    "cloth21_rods": {
+      "qc": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1221-cloth\\cloth21_rods.qc",
+      "color": "magenta",
+      "frames": 121,
+      "fps": 30,
+      "root_z_amplitude": 4,
+      "simulated_vertex_bones": 20,
+      "nodes_static_rotlocked": [
+        46,
+        6,
+        6
+      ],
+      "bases": 20,
+      "reverse_offsets": 20,
+      "fits": 0,
+      "sphere_rigids": 0,
+      "capsule_rigids": 0,
+      "quads": 0,
+      "rods": 68
+    },
+    "cloth21_anchors": {
+      "qc": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1221-cloth\\cloth21_anchors.qc",
+      "color": "cyan",
+      "frames": 121,
+      "fps": 30,
+      "root_z_amplitude": 4,
+      "simulated_vertex_bones": 20,
+      "nodes_static_rotlocked": [
+        46,
+        6,
+        1
+      ],
+      "bases": 25,
+      "reverse_offsets": 20,
+      "fits": 0,
+      "sphere_rigids": 0,
+      "capsule_rigids": 0,
+      "quads": 16,
+      "rods": 0
+    }
+  },
+  "reference_axis": {
+    "axis_records_equal": true,
+    "records": {
+      "axis_np": {
+        "flags": 1284,
+        "kind": 1,
+        "payload": "01000000000000000000a04100000000000000000000a0c10000000000000000000000000000a0410000c040000000000000a0c10000c0c000000000000000000000a04100000000000000000000a0c10000000000000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f"
+      },
+      "axis_stock": {
+        "flags": 1284,
+        "kind": 1,
+        "payload": "01000000000000000000a04100000000000000000000a0c10000000000000000000000000000a0410000c040000000000000a0c10000c0c000000000000000000000a04100000000000000000000a0c10000000000000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f0000000000000000000000000000803f"
+      }
+    }
+  },
+  "reference_axis_export": {
+    "fixture": "root-control, axis Z, six asymmetric poses, nonzero bind pose, scale 2",
+    "compilers": {
+      "np": {
+        "records": 1,
+        "selected_axis_and_control_equal": true,
+        "max_position_difference": 4.76837158203125e-07,
+        "max_quaternion_dot_error": 1.034282020029309e-07
+      },
+      "stock": {
+        "records": 1,
+        "selected_axis_and_control_equal": true,
+        "max_position_difference": 4.76837158203125e-07,
+        "max_quaternion_dot_error": 1.1074255190646198e-07
+      }
+    }
+  },
+  "twist_output_angles": {
+    "twist_forward_np": {
+      "0": {
+        "parent_roll_deg": 0.0,
+        "child_world_roll_deg": 0.0,
+        "twistA_world_roll_deg": 0.0,
+        "twistB_world_roll_deg": 0.0
+      },
+      "30": {
+        "parent_roll_deg": 0.0,
+        "child_world_roll_deg": 79.99997699027486,
+        "twistA_world_roll_deg": 19.999836684175055,
+        "twistB_world_roll_deg": 59.99996841876126
+      },
+      "60": {
+        "parent_roll_deg": 0.0,
+        "child_world_roll_deg": 0.0,
+        "twistA_world_roll_deg": 0.0,
+        "twistB_world_roll_deg": 0.0
+      },
+      "90": {
+        "parent_roll_deg": 0.0,
+        "child_world_roll_deg": -79.99997699027486,
+        "twistA_world_roll_deg": -19.999836684175055,
+        "twistB_world_roll_deg": -59.99996841876126
+      },
+      "120": {
+        "parent_roll_deg": 0.0,
+        "child_world_roll_deg": 0.0,
+        "twistA_world_roll_deg": 0.0,
+        "twistB_world_roll_deg": 0.0
+      }
+    },
+    "twist_inverse_np": {
+      "0": {
+        "parent_roll_deg": 0.0,
+        "child_world_roll_deg": 0.0,
+        "twistA_world_roll_deg": 0.0,
+        "twistB_world_roll_deg": 0.0
+      },
+      "30": {
+        "parent_roll_deg": 79.99997699027486,
+        "child_world_roll_deg": 79.99997699027486,
+        "twistA_world_roll_deg": 20.0000085715136,
+        "twistB_world_roll_deg": 60.000140306099816
+      },
+      "60": {
+        "parent_roll_deg": 0.0,
+        "child_world_roll_deg": 0.0,
+        "twistA_world_roll_deg": 0.0,
+        "twistB_world_roll_deg": 0.0
+      },
+      "90": {
+        "parent_roll_deg": -79.99997699027486,
+        "child_world_roll_deg": -79.99997699027486,
+        "twistA_world_roll_deg": -20.0000085715136,
+        "twistB_world_roll_deg": -60.000140306099816
+      },
+      "120": {
+        "parent_roll_deg": 0.0,
+        "child_world_roll_deg": 0.0,
+        "twistA_world_roll_deg": 0.0,
+        "twistB_world_roll_deg": 0.0
+      }
+    }
+  },
+  "reference_dmx": {
+    "compressed": {
+      "Vector3_compressed": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 5,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 0.0
+      },
+      "Quaternion_compressed": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 5,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 0.0
+      }
+    },
+    "curves": {
+      "Vector3_cr_time": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 0.030761999999981526
+      },
+      "Vector3_ease": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 0.0
+      },
+      "Vector3_bspline": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 0.0
+      },
+      "Vector3_kochanek": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 0.0
+      },
+      "Vector3_mixed": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 0.0
+      },
+      "Quaternion_cr_time": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 1.0000000000287557e-06
+      },
+      "Quaternion_ease": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 1.0000000000287557e-06
+      },
+      "Quaternion_bspline": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 1.0000000000287557e-06
+      },
+      "Quaternion_kochanek": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 1.0000000000287557e-06
+      },
+      "Quaternion_mixed": {
+        "stock_exit": 0,
+        "np_exit": 0,
+        "frames": 21,
+        "same_frame_count": true,
+        "max_decompiled_pose_difference": 1.000000000139778e-06
+      }
+    },
+    "precision_note": "NormalizeX default one-tick terminal edge amplifies float arithmetic differences; maximum 0.030762 is one emitted MDL position quantization step. Quaternion comparisons are Euler radians. No bitwise equivalence for all curves is claimed."
+  },
+  "limits": [
+    "FE remains CSGO-only and uses skeletal output controls; collision followed by constraint solving does not guarantee zero penetration.",
+    "Sparse binding uses a strongest-point local face basis rather than the stock builder influence-count threshold.",
+    "cloth_use_rods face replacement completes a reference TODO with documented semantics.",
+    "AxisInterp rejects nonrepresentable control-axis changes, changed authored parents, unsupported per-animation basis changes and conflicting definitions.",
+    "Twist is baked before later QC operations; runtime IK/blending and later QC edits do not re-solve it.",
+    "Compressed logs require Vector3/Quaternion; curve logs require Float/Vector3/Quaternion, with exponential decay only for Float.",
+    "No new Linux execution or universal source/runtime parity is claimed."
+  ]
+}

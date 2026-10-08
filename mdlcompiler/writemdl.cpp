@@ -10,6 +10,7 @@
 
 #include "writer.h"
 #include "outputfiles.h"
+#include "resources.h"
 #include "perf.h"
 
 #include <algorithm>
@@ -348,7 +349,19 @@ void WriteBoneInfo(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
     // procedural bones. The reference writes them by kind in a
     // fixed order - axisinterp, quatinterp, jiggle - and each one back-patches
     // its bone's proctype/procindex, where procindex is a byte offset RELATIVE
-    // to the owning mstudiobone_t. We produce quatinterp and jiggle.
+    // to the owning mstudiobone_t.
+    if(!m.axisinterpbones.empty()) {
+        auto* records=reinterpret_cast<fmt::mstudioaxisinterpbone_t*>(buf.p());
+        for(size_t i=0;i<m.axisinterpbones.size();++i) {
+            const auto& a=m.axisinterpbones[i];
+            pbone[a.bone].proctype=fmt::STUDIO_PROC_AXISINTERP;
+            pbone[a.bone].procindex=static_cast<int32_t>(reinterpret_cast<uint8_t*>(&records[i])-reinterpret_cast<uint8_t*>(&pbone[a.bone]));
+            records[i].control=a.control;records[i].axis=a.axis;
+            for(int j=0;j<6;++j){CopyV3(records[i].pos[j],a.position[j]);CopyQ(records[i].quat[j],a.rotation[j]);}
+        }
+        buf.pos+=m.axisinterpbones.size()*sizeof(fmt::mstudioaxisinterpbone_t);
+        buf.Align4();
+    }
     if (!m.proceduralbones.empty()) {
         fmt::mstudioquatinterpbone_t* pProc =
             reinterpret_cast<fmt::mstudioquatinterpbone_t*>(buf.p());
@@ -464,6 +477,29 @@ void WriteBoneInfo(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
             CopyV3(pProc[i].basepos, ab.basepos);
         }
         buf.pos += m.aimatbones.size() * sizeof(fmt::mstudioaimatbone_t);
+        buf.Align4();
+    }
+
+    for(const auto& c:m.constraintbones) {
+        const size_t at=buf.pos;
+        auto* proc=c.kind==fmt::STUDIO_PROC_AIM_CONSTRAINT?
+            &buf.Reserve<fmt::mstudioaimconstraint_t>(1)->base:buf.Reserve<fmt::mstudioconstraint_t>(1);
+        proc->slave.bone=c.bone;CopyV3(proc->slave.position,c.basePosition);
+        CopyQ(proc->slave.orientation,c.baseRotation);
+        pbone[c.bone].proctype=c.kind;
+        pbone[c.bone].procindex=static_cast<int32_t>(reinterpret_cast<uint8_t*>(proc)-reinterpret_cast<uint8_t*>(&pbone[c.bone]));
+        proc->targetCount=static_cast<int32_t>(c.targets.size());
+        proc->targetIndex=static_cast<int32_t>(buf.pos-at);
+        if(c.kind==fmt::STUDIO_PROC_AIM_CONSTRAINT) {
+            auto* aim=reinterpret_cast<fmt::mstudioaimconstraint_t*>(proc);
+            CopyQ(aim->aimOffset,c.aimOffset);CopyV3(aim->up,c.up);
+            aim->upSpaceTarget=static_cast<int16_t>(c.upBone);aim->upType=static_cast<uint8_t>(c.upType);
+        }
+        auto* targets=buf.Reserve<fmt::mstudioconstrainttarget_t>(c.targets.size());
+        for(size_t j=0;j<c.targets.size();++j) {
+            const auto& t=c.targets[j];targets[j].bone=t.bone;targets[j].weight=t.weight;
+            CopyV3(targets[j].offset,t.offset);CopyQ(targets[j].rotation,t.rotation);
+        }
         buf.Align4();
     }
 
@@ -2048,6 +2084,10 @@ void WriteTextures(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
         int j = mats.materialToTexture[i];
         g_strings.Add(buf, &ptexture[i], &ptexture[i].sznameindex,
                       mats.textures[j].name.c_str());
+        if (const auto shader=resources::MaterialClientShader(mats.textures[j].name,m.cdtextures)) {
+            ptexture[i].used=1;
+            ptexture[i].flags=_stricmp(shader->c_str(),"MouthShader")==0 ? 1 : 0;
+        }
     }
     buf.Align4();
 
@@ -2755,6 +2795,25 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
                                 newID = vertexList[newID].finalMeshVertID;
                                 v->origMeshVertID = static_cast<uint16_t>(newID);
                             }
+                            // SubD UV references name original mesh vertices, while
+                            // one-ring/control indices name the unchanged SG table.
+                            if (!legacyVtx && (pStudioHdr->flags & (1<<19))) {
+                                auto* full=reinterpret_cast<fmt::vtx::StripGroupHeader_t*>(sgRaw);
+                                auto* topology=reinterpret_cast<uint16_t*>(sgRaw+full->topologyOffset);
+                                size_t cursor=0, count=size_t(full->numTopologyIndices);
+                                while(cursor<count) {
+                                    if(count-cursor<60)throw std::runtime_error("truncated SubD patch topology");
+                                    size_t ring=0;for(int corner=0;corner<4;++corner)ring+=topology[cursor+corner];
+                                    if(ring>count-cursor-60)throw std::runtime_error("truncated SubD one-ring");
+                                    for(size_t uv=44;uv<60;++uv) {
+                                        int old=topology[cursor+uv];
+                                        if(old>=pools[poolStart+k].numVertexes)throw std::runtime_error("invalid SubD UV vertex reference");
+                                        int mapped=pools[poolStart+k].vertexMap[old];
+                                        topology[cursor+uv]=uint16_t(vertexList[mapped].finalMeshVertID);
+                                    }
+                                    cursor+=60+ring;
+                                }
+                            }
                         }
                     }
                 }
@@ -2975,7 +3034,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
     CopyV3(phdr->view_bbmax, cbox1);
 
     phdr->flags = m.gflags;
-    phdr->mass = 1;
+    phdr->mass = m.physTotalMass;
     phdr->constdirectionallightdot = m.constDirectionalLightDot;
     phdr->numAllowedRootLODs = m.numAllowedRootLods;
 
@@ -3067,6 +3126,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
     section("bodygroup presets %7zu bytes", buf.pos - sec);
 
     g_strings.Write(buf);
+
+    if (!m.clothData.empty()) {
+        if (!m.csgoHeader) {
+            if (err) *err = "FE cloth requires the CSGO extended header";
+            return false;
+        }
+        buf.pos = (size_t(buf.pos) + 31) & ~size_t(31);
+        const size_t clothStart = buf.pos;
+        const size_t feField = phdr->studiohdr2index + offsetof(fmt::studiohdr2_csgo_t, feModelOffset);
+        if (m.clothData.size() > INT32_MAX || clothStart + m.clothData.size() > INT32_MAX) {
+            if (err) *err = "FE cloth exceeds MDL offset capacity";
+            return false;
+        }
+        buf.pos += m.clothData.size();
+        if (buf.overflowed()) {
+            if (err) *err = "out of memory writing FE cloth";
+            return false;
+        }
+        std::memcpy(buf.start() + clothStart, m.clothData.data(), m.clothData.size());
+        *reinterpret_cast<int32_t*>(buf.start() + feField) = static_cast<int32_t>(clothStart - feField);
+        buf.Align4();
+        section("cloth            %7zu bytes", m.clothData.size());
+    }
 
     size_t total = buf.pos;
 

@@ -7,8 +7,8 @@
 //
 // Every LOD the .vtx carries gets its own file - LOD 0 under the $rendermesh
 // alias, the rest as <alias>_lod<n>.dmx for the $lod blocks to replacemodel
-// against. Triangle-list strips only; nothing in the Source 1 pipeline emits a
-// quad list.
+// against. Triangle lists and native subdivision quad lists retain their
+// primitive boundaries and authored control points.
 //
 // The .phy's collision hulls come out the same way, as one more mesh with the
 // same skeleton - see WritePhysicsMesh.
@@ -162,6 +162,8 @@ bool ExtractTris(const std::vector<char>& buf, const Mdl& m, size_t sgStride, in
                  const LodLayout& layout, PartTris& out) {
     out.clear();
     const fm::studiohdr_t& h = *m.hdr;
+    const bool subd = (h.flags & (1<<19)) != 0;
+    if (subd && sgStride != sizeof(vtx::StripGroupHeader_t)) return false;
     const char* base = buf.data();
     const char* end = base + buf.size();
     auto ok = [&](const void* p, size_t bytes) {
@@ -257,21 +259,28 @@ bool ExtractTris(const std::vector<char>& buf, const Mdl& m, size_t sgStride, in
                         return false;
                     const auto* sgVerts = reinterpret_cast<const vtx::Vertex_t*>(vRaw);
 
-                    // Strips within a group are consecutive runs of the same
-                    // index array and are all trilists, so the group's whole
-                    // index array reads as triangles without walking them.
-                    for (int n = 0; n + 2 < sg.numIndices; n += 3) {
-                        for (int c = 0; c < 3; ++c) {
-                            uint16_t vi;
-                            std::memcpy(&vi, iRaw + sizeof(vi) * (n + c), sizeof(vi));
-                            if (vi >= sg.numVerts)
-                                return false;
-                            const int mv = sgVerts[vi].origMeshVertID;
-                            if (mv >= meshVerts)
-                                return false;
-                            tris.push_back(ml.meshOffset[k] + mv);
-                        }
+                    const size_t stripSize=sgStride==sizeof(vtx::StripGroupHeader_t)
+                        ? sizeof(vtx::StripHeader_t):sizeof(vtx::LegacyStripHeader_t);
+                    if(sg.numStrips<0)return false;
+                    const char* stripRaw=at(sgp,sg.stripOffset,stripSize*size_t(sg.numStrips));
+                    if(!stripRaw)return false;
+                    int consumed=0;
+                    for(int strip=0;strip<sg.numStrips;++strip) {
+                        const auto& st=*reinterpret_cast<const vtx::LegacyStripHeader_t*>(stripRaw+strip*stripSize);
+                        const bool quad=st.flags==vtx::STRIP_IS_QUADLIST_REG || st.flags==vtx::STRIP_IS_QUADLIST_EXTRA;
+                        const int arity=quad?4:3;
+                        if(quad!=subd || (!quad && st.flags!=vtx::STRIP_IS_TRILIST) || st.numIndices<0 ||
+                           st.indexOffset!=consumed || st.numIndices%arity || st.numIndices>sg.numIndices-consumed)return false;
+                        for(int n=st.indexOffset;n<st.indexOffset+st.numIndices;n+=arity)
+                            for(int c=0;c<arity;++c) {
+                                uint16_t vi;std::memcpy(&vi,iRaw+sizeof(vi)*(n+c),sizeof(vi));
+                                if(vi>=sg.numVerts)return false;
+                                const int mv=sgVerts[vi].origMeshVertID;if(mv>=meshVerts)return false;
+                                tris.push_back(ml.meshOffset[k]+mv);
+                            }
+                        consumed+=st.numIndices;
                     }
+                    if(consumed!=sg.numIndices)return false;
                 }
             }
         }
@@ -859,7 +868,8 @@ void WriteSkel(Dmx& q, const Mdl& m, const Skel& s, const std::string& name,
                const std::string& idMeshDag, const std::string& idMeshXform,
                const std::string& idCombo, const std::string& idAnimList = std::string(),
                const std::vector<AnimPose>* pose0 = nullptr,
-               const std::function<const char*(Dmx&, int)>* jointMarkup = nullptr) {
+               const std::function<const char*(Dmx&, int)>* jointMarkup = nullptr,
+               bool subdivisionSurface = false) {
     const fm::mstudiobone_t* bones =
         m.At<fm::mstudiobone_t>(m.buf.data(), m.hdr->boneindex, m.hdr->numbones);
     const std::vector<std::string> boneNames = BoneNames(m);
@@ -869,6 +879,7 @@ void WriteSkel(Dmx& q, const Mdl& m, const Skel& s, const std::string& name,
     // reads as a mesh export, and an importer that types the file off that
     // attribute takes the ANIM branch away and drops every clip.
     q.Begin("DmElement", s.idRoot, name);
+    if(subdivisionSurface) q.Bool("subdivisionSurface",true);
     if (idAnimList.empty())
         q.Ref("model", s.idModel);
     q.Ref("skeleton", s.idModel);
@@ -1186,20 +1197,18 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
     // A face set's `faces` are corner indices into the *Indices streams, and the
     // loader reads a triangle back as (c0, c2, c1) - so the corners go out
     // flipped to land on the winding the .vtx holds.
+    const int arity=(m.hdr->flags & (1<<19)) ? 4 : 3;
     std::vector<int> corner; // corner -> model-relative vertex (all three streams)
     std::vector<std::vector<int>> faceSetFaces(static_cast<size_t>(model.nummeshes));
     static const MeshTris kNoTris;
     for (int k = 0; k < model.nummeshes; ++k) {
         const MeshTris& t = (static_cast<size_t>(k) < tris.size()) ? tris[k] : kNoTris;
         std::vector<int>& faces = faceSetFaces[k];
-        for (size_t n = 0; n + 2 < t.size(); n += 3) {
+        for (size_t n = 0; n + arity <= t.size(); n += arity) {
             const int c = static_cast<int>(corner.size());
             corner.push_back(t[n]);
-            corner.push_back(t[n + 2]);
-            corner.push_back(t[n + 1]);
-            faces.push_back(c);
-            faces.push_back(c + 1);
-            faces.push_back(c + 2);
+            for(int k=arity-1;k>0;--k)corner.push_back(t[n+k]);
+            for(int k=0;k<arity;++k)faces.push_back(c+k);
             faces.push_back(-1);
         }
     }
@@ -1213,9 +1222,9 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
     // of them. Sharing the slot would make it degenerate, so the second corner's
     // vertex takes a private one. One pass is enough: a split only ever un-shares,
     // and the fresh slot belongs to nothing else.
-    for (size_t n = 0; n + 2 < corner.size(); n += 3)
-        for (int a = 0; a < 3; ++a)
-            for (int b = a + 1; b < 3; ++b)
+    for (size_t n = 0; n + arity <= corner.size(); n += arity)
+        for (int a = 0; a < arity; ++a)
+            for (int b = a + 1; b < arity; ++b)
                 if (corner[n + a] != corner[n + b] &&
                     posOf[corner[n + a]] == posOf[corner[n + b]])
                     posOf[corner[n + b]] = slots++;
@@ -1297,7 +1306,7 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
         idDom.push_back(q.NewId());
     const std::string idCombo = deltaOrder.empty() ? std::string() : q.NewId();
 
-    WriteSkel(q, m, skel, meshName, idMeshDag, idMeshXform, idCombo);
+    WriteSkel(q, m, skel, meshName, idMeshDag, idMeshXform, idCombo, std::string(), nullptr, nullptr, arity==4);
 
     // ---- the mesh ----
     q.Begin("DmeDag", idMeshDag, MeshDagName(m, meshName));

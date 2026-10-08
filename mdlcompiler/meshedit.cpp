@@ -491,6 +491,8 @@ void FlipNormals(Source& src) {
             va.normal = {-va.normal.x, -va.normal.y, -va.normal.z};
     for (SrcFace& face : src.face)
         std::swap(face.b, face.c);
+    for (SrcQuad& quad : src.quads)
+        std::swap(quad.vertex[1], quad.vertex[3]);
 }
 
 void CullUnskinnedBones(Source& src, SkinnedBoneCull mode) {

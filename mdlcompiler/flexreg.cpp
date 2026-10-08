@@ -19,6 +19,7 @@
 #include "facemarkup.h"
 
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <map>
 #include <cstdlib>
@@ -203,7 +204,7 @@ bool ParseMorphRuleExpr(cm::CompileInput& in, const std::string& flexName,
         } else if (tok[0] == '+') {
             op.op = kOpAdd;
         } else if (tok[0] == '-') {
-            op.op = kOpSub;
+            op.op = stream.empty() ? kOpNeg : kOpSub;
             if (!stream.empty()) {
                 switch (stream.back().op) {
                     case kOpOpen:
@@ -221,9 +222,15 @@ bool ParseMorphRuleExpr(cm::CompileInput& in, const std::string& flexName,
             op.op = kOpMul;
         } else if (tok[0] == '/') {
             op.op = kOpDiv;
-        } else if (isdigit(static_cast<unsigned char>(tok[0]))) {
+        } else if (isdigit(static_cast<unsigned char>(tok[0])) ||
+                   (tok[0]=='.' && tok.size()>1 && isdigit(static_cast<unsigned char>(tok[1])))) {
             op.op = kOpConst;
-            op.d.value = static_cast<float>(atof(tok.c_str()));
+            char* end=nullptr;
+            op.d.value = std::strtof(tok.c_str(),&end);
+            if(!end || *end || !std::isfinite(op.d.value)) {
+                if(err)*err="morph rule \""+flexName+"\": invalid numeric constant "+tok;
+                return false;
+            }
         } else if (tok[0] == ',') {
             op.op = kOpComma;
         } else if (_stricmp(tok.c_str(), "max") == 0) {

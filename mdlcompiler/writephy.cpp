@@ -79,19 +79,10 @@ std::vector<uint8_t> BuildPhy(cm::CompiledModel& m, int32_t checksum) {
     }
 
     // ---- solid keyvalue sections ----
-    // Mass is distributed by volume share, so it can only be resolved once
-    // every solid is built. A zero total would divide by zero on a degenerate
-    // model, so it falls back to 1 exactly like the reference.
-    double totalVolume = 0.0;
-    for (const cm::PhysicsSolid& s : m.physSolids)
-        totalVolume += static_cast<double>(s.volume) * s.massBias;
-    if (totalVolume <= 0.0f) totalVolume = 1.0f;
-
+    // ResolvePhysicsMass has resolved the automatic total and distributed it
+    // by volume * massbias before output, including the reference 1 kg floor.
     int solidIndex = 0;
-    for (cm::PhysicsSolid& s : m.physSolids) {
-        s.mass = static_cast<float>(((static_cast<double>(s.volume) * s.massBias) / totalVolume) * m.physTotalMass);
-        if (s.mass < 1.0f) s.mass = 1.0f;
-
+    for (const cm::PhysicsSolid& s : m.physSolids) {
         AppendText(buf, "solid {\n");
         KeyInt(buf, "index", solidIndex);
         KeyString(buf, "name", s.name.c_str());
