@@ -51,6 +51,20 @@ def validate(path):
                 raise ValueError('Invalid or cyclic serialized bone hierarchy')
             visited.add(parent)
             parent = mdl.integer(bones[parent] + 4)
+    controls=list(mdl.table(164,56))
+    for control in controls:
+        bone,kind,lo,hi,rest,index=struct.unpack_from('<2i2f2i',mdl.data,control)
+        if bone<0 or bone>=len(bones) or kind&63 not in (1,2,4,8,16,32) or index not in range(5):
+            raise ValueError('Invalid serialized bone controller')
+        import math
+        if not math.isfinite(lo) or not math.isfinite(hi):
+            raise ValueError('Non-finite serialized bone controller bounds')
+    for index,bone in enumerate(bones):
+        for axis in range(6):
+            linked=mdl.integer(bone+8+axis*4)
+            if linked==-1:continue
+            if linked<0 or linked>=len(controls) or mdl.integer(controls[linked])!=index or not mdl.integer(controls[linked]+4)&(1<<axis):
+                raise ValueError('Invalid bone controller link')
     for offset, size in ((260, 4), (268, 20), (276, 12), (240, 92), (204, 64)):
         list(mdl.table(offset, size))
     for desc in mdl.table(260, 4):

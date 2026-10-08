@@ -1,0 +1,193 @@
+{
+  "schema": 1,
+  "version": "1.2.15",
+  "compatibility_tests": 181,
+  "automation_tests": 20,
+  "new_csgo_cases": 19,
+  "compiler_sha256": "0cd0fc66d7b8637add851fbf14f3346b3de9f69c2b5db6d4f2b33be3bffc9188",
+  "models": {
+    "yvette": {
+      "returncode": 0,
+      "game_mount": "E:/Steam/steamapps/common/insurgency2/insurgency",
+      "models": [
+        {
+          "model": "test.mdl",
+          "bones": 144,
+          "vertices": 65902
+        }
+      ],
+      "outputs_sha256": {
+        "models/player/custom_player/test.dx80.vtx": "c0c13edc71aaedaa8e2b217b204e9054bc349f518f1872eededf68591455c4aa",
+        "models/player/custom_player/test.dx90.vtx": "4b28e1eb6d3ff7e1ef8ad78e10a72967aa9be43055ece528bb09a04ebf3848cf",
+        "models/player/custom_player/test.mdl": "be6e7d79b2e3fce5e42da20e3ed16bd534cd3a0630949308342067fc6c7877bb",
+        "models/player/custom_player/test.phy": "feabfb32feaa1b03bde385fbd285efc05123cc3ca76e1cb527563177f3f6db6a",
+        "models/player/custom_player/test.vvd": "33aab59b470b0f6c046b2f5d09d64d7b3a50f07dcc4cff6e101854f741cb49d4"
+      }
+    },
+    "plum": {
+      "returncode": 0,
+      "game_mount": "G:/SteamLibrary/steamapps/common/GarrysMod/garrysmod",
+      "models": [
+        {
+          "model": "plum_dreaming_hair_p.mdl",
+          "bones": 126,
+          "vertices": 572277
+        }
+      ],
+      "outputs_sha256": {
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": "6784b09aa4eac5f9aaa4df96aa86af5bdd4408096c538c80a241cdaf195bb659",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": "ffa801201c8e609eb896cbb378c3db6cc06274883f03bcfc88c04d3d76750d6b",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": "be50d63fb1270a51b343824c424c964c3f3c576e89982c1648c26f9f0ea6e5fb",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": "ffedc0c0d357acc745781b039b31e55cd2f33d0cc61305220d3292d4728fbcdf",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": "af4fa2ec5a9e9c4d101e676dd3dfed80f7abdaf8e019e5be0d1194678fee49ac"
+      }
+    }
+  },
+  "csgo_command_audit": {
+    "prior_missing_entries": 33,
+    "supported_entries": 31,
+    "unimplemented_entries": 2,
+    "entries": [
+      {
+        "command": "$appendblankbodygroup",
+        "status": "implemented"
+      },
+      {
+        "command": "$appendsource",
+        "status": "implemented"
+      },
+      {
+        "command": "$bboxonlyverts",
+        "status": "implemented"
+      },
+      {
+        "command": "$bonealwayssetup",
+        "status": "implemented"
+      },
+      {
+        "command": "$cd",
+        "status": "implemented"
+      },
+      {
+        "command": "$centerbonesonverts",
+        "status": "implemented"
+      },
+      {
+        "command": "$clampworldspace",
+        "status": "implemented"
+      },
+      {
+        "command": "$cliptotextures",
+        "status": "implemented"
+      },
+      {
+        "command": "$cloth",
+        "status": "unimplemented"
+      },
+      {
+        "command": "$clothplanecollision",
+        "status": "unimplemented"
+      },
+      {
+        "command": "$collapsebones",
+        "status": "implemented"
+      },
+      {
+        "command": "$collapsebonesaggressive",
+        "status": "implemented"
+      },
+      {
+        "command": "$collisionprecision",
+        "status": "implemented"
+      },
+      {
+        "command": "$contentrootrelative",
+        "status": "implemented"
+      },
+      {
+        "command": "$controller",
+        "status": "implemented"
+      },
+      {
+        "command": "$erroronsequenceremappingfailure",
+        "status": "implemented"
+      },
+      {
+        "command": "$externaltextures",
+        "status": "legacy_warning"
+      },
+      {
+        "command": "$fakevta",
+        "status": "implemented"
+      },
+      {
+        "command": "$forcerealign",
+        "status": "implemented"
+      },
+      {
+        "command": "$gamma",
+        "status": "legacy_warning"
+      },
+      {
+        "command": "$insertbone",
+        "status": "implemented"
+      },
+      {
+        "command": "$internalname",
+        "status": "implemented"
+      },
+      {
+        "command": "$modelhasnosequences",
+        "status": "implemented"
+      },
+      {
+        "command": "$obsolete",
+        "status": "implemented"
+      },
+      {
+        "command": "$phyname",
+        "status": "implemented"
+      },
+      {
+        "command": "$redefineattachment",
+        "status": "implemented"
+      },
+      {
+        "command": "$renamebonesubstr",
+        "status": "implemented"
+      },
+      {
+        "command": "$screenalign",
+        "status": "implemented"
+      },
+      {
+        "command": "$skinnedLODs",
+        "status": "existing_native_behavior"
+      },
+      {
+        "command": "$stripboneprefix",
+        "status": "implemented"
+      },
+      {
+        "command": "$subd",
+        "status": "header_flag_only"
+      },
+      {
+        "command": "$worldalign",
+        "status": "implemented"
+      },
+      {
+        "command": "$zbrush",
+        "status": "implemented"
+      }
+    ],
+    "reference_table_entries": 122,
+    "matched_reference_entries": 120,
+    "unmatched_reference_entries": [
+      "$cloth",
+      "$clothplanecollision"
+    ],
+    "reference_table_source_sha256": "6e4a1d0fb21aaee7f82a1d7090257d10e51e78bc1689c4ae2043d51d2fb1544e"
+  },
+  "validation_scope": "native output regression against inspected command contracts; no new binary differential or CSGO in-game certification"
+}

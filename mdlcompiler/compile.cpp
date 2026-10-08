@@ -1339,6 +1339,10 @@ void TagUsedBones(Ctx& ctx) {
             }
         }
 
+        for(const auto& control:ctx.in->bonecontrollers)
+            for(int j=0;j<psource->numbones;j++)
+                if(_stricmp(control.name.c_str(),psource->localBone[j].name.c_str())==0)
+                    psource->boneflags[j]|=0x80000;
         // tag bones used as bone morph drivers
         TagFlexDriverBones(ctx, psource);
 
@@ -2291,7 +2295,12 @@ bool RealignBones(Ctx& ctx, std::string* err) {
         }
     }
 
-    // ($forcedrealign: not in the schema yet)
+    for(const auto& realign:ctx.in->csgo.forcedRealign) {
+        int k=FindGlobalBone(m,realign.first);
+        if(k<0){std::fprintf(stderr,"WARNING: unknown bone %s in $forcerealign\n",realign.first.c_str());continue;}
+        matrix3x4 rotation;pm::AngleMatrix(realign.second,rotation);
+        boneToPose[k]=pm::ConcatTransforms(boneToPose[k],rotation);
+    }
 
     // build realignment transforms
     for (size_t k = 0; k < numbones; k++) {
@@ -3439,6 +3448,10 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
             lv.position = sv.position;
             lv.normal = sv.normal;
             lv.texcoord = sv.texcoord;
+            if(ctx.in->csgo.clipTexcoords) {
+                lv.texcoord.x=std::clamp(lv.texcoord.x,0.0f,1.0f);
+                lv.texcoord.y=std::clamp(lv.texcoord.y,0.0f,1.0f);
+            }
             lv.tangentS = sv.tangentS;
             lv.lodFlag = 1 << 0;
             const int id = AddDictVertex(model.vertices, lv);
@@ -3503,6 +3516,10 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
                 lv.position = sv.position;
                 lv.normal = sv.normal;
                 lv.texcoord = sv.texcoord;
+            if(ctx.in->csgo.clipTexcoords) {
+                lv.texcoord.x=std::clamp(lv.texcoord.x,0.0f,1.0f);
+                lv.texcoord.y=std::clamp(lv.texcoord.y,0.0f,1.0f);
+            }
                 lv.tangentS = sv.tangentS;
                 lv.lodFlag = 1 << lodID;
 
@@ -3980,7 +3997,7 @@ Vector3 ApplyShapeFraming(const ShapeFraming& f, Vector3 p) {
 }
 
 void GatherShapeVerts(const PhysicsShape& shape, bool assumeWorldspace,
-                      std::vector<phys::Vec3>& out) {
+                      std::vector<phys::Vec3>& out, float precision) {
     const src::Source* ps = shape.source;
     const bool haveGlobal = !assumeWorldspace && ps->globalVertices.size() >= ps->vertex.size();
     const ShapeFraming framing = MakeShapeFraming(shape);
@@ -3990,6 +4007,7 @@ void GatherShapeVerts(const PhysicsShape& shape, bool assumeWorldspace,
     for (size_t i = 0; i < ps->vertex.size(); i++) {
         Vector3 p = haveGlobal ? ps->globalVertices[i].position : ps->vertex[i].position;
         p = ApplyShapeFraming(framing, p);
+        if(precision>0){p.x-=std::fmod(p.x,precision);p.y-=std::fmod(p.y,precision);p.z-=std::fmod(p.z,precision);}
         out.push_back({p.x, p.y, p.z});
     }
 }
@@ -4890,6 +4908,7 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
             for (size_t i = 0; i < ps->vertex.size(); i++) {
                 Vector3 p = haveGlobal ? ps->globalVertices[i].position : ps->vertex[i].position;
                 p = ApplyShapeFraming(framing, p);
+                if(in.csgo.collisionPrecision>0){const float grid=in.csgo.collisionPrecision;p.x-=std::fmod(p.x,grid);p.y-=std::fmod(p.y,grid);p.z-=std::fmod(p.z,grid);}
                 Vector3 local = pm::VectorITransform(p, boneToPose);
                 boneVerts.push_back({local.x, local.y, local.z});
             }
@@ -5338,7 +5357,7 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         if (shape.kind != PhysicsShapeKind::FromFile)
             continue;
         std::vector<phys::Vec3> shapeVerts;
-        GatherShapeVerts(shape, in.physAssumeWorldspace, shapeVerts);
+        GatherShapeVerts(shape, in.physAssumeWorldspace, shapeVerts, in.csgo.collisionPrecision);
         if (shapeVerts.empty()) {
             if (err) *err = "physics shape \"" + shape.name + "\" has no vertices";
             freeConvexes();
@@ -9044,7 +9063,7 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                 posetransform[k] = pm::ConcatTransforms(bonetransform[k], poseToBone[k]);
 
             // include hitboxes / bone render bounds
-            for (size_t k = 0; k < m.bones.size(); k++) {
+            for (size_t k = 0; !ctx.in->csgo.bboxOnlyVerts && k < m.bones.size(); k++) {
                 Vector3 tmpMin, tmpMax;
                 TransformAABB(bonetransform[k], boundsMin[k], boundsMax[k], tmpMin, tmpMax);
                 bmin = VecMin(tmpMin, bmin);
@@ -9092,17 +9111,17 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
     for (Anim& panim : m.anims) {
         Vector3& bmin = panim.bmin;
         Vector3& bmax = panim.bmax;
-        if (bmin.x < -kMaxCoord || bmin.y < -kMaxCoord || bmin.z < -kMaxCoord ||
-            bmax.x > kMaxCoord || bmax.y > kMaxCoord || bmax.z > kMaxCoord) {
+        const Vector3& lo=ctx.in->csgo.worldMin;
+        const Vector3& hi=ctx.in->csgo.worldMax;
+        if (bmin.x < lo.x || bmin.y < lo.y || bmin.z < lo.z ||
+            bmax.x > hi.x || bmax.y > hi.y || bmax.z > hi.z) {
             std::fprintf(stderr,
                          "WARNING: animation \"%s\" bounding box min (%g, %g, %g), "
-                         "max (%g, %g, %g) exceeds coordinate range [%g, %g]; clamping\n",
+                         "max (%g, %g, %g) exceeds coordinate range [(%g, %g, %g), (%g, %g, %g)]; clamping\n",
                          panim.name.c_str(), bmin.x, bmin.y, bmin.z,
-                         bmax.x, bmax.y, bmax.z, -kMaxCoord, kMaxCoord);
-            bmin = VecMin(VecMax(bmin, Vector3{-kMaxCoord, -kMaxCoord, -kMaxCoord}),
-                          Vector3{kMaxCoord, kMaxCoord, kMaxCoord});
-            bmax = VecMax(VecMin(bmax, Vector3{kMaxCoord, kMaxCoord, kMaxCoord}),
-                          Vector3{-kMaxCoord, -kMaxCoord, -kMaxCoord});
+                         bmax.x, bmax.y, bmax.z, lo.x, lo.y, lo.z, hi.x, hi.y, hi.z);
+            bmin = VecMin(VecMax(bmin, lo), hi);
+            bmax = VecMax(VecMin(bmax, hi), lo);
         }
     }
 
@@ -10603,6 +10622,33 @@ bool ConvertIkRule(const CompileInput& input, const CompileInput::InIkRule& ir,
 }
 
 bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+    // Expand prefix/substitution rules to explicit renames. Source skeletons
+    // stay untouched so cached mesh and animation mappings remain valid.
+    if (!input.csgo.stripPrefixes.empty() || !input.csgo.substringRenames.empty()) {
+        std::vector<std::pair<std::string,std::string>> derived;
+        for (const auto& source : input.sources) for (const auto& bone : source->localBone) {
+            std::string renamed=bone.name;
+            for (const auto& rule : input.csgo.substringRenames) {
+                std::string lower=renamed,from=rule.first,to=rule.second;
+                auto fold=[](std::string& s){for(char& ch:s)ch=static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));};
+                fold(lower);fold(from);fold(to);
+                if(!to.empty()&&lower.find(to)!=std::string::npos)continue;
+                size_t pos=0;
+                while((pos=lower.find(from,pos))!=std::string::npos){renamed.replace(pos,from.size(),rule.second);lower=renamed;fold(lower);pos+=rule.second.size();}
+            }
+            for (;;) {
+                bool changed=false;
+                for(const auto& prefix:input.csgo.stripPrefixes)
+                    if(renamed.compare(0,prefix.size(),prefix)==0){renamed.erase(0,prefix.size());changed=true;break;}
+                if(!changed)break;
+            }
+            if(renamed.empty()){if(err)*err="bone name became empty after prefix/substitution rules";return false;}
+            if(renamed!=bone.name && std::none_of(derived.begin(),derived.end(),[&](const auto& r){return r.first==bone.name;}))
+                derived.emplace_back(bone.name,renamed);
+        }
+        input.boneRenames.insert(input.boneRenames.begin(),derived.begin(),derived.end());
+    }
+
     // Attachment/hitbox scripts may use the final $renamebone spelling.
     // Resolve that alias before retention and mapping, while keeping source
     // names intact for animation, collision and the final rename pass.
@@ -10636,6 +10682,38 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         for (auto& set : input.hitboxsets)
             for (auto& box : set.hitboxes) resolve(box.bonename);
         for (auto& group : input.hitgroups) resolve(group.first);
+        for (auto& control : input.bonecontrollers) resolve(control.name);
+        for (auto& flag : input.csgo.boneFlags) resolve(flag.first);
+        for (auto& realign : input.csgo.forcedRealign) resolve(realign.first);
+        for (auto& markup : input.bonemarkups) resolve(markup.name);
+        for (auto& hierarchy : input.forcedHierarchy) {resolve(hierarchy.child);resolve(hierarchy.parent);}
+        for (auto& eyeball : input.eyeballs) resolve(eyeball.bonename);
+        for (auto& mouth : input.mouths) resolve(mouth.bonename);
+        for (auto& chain : input.ikchains) resolve(chain.bonename);
+        for (auto& jiggle : input.jigglebones) resolve(jiggle.bonename);
+        for (auto& driver : input.boneflexdrivers) resolve(driver.bonename);
+        for (auto& proc : input.proceduralbones) {
+            resolve(proc.helpername);resolve(proc.drivername);
+            resolve(proc.helperparentname);resolve(proc.driverparentname);
+        }
+        for (auto& aim : input.aimatbones) {resolve(aim.bonename);resolve(aim.parentname);if(std::none_of(input.attachments.begin(),input.attachments.end(),[&](const auto& a){return _stricmp(a.name.c_str(),aim.aimname.c_str())==0;}))resolve(aim.aimname);}
+        for (auto& entry : input.defaultWeights) resolve(entry.bone);
+        for (auto& list : input.weightlists) for (auto& entry : list.entries) resolve(entry.bone);
+        for (auto& anim : input.anims) {
+            for (auto& command : anim.cmds) resolve(command.alignBone);
+            for (auto& rule : anim.ikrules) resolve(rule.touchBone);
+        }
+        for (auto& bone : input.alwaysCollapse) resolve(bone);
+        for (auto& bone : input.limitRotationBones) resolve(bone);
+        for (auto& edit : input.boneTransformEdits) resolve(edit.name);
+        for (auto& frame : input.boneSaveFrames) resolve(frame.name);
+        for (auto& shape : input.physShapes) resolve(shape.parentBone);
+        for (auto& joint : input.physJoints) resolve(joint.bonename);
+        for (auto& markup : input.physMarkups) {resolve(markup.bonename);resolve(markup.mergeInto);}
+        for (auto& pair : input.physCollidePairs) {resolve(pair.a);resolve(pair.b);}
+        for (auto& contents : input.jointContents) resolve(contents.first);
+        for (auto& surface : input.jointSurfaceProps) resolve(surface.first);
+        resolve(input.physRootBone);
     }
     Ctx ctx;
     ctx.in = &input;
@@ -10651,6 +10729,16 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                   : RadianEuler{0.0f, 0.0f, static_cast<float>(kPiD / 2.0)};
 
     out.outname = input.outname;
+    out.internalName=input.csgo.internalName;
+    if(input.csgo.obsolete)out.gflags|=1<<9;
+    if(input.csgo.subd)out.gflags|=1<<19;
+    if (input.csgo.clipTexcoords || input.csgo.zbrush) for (auto& source : input.sources) {
+        if (input.csgo.clipTexcoords) for (auto& vertex : source->vertex) {
+            vertex.texcoord.x=std::clamp(vertex.texcoord.x,0.0f,1.0f);
+            vertex.texcoord.y=std::clamp(vertex.texcoord.y,0.0f,1.0f);
+        }
+        src::CalcModelTangentSpaces(*source,input.csgo.zbrush);
+    }
     out.legacyStripify = input.ce.legacyStripify;
     out.preserveTriangleOrder = input.preserveTriangleOrder;
     out.forceWriteVertexData = input.forceWriteVertexData;
@@ -10731,7 +10819,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     // Source needs either one sequence or an $includemodel for a model to load
     // at all, so a script with neither gets the bind pose synthesized as
     // sequence "reference" - exactly what `$bindposesequence reference` builds.
-    if (input.sequences.empty() && input.includeModels.empty()) {
+    if (input.sequences.empty() && input.includeModels.empty() && !input.csgo.modelHasNoSequences) {
         CompileInput::InAnim a;
         a.name = "@reference";
         a.bindpose = true;
@@ -11554,6 +11642,23 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     if (!FixupReplacedBones(ctx, err)) return false;
 
     { PULSE_TIME_PASS("RemapVertices"); RemapVertices(ctx); }
+    if(input.csgo.centerBones) {
+        std::vector<Vector3> lo(out.bones.size(),Vector3{FLT_MAX,FLT_MAX,FLT_MAX});
+        std::vector<Vector3> hi(out.bones.size(),Vector3{-FLT_MAX,-FLT_MAX,-FLT_MAX});
+        for(const auto& source:input.sources)for(const auto& vertex:source->globalVertices)
+            for(int w=0;w<vertex.boneweight.numbones;w++){
+                const int b=vertex.boneweight.bone[w];lo[b]=VecMin(lo[b],vertex.position);hi[b]=VecMax(hi[b],vertex.position);
+            }
+        for(int b=static_cast<int>(out.bones.size())-1;b>=0;b--)
+            if(lo[b].x>hi[b].x)for(size_t child=b+1;child<out.bones.size();child++)if(out.bones[child].parent==b){lo[b]=VecMin(lo[b],lo[child]);hi[b]=VecMax(hi[b],hi[child]);}
+        for(size_t b=0;b<out.bones.size();b++)if(lo[b].x<=hi[b].x){
+            auto& bone=out.bones[b];matrix3x4 centered=bone.boneToPose;
+            centered.m[0][3]=(lo[b].x+hi[b].x)*.5f;centered.m[1][3]=(lo[b].y+hi[b].y)*.5f;centered.m[2][3]=(lo[b].z+hi[b].z)*.5f;
+            const matrix3x4 delta=pm::ConcatTransforms(pm::MatrixInvert(bone.boneToPose),centered);
+            bone.srcRealign=pm::ConcatTransforms(bone.srcRealign,delta);bone.boneToPose=centered;
+        }
+        RebuildLocalPose(ctx);
+    }
     if (!input.bboxMeshes.empty()) {
         out.bbox[0] = out.bbox[1] = input.bboxMeshes.front()->globalVertices.front().position;
         for (const src::Source* mesh : input.bboxMeshes) {
@@ -11983,6 +12088,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         for (const auto& p : families[f])
             out.skinref[f + 1][p.first] = static_cast<int16_t>(p.second);
 
+
+    out.bonecontrollers=input.bonecontrollers;
+    for(auto& control:out.bonecontrollers) {
+        control.bone=out.FindBone(control.name.c_str());
+        if(control.bone<0){if(err)*err="unknown controller bone: "+control.name;return false;}
+    }
+    for(const auto& flag:input.csgo.boneFlags) {
+        const int b=out.FindBone(flag.first.c_str());
+        if(b<0){if(err)*err="unknown bone for runtime flag: "+flag.first;return false;}
+        out.bones[b].flags|=flag.second;
+    }
     // $renamebone, last of everything: the bone name plus every string still
     // resolved by name at write time - $bonesaveframe, and the .phy text tail
     // (solid, parent, rootname, jointmerge).

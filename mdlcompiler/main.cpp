@@ -476,8 +476,10 @@ static int RunCompile(int argc, char** argv) {
     if (!verify) {
         if (!noRemap) {
             std::string warning;
-            if (!newpage::PreserveSequenceOrder(model, outdir, warning))
+            if (!newpage::PreserveSequenceOrder(model, outdir, warning)) {
+                if(input.csgo.errorOnRemapFailure)return Fail("sequence remapping error",warning);
                 std::fprintf(stderr, "warning: %s\n", warning.c_str());
+            }
         }
         g_stage = "write";
         // dx80 only ships with the legacy archetype; Alien Swarm+ (archetype 1)

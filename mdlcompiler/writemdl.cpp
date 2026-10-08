@@ -467,13 +467,16 @@ void WriteBoneInfo(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
         buf.Align4();
     }
 
-    // bone controllers: -1 everywhere, zero controllers
-    for (int i = 0; i < numbones; i++)
-        for (int j = 0; j < 6; j++)
-            pbone[i].bonecontroller[j] = -1;
-
-    phdr->numbonecontrollers = 0;
-    phdr->bonecontrollerindex = static_cast<int32_t>(buf.pos);
+    for(int i=0;i<numbones;i++)for(int j=0;j<6;j++)pbone[i].bonecontroller[j]=-1;
+    phdr->numbonecontrollers=static_cast<int32_t>(m.bonecontrollers.size());
+    phdr->bonecontrollerindex=static_cast<int32_t>(buf.pos);
+    auto* controllers=buf.Reserve<fmt::mstudiobonecontroller_t>(m.bonecontrollers.size());
+    for(size_t i=0;i<m.bonecontrollers.size();i++) {
+        const auto& c=m.bonecontrollers[i];
+        auto& disk=controllers[i];disk={};disk.bone=c.bone;disk.type=c.type;
+        disk.start=c.start;disk.end=c.end;disk.inputfield=c.inputfield;
+        for(int axis=0;axis<6;axis++)if(c.type&(1<<axis))pbone[c.bone].bonecontroller[axis]=static_cast<int32_t>(i);
+    }
     buf.Align4();
 
     // attachments (`type` is compile-only, never written)
@@ -2840,6 +2843,13 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
             ancestor=m.bones[ancestor].parent;
         }
     }
+    for (const auto& control : m.bonecontrollers) {
+        const int axis=control.type&63;
+        if (!index(control.bone,m.bones.size()) || axis==0 || (axis&(axis-1)) ||
+            control.inputfield<0 || control.inputfield>4 ||
+            !std::isfinite(control.start) || !std::isfinite(control.end))
+            return invalid("invalid bone controller '"+control.name+"'");
+    }
     for(const auto& part:m.bodyparts) for(int model:part.modelIndices)
         if(!index(model,m.models.size())) return invalid("invalid bodygroup model index");
     for(const auto& model:m.models) {
@@ -2925,7 +2935,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
     std::unique_ptr<Buf> blockBuf;
     fmt::studiohdr_t* pblockhdr = nullptr;
     if (m.animblocksize != 0) {
-        g_animblocks.name = "models/" + m.outname + ".ani";
+        g_animblocks.name = "models/" + (m.internalName.empty()?m.outname:pulse::FilePath(m.internalName).replace_extension().generic_string()) + ".ani";
         blockBuf = std::make_unique<Buf>(kFileBuffer);
         pblockhdr = blockBuf->Reserve<fmt::studiohdr_t>();
         pblockhdr->id = fmt::kIdStudioAnimGroupHeader;
@@ -2976,8 +2986,9 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
     phdr2->flMaxEyeDeflection = m.maxEyeDeflection;
 
     g_strings.Begin();
-    strncpy(phdr->name, outname.c_str(), sizeof(phdr->name) - 1);
-    g_strings.Add(buf, phdr2, &phdr2->sznameindex, outname.c_str());
+    const std::string& internal=m.internalName.empty()?outname:m.internalName;
+    strncpy(phdr->name, internal.c_str(), sizeof(phdr->name) - 1);
+    g_strings.Add(buf, phdr2, &phdr2->sznameindex, internal.c_str());
 
     // per-block byte accounting, in the reference's own order and wording
     g_mdlReport.clear();
@@ -3217,7 +3228,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
         // the .ani sits beside the .mdl under the same "models/" root, and its
         // name is what szanimblocknameindex already recorded
         pblockhdr->length = static_cast<int32_t>(blockBuf->pos);
-        aniPath = announce(".ani");
+        aniPath = m.internalName.empty()?announce(".ani"):outputStem(pulse::FilePath(m.internalName).replace_extension().generic_string()).string()+".ani";
         std::printf("blocks     %7zu\n", g_animblocks.count ? g_animblocks.count - 1 : 0);
         std::printf("total      %7zu\n", blockBuf->cur);
         outputs.push_back({aniPath, blockBuf->start(), blockBuf->pos});

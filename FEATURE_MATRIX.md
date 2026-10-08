@@ -120,3 +120,11 @@ The v1.2.12 batch recovers and implements CE replacemodel reverse from binary co
 ## v1.2.14：CSGO QC 指令补齐
 
 `$preservetriangleorder` 已接入统一 VTX 输出：跳过缓存/过度绘制/NvTriStrip 排序，保留参考边遍历顺序。32 面自制 CE 顺序对照、两种 VTX 格式及 LOD/legacy 组合通过；Yvette 用户 QC 与 Plum 编译及结构检查通过。不宣称全局源面顺序或所有模型与 CSGO 游戏内行为一致。
+
+## v1.2.15：此前 33 个 CSGO 缺失入口的逐项处理
+
+本轮补上 31 个入口，剩余 `$cloth` / `$clothplanecollision` 两个入口仍未实现，不计为完成。支持入口中包含 reference warning-only 的 `$externaltextures`、无纹理处理用途的 `$gamma`，以及既有 native LOD 蒙皮行为的 `$skinnedLODs`；不能据此称为 31 个新算法。`$insertbone` 只执行参考中启用的 reparent 行为，`$subd` 仅完成全局 header flag，完整 quad/SubD 导入仍是另一个未完成子功能。详细语法/行为差异见 COMPATIBILITY.md，全部 33 个名字与状态记录于 tests/reports/v1.2.15-validation.json。
+
+新增 controller、runtime bone flags、prefix/substr alias、reparent/realign/center、bbox/UV/tangent、collision grid、source append、attachment/bodygroup、CONTENT、naming、no-sequence、strict remap 和 in-memory OBJ VTA/VCA 输出回归。181 项完整兼容、20 项自动化测试及 Plum/Yvette 编译结构检查通过；未取得 CSGO cloth 或游戏内行为验证，不宣称全面 CSGO 移植。
+
+Next: build the real CSGO finite-element cloth pipeline and plane collision data, then validate the applicable extended-header layout and runtime. Complete quad/SubD geometry import remains beyond the global `$subd` command flag. These open items take precedence over unrelated tooling work.

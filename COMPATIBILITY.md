@@ -285,3 +285,31 @@ Legacy continuation macros end at a noncontinued line or a blank physical line; 
 ### CSGO triangle-order QC (v1.2.14)
 
 `$preservetriangleorder` disables cache, overdraw and legacy triangle-list sorting, including software-skinned strips. Hardware face gathering uses reference depth-first edge traversal in this mode; default traversal remains unchanged. Hardware bone palette changes, material/flex grouping and vertex packing still occur. This is not a guarantee of global original source-face order or automatic game/VTX format selection. A self-authored 32-triangle grid matches the supplied CE x64 ordered output, with both VTX layouts, DX80/DX90, LODs, mixed command case and legacy sorting checks. Frozen input/output expectations are in tests/fixtures/triangle-order*. The supplied Yvette QC compiles unmodified using the Insurgency game mount from its log, with serialized output validation; Plum regression also passes. No CSGO in-game certification is claimed.
+
+### CSGO command entries (v1.2.15)
+
+| Syntax | Behavior / remaining differences |
+| --- | --- |
+| `$controller 0..4\|mouth bone x\|y\|z\|xr\|yr\|zr start end` | Retains the bone and writes 56-byte controllers and per-axis bone links. Rotational whole-turn ranges set RLOOP. Invalid input/axis/nonfinite bounds fail. |
+| `$bonealwayssetup bone`, `$screenalign bone [sphere\|cylinder]`, `$worldalign bone` | Retain named bones and write runtime bone flags; unknown bones fail. |
+| `$stripboneprefix prefix`, `$renamebonesubstr old new` | Recursive case-sensitive prefix stripping; case-insensitive substring replacement skips names already containing the replacement. Derived final aliases resolve authored rig/physics references; collisions/empty names fail. Applied with final bone renames, source cache names remain intact. |
+| `$collapsebones`, `$collapsebonesaggressive` | Select native leaf-only/aggressive culling. Explicit keeper rules still apply. These modes do not claim all reference bone-collapse heuristics are identical. |
+| `$insertbone child unusedInsertedName parent` | Reparents the child. The reference's actual insertion block is disabled; no intermediate bone is synthesized. |
+| `$forcerealign bone separator x y z`, `$centerbonesonverts` | Post-rotate bind axes in degrees, or center origins on weighted-vertex bounds (propagating child bounds for unweighted parents). Compensate rest/animation mappings rather than moving render geometry. |
+| `$bboxonlyverts`, `$clampworldspace xmin ymin zmin xmax ymax zmax` | Animated bounds exclude bone/hitbox padding, or clamp to the supplied finite ordered world window. |
+| `$cliptotextures`, `$zbrush` | Clamp UVs to [0,1] and recalculate tangent bases; or accumulate tangent contributions across equal-position seams. Works per material; defaults are unchanged. |
+| `$appendsource file ["offset pos[ x y z ] angle[ x y z ] scale[ f ]"]` | Merge into the first model's source with a private transformed copy. A first model must already exist. Normals/morph deltas follow rotation; negative scale reverses winding. Other bodies using the cached file stay unchanged. |
+| `$appendblankbodygroup` | Append a blank choice to the last bodypart; does not create a new bodypart. |
+| `$redefineattachment name bone ...` | Replace an existing defined attachment without moving its index; missing names fail. Remaining options use ordinary attachment syntax. |
+| `$cd path`, `$contentrootrelative` | Change source lookup directory once, or enable fallback through gameinfo SearchPaths CONTENT directories after ordinary lookup fails. CONTENT paths use existing gameinfo/AppID expansion. CONTENT wildcard/VPK expansion is not implemented. |
+| `$phyname stem`, `$internalname name` | Override the physics filename stem, or MDL internal header/full name and external ANI name/path. Main MDL filename continues to follow modelname. |
+| `$modelhasnosequences` | Suppress the automatic bind-pose sequence for an otherwise sequence-less model. Explicit sequences remain. |
+| `$erroronsequenceremappingfailure` | Existing-model remap failures become errors before output replacement; without it the warning fallback remains. |
+| `$fakevta name { appendvta file.obj frame ... }` | Keep OBJ-derived frames in memory; require frame 0, normals and identical face/corner topology. Negative indices and polygon triangulation are supported. Import through flexfile, native VTA or VCA; no intermediate file. OBJ axes follow the reference 90-degree X rotation. |
+| `$obsolete`, `$subd` | Emit obsolete/subdivision header flags. Global subd flag support does not implement the complete quad/SubD source importer. |
+| `$collisionprecision grid` | Truncate framed collision coordinates onto the nonnegative grid (zero disables) before hull construction; render vertices are unchanged. |
+| `$externaltextures`, `$gamma positiveValue` | Warn with legacy/no-effect semantics; neither processes textures. |
+| `$skinnedLODs` | Accepted as the existing native behavior: preserve authored skin weights for each LOD. Native defaults intentionally differ from CSGO's root-nearest-weight remapping default. |
+| `$cloth`, `$clothplanecollision` | Still rejected. Real FE node/constraint construction, control backsolving, plane binding and CSGO FE extended-header serialization are not implemented. |
+
+The 31 supported entries include legacy warning aliases and existing native behavior, not 31 new algorithms or full CSGO parity. Nineteen targeted cases inspect output controllers/flags, geometry, UV/tangents, hierarchy, bounding boxes, physics output changes, lookup, attachment/bodygroup indices, virtual morphs and pre-write remap errors. These are native output regressions against the inspected command contracts; they are not new CE/CSGO binary differential or in-game certification. Reference programs/source files and user model assets are excluded from this repository.

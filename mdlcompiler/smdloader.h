@@ -61,6 +61,14 @@ struct VtaFlexOption {
 // produces. Frame 0 is the basis every other frame is differenced against.
 // `scale` must be the same import scale the mesh was loaded with. Prints the
 // frames the file offers, then one line per imported flex.
+struct SyntheticVtaFrame {
+    int time = 0;
+    std::vector<Vector3> positions, normals;
+};
+bool LoadSyntheticVtaMorphs(const std::vector<SyntheticVtaFrame>& frames, Source& out,
+                            float scale, const std::vector<VtaFlexOption>& opts,
+                            std::string* err);
+
 bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                    const std::vector<VtaFlexOption>& opts, std::string* err);
 
@@ -68,6 +76,8 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
 // non-basis frame becomes flexdesc "f0".."fN-1" and `name` becomes ONE NWAY flex
 // controller that runs the whole sequence as it sweeps 0..1 (baked cloth/flag
 // animation, not authored face flex). Must be the mesh's only flex source.
+bool LoadSyntheticVcaMorphs(const std::vector<SyntheticVtaFrame>& frames, Source& out,
+                            float scale, const std::string& name, std::string* err);
 bool LoadVcaMorphs(const std::string& path, Source& out, float scale, const std::string& name,
                    std::string* err);
 

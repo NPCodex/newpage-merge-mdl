@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.14
+# NewPageMergeMDL v1.2.15
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.14.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.15.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -14,6 +14,14 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+
+## v1.2.15: CSGO QC compatibility (31 entries; cloth remains unfinished)
+
+Implements 31 of the previously missing 33 command entries: bone controllers/runtime flags, prefix/substr renaming, bind-axis and center adjustments, bounding-box policies, collision precision, appended sources, attachment replacement, CONTENT lookup, internal/physics naming, and virtual VTA generation from OBJ frames. Output changes are serialized into MDL/VVD/PHY. Virtual VTA supports flexfile, native `$vta` and VCA without intermediate files and rejects changed frame topology.
+
+This is not 31 new algorithms. `$externaltextures` warns and ignores as in the reference; `$gamma` has no texture-processing use in this Source pipeline; `$skinnedLODs` corresponds to the existing native per-LOD skin preservation policy. `$insertbone` reparents without inserting a bone, matching the enabled reference code. `$subd` emits the subdivision-surface header flag; the complete quad/SubD importer has not been ported.
+
+`$cloth` and `$clothplanecollision` remain **unimplemented and rejected**. They require finite-element nodes, constraints, control-bone backsolving and the CSGO extended-header data, rather than a jigglebone or keyvalues substitute. All 19 new targeted cases, 181 compatibility tests and 20 automation tests pass. Plum (126 bones, 572,277 vertices) and Yvette compile and pass serialized-output checks. No CSGO in-game validation is claimed. See [COMPATIBILITY.md](COMPATIBILITY.md) and the [validation record](tests/reports/v1.2.15-validation.json).
 
 ## v1.2.14: CSGO QC triangle-order compatibility
 
@@ -133,7 +141,7 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 - The fast glTF path decodes meshopt ATTRIBUTES, TRIANGLES and INDICES streams and applies NONE/OCTAHEDRAL/QUATERNION/EXPONENTIAL/COLOR filters. EXPONENTIAL attributes and both index modes have output tests for geometry, UV, flex and decompiled animation; other filters are not individually certified. Encoding quantization remains observable. Invalid ranges and corrupt streams fail before output.
 - Static unskinned `EXT_mesh_gpu_instancing` expands shared meshes under per-instance translation, rotation and scale, retaining inherited transforms, morph targets and InNode subtree selection. Rotation, mirrored scale and invalid quaternions have tests. Expanded scenes retain the source node/bone budget.
 
-The unsupported material-merge row is removed and the glTF compression/instance limitation is narrowed. Draco, AppID mounting, animated scale/weights, complex-rig parity and engine validation remain open. There are 127 compatibility and 16 automation tests.
+The unsupported material-merge row is removed and the glTF compression/instance limitation is narrowed. Draco, AppID mounting, animated scale/weights, complex-rig parity and engine validation remain open. There are 127 compatibility and 20 automation tests.
 
 ## v1.2.2: six improvements
 
@@ -168,10 +176,11 @@ See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESE
 
 ## Unfinished features and known issues
 
-This list reflects v1.2.8 implementation and existing validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
+This list reflects v1.2.15 implementation and existing validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
 
 | Area | Current status and remaining work |
 | --- | --- |
+| CSGO cloth and SubD | `$cloth` / `$clothplanecollision` are unimplemented; `$subd` provides the global header flag only. Complete quad/SubD import and cloth in-game verification remain unfinished. |
 | Integration gaps | CE replacemesh semantics remain unconfirmed. Separate/animated Neko parents and differing pose hierarchies are fixed and compared with reference output. Additional formats and rig combinations beyond tested cases still need coverage; power-loss/forced termination recovery remains incomplete. See FEATURE_MATRIX.md. |
 | Extra extension: skinned instances and mesh swaps | These are not prerequisites for five-compiler integration. Skinned `EXT_mesh_gpu_instancing` and animated mesh swaps remain unsupported. Static unskinned instances are supported. |
 | Extra extension: VRM runtime behavior | These are not prerequisites for five-compiler integration. Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
@@ -233,8 +242,8 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 python -m unittest discover -s tests -p test_automation.py
 ```
 
-There are 146 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
-and 16 automation tests. Tests inspect MDL/VVD data and decompile animations to
+There are 181 compatibility tests using temporary SMD/QC and synthetic DMX fixtures,
+and 20 automation tests. Tests inspect MDL/VVD data and decompile animations to
 check positions, rotations and conditions. The user-provided Alyx QC compiled
 successfully with 113 bones and 27,571 VVD vertices; this does not cover in-game
 loading or rendering.

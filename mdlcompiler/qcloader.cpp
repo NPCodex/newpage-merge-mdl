@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <tuple>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -258,6 +259,8 @@ struct Ctx {
     std::string includeAnimPrefix;
     bool pushdInclude = false;
     bool pushdProcedural = false;
+    std::map<std::string,std::vector<source::SyntheticVtaFrame>> fakeVtas;
+    bool cdSet = false;
     bool scriptBreak = false; // $break, sticky through every $include parent
 
     float defaultFps = 30.0f;
@@ -1241,16 +1244,23 @@ bool CmdRenderMesh(Ctx& c, const Token& cmd) {
         if (!IsSmdPath(src->filename))
             return c.Fail(line, where + ": " + cmdName +
                                     " is SMD-only - a DMX mesh carries its own delta states");
+        std::string loadErr;
+        auto fake=c.fakeVtas.find(Lower(file));
+        if(fake!=c.fakeVtas.end()) {
+            const bool ok=isVca?source::LoadSyntheticVcaMorphs(fake->second,*src,c.in.scale,edit.vcaName,&loadErr)
+                               :source::LoadSyntheticVtaMorphs(fake->second,*src,c.in.scale,edit.vtaFlexes,&loadErr);
+            if(!ok)return c.Fail(line,loadErr);
+        } else {
         std::vector<fs::path> tried;
         const fs::path full = FindSourceFile(c, file, &tried);
         if (full.empty())
             return c.Fail(line, "cannot find \"" + file + "\" - looked in:" + LookedIn(tried));
-        std::string loadErr;
         const bool ok =
             isVca ? source::LoadVcaMorphs(full.string(), *src, c.in.scale, edit.vcaName, &loadErr)
                   : source::LoadVtaMorphs(full.string(), *src, c.in.scale, edit.vtaFlexes, &loadErr);
         if (!ok)
             return c.Fail(line, "cannot load \"" + full.string() + "\": " + loadErr);
+        }
     }
 
     for (const MeshEdit::Inflate& inf : edit.inflates)
@@ -2495,6 +2505,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
                                         "mesh carries its own delta states");
     for (auto& kv : vtaByFile) {
         std::vector<fs::path> tried;
+        auto fake=c.fakeVtas.find(Lower(kv.first));
+        if(fake!=c.fakeVtas.end()) {
+            std::string error;
+            if(!source::LoadSyntheticVtaMorphs(fake->second,*src,importScale,kv.second,&error))return c.Fail(vtaLine,error);
+            continue;
+        }
         const fs::path full = FindSourceFile(c, kv.first, &tried);
         if (full.empty())
             return c.Fail(vtaLine, "cannot find \"" + kv.first + "\" - looked in:" + LookedIn(tried));
@@ -2545,6 +2561,11 @@ bool CmdModel(Ctx& c, const Token& cmd) {
             src->flexkeys.end());
     }
     if (!vcaFile.empty()) {
+        auto fake=c.fakeVtas.find(Lower(vcaFile));
+        if(fake!=c.fakeVtas.end()) {
+            std::string error;
+            if(!source::LoadSyntheticVcaMorphs(fake->second,*src,importScale,vcaName,&error))return c.Fail(vcaLine,error);
+        } else {
         std::vector<fs::path> tried;
         const fs::path full = FindSourceFile(c, vcaFile, &tried);
         if (full.empty())
@@ -2552,6 +2573,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         std::string err;
         if (!source::LoadVcaMorphs(full.string(), *src, importScale, vcaName, &err))
             return c.Fail(vcaLine, "cannot load \"" + full.string() + "\": " + err);
+        }
     }
     return true;
 }
@@ -9534,7 +9556,235 @@ bool CmdNekoLegacyDirective(Ctx& c, const Token& cmd) {
     return true;
 }
 
+
+// CSGO script compatibility; each switch is consumed by a compile/write pass.
+bool CmdCsgo(Ctx& c, const Token& cmd) {
+    const std::string name=Lower(cmd.text);
+    auto& o=c.in.csgo;
+    if(name=="$skinnedlods") { o.skinnedLods=true; return true; } // native pipeline already retains each LOD's skin
+    if(name=="$zbrush") { o.zbrush=true; return true; }
+    if(name=="$subd") { o.subd=true; return true; }
+    if(name=="$appendsource") {
+        if(c.in.bodyparts.empty()||c.in.bodyparts.front().models.empty()||!c.in.bodyparts.front().models.front().source)
+            return c.Fail(cmd.line,"appendsource requires a preceding first model");
+        std::string file;if(!c.Want("a source file",cmd,file))return false;
+        MeshEdit edit;source::Source* loaded=LoadSource(c,WithSourceExtension(c,file),cmd.line,true,&edit);
+        if(!loaded)return false;
+        auto appended=std::make_unique<source::Source>(*loaded);
+        if(!c.AtCommand()&&c.Cur().line==cmd.line&&c.Cur().text.rfind("offset",0)==0){
+            const std::string option=c.toks[c.pos++].text;pm::Vector3 position,angles;float scale;
+            if(std::sscanf(option.c_str(),"offset pos[ %f %f %f ] angle[ %f %f %f ] scale[ %f ]",&position.x,&position.y,&position.z,&angles.x,&angles.y,&angles.z,&scale)!=7)
+                return c.Fail(cmd.line,"malformed appendsource offset");
+            if(!std::isfinite(scale)||scale==0||!std::isfinite(position.x)||!std::isfinite(position.y)||!std::isfinite(position.z)||!std::isfinite(angles.x)||!std::isfinite(angles.y)||!std::isfinite(angles.z))
+                return c.Fail(cmd.line,"appendsource offset must be finite with nonzero scale");
+            pm::matrix3x4 transform;pm::AngleMatrix(pm::RadianEuler{angles.x*pm::kDeg2Rad,angles.y*pm::kDeg2Rad,angles.z*pm::kDeg2Rad},position,transform);
+            const float ratio=scale/c.in.scale;
+            for(auto& v:appended->vertex){v.position=pm::VectorTransform({v.position.x*ratio,v.position.y*ratio,v.position.z*ratio},transform);v.normal=pm::VectorRotate(v.normal,transform);pm::VectorNormalize(v.normal);}
+            for(auto& morph:appended->morphs)for(auto& v:morph.vanims){v.pos=pm::VectorRotate({v.pos.x*ratio,v.pos.y*ratio,v.pos.z*ratio},transform);v.normal=pm::VectorRotate(v.normal,transform);}
+            if(scale<0)for(auto& face:appended->face)std::swap(face.b,face.c);
+            source::CalcModelTangentSpaces(*appended);
+        }
+        source::Source* part=appended.get();c.in.sources.push_back(std::move(appended));
+        auto merged=std::make_unique<source::Source>();std::string error;
+        auto& target=c.in.bodyparts.front().models.front();
+        if(!source::MergeSources({target.source,part},*merged,&error))return c.Fail(cmd.line,"appendsource: "+error);
+        merged->filename=target.source->filename;target.source=merged.get();c.in.sources.push_back(std::move(merged));return true;
+    }
+    if(name=="$bboxonlyverts") { o.bboxOnlyVerts=true; return true; }
+    if(name=="$centerbonesonverts") { o.centerBones=true; return true; }
+    if(name=="$cliptotextures") { o.clipTexcoords=true; return true; }
+    if(name=="$obsolete") { o.obsolete=true; return true; }
+    if(name=="$modelhasnosequences") { o.modelHasNoSequences=true; return true; }
+    if(name=="$erroronsequenceremappingfailure") { o.errorOnRemapFailure=true; return true; }
+    if(name=="$collapsebones" || name=="$collapsebonesaggressive") {
+        c.in.boneCullType=name=="$collapsebones" ? cm::BoneCullType::LeafOnly : cm::BoneCullType::Aggressive;
+        return true;
+    }
+    if(name=="$externaltextures") {
+        std::fprintf(stderr,"WARNING: $externaltextures is obsolete; ignoring (reference behavior)\n");
+        return true;
+    }
+    if(name=="$gamma") {
+        float gamma;
+        if(!c.WantFloat("a positive gamma",cmd,gamma)) return false;
+        if(!std::isfinite(gamma)||gamma<=0) return c.Fail(cmd.line,"gamma must be finite and positive");
+        std::fprintf(stderr,"WARNING: $gamma has no texture processing effect in this Source compiler\n");
+        return true;
+    }
+    if(name=="$internalname") return c.Want("an internal model name",cmd,o.internalName);
+    if(name=="$phyname") return c.Want("a physics file name",cmd,c.in.physName);
+    if(name=="$collisionprecision") {
+        if(!c.WantFloat("a collision grid size",cmd,o.collisionPrecision)) return false;
+        return (std::isfinite(o.collisionPrecision)&&o.collisionPrecision>=0) || c.Fail(cmd.line,"collisionprecision must be finite and nonnegative");
+    }
+    if(name=="$clampworldspace") {
+        float* values[]={&o.worldMin.x,&o.worldMin.y,&o.worldMin.z,&o.worldMax.x,&o.worldMax.y,&o.worldMax.z};
+        for(float* v:values) if(!c.WantFloat("a bound",cmd,*v)||!std::isfinite(*v)) return c.Fail(cmd.line,"world bounds must be finite");
+        return (o.worldMin.x<=o.worldMax.x&&o.worldMin.y<=o.worldMax.y&&o.worldMin.z<=o.worldMax.z) || c.Fail(cmd.line,"world bounds are inverted");
+    }
+    if(name=="$appendblankbodygroup") {
+        if(c.in.bodyparts.empty()) return c.Fail(cmd.line,"appendblankbodygroup requires a preceding body part");
+        c.in.bodyparts.back().models.push_back({"blank",nullptr}); return true;
+    }
+    if(name=="$redefineattachment") {
+        if(c.AtCommand()) return c.Fail(cmd.line,"redefineattachment needs a name");
+        const std::string target=c.Cur().text;
+        auto found=std::find_if(c.attachments.begin(),c.attachments.end(),[&](const auto& a){return a.filled&&_stricmp(a.name.c_str(),target.c_str())==0;});
+        if(found==c.attachments.end()) return c.Fail(cmd.line,"cannot redefine missing attachment: "+target);
+        const size_t slot=found-c.attachments.begin();
+        if(!CmdAttachment(c,cmd)) return false;
+        c.attachments[slot]=std::move(c.attachments.back());c.attachments.pop_back();return true;
+    }
+    if(name=="$cd") {
+        if(c.cdSet) return c.Fail(cmd.line,"two $cd commands in one model");
+        std::string dir;if(!c.Want("a directory",cmd,dir))return false;
+        fs::path path=pulse::FilePath(dir);if(!path.is_absolute())path=c.scriptDir/path;
+        c.sourceDirStack.back()=path.lexically_normal();c.cdSet=true;return true;
+    }
+    if(name=="$contentrootrelative") {
+        pulse::resources::EnableContentSearch();
+        return true;
+    }
+    if(name=="$stripboneprefix") {
+        std::string prefix;if(!c.Want("a prefix",cmd,prefix))return false;
+        if(prefix.empty())return c.Fail(cmd.line,"empty bone prefix");
+        if(std::find(o.stripPrefixes.begin(),o.stripPrefixes.end(),prefix)==o.stripPrefixes.end())o.stripPrefixes.push_back(prefix);
+        return true;
+    }
+    if(name=="$renamebonesubstr") {
+        std::string from,to;if(!c.Want("a substring",cmd,from)||!c.Want("a replacement",cmd,to))return false;
+        if(from.empty())return c.Fail(cmd.line,"empty bone substring");
+        o.substringRenames.emplace_back(from,to);return true;
+    }
+    if(name=="$insertbone") {
+        cm::CompileInput::ForcedHierarchy fh;std::string subparent;
+        if(!c.Want("a child",cmd,fh.child)||!c.Want("an inserted name",cmd,subparent)||!c.Want("a parent",cmd,fh.parent))return false;
+        // The insertion block is disabled in the supplied CSGO compiler.
+        std::fprintf(stderr,"WARNING: $insertbone reparents only; reference insertion code is disabled\n");
+        c.in.forcedHierarchy.push_back(std::move(fh));return true;
+    }
+    if(name=="$forcerealign") {
+        std::string bone,ignored;pm::RadianEuler angles;
+        if(!c.Want("a bone",cmd,bone)||!c.Want("a separator",cmd,ignored))return false;
+        for(float* v:{&angles.x,&angles.y,&angles.z}){
+            if(!c.WantFloat("an angle",cmd,*v)||!std::isfinite(*v))return c.Fail(cmd.line,"realign angles must be finite");
+            *v*=pm::kDeg2Rad;
+        }
+        o.forcedRealign.emplace_back(bone,angles);return true;
+    }
+    if(name=="$controller") {
+        cm::CompiledModel::BoneController control;std::string index,axis;
+        if(!c.Want("an input index",cmd,index)||!c.Want("a bone",cmd,control.name)||!c.Want("an axis",cmd,axis))return false;
+        if(Lower(index)=="mouth")control.inputfield=4;
+        else {try {size_t used=0;control.inputfield=std::stoi(index,&used);if(used!=index.size()||control.inputfield<0||control.inputfield>4)throw std::invalid_argument("index");} catch(...) {return c.Fail(cmd.line,"controller input must be 0..4 or mouth");}}
+        const std::string a=Lower(axis);const char* axes[]={"x","y","z","xr","yr","zr"};
+        for(int i=0;i<6;i++)if(a==axes[i])control.type=1<<i;
+        if(!control.type)return c.Fail(cmd.line,"unknown controller axis: "+axis);
+        if(!c.WantFloat("a start",cmd,control.start)||!c.WantFloat("an end",cmd,control.end))return false;
+        if(!std::isfinite(control.start)||!std::isfinite(control.end))return c.Fail(cmd.line,"controller bounds must be finite");
+        if(control.type>=8 && std::fmod(control.end-control.start,360.0f)==0)control.type|=0x40000;
+        c.in.bonemarkups.push_back({control.name,true,false});
+        c.in.bonecontrollers.push_back(control);return true;
+    }
+    if(name=="$bonealwayssetup" || name=="$screenalign" || name=="$worldalign") {
+        std::string bone;if(!c.Want("a bone",cmd,bone))return false;
+        int flags=name=="$bonealwayssetup"?0x80000:name=="$worldalign"?0x20:0x08;
+        if(name=="$screenalign"&&!c.AtCommand()&&c.Cur().line==cmd.line){
+            const std::string mode=Lower(c.toks[c.pos++].text);
+            if(mode=="cylinder")flags=0x10;else if(mode!="sphere")return c.Fail(cmd.line,"screenalign expects sphere or cylinder");
+        }
+        o.boneFlags.emplace_back(bone,flags);
+        c.in.bonemarkups.push_back({bone,true,false});return true;
+    }
+    return c.Fail(cmd.line,"unimplemented CSGO command: "+cmd.text);
+}
+
+bool CmdFakeVta(Ctx& c,const Token& cmd) {
+    std::string name;if(!c.Want("a virtual VTA name",cmd,name))return false;
+    if(c.fakeVtas.count(Lower(name)))return c.Fail(cmd.line,"duplicate fakevta: "+name);
+    if(c.Eof()||c.Cur().quoted||c.Cur().text!="{")return c.Fail(cmd.line,"fakevta requires a braced appendvta list");
+    c.pos++;
+    std::vector<source::SyntheticVtaFrame> frames;
+    std::vector<std::tuple<std::string,int,int>> basisTopology;
+    while(!c.Eof() && (c.Cur().quoted||c.Cur().text!="}")) {
+        if(c.Eof())return c.Fail(cmd.line,"fakevta missing closing brace");
+        const Token entry=c.toks[c.pos++];if(Lower(entry.text)!="appendvta")return c.Fail(entry.line,"fakevta expects appendvta");
+        std::string file;int time;
+        if(!c.Want("an OBJ file",entry,file)||!c.WantInt("a frame",entry,time))return false;
+        if(time<0||std::any_of(frames.begin(),frames.end(),[&](const auto& f){return f.time==time;}))return c.Fail(entry.line,"fakevta frame is negative or duplicated");
+        const auto path=FindSourceFile(c,file,nullptr);if(path.empty())return c.Fail(entry.line,"cannot find fakevta OBJ: "+file);
+        std::ifstream input(path);std::string line;std::vector<pm::Vector3> positions,normals;
+        source::SyntheticVtaFrame frame;frame.time=time;std::map<std::tuple<std::string,int,int>,int> corners;std::string material;
+        std::vector<std::tuple<std::string,int,int>> topology;
+        auto resolve=[](int index,size_t count){return index>0?index-1:static_cast<int>(count)+index;};
+        while(std::getline(input,line)) {
+            std::istringstream words(line);std::string kind;words>>kind;
+            if(kind=="v"||kind=="vn") {
+                pm::Vector3 v;if(!(words>>v.x>>v.y>>v.z)||!std::isfinite(v.x)||!std::isfinite(v.y)||!std::isfinite(v.z))return c.Fail(entry.line,"invalid fakevta OBJ vector");
+                (kind=="v"?positions:normals).push_back({v.x,-v.z,v.y});
+            } else if(kind=="usemtl")words>>material;
+            else if(kind=="f") {
+                std::vector<std::pair<int,int>> face;std::string corner;
+                while(words>>corner){if(corner[0]=='#')break;int vertex=0,normal=0;const size_t slash=corner.find_last_of('/');
+                    try{vertex=std::stoi(corner);if(slash==std::string::npos)throw std::invalid_argument("normal");normal=std::stoi(corner.substr(slash+1));}catch(...){return c.Fail(entry.line,"fakevta OBJ face requires vertex/normal indices");}
+                    vertex=resolve(vertex,positions.size());normal=resolve(normal,normals.size());
+                    if(vertex<0||vertex>=static_cast<int>(positions.size())||normal<0||normal>=static_cast<int>(normals.size()))return c.Fail(entry.line,"fakevta OBJ face index out of range");
+                    face.emplace_back(vertex,normal);
+                }
+                if(face.size()<3)return c.Fail(entry.line,"fakevta OBJ face has fewer than three corners");
+                // First-seen corner order matches the reference's reversed winding.
+                for(size_t triangle=1;triangle+1<face.size();triangle++)for(size_t i:{size_t(0),triangle+1,triangle}){
+                    const auto key=std::make_tuple(material,face[i].first,face[i].second);
+                    topology.push_back(key);
+                    if(corners.emplace(key,static_cast<int>(corners.size())).second){frame.positions.push_back(positions[face[i].first]);frame.normals.push_back(normals[face[i].second]);}
+                }
+            }
+        }
+        if(frame.positions.empty())return c.Fail(entry.line,"fakevta OBJ has no faces");
+        if(frames.empty())basisTopology=topology;
+        else if(topology!=basisTopology)return c.Fail(entry.line,"fakevta OBJ topology differs between frames");
+        frames.push_back(std::move(frame));
+    }
+    if(c.Eof())return c.Fail(cmd.line,"fakevta missing closing brace");
+    c.pos++;
+    if(std::none_of(frames.begin(),frames.end(),[](const auto& f){return f.time==0;}))return c.Fail(cmd.line,"fakevta requires frame 0");
+    c.fakeVtas[Lower(name)]=std::move(frames);return true;
+}
+
 constexpr Command kCommands[] = {
+    {"$fakevta", CmdFakeVta},
+    {"$skinnedlods", CmdCsgo},
+    {"$zbrush", CmdCsgo},
+    {"$subd", CmdCsgo},
+    {"$appendsource", CmdCsgo},
+
+    {"$bboxonlyverts", CmdCsgo},
+    {"$centerbonesonverts", CmdCsgo},
+    {"$cliptotextures", CmdCsgo},
+    {"$obsolete", CmdCsgo},
+    {"$modelhasnosequences", CmdCsgo},
+    {"$erroronsequenceremappingfailure", CmdCsgo},
+    {"$collapsebones", CmdCsgo},
+    {"$collapsebonesaggressive", CmdCsgo},
+    {"$externaltextures", CmdCsgo},
+    {"$gamma", CmdCsgo},
+    {"$internalname", CmdCsgo},
+    {"$phyname", CmdCsgo},
+    {"$collisionprecision", CmdCsgo},
+    {"$clampworldspace", CmdCsgo},
+    {"$appendblankbodygroup", CmdCsgo},
+    {"$redefineattachment", CmdCsgo},
+    {"$cd", CmdCsgo},
+    {"$contentrootrelative", CmdCsgo},
+    {"$stripboneprefix", CmdCsgo},
+    {"$renamebonesubstr", CmdCsgo},
+    {"$insertbone", CmdCsgo},
+    {"$forcerealign", CmdCsgo},
+    {"$controller", CmdCsgo},
+    {"$bonealwayssetup", CmdCsgo},
+    {"$screenalign", CmdCsgo},
+    {"$worldalign", CmdCsgo},
+
     {"$break", CmdBreak},
     {"$assert", CmdAssert},
     {"$qcassert", CmdQcAssert},

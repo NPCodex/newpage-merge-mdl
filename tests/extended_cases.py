@@ -2,6 +2,156 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def csgo_bone_table(self,name):
+  data=self.mdl(name);count,start=struct.unpack_from('<2i',data,156);bones={}
+  for i in range(count):
+   bone=start+i*216;label=bone+struct.unpack_from('<i',data,bone)[0];bones[data[label:data.index(b'\0',label)].decode()]=(i,bone)
+  return data,bones
+
+ def test_csgo_controllers_write_links_and_keep_unweighted_bones(self):
+  self.run_qc('$modelname controls\n$controller mouth unused_child zr 0 360\n$controller 1 root x -2 3\n')
+  data,bones=self.csgo_bone_table('controls');count,start=struct.unpack_from('<2i',data,164);self.assertEqual(count,2)
+  bone,kind,lo,hi,rest,index=struct.unpack_from('<2i2f2i',data,start);self.assertEqual((bone,kind,lo,hi,rest,index),(bones['unused_child'][0],32|0x40000,0,360,0,4))
+  self.assertEqual(struct.unpack_from('<i',data,bones['unused_child'][1]+8+5*4)[0],0)
+  self.assertEqual(struct.unpack_from('<i',data,bones['root'][1]+8)[0],1)
+  output=self.run_qc('$modelname bad\n$controller 9 root x 0 1\n',success=False);self.assertIn('0..4',output)
+
+ def test_csgo_runtime_flags_and_header_flags(self):
+  for directive,flag in [('$bonealwayssetup unused_child',0x80000),('$screenalign unused_child sphere',8),('$screenalign unused_child cylinder',16),('$worldalign unused_child',32)]:
+   self.run_qc('$modelname flags\n'+directive+'\n$obsolete\n$subd\n')
+   data,bones=self.csgo_bone_table('flags');self.assertTrue(struct.unpack_from('<i',data,bones['unused_child'][1]+160)[0]&flag)
+   self.assertEqual(struct.unpack_from('<i',data,152)[0]&((1<<9)|(1<<19)),(1<<9)|(1<<19))
+
+ def test_csgo_prefix_and_substring_renames_resolve_references(self):
+  source=(self.root/'mesh.smd').read_text().replace('"root"','"PrePreRoot"').replace('"unused_child"','"PrePreHelper"');self.write('prefixed.smd',source)
+  self.scene_qc('$modelname renamed\n$body m prefixed.smd\n$stripboneprefix Pre\n$renamebonesubstr Helper Child\n$bonealwayssetup Child\n$attachment point Root 0 0 0\n$controller 0 Child x 0 1\n')
+  data,bones=self.csgo_bone_table('renamed');self.assertEqual(set(bones),{'Root','Child'})
+  self.assertEqual(struct.unpack_from('<i',data,struct.unpack_from('<i',data,244)[0]+8)[0],bones['Root'][0])
+
+ def test_csgo_redefine_attachment_and_append_blank_keep_indices(self):
+  self.scene_qc('$modelname redefine\n$body m mesh.smd\n$attachment first root 0 0 0\n$attachment second root 0 0 0\n$redefineattachment FIRST root 3 4 5\n$appendblankbodygroup\n')
+  data=self.mdl('redefine');count,start=struct.unpack_from('<2i',data,240);self.assertEqual(count,2)
+  self.assertEqual(tuple(struct.unpack_from('<f',data,start+12+j*16+12)[0] for j in range(3)),(3,4,5))
+  body=struct.unpack_from('<i',data,236)[0];self.assertEqual(struct.unpack_from('<i',data,body+4)[0],2)
+  output=self.run_qc('$modelname bad\n$redefineattachment absent root 0 0 0\n',success=False);self.assertIn('missing attachment',output)
+
+ def test_csgo_bbox_vertices_and_world_clamp(self):
+  boxes=[]
+  for option in ('','$bboxonlyverts\n','$bboxonlyverts\n$clampworldspace -.2 -.2 -.2 .2 .2 .2\n'):
+   self.run_qc('$modelname boxes\n$hbox 0 root -100 -100 -100 100 100 100\n'+option)
+   data=self.mdl('boxes');seq=struct.unpack_from('<i',data,192)[0];boxes.append(struct.unpack_from('<6f',data,seq+32))
+  self.assertGreater(max(abs(v) for v in boxes[0]),90);self.assertLess(max(abs(v) for v in boxes[1]),2)
+  self.assertLessEqual(max(abs(v) for v in boxes[2]),.200001)
+
+ def test_csgo_center_and_force_realign_keep_render_geometry(self):
+  positions=[]
+  for option in ('','$centerbonesonverts\n','$forcerealign root unused 15 30 45\n'):
+   self.run_qc('$modelname centered\n'+option)
+   data,bones=self.csgo_bone_table('centered');bone=bones['root'][1];position=struct.unpack_from('<3f',data,bone+32)
+   if option.startswith('$center'):self.assertAlmostEqual(position[0],.5,places=4);self.assertAlmostEqual(position[1],.5,places=4)
+   vvd=(self.root/'models/centered.vvd').read_bytes();start=struct.unpack_from('<i',vvd,56)[0];positions.append(sorted(tuple(round(v,4) for v in struct.unpack_from('<3f',vvd,start+i*48+16)) for i in range(3)))
+  self.assertEqual(positions[0],positions[1]);self.assertEqual(positions[0],positions[2])
+
+ def test_csgo_model_no_sequences_and_internal_name(self):
+  self.scene_qc('$modelname outer\n$internalname inner.mdl\n$modelhasnosequences\n$body m mesh.smd\n')
+  data=self.mdl('outer');self.assertEqual(struct.unpack_from('<i',data,188)[0],0);self.assertEqual(data[12:data.index(b'\0',12)],b'inner.mdl')
+  self.assertFalse((self.root/'models/inner.mdl').exists())
+
+ def test_csgo_strict_sequence_remap_preserves_old_output(self):
+  old=b'broken model';(self.root/'models').mkdir(exist_ok=True);(self.root/'models/strict.mdl').write_bytes(old)
+  output=self.run_qc('$modelname strict\n$erroronsequenceremappingfailure\n',success=False);self.assertIn('sequence remapping error',output);self.assertEqual((self.root/'models/strict.mdl').read_bytes(),old)
+
+ def test_csgo_content_and_cd_source_lookup(self):
+  self.write('content/only.smd',(self.root/'mesh.smd').read_text());self.write('gameinfo.txt','"GameInfo" { "FileSystem" { "SearchPaths" { "Content" "|gameinfo_path|content" } } }')
+  self.scene_qc('$modelname mounted\n$contentrootrelative\n$body m only.smd\n')
+  self.scene_qc('$modelname cd\n$cd content\n$body m only.smd\n')
+  output=self.scene_qc('$cd content\n$cd content\n',success=False);self.assertIn('two $cd',output)
+
+ def test_csgo_append_source_offset_is_private(self):
+  self.scene_qc('$modelname append\n$body first mesh.smd\n$appendsource mesh.smd "offset pos[ 5 0 0 ] angle[ 0 0 0 ] scale[ 1 ]"\n$body second mesh.smd\n')
+  data=self.mdl('append');body=struct.unpack_from('<i',data,236)[0];first=body+struct.unpack_from('<i',data,body+12)[0];second=body+16+struct.unpack_from('<i',data,body+28)[0]
+  self.assertEqual(struct.unpack_from('<i',data,first+80)[0],6);self.assertEqual(struct.unpack_from('<i',data,second+80)[0],3)
+  vvd=(self.root/'models/append.vvd').read_bytes();start=struct.unpack_from('<i',vvd,56)[0];points=[struct.unpack_from('<3f',vvd,start+i*48+16) for i in range(9)];self.assertGreater(max(p[0] for p in points[:6]),4);self.assertLess(max(p[0] for p in points[6:]),2)
+
+ def test_csgo_fakevta_imports_obj_delta_without_generated_files(self):
+  template='v 0 0 0\nv 1 0 0\nv 0 0 -1\nvn 0 1 0\nf 1//1 2//1 3//1\n'
+  self.write('basis.obj',template);self.write('raised.obj',template.replace('v 1 0 0','v 1 .5 0'))
+  self.scene_qc('$modelname virtual\n$fakevta virtual.vta { appendvta basis.obj 0 appendvta raised.obj 1 }\n$model face mesh.smd {\nflexfile virtual.vta\nflex shared frame 1\nflexcontroller test range 0 1 strength\n%shared = strength\n}\n')
+  data,flex=self.first_mesh_flex('virtual');self.assertGreater(len(flex),0);self.assertFalse((self.root/'virtual.vta').exists())
+
+ def test_csgo_fakevta_rejects_changed_topology(self):
+  obj='v 0 0 0\nv 1 0 0\nv 0 0 -1\nvn 0 1 0\nf 1//1 2//1 3//1\n'
+  self.write('basis.obj',obj);self.write('changed.obj',obj.replace('1//1 2//1 3//1','1//1 3//1 2//1'))
+  output=self.scene_qc('$modelname bad\n$fakevta face.vta { appendvta basis.obj 0 appendvta changed.obj 1 }\n',success=False)
+  self.assertIn('topology differs',output);self.assertFalse((self.root/'models/bad.mdl').exists())
+
+ def test_csgo_clip_texture_coordinates_updates_output_and_lods(self):
+  original=(self.root/'mesh.smd').read_text();self.write('uv.smd',original.replace('1 1 0','1 2 -.5').replace('1 0 1','1 -.5 2'))
+  for option in ('','$cliptotextures\n'):
+   self.scene_qc('$modelname uv\n$body m uv.smd\n$lod 10 { replacemodel uv.smd uv.smd }\n'+option)
+   vvd=(self.root/'models/uv.vvd').read_bytes();start=struct.unpack_from('<i',vvd,56)[0];count=struct.unpack_from('<i',vvd,16)[0]
+   coordinates=[v for i in range(count) for v in struct.unpack_from('<2f',vvd,start+i*48+40)]
+   if option:self.assertTrue(all(0<=v<=1 for v in coordinates))
+   else:self.assertTrue(any(v<0 or v>1 for v in coordinates))
+
+ def test_csgo_legacy_warnings_and_invalid_numeric_inputs(self):
+  output=self.run_qc('$modelname old\n$externaltextures\n$gamma 2.2\n$skinnedLODs\n')
+  self.assertIn('obsolete',output);self.assertIn('no texture processing effect',output)
+  for command in ('$gamma 0','$collisionprecision -1','$clampworldspace 1 1 1 0 0 0'):
+   self.run_qc('$modelname bad\n'+command+'\n',success=False)
+
+ def test_csgo_phyname_and_precision_changes_hull_without_changing_render(self):
+  points=[(0,0,0),(2.4,0,0),(0,2.4,0),(0,0,2.4)];faces=[(0,2,1),(0,1,3),(0,3,2),(1,2,3)]
+  source='version 1\nnodes\n0 "root" -1\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\nend\ntriangles\n'
+  for face in faces:source+='material\n'+''.join(f'0 {points[v][0]} {points[v][1]} {points[v][2]} 0 0 1 0 0\n' for v in face)
+  source+='end\n'
+  # Shift non-zero coordinates off the selected 1-unit grid.
+  source=source.replace('2 0 0','2.4 0 0').replace('0 2 0','0 2.4 0').replace('0 0 2','0 0 2.4');self.write('tetra.smd',source)
+  outputs=[]
+  for precision in (0,1):
+   self.scene_qc(f'$modelname snap\n$body m tetra.smd\n$phyname custom\n$collisionprecision {precision}\n$collisionmodel tetra.smd {{ $mass 10 }}\n')
+   self.assertFalse((self.root/'models/snap.phy').exists());self.assertTrue((self.root/'models/custom.phy').exists())
+   outputs.append(((self.root/'models/snap.vvd').read_bytes()[16:],(self.root/'models/custom.phy').read_bytes()[16:]))
+  self.assertEqual(outputs[0][0],outputs[1][0]);self.assertNotEqual(outputs[0][1],outputs[1][1])
+
+ def test_csgo_zbrush_smooths_tangent_seams_without_moving_vertices(self):
+  mesh='version 1\nnodes\n0 "root" -1\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\nend\ntriangles\n'
+  for face in [[(0,0,0,0),(1,0,1,0),(0,1,0,1)],[(0,0,1,1),(0,1,2,1),(-1,0,1,2)]]:
+   mesh+='material\n'+''.join(f'0 {x} {y} 0 0 0 1 {u} {v}\n' for x,y,u,v in face)
+  self.write('seams.smd',mesh+'end\n');results=[]
+  for option in ('','$zbrush\n'):
+   self.scene_qc('$modelname seams\n$body m seams.smd\n'+option)
+   data=(self.root/'models/seams.vvd').read_bytes();start,tangent=struct.unpack_from('<2i',data,56);count=struct.unpack_from('<i',data,16)[0];groups={}
+   for i in range(count):
+    position=struct.unpack_from('<3f',data,start+i*48+16);groups.setdefault(position,[]).append(struct.unpack_from('<4f',data,tangent+i*16))
+   results.append(groups)
+  self.assertEqual(set(results[0]),set(results[1]));self.assertTrue(any(len(v)==2 and v[0]!=v[1] for v in results[0].values()))
+  for values in results[1].values():
+   if len(values)==2:
+    for a,b in zip(values[0],values[1]):self.assertAlmostEqual(a,b,places=5)
+
+ def test_csgo_fakevta_works_with_native_vta_and_baked_vca(self):
+  obj='v 0 0 0\nv 1 0 0\nv 0 0 -1\nvn 0 1 0\nf 1//1 2//1 3//1\n'
+  self.write('basis.obj',obj);self.write('raised.obj',obj.replace('v 1 0 0','v 1 .5 0'))
+  fake='$fakevta virtual.vta { appendvta basis.obj 0 appendvta raised.obj 1 }\n'
+  for option in ('$vta virtual.vta { flex shared frame 1 }','$vca virtual.vta playback'):
+   self.scene_qc('$modelname nativevirtual\n$flexcullmethod none\n'+fake+'$rendermesh face mesh.smd { '+option+' }\n$modelgroup body face\n')
+   data,flex=self.first_mesh_flex('nativevirtual');self.assertGreater(len(flex),0)
+   if '$vca' in option:self.assertGreater(struct.unpack_from('<i',data,268)[0],0)
+  self.scene_qc('$modelname bakedvirtual\n'+fake+'$model face mesh.smd { vcafile virtual.vta playback }\n')
+  data,flex=self.first_mesh_flex('bakedvirtual');self.assertGreater(len(flex),0);self.assertGreater(struct.unpack_from('<i',data,268)[0],0)
+
+ def test_csgo_insertbone_matches_reference_reparent_behavior(self):
+  mesh=(self.root/'mesh.smd').read_text().replace('1 "unused_child" 0','1 "unused_child" 0\n2 "other" 0').replace('1 0 0 1 0 0 0','1 0 0 1 0 0 0\n2 0 1 0 0 0 0');self.write('parents.smd',mesh)
+  output=self.scene_qc('$modelname hierarchy\n$body m parents.smd\n$bonealwayssetup other\n$bonealwayssetup unused_child\n$insertbone unused_child intermediate other\n')
+  data,bones=self.csgo_bone_table('hierarchy');self.assertNotIn('intermediate',bones);self.assertEqual(struct.unpack_from('<i',data,bones['unused_child'][1]+4)[0],bones['other'][0]);self.assertIn('reparents only',output)
+
+ def test_csgo_collapse_modes_preserve_or_remove_unused_intermediate(self):
+  mesh=(self.root/'mesh.smd').read_text().replace('1 "unused_child" 0','1 "unused_child" 0\n2 "tip" 1').replace('1 0 0 1 0 0 0','1 0 0 1 0 0 0\n2 0 0 1 0 0 0');prefix,triangles=mesh.split('triangles\n');mesh=prefix+'triangles\n'+triangles.replace('\n0 ','\n2 ');self.write('chain.smd',mesh)
+  for command,expected in [('$collapsebones',True),('$collapsebonesaggressive',False)]:
+   self.scene_qc('$modelname chain\n$body m chain.smd\n$bonealwayssetup root\n$bonealwayssetup tip\n'+command+'\n')
+   data,bones=self.csgo_bone_table('chain');self.assertEqual('unused_child' in bones,expected)
+
  def ordered_triangle_positions(self,name,extension='dx90',full=False,lod=0):
   data=(self.root/f'models/{name}.{extension}.vtx').read_bytes();vvd=(self.root/f'models/{name}.vvd').read_bytes();vertex_start=struct.unpack_from('<i',vvd,56)[0]
   body=struct.unpack_from('<i',data,32)[0];model=body+struct.unpack_from('<i',data,body+4)[0];level=model+struct.unpack_from('<i',data,model+4)[0]+lod*12

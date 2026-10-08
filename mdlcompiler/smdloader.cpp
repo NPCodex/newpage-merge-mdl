@@ -1008,6 +1008,38 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
 
 } // namespace
 
+bool LoadSyntheticVtaMorphs(const std::vector<SyntheticVtaFrame>& input, Source& out,
+                            float scale, const std::vector<VtaFlexOption>& opts,
+                            std::string* err) {
+    VtaBind bind;
+    const SyntheticVtaFrame* base=nullptr;
+    for(const auto& frame:input)if(frame.time==0)base=&frame;
+    if(!base||base->positions.empty()){if(err)*err="fakevta requires nonempty frame 0";return false;}
+    for(const auto& frame:input){
+        if(frame.positions.size()!=base->positions.size()||frame.normals.size()!=frame.positions.size()){
+            if(err)*err="fakevta OBJ topology differs between frames";return false;
+        }
+        VtaFrame result;result.time=frame.time;
+        for(size_t i=0;i<frame.positions.size();i++)result.verts.push_back({static_cast<int>(i),{{frame.positions[i].x*scale,frame.positions[i].y*scale,frame.positions[i].z*scale},frame.normals[i]}});
+        bind.frames.push_back(std::move(result));
+    }
+    std::vector<VtaVert> basis;
+    for(const auto& vertex:bind.Frame(0)->verts)basis.push_back(vertex.second);
+    std::vector<int> mapping;
+    BuildModelToVAnim(out,basis,mapping);
+    bind.base=std::move(basis);
+    for(size_t i=0;i<mapping.size();i++)if(mapping[i]>=0)bind.vanimMap[mapping[i]].push_back(static_cast<int>(i));
+    for(const auto& opt:opts){
+        const VtaFrame* frame=bind.Frame(opt.frame);
+        if(opt.frame==0||!frame){if(err)*err="fakevta flex selects unavailable/non-delta frame";return false;}
+        ImportFrame(bind,*frame,opt.name,opt.position,opt.decay,out);
+        out.flexkeys.back().inverted=opt.inverted;out.flexkeys.back().defaultPose=opt.defaultPose;
+        for(auto& delta:out.morphs.back().vanims){delta.pos.x*=opt.strength;delta.pos.y*=opt.strength;delta.pos.z*=opt.strength;delta.normal.x*=opt.strength;delta.normal.y*=opt.strength;delta.normal.z*=opt.strength;}
+        if(!opt.registerFlex)out.flexkeys.pop_back();
+    }
+    return true;
+}
+
 bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                    const std::vector<VtaFlexOption>& opts, std::string* err) {
     VtaBind bind;
@@ -1053,6 +1085,29 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
 // becomes flexdesc "f<i>" and ONE NWAY controller sweeps the whole run over
 // 0..1. Stock also emits a "default" flexkey on the basis; it is an empty morph
 // that only exists to make its indices line up, so we leave it out.
+bool LoadSyntheticVcaMorphs(const std::vector<SyntheticVtaFrame>& frames, Source& out,
+                            float scale, const std::string& name, std::string* err) {
+    if (!out.morphs.empty() || !out.flexkeys.empty()) {
+        if(err)*err="the mesh already has morphs - a .vca must be its only flex source";
+        return false;
+    }
+    std::vector<VtaFlexOption> opts;
+    for (const auto& frame:frames) if(frame.time!=0) {
+        VtaFlexOption option;option.name="f"+std::to_string(opts.size());
+        option.frame=frame.time;option.decay=0;opts.push_back(option);
+    }
+    if(opts.empty()){if(err)*err="only the basis frame - nothing to play back";return false;}
+    if(!LoadSyntheticVtaMorphs(frames,out,scale,opts,err))return false;
+    ControllerRemap remap;remap.name=name;remap.type=RemapType::NWay;
+    for(size_t i=0;i<opts.size();i++) {
+        remap.rawControls.push_back(opts[i].name);
+        out.combinationControls.push_back(CombinationControl{opts[i].name});
+        CombinationRule rule;rule.flex=static_cast<int>(i);rule.combination.push_back(static_cast<int>(i));
+        out.combinationRules.push_back(std::move(rule));
+    }
+    out.controllerRemaps.push_back(std::move(remap));return true;
+}
+
 bool LoadVcaMorphs(const std::string& path, Source& out, float scale, const std::string& name,
                    std::string* err) {
     if (!out.morphs.empty() || !out.flexkeys.empty()) {

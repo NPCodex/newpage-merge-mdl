@@ -271,7 +271,7 @@ struct Source {
 SourceAnim* FindSourceAnim(Source& src, const char* name);
 
 // Per-mesh tangent basis from face UV gradients. Shared by DMX + SMD loaders.
-void CalcModelTangentSpaces(Source& src);
+void CalcModelTangentSpaces(Source& src, bool smoothSeams = false);
 
 // Dup-collapse, weight-desc bubble sort, drop tiny weights, clip to iMaxCount,
 // renormalize. Shared by loader + compile.

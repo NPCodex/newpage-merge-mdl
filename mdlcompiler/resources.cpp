@@ -62,7 +62,7 @@ const KV* Child(const std::vector<KV>& nodes,const std::string& name){for(const 
 struct Entry {uint16_t archive=0;uint32_t offset=0,length=0;std::vector<char> preload;};
 struct Mount {fs::path path;bool loaded=false;uint64_t dataStart=0;std::map<std::string,Entry> entries;};
 struct State {
- std::vector<Mount> mounts;fs::path cache;
+ std::vector<Mount> mounts;std::vector<fs::path> contentRoots;bool contentSearch=false;fs::path cache;
  ~State(){if(!cache.empty()){std::error_code ec;auto parent=fs::temp_directory_path(ec).lexically_normal();
   if(!ec&&cache.parent_path()==parent&&cache.filename().string().rfind("newpage-mount-",0)==0)fs::remove_all(cache,ec);}}
 } state;
@@ -125,7 +125,7 @@ fs::path AppDirectory(const fs::path& steam,const std::string& id) {
 }
 bool Initialize(const std::string& gameDirectory,const std::string& steamDirectory,std::string* err) {
  try {
-  state.mounts.clear();if(gameDirectory.empty())return true;
+  state.mounts.clear();state.contentRoots.clear();state.contentSearch=false;if(gameDirectory.empty())return true;
   fs::path game=fs::absolute(FilePath(gameDirectory));auto kv=ReadKV(game/"gameinfo.txt");if(kv.empty())return true;
   const auto root=Child(kv,"gameinfo");const auto system=root?Child(root->children,"filesystem"):nullptr;
   const auto search=system?Child(system->children,"searchpaths"):nullptr;if(!search)return true;
@@ -139,10 +139,12 @@ bool Initialize(const std::string& gameDirectory,const std::string& steamDirecto
     if(found->second.empty()){std::fprintf(stderr,"warning: mounted AppID %s is not installed\n",id.c_str());continue;}
     base=found->second;value.erase(0,end+1);}
    if(prefixed)while(!value.empty()&&(value[0]=='/'||value[0]=='\\'))value.erase(0,1);
-   auto p=FilePath(value);Add(p.is_absolute()?p:base/p);
+   auto p=FilePath(value);p=p.is_absolute()?p:base/p;
+   if(key=="content")state.contentRoots.push_back(p);else Add(p);
   }return true;
  }catch(const std::exception& e){if(err)*err="resource mount: "+std::string(e.what());return false;}
 }
+void EnableContentSearch(){state.contentSearch=true;}
 fs::path Find(const fs::path& input) {
  fs::path relative=input;
  if(input.is_absolute()){if(state.cache.empty())return {};relative=input.lexically_relative(state.cache);}
@@ -158,7 +160,9 @@ fs::path Find(const fs::path& input) {
   std::ofstream out(output,std::ios::binary);out.write(e.preload.data(),e.preload.size());f.seekg(offset);
   char buffer[65536];uint32_t left=e.length;while(left){size_t size=std::min<size_t>(left,sizeof(buffer));f.read(buffer,size);out.write(buffer,size);if(!f||!out)throw std::runtime_error("cannot extract VPK resource");left-=uint32_t(size);}
   dependencies::Note(archive.string());return output;
- }return {};
+ }
+ if(state.contentSearch)for(const auto& root:state.contentRoots){std::error_code ec;auto file=root/relative;if(fs::is_regular_file(file,ec))return file;}
+ return {};
 }
 void Print(){for(const auto& m:state.mounts)std::printf("Mounted resource: %s\n",m.path.string().c_str());}
 }

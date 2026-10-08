@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -1728,7 +1729,7 @@ void CalcTriangleTangentSpace(const pm::Vector3& p0, const pm::Vector3& p1, cons
   // SMD loader; it still uses the anon-namespace CalcTriangleTangentSpace above.
 
 // reference CalcModelTangentSpaces
-void CalcModelTangentSpaces(Source& src) {
+void CalcModelTangentSpaces(Source& src, bool smoothSeams) {
     for (int meshID = 0; meshID < src.nummeshes; meshID++) {
         SrcMesh* pMesh = &src.mesh[src.meshindex[meshID]];
         // vert -> face lists, CSR (counts, prefix sum, fill) rather than a
@@ -1771,6 +1772,12 @@ void CalcModelTangentSpaces(Source& src) {
                                      faceTVect[faceID]);
         }
 
+        // Group equal positions once; preserve vertex/face order within each seam.
+        std::map<std::tuple<float,float,float>,std::vector<int>> seams;
+        if (smoothSeams) for (int v=0;v<pMesh->numvertices;v++) {
+            const auto& p=src.vertex[pMesh->vertexoffset+v].position;
+            seams[{p.x,p.y,p.z}].push_back(v);
+        }
         for (int vertID = 0; vertID < pMesh->numvertices; vertID++) {
             SrcVertex& vert = src.vertex[vertID + pMesh->vertexoffset];
             const pm::Vector3& normal = vert.normal;
@@ -1779,6 +1786,17 @@ void CalcModelTangentSpaces(Source& src) {
                 const int f = mapFaces[fi];
                 sVect.x += faceSVect[f].x; sVect.y += faceSVect[f].y; sVect.z += faceSVect[f].z;
                 tVect.x += faceTVect[f].x; tVect.y += faceTVect[f].y; tVect.z += faceTVect[f].z;
+            }
+
+            if(smoothSeams) {
+                for(int other:seams.at({vert.position.x,vert.position.y,vert.position.z})) {
+                    if(other==vertID)continue;
+                    for(int fi=mapStart[other];fi<mapStart[other+1];fi++) {
+                        const int f=mapFaces[fi];
+                        sVect.x+=faceSVect[f].x;sVect.y+=faceSVect[f].y;sVect.z+=faceSVect[f].z;
+                        tVect.x+=faceTVect[f].x;tVect.y+=faceTVect[f].y;tVect.z+=faceTVect[f].z;
+                    }
+                }
             }
 
             auto cross = [](const pm::Vector3& a, const pm::Vector3& b) {

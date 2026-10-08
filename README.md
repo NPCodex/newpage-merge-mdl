@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.14
+# NewPageMergeMDL v1.2.15
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.14**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.15**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -12,6 +12,14 @@
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态和后续顺序见 [五编译器功能清单](FEATURE_MATRIX.md)。
+
+## v1.2.15：CSGO 指令兼容（31 个入口，布料仍未完成）
+
+本轮补上此前 33 个缺失入口中的 31 个，包含骨骼控制器与运行时标志、前缀/子串改名、绑定轴与骨骼中心、边界框策略、碰撞精度、源模型追加、附件重定义、CONTENT 路径查找、内部/物理文件名以及 OBJ 生成虚拟 VTA。实际写入 MDL/VVD/PHY；虚拟 VTA 支持 flexfile、原生 `$vta` 及 VCA，不产生中间文件，并拒绝帧间拓扑改变。
+
+这不是 31 项新算法：`$externaltextures` 按参考行为警告并忽略；`$gamma` 在该 Source 编译流程中没有纹理处理用途；`$skinnedLODs` 对应本项目已有的逐 LOD 蒙皮保留行为；`$insertbone` 按参考中实际启用的代码只重新挂接，不创建插入骨骼；`$subd` 写入细分表面标志，不代表已移植完整四边形/SubD 导入流水线。
+
+`$cloth` 与 `$clothplanecollision` **尚未实现**，仍明确拒绝。它们需要有限元节点/约束/控制骨回解与 CSGO 扩展头数据，不能用 jigglebone 或保存一段 keyvalues 代替。19 项新增专项回归、181 项完整兼容测试、20 项自动化测试通过；Plum（126 骨骼、572,277 顶点）及 Yvette 编译/结构检查通过。本轮未做 CSGO 游戏内验证。详细语法和差异见 [COMPATIBILITY.md](COMPATIBILITY.md)，逐入口状态见 [验证记录](tests/reports/v1.2.15-validation.json)。
 
 ## v1.2.14：CSGO QC 三角形顺序兼容
 
@@ -166,10 +174,11 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 
 ## 未完成与已知问题
 
-以下按 v1.2.8 的实现及已有验证记录整理；“未验证”表示测试覆盖不足，不表示该功能尚未实现。
+以下按 v1.2.15 的实现及已有验证记录整理；“未验证”表示测试覆盖不足，不表示该功能尚未实现。
 
 | 内容 | 当前状态与剩余工作 |
 | --- | --- |
+| CSGO 布料与 SubD | `$cloth` / `$clothplanecollision` 未实现；`$subd` 仅完成全局头标志，完整四边形/SubD 导入与布料游戏内验证仍未完成。 |
 | 五者整合缺口 | CE replacemesh 参考语义仍需确认；Neko 驱动骨的不同父级、父级动画与层级变化已修复并对照。更多导入格式及超出已验证案例的骨骼组合仍需覆盖；断电/强制终止恢复未实现。详见 FEATURE_MATRIX.md。 |
 | 额外扩展：蒙皮实例与网格切换 | 不作为五者整合的先决条件；尚未支持蒙皮网格的 `EXT_mesh_gpu_instancing`，也未支持动画中的网格切换；静态非蒙皮实例已支持。 |
 | 额外扩展：VRM 运行时行为 | 不作为五者整合的先决条件；完整弹簧骨和专有表情映射的运行时语义尚未实现；已有 VRM 导入与默认形态键权重回归不代表完整 VRM 行为兼容。 |
@@ -229,7 +238,7 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-146 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 20 项自动发布测试。
+181 项兼容测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD 文件，并反编译动画验证位移、旋转和分支行为；另有 20 项自动发布测试。
 
 已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。v1.2.4 另完成 GMod 几何、表情/眼睑与 LOD 验证。
 

@@ -1001,6 +1001,13 @@ struct BoneSaveFrame {
 };
 
 struct CompiledModel {
+    struct BoneController {
+        std::string name;
+        int bone = -1, type = 0, inputfield = 0;
+        float start = 0, end = 0;
+    };
+    std::vector<BoneController> bonecontrollers;
+    std::string internalName;
     bool legacyStripify = false;
     bool preserveTriangleOrder = false;
     size_t mdlLimit=0,aniLimit=0,fileLimit=0;
@@ -1118,6 +1125,19 @@ enum class Archetype {
 
 // Script-level inputs the compile stage needs (filled by the .pulsemdl loader).
 struct CompileInput {
+    struct CsgoOptions {
+        bool bboxOnlyVerts=false, centerBones=false, clipTexcoords=false;
+        bool modelHasNoSequences=false, errorOnRemapFailure=false, obsolete=false;
+        bool skinnedLods=false, zbrush=false, subd=false;
+        Vector3 worldMin{-16384,-16384,-16384}, worldMax{16384,16384,16384};
+        float collisionPrecision=0;
+        std::string internalName;
+        std::vector<std::pair<std::string,int>> boneFlags;
+        std::vector<std::pair<std::string,std::string>> substringRenames;
+        std::vector<std::string> stripPrefixes;
+        std::vector<std::pair<std::string,RadianEuler>> forcedRealign;
+    } csgo;
+    std::vector<CompiledModel::BoneController> bonecontrollers;
     std::string outname;
     // Reference DMX policies differ; native preserves existing project behavior.
     enum class DmxCompatibility { Native, Ce, Neko };
