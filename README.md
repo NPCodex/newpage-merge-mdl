@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.13
+# NewPageMergeMDL v1.2.14
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.13**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.14**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -12,6 +12,10 @@
 支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态和后续顺序见 [五编译器功能清单](FEATURE_MATRIX.md)。
+
+## v1.2.14：CSGO QC 三角形顺序兼容
+
+新增 `$preservetriangleorder`，实际跳过 meshoptimizer 缓存/过度绘制排序和 NvTriStrip 排序，采用参考编译器的深度优先边遍历顺序。开关优先于 `$UseLegacyStripify`；不改变骨骼调色板、flex 分组或格式设置，也不保证跨材质/分组保留源文件全局面顺序。32 面自制网格与 CE 输出顺序对照通过，并覆盖大小写、DX80/DX90、两种 VTX 格式、LOD 及 legacy 组合。用户 Yvette 原始 QC 编译通过（144 骨骼、65,902 顶点）；Plum 回归通过。162 项兼容、20 项自动化测试通过；未做 CSGO 游戏内验证。
 
 ## v1.2.13：叛乱 2 / 军事冲突：越南 QC 修复
 

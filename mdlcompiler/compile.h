@@ -1002,6 +1002,7 @@ struct BoneSaveFrame {
 
 struct CompiledModel {
     bool legacyStripify = false;
+    bool preserveTriangleOrder = false;
     size_t mdlLimit=0,aniLimit=0,fileLimit=0;
     std::string outname; // e.g. "testmodel/testcube" (no extension)
     bool forceWriteVertexData = false; // $forcewritevertexdata - save the empty .vvd/.vtx when there is no geometry
@@ -1146,6 +1147,7 @@ struct CompileInput {
     // $nodx80 / -nodx80: skip the DirectX 8 .dx80.vtx. dx80 is only emitted at
     // all when vtxArchetype == 0 (archetype 1 is Alien Swarm+, which dropped it).
     bool noDx80 = false;
+    bool preserveTriangleOrder = false; // skip triangle-list cache/overdraw sorting
     float scale = 1.0f;      // $scale
     Vector3 adjust;          // $origin translation (translatemodel)
     // rotatemodel, pre-converted to the reference's g_defaultrotation radians:

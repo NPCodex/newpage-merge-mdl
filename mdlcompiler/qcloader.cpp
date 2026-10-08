@@ -4903,6 +4903,10 @@ bool CmdVtxFormat(Ctx& c, const Token& cmd) {
 // is 0; archetype 1 (Alien Swarm+) never emits dx80. The -nodx80 launch switch
 // forces this on too.
 bool CmdNoDx80(Ctx& c, const Token&) { c.in.noDx80 = true; return true; }
+bool CmdPreserveTriangleOrder(Ctx& c, const Token&) {
+    c.in.preserveTriangleOrder = true;
+    return true;
+}
 
 // $modelbudget { bones <n> materials <n> } - set the compile ceilings for this
 // model. Braces are optional for a single field. The pulselimits.h value is the
@@ -9612,6 +9616,7 @@ constexpr Command kCommands[] = {
     {"$forcewritevertexdata", CmdForceWriteVertexData},
     {"$vtxformat", CmdVtxFormat},
     {"$nodx80", CmdNoDx80},
+    {"$preservetriangleorder", CmdPreserveTriangleOrder},
     {"$modelbudget", CmdModelBudget},
     {"$maxbones", CmdMaxBones},
     {"$maxverts", CmdMaxVerts},

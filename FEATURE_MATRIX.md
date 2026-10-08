@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.13。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.14。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
@@ -116,3 +116,7 @@ The v1.2.12 batch recovers and implements CE replacemodel reverse from binary co
 ## v1.2.13：实际游戏 QC 兼容修复
 
 叛乱 2 / 军事冲突：越南的原始 QC 编译及输出结构检查通过：传统续行宏、改名后附件/命中盒/hitgroup 引用、仅大小写骨骼改名已修复。游戏内渲染/物理仍未在这两款游戏验证；不是新增的五编译器行为全覆盖声明。
+
+## v1.2.14：CSGO QC 指令补齐
+
+`$preservetriangleorder` 已接入统一 VTX 输出：跳过缓存/过度绘制/NvTriStrip 排序，保留参考边遍历顺序。32 面自制 CE 顺序对照、两种 VTX 格式及 LOD/legacy 组合通过；Yvette 用户 QC 与 Plum 编译及结构检查通过。不宣称全局源面顺序或所有模型与 CSGO 游戏内行为一致。

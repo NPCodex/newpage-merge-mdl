@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.13
+# NewPageMergeMDL v1.2.14
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.13.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.14.** The compiler, decompiler and bundled tools share this
 version. The output model format remains MDL v49.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -14,6 +14,10 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+
+## v1.2.14: CSGO QC triangle-order compatibility
+
+Adds `$preservetriangleorder` with actual cache/overdraw and NvTriStrip sorting bypass, using reference depth-first edge traversal. It takes precedence over `$UseLegacyStripify`, retaining bone palettes, flex groups and the selected VTX format. Global source-face order across materials/groups is not guaranteed. A self-authored 32-face grid matches CE order; regression covers command case, DX80/DX90, both VTX layouts, LODs and legacy combinations. The original Yvette QC compiles (144 bones, 65,902 vertices), and Plum still compiles. All 162 compatibility and 20 automation tests pass; CSGO in-game behavior has not been tested.
 
 ## v1.2.13: Insurgency 2 / Military Conflict: Vietnam QC fixes
 

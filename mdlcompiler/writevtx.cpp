@@ -534,16 +534,30 @@ void BuildStripsFloodFill(Builder& b, std::vector<uint16_t>& indices, std::vecto
         indices.push_back(static_cast<uint16_t>(f->vertID[0]));
         indices.push_back(static_cast<uint16_t>(f->vertID[1]));
         indices.push_back(static_cast<uint16_t>(f->vertID[2]));
-        if (f->neighborID[0] != -1) stack.push_back(&faceList[f->neighborID[0]]);
-        if (f->neighborID[1] != -1) stack.push_back(&faceList[f->neighborID[1]]);
-        if (f->neighborID[2] != -1) stack.push_back(&faceList[f->neighborID[2]]);
+        // Preserved lists use reference depth-first edge order. Reverse the
+        // stack insertion order to visit edge 0 first, without recursion.
+        if (b.m->preserveTriangleOrder) {
+            for (int edge = 2; edge >= 0; --edge)
+                if (f->neighborID[edge] != -1)
+                    stack.push_back(&faceList[f->neighborID[edge]]);
+        } else {
+            for (int edge = 0; edge < 3; ++edge)
+                if (f->neighborID[edge] != -1)
+                    stack.push_back(&faceList[f->neighborID[edge]]);
+        }
     }
 }
 
 // Stripify - trilist + meshopt vcache
-void Stripify(const std::vector<uint16_t>& sourceIndices, Strip& strip, bool legacy) {
+void Stripify(const std::vector<uint16_t>& sourceIndices, Strip& strip, bool legacy,
+              bool preserveOrder) {
     if (sourceIndices.empty()) {
         strip.numIndices = 0;
+        return;
+    }
+    if (preserveOrder) {
+        strip.indices = sourceIndices;
+        strip.numIndices = static_cast<int>(sourceIndices.size());
         return;
     }
     if (legacy) {
@@ -607,10 +621,10 @@ void BuildHWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
         Strip& newStrip = pStripGroup->strips.back();
         newStrip.flags = fmt::vtx::STRIP_IS_TRILIST;
 
-        Stripify(facesToStrip, newStrip, b.m->legacyStripify);
+        Stripify(facesToStrip, newStrip, b.m->legacyStripify, b.m->preserveTriangleOrder);
 
         // meshopt_optimizeOverdraw at 1.05 (positions from the vvd copy)
-        if (newStrip.numIndices > 0 && !b.m->legacyStripify) {
+        if (newStrip.numIndices > 0 && !b.m->legacyStripify && !b.m->preserveTriangleOrder) {
             int nVerts = static_cast<int>(vertices.size());
             std::vector<float> positions(nVerts * 3);
             for (int vi = 0; vi < nVerts; vi++) {
@@ -665,7 +679,7 @@ void BuildSWSkinnedStrips(Builder& b, std::vector<Face>& faceList,
         indices.push_back(static_cast<uint16_t>(f.vertID[1]));
         indices.push_back(static_cast<uint16_t>(f.vertID[2]));
     }
-    Stripify(indices, strip, b.m->legacyStripify);
+    Stripify(indices, strip, b.m->legacyStripify, b.m->preserveTriangleOrder);
     strip.verts = vertices;
     strip.numBoneStateChanges = 0;
 }

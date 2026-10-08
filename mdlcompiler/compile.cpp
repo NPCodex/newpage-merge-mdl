@@ -10652,6 +10652,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
 
     out.outname = input.outname;
     out.legacyStripify = input.ce.legacyStripify;
+    out.preserveTriangleOrder = input.preserveTriangleOrder;
     out.forceWriteVertexData = input.forceWriteVertexData;
     out.mats = &input.mats;
     // gamedatalist. CompiledModel already defaults surfaceprop to "default";

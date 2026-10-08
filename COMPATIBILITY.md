@@ -80,7 +80,7 @@ cmake --build --preset x64-release
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-The 161 black-box tests generate temporary SMD/QC fixtures and inspect emitted
+The 162 black-box tests generate temporary SMD/QC fixtures and inspect emitted
 MDL flags, bone/animation counts, include-model strings and diagnostics.
 Animation tests decompile emitted models back to SMD and compare frame poses,
 including channel isolation, final-frame holding and nested branch selection.
@@ -281,3 +281,7 @@ Scene import merges repeated influences of the same joint before weight selectio
 ### User game QC regression (v1.2.13)
 
 Legacy continuation macros end at a noncontinued line or a blank physical line; quoted backslashes remain literal. Attachment/hitbox/hitgroup references accept final rename aliases before bone retention, including chained renames. Actual source names take precedence; ambiguous aliases remain unresolved. Case-only renames update output spelling and physics names without false collision errors. Distinct-bone name collisions still fail. Supplied Insurgency 2 and Military Conflict: Vietnam models compile unmodified, with independent serialized-table checks; the game mount matches the supplied logs (Insurgency for both). No in-game validation for these two games is claimed.
+
+### CSGO triangle-order QC (v1.2.14)
+
+`$preservetriangleorder` disables cache, overdraw and legacy triangle-list sorting, including software-skinned strips. Hardware face gathering uses reference depth-first edge traversal in this mode; default traversal remains unchanged. Hardware bone palette changes, material/flex grouping and vertex packing still occur. This is not a guarantee of global original source-face order or automatic game/VTX format selection. A self-authored 32-triangle grid matches the supplied CE x64 ordered output, with both VTX layouts, DX80/DX90, LODs, mixed command case and legacy sorting checks. Frozen input/output expectations are in tests/fixtures/triangle-order*. The supplied Yvette QC compiles unmodified using the Insurgency game mount from its log, with serialized output validation; Plum regression also passes. No CSGO in-game certification is claimed.

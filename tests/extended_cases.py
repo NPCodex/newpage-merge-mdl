@@ -2,6 +2,32 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def ordered_triangle_positions(self,name,extension='dx90',full=False,lod=0):
+  data=(self.root/f'models/{name}.{extension}.vtx').read_bytes();vvd=(self.root/f'models/{name}.vvd').read_bytes();vertex_start=struct.unpack_from('<i',vvd,56)[0]
+  body=struct.unpack_from('<i',data,32)[0];model=body+struct.unpack_from('<i',data,body+4)[0];level=model+struct.unpack_from('<i',data,model+4)[0]+lod*12
+  meshes,offset=struct.unpack_from('<2i',data,level);self.assertEqual(meshes,1);mesh=level+offset;groups,goff=struct.unpack_from('<2i',data,mesh);triangles=[]
+  for gi in range(groups):
+   group=mesh+goff+gi*(33 if full else 25);nv,vo,ni,io,ns,so=struct.unpack_from('<6i',data,group)
+   vertices=[struct.unpack_from('<H',data,group+vo+i*9+4)[0] for i in range(nv)]
+   for si in range(ns):
+    strip=group+so+si*(35 if full else 27);count,base=struct.unpack_from('<2i',data,strip);self.assertEqual(data[strip+18]&1,1)
+    ids=struct.unpack_from('<'+'H'*count,data,group+io+base*2)
+    for i in range(0,count,3):
+     tri=tuple(tuple(round(x,5) for x in struct.unpack_from('<3f',vvd,vertex_start+vertices[j]*48+16)) for j in ids[i:i+3]);triangles.append(min(tri,tri[1:]+tri[:1],tri[2:]+tri[:2]))
+  return triangles
+
+ def test_preserve_triangle_order_matches_reference_and_overrides_optimizers(self):
+  fixtures=Path(__file__).parent/'fixtures';self.write('order.smd',(fixtures/'triangle-order.smd').read_text());reference=json.loads((fixtures/'triangle-order-reference.json').read_text())['triangles'];reference=[tuple(tuple(p) for p in tri) for tri in reference]
+  for full in (False,True):
+   qc=f'$modelname order\n$vtxformat {int(full)}\n$body m order.smd\n$sequence idle order.smd\n$lod 10 {{ }}\n'
+   for spelling in ('$preservetriangleorder','$PreserveTriangleOrder'):
+    for legacy in ('','$UseLegacyStripify\n'):
+     self.scene_qc(qc+spelling+'\n'+legacy)
+     for ext in (('dx90',) if full else ('dx80','dx90')):
+      for lod in (0,1):self.assertEqual(self.ordered_triangle_positions('order',ext,full,lod),reference)
+   self.scene_qc(qc);ordinary=self.ordered_triangle_positions('order','dx90',full)
+   self.assertCountEqual(ordinary,reference);self.assertNotEqual(ordinary,reference)
+
  def test_case_only_bone_rename_and_real_collision(self):
   self.scene_qc('$modelname case_rename\n$body m mesh.smd\n$renamebone root ROOT\n')
   data=self.mdl('case_rename');bone=struct.unpack_from('<i',data,160)[0];name=bone+struct.unpack_from('<i',data,bone)[0]
