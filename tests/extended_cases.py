@@ -2,6 +2,74 @@ from scene_fixtures import scene_bytes
 from pathlib import Path
 import struct,json,base64,subprocess,sys,copy
 class ExtendedCases:
+ def test_csgo_lod_fuzzy_snap_respects_uv_tolerance_and_target(self):
+  source=(self.root/'mesh.smd').read_text();prefix,triangles=source.split('triangles\n')
+  for app,uv,expected in [(730,0.005,3),(730,0.02,6),(4000,0.005,6)]:
+   rows=[]
+   for row in triangles.splitlines():
+    parts=row.split()
+    if len(parts)==9:
+     parts[1]=str(float(parts[1])+0.03);parts[7]=str(float(parts[7])+uv)
+     row=' '.join(parts)
+    rows.append(row)
+   self.write('lower.smd',prefix+'triangles\n'+'\n'.join(rows)+'\n')
+   self.write('gameinfo.txt',f'GameInfo {{ FileSystem {{ SteamAppId {app} }} }}')
+   name=f'fuzzy{app}_{int(uv*1000)}'
+   self.scene_qc(f'$modelname {name}\n$body m mesh.smd\n$lod 10 {{ replacemodel mesh.smd lower.smd }}\n')
+   vvd=(self.root/f'models/{name}.vvd').read_bytes()
+   self.assertEqual(struct.unpack_from('<i',vvd,16)[0],expected)
+
+ def test_csgo_extended_header_keeps_fe_pointer_separate_from_presets(self):
+  for app,span,preset_offset in [(730,256,36),(4000,252,32),(1012110,256,36)]:
+   self.write('gameinfo.txt',f'GameInfo {{ FileSystem {{ SteamAppId {app} }} }}')
+   name=f'presets{app}'
+   self.scene_qc(f'$modelname {name}\n$bodygroup shirt {{ studio mesh.smd\nblank\n}}\n$modelgrouppreset hidden {{ shirt 1 }}\n')
+   d=self.mdl(name);hdr=struct.unpack_from('<i',d,400)[0];bone=struct.unpack_from('<i',d,160)[0]
+   self.assertEqual(bone-hdr,span)
+   if app in (730,1012110):self.assertEqual(struct.unpack_from('<i',d,hdr+32)[0],0)
+   count,offset=struct.unpack_from('<2i',d,hdr+preset_offset);self.assertEqual(count,1)
+   at=hdr+offset;name=at+struct.unpack_from('<i',d,at)[0]
+   self.assertEqual(d[name:d.index(b'\0',name)],b'hidden')
+   self.assertEqual(struct.unpack_from('<i',d,at+4)[0],1)
+
+ def test_csgo_root_lod_weights_and_skinned_override(self):
+  source=(self.root/'mesh.smd').read_text();prefix,triangles=source.split('triangles\n')
+  lower='\n'.join(('1'+line[1:]) if line.startswith('0 ') else line for line in triangles.split('\n'))
+  self.write('lower.smd',prefix+'triangles\n'+lower)
+  qc='$modelname weights\n$bonealwayssetup unused_child\n$body m mesh.smd\n$lod 10 { replacemodel mesh.smd lower.smd }\n'
+  for app,preserve in [(730,False),(730,True),(4000,False),(1012110,False)]:
+   self.write('gameinfo.txt',f'GameInfo {{ FileSystem {{ SteamAppId {app} }} }}')
+   name=f'weights{app}_{int(preserve)}'
+   output=self.scene_qc(qc.replace('$modelname weights',f'$modelname {name}')+('$skinnedLODs\n' if preserve else ''))
+   data,bones=self.csgo_bone_table(name);child=bones['unused_child'][0]
+   vvd=(self.root/f'models/{name}.vvd').read_bytes();count=struct.unpack_from('<i',vvd,16)[0];start=struct.unpack_from('<i',vvd,56)[0]
+   used=[vvd[start+i*48+12] for i in range(count)]
+   if app==730 and not preserve:
+    self.assertNotIn(child,used);self.assertIn('lower LOD skin weights',output)
+   else:self.assertIn(child,used)
+
+ def test_csgo_content_vpk_requires_contentrootrelative(self):
+  from content_mounts import vpk
+  folder=self.root/'packed';folder.mkdir()
+  # VPK helper supplies .txt entries; use a QC include to exercise script lookup.
+  vpk(folder/'sources_dir.vpk','include',b'$body m mesh.smd\n')
+  self.write('gameinfo.txt','GameInfo { FileSystem { SearchPaths { CONTENT "|gameinfo_path|packed/*.vpk" } } }')
+  self.scene_qc('$modelname packed\n$contentrootrelative\n$include include.txt\n')
+  output=self.scene_qc('$modelname absent\n$include include.txt\n',success=False)
+  self.assertIn('include.txt',output)
+
+ def test_csgo_root_skinning_uses_nearest_geometry_not_lod_weights(self):
+  source=(self.root/'mesh.smd').read_text()
+  self.write('mesh.smd',source.replace('0 1 0 0 0 0 1 1 0','1 1 0 0 0 0 1 1 0'))
+  self.write('lower.smd',source.replace('0 1 0 0 0 0 1 1 0','0 1.1 0 0 0 0 1 1 0'))
+  self.write('gameinfo.txt','GameInfo { FileSystem { SteamAppId 730 } }')
+  self.scene_qc('$modelname nearest\n$bonealwayssetup unused_child\n$body m mesh.smd\n$lod 10 { replacemodel mesh.smd lower.smd }\n')
+  data,bones=self.csgo_bone_table('nearest');child=bones['unused_child'][0]
+  vvd=(self.root/'models/nearest.vvd').read_bytes();count=struct.unpack_from('<i',vvd,16)[0];start=struct.unpack_from('<i',vvd,56)[0]
+  moved=[start+i*48 for i in range(count) if abs(struct.unpack_from('<f',vvd,start+i*48+16)[0]-1.1)<0.0001]
+  self.assertTrue(moved)
+  self.assertTrue(all(vvd[v+12]==child for v in moved))
+
  def test_target_game_selects_full_vtx_without_changing_qc(self):
   from validate_outputs import validate
   for app in (730,1012110):

@@ -321,3 +321,13 @@ The 31 supported entries include legacy warning aliases and existing native beha
 The installed CSGO/MCV loaders require the extended layout for the tested v49 models. Deploy complete matching MDL/VVD/VTX/PHY sets: model viewers may resolve sidecars through the game's model mount even when an MDL was opened using an absolute path. Use unique canonical model names and matching sidecars for isolated tests. Relative HLMV input that falls back to error.mdl is not runtime evidence. See tests/reports/v1.2.16-validation.json for bounded results.
 
 For CSGO player tests, preserve the player/custom_player path category when giving the model a unique name. Moving this fixture into a generic model directory selected old weapon-sequence behavior; an extra stock animation include was unnecessary when the original QC was tested under its correct path.
+
+## v1.2.18: CONTENT and root LOD skinning
+
+Supersedes the v1.2.15 CONTENT and `$skinnedLODs` limitations above. CONTENT paths now use the same mount/extraction pipeline as GAME: component wildcards (`*`, `?`), sorted expansion, directory archives, archive aliases and external chunks. CONTENT remains opt-in through `$contentrootrelative`, searched after GAME mounts; loose directory files precede its archives. Numeric archive chunks are not indexed as standalone directories.
+
+CSGO SteamAppId 730 automatically transfers lower-LOD weights from the complete root model before LOD bone remapping. The immutable spatial index ranks distance, UV error, normal error, then latest source index. `$skinnedLODs` preserves authored weights; MCV, GMod and unspecified games retain existing defaults. Two-stage fuzzy vertex selection is now implemented with spatial indexing. Two self-authored UV-boundary cases match the installed stock CSGO compiler (3 versus 6 vertices). Complete binary parity is not claimed. FE cloth serialization, quad/SubD patch topology and complete bone-collapse comparison remain open.
+
+187 compatibility cases and six isolated resource-mount cases pass. Plum and Yvette compile with unchanged original QCs and pass output structure checks. No new game runtime test was performed for this version.
+
+CSGO/MCV targets now use a 256-byte extended header with a zero FE pointer slot before bodygroup presets. Other targets retain their layout. Installed stock models confirm this span. Each game's preset fixture survives 15 seconds under its HLMV/debugger without access violations; temporary game files were removed. This fixes the serialization prerequisite, not the full cloth pipeline.

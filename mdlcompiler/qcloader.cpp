@@ -9562,7 +9562,7 @@ bool CmdNekoLegacyDirective(Ctx& c, const Token& cmd) {
 bool CmdCsgo(Ctx& c, const Token& cmd) {
     const std::string name=Lower(cmd.text);
     auto& o=c.in.csgo;
-    if(name=="$skinnedlods") { o.skinnedLods=true; return true; } // native pipeline already retains each LOD's skin
+    if(name=="$skinnedlods") { o.skinnedLods=true; return true; }
     if(name=="$zbrush") { o.zbrush=true; return true; }
     if(name=="$subd") { o.subd=true; return true; }
     if(name=="$appendsource") {

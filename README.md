@@ -1,23 +1,35 @@
-# NewPageMergeMDL v1.2.16
+# NewPageMergeMDL v1.2.18
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.16**。编译器、反编译器和辅助工具统一使用本项目版本号。模型文件格式仍为 v49。
+项目版本：**v1.2.18**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
 基于 [PulseModel](https://github.com/ToppiOfficial/PulseModel) 的 Source 模型编译工具，加入 StudioMDL-CE / StudioMDL++ / NekoMDL 兼容功能与自行实现的动画扩展。NekoMDL 对照依据为附带的中文版 v2.3.0 更新日志。
 
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
-支持 Windows x64 和 Linux 构建，模型输出版本为 v49。Windows 和 Linux 构建由 GitHub Actions 验证。
+支持 Windows x64 和 Linux 构建。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态和后续顺序见 [五编译器功能清单](FEATURE_MATRIX.md)。
+
+## v1.2.18：CSGO LOD 蒙皮与 CONTENT 挂载
+
+CSGO legacy（gameinfo SteamAppId 730）的低 LOD 默认从根模型最近顶点获取蒙皮权重，距离相同时按 UV、法线和源索引选择；`$skinnedLODs` 保留低 LOD 自带权重。其他游戏保持原默认行为。查询使用空间索引，之后仍执行对应 LOD 的骨骼重映射。同时实现根 LOD 与更高 LOD 的两阶段容差匹配，检查位置、UV、法线、权重和切线；小型 UV 边界样例与安装目录中的原版 CSGO StudioMDL 对照一致，但不宣称任意模型逐字节相同。
+
+`$contentrootrelative` 支持 CONTENT 路径中的 `*` / `?`、VPK 与分卷，目录内散文件先于归档，GAME 查找先于 CONTENT；未启用时不读取 CONTENT。187 项兼容回归、6 项挂载专项通过；Plum 与 Yvette 编译及结构检查通过。本轮没有新增游戏内验证。布料、完整 SubD 和完整骨骼折叠行为对照仍未完成。
+
+CSGO / MCV 目标还修正为 256 字节扩展头，保留 FE 指针槽（当前为零），身体组预设写入正确偏移；其他目标保留原布局。两款游戏的预设样例分别通过 15 秒 HLMV 调试器监测，无访问异常，临时游戏文件已清理。这是布料序列化前置修正，不代表 FE 布料功能完成。
+
+## v1.2.17：启动信息说明修正
+
+编译器和反编译器启动信息使用 `Source model toolchain`，移除固定 MDL 版本显示；本次不改变模型输出格式。
 
 ## v1.2.16：CSGO / MCV 加载崩溃修复
 
 `-game` 指向含 `gameinfo.txt` 的游戏目录时，SteamAppId 730（CSGO legacy）和 1012110（MCV）自动选择扩展 VTX：strip-group / strip 分别为 33 / 35 字节。此前默认的 25 / 27 字节布局会被这两款游戏错误解释，即使 MDL 都是 v49，HLMV 和游戏仍可能崩溃。其他目标保留旧默认值；显式 `$vtxformat` / pulseqc `vtx_archetype` 仍优先于检测，CLI `-vtxformat` 优先级最高。对这两个目标强制旧布局会警告。
 
-同一个编译器即可输出这两个目标，不需要另外的编译器。编译时使用实际游戏目录，例如 `NewPageMergeMDL model.qc -game ".../csgo"` 或 `-game ".../vietnam"`；只设置 OutDir 而没有 gameinfo 目标时，请显式加 `-vtxformat 1`。CSGO 玩家模型保留 `player/custom_player/` 路径；测试时移到普通模型目录会触发旧动画流程，原 QC 无需添加额外玩家动画引用。部署完整的 `.mdl` / `.vvd` / `.dx90.vtx` / `.phy` 文件集，混用旧 VTX 仍会崩溃。
+同一个编译器即可输出这两个目标，不需要另外的编译器。编译时使用实际游戏目录，例如 `NewPageMergeMDL model.qc -game ".../csgo"` 或 `-game ".../vietnam"`；`-vtxformat 1` 只选择 VTX 布局；从 v1.2.18 起还会按 `-game` 目标选择 MDL 扩展头，因此 CSGO/MCV 编译应提供正确的游戏目录，即使另设 OutDir。CSGO 玩家模型保留 `player/custom_player/` 路径；测试时移到普通模型目录会触发旧动画流程，原 QC 无需添加额外玩家动画引用。部署完整的 `.mdl` / `.vvd` / `.dx90.vtx` / `.phy` 文件集，混用旧 VTX 仍会崩溃。
 
 182 项兼容和 20 项自动化回归通过。Yvette 的身体与三份手臂 QC、MCV 的身体/手臂/腿部 QC 均重新编译，并用两款游戏各自的 HLMV 加载；七份输出各监测 15 秒，无访问异常。实际角色渲染及 Yvette 引用动画另经观察。MCV 在 mcv_camp / mcv_bridge 验证玩家、第一人称手臂、机器人、布娃娃及地图重载；CSGO 在 de_dust2 / ar_baggage 验证玩家/机器人、11 种皮肤 × 18 种身体组合（原生动态实体分批加载）、正常玩家死亡及地图重载。运行记录见 [v1.2.16 验证报告](tests/reports/v1.2.16-validation.json)。Plum 保持原布局，126 骨骼、572,277 顶点结构检查通过。这是指定模型和场景的覆盖，不代表所有游戏/模型已验证。
 
@@ -137,7 +149,7 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 ### 本项目的工具与维护功能
 
-- 编译器、反编译器及辅助工具统一命名和使用 **v1.2.7** 版本号；彩色启动横幅，重定向日志保持纯文本。
+- 编译器、反编译器及辅助工具统一使用 NewPageMergeMDL 项目命名和当前项目版本号；编译器启动信息及重定向日志均为纯文本，不显示彩色横幅。
 - 自动拉取 PulseModel、套用维护补丁，完成 Windows/Linux 构建与测试后发布 GitHub Release；冲突或检查失败停止发布。CE/++/Neko 的新增闭源功能仍需人工分析。
 - 146 项兼容测试及 20 项自动化测试；测试检查实际模型输出。NekoMDL 的完整 `survivor_teenangst.qc` 已通过混合 DMX/GLB 编译验证，用户的 Alyx QC 也保持可编译。测试和发布包不包含用户模型或参考编译器二进制。
 
@@ -182,7 +194,7 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 
 ## 未完成与已知问题
 
-以下按 v1.2.16 的实现及已有验证记录整理；“未验证”表示测试覆盖不足，不表示该功能尚未实现。
+以下按 v1.2.18 的实现及已有验证记录整理；“未验证”表示测试覆盖不足，不表示该功能尚未实现。
 
 | 内容 | 当前状态与剩余工作 |
 | --- | --- |
@@ -206,7 +218,7 @@ v1.2.8 生产验证改用 Plum：原始 Hair QC 编译及文件结构检查通�
 - 默认 `native` 面部行为保留 PulseModel 语义；需要参考面部策略时使用 `$dmxcompatibility ce|neko`。`$CEBoneRules` 需要显式启用。
 - `$MaxVerts` 控制每材质输出网格分割，实际不超过 65536；`$FileBufferSize` 限制各输出文件字节数。本项目使用动态缓冲区与统一 LOD 顶点字典，不复现参考编译器的源文件预拆分或固定预分配。
 - `NoAutoDMXRules` 按源禁用自动规则；需要清除先前自动控制器与规则时使用 `NoAutoDMXRulesLegacy`。`addcontrollerbyflex` 正确处理 min/max，不复现参考二进制的范围解析缺陷。
-- 输出为 v49，参考 CE/++ 为 v48；不承诺完整文件逐字节相同。原有 `copy pos/rot` 属于本项目扩展。
+- 不承诺与参考 CE/++ 输出的完整文件逐字节相同。原有 `copy pos/rot` 属于本项目扩展。
 - 自动同步合并 PulseModel 源码，冲突或测试失败会停止发布。CE/++ 更新由用户提供后手动分析与实现；VBSP、VVIS、VRAD、BSPZIP 地图工具不在本项目范围内。
 
 完整语法与差异见 [COMPATIBILITY.md](COMPATIBILITY.md)，二进制调查记录见 [BINARY_ANALYSIS.md](BINARY_ANALYSIS.md)。

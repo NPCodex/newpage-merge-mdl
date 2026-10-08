@@ -1,9 +1,9 @@
-# NewPageMergeMDL v1.2.16
+# NewPageMergeMDL v1.2.18
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.16.** The compiler, decompiler and bundled tools share this
-version. The output model format remains MDL v49.
+**Project version: v1.2.18.** The compiler, decompiler and bundled tools share this
+version.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
 with independently implemented StudioMDL-CE / StudioMDL++ / NekoMDL compatibility extensions.
@@ -15,11 +15,23 @@ and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
 
+## v1.2.18: CSGO LOD skinning and CONTENT mounts
+
+For CSGO legacy (gameinfo SteamAppId 730), lower LODs inherit skin weights from the nearest root-model vertex; ties use UV, normal and source index. `$skinnedLODs` preserves authored lower-LOD weights. Other games retain their defaults. Spatial lookup precedes the existing LOD bone remapping. Two-stage root/higher-LOD tolerance matching checks position, UVs, normals, weights and tangents. Small UV-boundary fixtures match the installed stock CSGO StudioMDL; this is not whole-file parity for arbitrary models.
+
+`$contentrootrelative` supports CONTENT `*` / `?` patterns, VPKs and archive chunks. Loose directory files precede archives; GAME lookup precedes CONTENT, which remains opt-in. All 187 compatibility and six mount tests pass; Plum and Yvette compile and pass structural checks. No new in-game validation was performed. Cloth, full SubD and complete bone-collapse parity remain open.
+
+Supply the correct `-game` directory for CSGO/MCV, even with a separate OutDir; `-vtxformat` alone only selects VTX layout. CSGO/MCV targets now use a 256-byte extended header with a zero FE pointer slot before bodygroup presets. Other targets retain their layout. Installed stock models confirm this span. Each game's preset fixture survives 15 seconds under its HLMV/debugger without access violations; temporary game files were removed. This fixes the serialization prerequisite, not the full cloth pipeline.
+
+## v1.2.17: startup description correction
+
+Compiler and decompiler startup messages now use `Source model toolchain` instead of a fixed MDL version label. Model output formats are unchanged.
+
 ## v1.2.16: CSGO / MCV loading crash fix
 
 When `-game` supplies a gameinfo.txt with SteamAppId 730 (CSGO legacy) or 1012110 (MCV), the compiler automatically selects extended VTX headers: 33-byte strip groups and 35-byte strips. The former 25/27-byte default is misinterpreted by these loaders and can crash HLMV or the game even though the MDL version is 49. Other targets keep their defaults. Explicit QC `$vtxformat` / pulseqc `vtx_archetype` override detection; CLI `-vtxformat` has highest priority. Forcing legacy layout for these targets emits a warning.
 
-One compiler supports both targets. Use the actual `.../csgo` or `.../vietnam` directory with `-game`; for OutDir-only builds without a detected game target, add `-vtxformat 1`. Deploy the complete MDL/VVD/DX90 VTX/PHY set. Mixing a new MDL with an old VTX can still crash. Preserve the CSGO player/custom_player model path: an ordinary test-model directory selects the old player-animation behavior. The original QC needs no extra stock-player animation include.
+One compiler supports both targets. Use the actual `.../csgo` or `.../vietnam` directory with `-game`; `-vtxformat 1` only selects VTX layout. Since v1.2.18 the MDL extended header also follows the detected game, so supply `-game` even when setting a separate OutDir. Deploy the complete MDL/VVD/DX90 VTX/PHY set. Mixing a new MDL with an old VTX can still crash. Preserve the CSGO player/custom_player model path: an ordinary test-model directory selects the old player-animation behavior. The original QC needs no extra stock-player animation include.
 
 All 182 compatibility and 20 automation tests pass. Yvette body/three arms QCs and MCV body/arms/legs QCs compile and load in their respective installed HLMV tools; all seven outputs survive 15-second debugger checks without access violations. Actual character rendering and Yvette included-animation playback were separately observed. MCV tests cover players, first-person arms, bots, ragdolls and map reload on mcv_camp/mcv_bridge. CSGO tests on de_dust2/ar_baggage cover player/bot replacement, 11 skins × 18 body combinations in bounded native-entity batches, normal player death and map reload. See the [v1.2.16 report](tests/reports/v1.2.16-validation.json) for CSGO runtime evidence. Plum retains legacy output and passes structural validation with 126 bones / 572,277 vertices. These are bounded model/scenario checks, not universal game compatibility.
 
@@ -139,7 +151,7 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 
 ### Project tooling and maintenance
 
-- Compiler, decompiler and utilities share the project naming and **v1.2.7** version; colored startup banner, plain redirected logs.
+- The compiler, decompiler and utilities share the NewPageMergeMDL project naming and current project version; compiler startup messages and redirected logs are plain text, without a colored banner.
 - Automatic PulseModel integration through a maintained patch, followed by Windows/Linux builds, tests and GitHub Release publication. Conflicts or failed checks stop publication. New closed-source CE/++/Neko features require manual analysis.
 - 146 compatibility tests and 20 automation tests inspect actual outputs. The supplied complete `survivor_teenangst.qc` compiles with mixed DMX/GLB bodies, and the user's Alyx QC remains compilable. User models and reference compiler binaries are not redistributed.
 
@@ -184,7 +196,7 @@ See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESE
 
 ## Unfinished features and known issues
 
-This list reflects v1.2.16 implementation and existing validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
+This list reflects v1.2.18 implementation and existing validation records. “Unverified” identifies a coverage gap, not an unimplemented feature.
 
 | Area | Current status and remaining work |
 | --- | --- |
@@ -208,7 +220,7 @@ These are integration requirements or intentional implementation differences, ra
 - The default `native` facial behavior retains PulseModel semantics. Use `$dmxcompatibility ce|neko` for reference facial policies. `$CEBoneRules` is opt-in.
 - `$MaxVerts` controls per-material output mesh splitting, with a real ceiling of 65536. `$FileBufferSize` caps each output file's bytes. Dynamic buffers and a unified LOD vertex dictionary do not reproduce reference source pre-splitting or fixed preallocation.
 - `NoAutoDMXRules` suppresses automatic rules per source; use `NoAutoDMXRulesLegacy` to clear earlier automatic controllers and rules. `addcontrollerbyflex` honors min/max rather than reproducing the reference binary's range parsing defect.
-- Output is v49, while the reference CE/++ compilers emit v48. Whole-file byte equality is not promised. Existing `copy pos/rot` is a project extension.
+- Whole-file byte equality with the reference CE/++ outputs is not promised. Existing `copy pos/rot` is a project extension.
 - PulseModel source is integrated automatically; conflicts or failing checks stop publication. CE/++ updates supplied by the user require manual analysis and implementation. VBSP, VVIS, VRAD and BSPZIP map tools are outside this project's scope.
 
 See [COMPATIBILITY.md](COMPATIBILITY.md) for syntax and differences, and [BINARY_ANALYSIS.md](BINARY_ANALYSIS.md) for binary investigation evidence.

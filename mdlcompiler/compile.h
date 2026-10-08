@@ -1008,6 +1008,7 @@ struct CompiledModel {
     };
     std::vector<BoneController> bonecontrollers;
     std::string internalName;
+    bool csgoHeader=false;
     bool legacyStripify = false;
     bool preserveTriangleOrder = false;
     size_t mdlLimit=0,aniLimit=0,fileLimit=0;
@@ -1129,6 +1130,9 @@ struct CompileInput {
         bool bboxOnlyVerts=false, centerBones=false, clipTexcoords=false;
         bool modelHasNoSequences=false, errorOnRemapFailure=false, obsolete=false;
         bool skinnedLods=false, zbrush=false, subd=false;
+        bool rootLodWeights=false;
+        bool extendedHeader=false;
+        bool lodCompatibility=false;
         Vector3 worldMin{-16384,-16384,-16384}, worldMax{16384,16384,16384};
         float collisionPrecision=0;
         std::string internalName;

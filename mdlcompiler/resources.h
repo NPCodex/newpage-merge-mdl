@@ -6,5 +6,6 @@ bool Initialize(const std::string& gameDirectory,const std::string& steamDirecto
 std::filesystem::path Find(const std::filesystem::path& relative);
 void EnableContentSearch();
 int TargetVtxFormat(); // -1 if no recognized target AppID
+bool IsCsgoTarget();
 void Print();
 }

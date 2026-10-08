@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "version": "1.2.18",
+  "compatibility_tests": 187,
+  "automation_tests": 20,
+  "content_mount_tests": 6,
+  "compiler_sha256": "e8b99510a30a660545e9ae21563ea04449b42dcece1e28748b145d52e1ce5649",
+  "implemented": [
+    "CONTENT wildcard and VPK mount/extraction",
+    "CSGO root LOD weight transfer and skinnedLODs override",
+    "CSGO two-stage tolerance matching",
+    "CSGO/MCV extended header FE pointer slot and bodygroup preset offsets"
+  ],
+  "reference_lod_cases": [
+    {
+      "compiler": "stock",
+      "uv_delta": 0.005,
+      "vertices": 3
+    },
+    {
+      "compiler": "np",
+      "uv_delta": 0.005,
+      "vertices": 3
+    },
+    {
+      "compiler": "stock",
+      "uv_delta": 0.02,
+      "vertices": 6
+    },
+    {
+      "compiler": "np",
+      "uv_delta": 0.02,
+      "vertices": 6
+    }
+  ],
+  "hlmv": [
+    {
+      "target": "csgo",
+      "survived_seconds": 15,
+      "access_violations": 0,
+      "temporary_files_removed": 3
+    },
+    {
+      "target": "mcv",
+      "survived_seconds": 15,
+      "access_violations": 0,
+      "temporary_files_removed": 3
+    }
+  ],
+  "production": [
+    {
+      "model": "Plum",
+      "bones": 126,
+      "vertices": 572277
+    },
+    {
+      "model": "Yvette",
+      "bones": 144,
+      "vertices": 65902
+    }
+  ],
+  "remaining": [
+    "Finite-element cloth generation and control backsolving",
+    "Cloth plane collision binding and serialization",
+    "Native quad/SubD patch topology",
+    "Broader bone-collapse differential coverage"
+  ],
+  "limits": [
+    "No new in-game map/player validation",
+    "Reference LOD comparisons are bounded fixtures, not global binary equality"
+  ]
+}

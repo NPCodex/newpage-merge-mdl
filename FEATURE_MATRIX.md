@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.16。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.18。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
@@ -132,3 +132,9 @@ Next: build the real CSGO finite-element cloth pipeline and plane collision data
 ## v1.2.16：目标游戏 VTX 布局 / Target-game VTX layout
 
 CSGO legacy / MCV 的 `gameinfo.txt` SteamAppId 自动选择扩展布局，CLI / QC 显式选择保留。旧布局造成的指定模型加载崩溃已修复；不要混装 MDL 和旧 VTX。七份模型经对应 HLMV 监测，实际角色与引用动画经观察，并记录游戏内限定场景；详见 tests/reports/v1.2.16-validation.json。布料、完整 SubD 和其他既有未完成项不因本轮加载修复而标为完成。
+
+## v1.2.18：CONTENT 与 CSGO LOD 权重
+
+CONTENT 通配符、VPK 和分卷查找已补齐，并保留按需启用和查找优先级。CSGO AppID 730 默认按根模型最近顶点传递低 LOD 权重，`$skinnedLODs` 保留作者权重；其他目标保持原行为。187 项兼容回归、6 项专项及 Plum/Yvette 编译结构验证通过。复杂组合下的容差匹配与骨骼折叠全面对照、FE 布料及原生 quad/SubD 输出仍未完成，不以这两个子功能替代全部移植。
+
+CSGO / MCV 目标还修正为 256 字节扩展头，保留 FE 指针槽（当前为零），身体组预设写入正确偏移；其他目标保留原布局。两款游戏的预设样例分别通过 15 秒 HLMV 调试器监测，无访问异常，临时游戏文件已清理。这是布料序列化前置修正，不代表 FE 布料功能完成。

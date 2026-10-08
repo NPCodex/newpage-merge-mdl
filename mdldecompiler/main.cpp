@@ -50,7 +50,7 @@ static constexpr const char* kAppVersion = PULSEMODEL_VERSION;
 namespace {
 
 void PrintHeader() {
-    newpage::PrintBanner("Model Decompiler", kAppVersion, "10-49");
+    newpage::PrintBanner("Model Decompiler", kAppVersion);
 }
 
 int Usage() {

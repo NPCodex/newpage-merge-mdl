@@ -48,7 +48,7 @@ using pulse::fatal::Fail;
 static const char*& g_stage = pulse::fatal::g_stage;
 
 static void PrintHeader() {
-    newpage::PrintBanner("Model Compiler", kAppVersion, "49");
+    newpage::PrintBanner("Model Compiler", kAppVersion);
 }
 
 static int Usage() {
@@ -445,6 +445,11 @@ static int RunCompile(int argc, char** argv) {
                             : modelname;
     }
     const int targetVtx=pulse::resources::TargetVtxFormat();
+    input.csgo.rootLodWeights=pulse::resources::IsCsgoTarget()&&!input.csgo.skinnedLods;
+    input.csgo.extendedHeader=targetVtx>=0;
+    input.csgo.lodCompatibility=pulse::resources::IsCsgoTarget();
+    if(input.csgo.rootLodWeights)
+        std::printf("Target game: lower LOD skin weights come from the root LOD ($skinnedLODs preserves authored weights)\n");
     if (vtxFormat >= 0)
         input.vtxArchetype = vtxFormat;
     else if (!input.vtxArchetypeSet && targetVtx >= 0) {

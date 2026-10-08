@@ -902,6 +902,19 @@ struct studiohdr2_t {
 };
 static_assert(sizeof(studiohdr2_t) == 252, "studiohdr2_t layout");
 
+// CSGO inserts a self-relative FE model pointer after the shared 32-byte
+// prefix. A zero pointer means no cloth; subsequent fields must still move.
+struct studiohdr2_csgo_t {
+    int32_t common[8];
+    int32_t feModelOffset;
+    int32_t bodyGroupPresetCount;
+    int32_t bodyGroupPresetIndex;
+    int32_t padding;
+    int32_t serializedPointers[8];
+    int32_t reserved[44];
+};
+static_assert(sizeof(studiohdr2_csgo_t) == 256, "CSGO studiohdr2 layout");
+
 // $includemodel entry. The reference only ever fills sznameindex; szlabelindex
 // stays 0 (the block is calloc'd).
 struct mstudiomodelgroup_t {

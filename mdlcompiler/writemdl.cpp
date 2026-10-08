@@ -2212,14 +2212,15 @@ void WriteBoneFlexDrivers(Buf& buf, fmt::studiohdr2_t* phdr2, cm::CompiledModel&
 void WriteBodyGroupPresets(Buf& buf, fmt::studiohdr2_t* phdr2, cm::CompiledModel& m) {
     buf.Align4();
 
-    phdr2->m_nBodyGroupPresetCount = static_cast<int32_t>(m.bodygrouppresets.size());
-    phdr2->m_nBodyGroupPresetIndex = 0;
+    auto* fields=reinterpret_cast<int32_t*>(reinterpret_cast<uint8_t*>(phdr2)+(m.csgoHeader?36:32));
+    fields[0] = static_cast<int32_t>(m.bodygrouppresets.size());
+    fields[1] = 0;
     if (m.bodygrouppresets.empty())
         return;
 
     fmt::mstudiobodygrouppreset_t* ppreset =
         reinterpret_cast<fmt::mstudiobodygrouppreset_t*>(buf.p());
-    phdr2->m_nBodyGroupPresetIndex =
+    fields[1] =
         static_cast<int32_t>(buf.p() - reinterpret_cast<uint8_t*>(phdr2));
     buf.pos += m.bodygrouppresets.size() * sizeof(fmt::mstudiobodygrouppreset_t);
     buf.Align4();
@@ -2980,8 +2981,10 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
 
     // studiohdr2 immediately follows, always
     phdr->studiohdr2index = static_cast<int32_t>(buf.pos);
-    fmt::studiohdr2_t* phdr2 = buf.Reserve<fmt::studiohdr2_t>();
-    memset(phdr2, 0, sizeof(*phdr2));
+    const size_t header2Size=m.csgoHeader?sizeof(fmt::studiohdr2_csgo_t):sizeof(fmt::studiohdr2_t);
+    fmt::studiohdr2_t* phdr2 = reinterpret_cast<fmt::studiohdr2_t*>(buf.p());
+    buf.pos+=header2Size;
+    memset(phdr2, 0, header2Size);
     phdr2->illumpositionattachmentindex = m.illumpositionattachment;
     phdr2->flMaxEyeDeflection = m.maxEyeDeflection;
 

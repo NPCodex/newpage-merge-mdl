@@ -15,7 +15,7 @@
 #endif
 
 namespace newpage {
-inline void PrintBanner(const char* role, const char* version, const char* format) {
+inline void PrintBanner(const char* role, const char* version) {
 #ifdef _WIN32
     HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_SCREEN_BUFFER_INFO saved{};
@@ -38,7 +38,7 @@ inline void PrintBanner(const char* role, const char* version, const char* forma
 #else
     if (color) std::printf("\033[0m");
 #endif
-    std::printf("   NewPageMergeMDL | %s | v%s | MDL %s\n", role, version, format);
+    std::printf("   NewPageMergeMDL | %s | v%s | Source model toolchain\n", role, version);
     std::printf("   Based on PulseModel | Community compatibility extensions\n\n");
     std::fflush(stdout);
 }

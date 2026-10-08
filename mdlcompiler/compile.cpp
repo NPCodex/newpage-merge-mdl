@@ -5,6 +5,7 @@
 
 #include "compile.h"
 #include "perf.h"
+#include "rootlodweights.h"
 
 #include <algorithm>
 #include <atomic>
@@ -3403,10 +3404,61 @@ const src::SrcMesh* FindMeshByMaterial(const src::Source* pSrc, int nMaterialID)
     return nullptr;
 }
 
+// Match CSGO's two-stage LOD vertex selection within a material dictionary.
+// The spatial index limits candidates; the metrics/tie ordering determine the
+// result independently of traversal. Later LODs cannot match vertices that
+// were introduced by the same LOD.
+int FuzzyLodVertex(const std::vector<LodVertex>& vertices,
+                  const RootLodWeights<std::vector<LodVertex>>& index,
+                  const LodVertex& v,bool ignoreWeights,bool ignoreTangents) {
+    using Key=std::tuple<float,float,float,float,float,int>;
+    Key best;int result=-1;
+    auto angleError=[](float ax,float ay,float az,float bx,float by,float bz) {
+        const float a=std::sqrt(ax*ax+ay*ay+az*az),b=std::sqrt(bx*bx+by*by+bz*bz);
+        return a>0&&b>0?1-(ax*bx+ay*by+az*bz)/(a*b):1.0f;
+    };
+    index.VisitWithin(v,0.050001,[&](int id) {
+        const auto& r=vertices[id];
+        const float x=v.position.x-r.position.x,y=v.position.y-r.position.y,z=v.position.z-r.position.z;
+        const float u=v.texcoord.x-r.texcoord.x,w=v.texcoord.y-r.texcoord.y;
+        const float distance=x*x+y*y+z*z,uv=u*u+w*w;
+        if(distance>0.05f*0.05f||uv>0.01f*0.01f)return;
+        const float normal=angleError(v.normal.x,v.normal.y,v.normal.z,r.normal.x,r.normal.y,r.normal.z);
+        if(normal>1-0.984807753f)return;
+        float weight=0,tangent=0;
+        if(!ignoreWeights) {
+            bool shared=false;
+            const auto& a=v.boneweight;const auto& b=r.boneweight;
+            for(int i=0;i<a.numbones;++i) {
+                float delta=a.weight[i];
+                for(int j=0;j<b.numbones;++j)if(a.bone[i]==b.bone[j]){delta-=b.weight[j];shared=true;break;}
+                weight+=delta*delta;
+            }
+            for(int j=0;j<b.numbones;++j) {
+                bool found=false;for(int i=0;i<a.numbones;++i)if(a.bone[i]==b.bone[j]){found=true;break;}
+                if(!found)weight+=b.weight[j]*b.weight[j];
+            }
+            if(!shared)return;
+            weight/=std::sqrt(float(a.numbones+b.numbones));
+            if(weight>0.05f)return;
+        }
+        if(!ignoreTangents) {
+            if(v.tangentS.w!=r.tangentS.w)return;
+            tangent=angleError(v.tangentS.x,v.tangentS.y,v.tangentS.z,r.tangentS.x,r.tangentS.y,r.tangentS.z);
+            if(tangent>1-0.984807753f)return;
+        }
+        const Key key{distance,uv,weight,normal,tangent,-id};
+        if(result<0||key<best){best=key;result=id;}
+    });return result;
+}
+
 // UnifyModelLODs
 void UnifyModelLods(Ctx& ctx, Model& model) {
     CompiledModel& m = *ctx.out;
     const int nNumLODs = static_cast<int>(model.lodSources.size());
+    const auto* rootSource=nNumLODs&&model.lodSources[0]?model.lodSources[0]:model.source;
+    RootLodWeights<decltype(rootSource->globalVertices)> rootWeights(rootSource->globalVertices,
+        ctx.in->csgo.rootLodWeights&&!ctx.in->csgo.skinnedLods&&nNumLODs>1);
 
     model.meshVertIndexMaps.assign(nNumLODs, {});
     for (int lodID = 0; lodID < nNumLODs; lodID++)
@@ -3492,6 +3544,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
         if (anyLowerLod)
             dictIndex.Build(model.vertices, pVertexDictMesh->vertexoffset,
                             pVertexDictMesh->vertexoffset + pVertexDictMesh->numvertices);
+        RootLodWeights<std::vector<LodVertex>> rootDictionary(model.vertices,
+            ctx.in->csgo.lodCompatibility&&anyLowerLod,nStart,
+            nStart+pLod0Mesh->numvertices);
 
         for (int lodID = 1; lodID < nNumLODs; ++lodID) {
             const src::Source* pCurrLod = model.lodSources[lodID];
@@ -3506,6 +3561,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
 
             std::vector<int> boneMap;
             BuildBoneLodMapping(m, m.scriptLods[lodID], boneMap);
+            RootLodWeights<std::vector<LodVertex>> higherDictionary(model.vertices,
+                ctx.in->csgo.lodCompatibility,pVertexDictMesh->vertexoffset,
+                static_cast<int>(model.vertices.size()));
 
             for (int v = 0; v < pCurrMesh->numvertices; ++v) {
                 const int nSrcID = pCurrMesh->vertexoffset + v;
@@ -3522,6 +3580,19 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
             }
                 lv.tangentS = sv.tangentS;
                 lv.lodFlag = 1 << lodID;
+
+                const int rootMatch=ctx.in->csgo.lodCompatibility?
+                    FuzzyLodVertex(model.vertices,rootDictionary,lv,!ctx.in->csgo.skinnedLods,true):-1;
+                if(rootMatch>=0)lv=model.vertices[rootMatch];
+                else {
+                    const int rootVertex=rootWeights.Nearest(sv);
+                    if(rootVertex>=0)lv.boneweight=rootSource->globalVertices[rootVertex].boneweight;
+                }
+                if(ctx.in->csgo.lodCompatibility) {
+                    const int higherMatch=FuzzyLodVertex(model.vertices,higherDictionary,lv,false,false);
+                    if(higherMatch>=0)lv=model.vertices[higherMatch];
+                }
+                lv.lodFlag=1<<lodID;
 
                 RemapBoneWeights(boneMap, lv.boneweight);
                 CollapseBoneWeights(lv.boneweight);
@@ -10731,6 +10802,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     out.outname = input.outname;
     out.internalName=input.csgo.internalName;
     if(input.csgo.obsolete)out.gflags|=1<<9;
+    out.csgoHeader=input.csgo.extendedHeader;
     if(input.csgo.subd)out.gflags|=1<<19;
     if (input.csgo.clipTexcoords || input.csgo.zbrush) for (auto& source : input.sources) {
         if (input.csgo.clipTexcoords) for (auto& vertex : source->vertex) {
