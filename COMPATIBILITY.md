@@ -15,7 +15,11 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current version: **v1.2.23**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+Current version: **v1.2.24**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+
+## v1.2.24: compact release binaries
+
+Release/MinSizeRel builds use function/data sections and linker garbage collection (MSVC uses /Gy, /Gw and /OPT:REF). GNU/Clang release tools omit development symbols; runtime unwind metadata and Windows resources remain present. No importer, target game, compiler option or runtime extension is removed. Debug/RelWithDebInfo builds are unchanged; `NEWPAGE_COMPACT_RELEASE=OFF` restores the previous build policy. Local size and model-output measurements are in VALIDATION.md; Windows MSVC/Linux results require their own CI verification.
 
 ## v1.2.23: five-compiler integration
 

@@ -1,6 +1,10 @@
-# NewPageMergeMDL v1.2.23
+# NewPageMergeMDL v1.2.24
 
 English | [简体中文](README.md)
+
+## v1.2.24 release size optimization
+
+Release/MinSizeRel builds discard unused functions and data by default; GNU/Clang outputs also omit development symbols. All importers and compiler features remain enabled, with the existing Release optimization level. Use `-DNEWPAGE_COMPACT_RELEASE=OFF` to retain release symbols. Debug/RelWithDebInfo builds are unaffected. Measured sizes and output comparisons are recorded in [VALIDATION.md](VALIDATION.md).
 
 ## Before compiling
 
@@ -17,7 +21,7 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
-**Project version: v1.2.23.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.24.** The compiler, decompiler and bundled tools share this
 version.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),

@@ -1,7 +1,9 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.23。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.24。
+
+v1.2.24 仅精简 Release 链接产物，保留五编译器固定功能范围及全部导入器；不改变下表中的功能状态和已知兼容边界。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；

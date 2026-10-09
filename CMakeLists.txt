@@ -3,7 +3,23 @@ cmake_minimum_required(VERSION 3.22)
 # Upstream TOOL_VERSION declarations remain as merge context only.
 # C is enabled only for the vendored ufbx single-file reader; all of our own
 # code is C++.
-project(NewPageMergeMDL VERSION 1.2.23 LANGUAGES CXX C)
+project(NewPageMergeMDL VERSION 1.2.24 LANGUAGES CXX C)
+
+# Keep every importer, but omit unused code and development symbols from release
+# executables. Debug/RelWithDebInfo and compilation optimization levels stay intact.
+option(NEWPAGE_COMPACT_RELEASE "Remove unused code and symbols from release tools" ON)
+if(NEWPAGE_COMPACT_RELEASE)
+    if(MSVC)
+        add_compile_options("$<$<CONFIG:Release,MinSizeRel>:/Gy>"
+                            "$<$<CONFIG:Release,MinSizeRel>:/Gw>")
+        add_link_options("$<$<CONFIG:Release,MinSizeRel>:/OPT:REF>")
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND (WIN32 OR UNIX AND NOT APPLE))
+        add_compile_options("$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CONFIG:Release,MinSizeRel>>:-ffunction-sections>"
+                            "$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CONFIG:Release,MinSizeRel>>:-fdata-sections>")
+        add_link_options("$<$<CONFIG:Release,MinSizeRel>:-Wl,--gc-sections>"
+                         "$<$<CONFIG:Release,MinSizeRel>:-s>")
+    endif()
+endif()
 
 # LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
 # with byte-identical output, but made an incremental build 4x slower. Left off;

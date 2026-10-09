@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "version": "1.2.24",
+  "build_platform": "Windows x64 Release; llvm-mingw 20260922 UCRT; static C++ runtime; -O3 unchanged",
+  "compiler_sha256": "e6cb85f271a2030637347e278445d5180f2d6a85074334e8128b7f7ca1eb7711",
+  "scope": "Release link size optimization; all importers retained",
+  "size": {
+    "baseline_version": "1.2.23",
+    "baseline_compiler_sha256": "60d9d27861347b212a887487fb52ccea01d825d5e4981f5311db59ced52779f4",
+    "baseline_bytes": 27856896,
+    "symbols_only_experiment_bytes": 21965312,
+    "compact_bytes": 16738816,
+    "reduction_percent": 39.911
+  },
+  "suites": {
+    "compatibility": {
+      "tests": 369,
+      "passed": true,
+      "log_sha256": "aab6002f9536df11b85d603a5a450ae50a452be0fba0ab8ddcbbd2c6e8ab9438"
+    },
+    "automation": {
+      "tests": 20,
+      "passed": true,
+      "log_sha256": "369b6e1915756a127b71f7e37e35a58de07deeaccce6358d8386a063d73c6556"
+    },
+    "c4d": {
+      "tests": 7,
+      "passed": true,
+      "log_sha256": "9535f54ccbf699bed72e4f470589ebb12d4959b2d46bbd36a4b6048b43d5add4"
+    }
+  },
+  "production": {
+    "input": "Plum playermodel_f_compile2_hair.qc",
+    "game_config": "Existing isolated AppID 4000 gameinfo mounting supplied desktop gmod assets",
+    "input_qc_sha256": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783",
+    "original_qc_unchanged": true,
+    "output_file_count": 11,
+    "all_output_hashes_identical": true,
+    "files": {
+      "models/.npmdl_locks/1aa81eed1e6c2034.lock": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "models/.npmdl_locks/404679a219d50cb9.lock": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "models/.npmdl_locks/74622bee3bb5df49.lock": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "models/.npmdl_locks/a9bd7d99def84e20.lock": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "models/.npmdl_locks/b9f339a1725084c.lock": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "models/.npmdl_locks/e0208099fe751d0f.lock": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": {
+        "bytes": 10897187,
+        "sha256": "29752d5e7b545d99d92bfc28611e6eb7a29b9ce9dd6e4a342ea6af2032ce6686"
+      },
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": {
+        "bytes": 10859631,
+        "sha256": "bdbe537eaa8f3728e43a1a3e6fd87b866024e922a033b87de1960f9e944c25bd"
+      },
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": {
+        "bytes": 1548640,
+        "sha256": "4fd3e2a4110575026810c2e5658672b45e7924ee80c93ae603660b3576517c9d"
+      },
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": {
+        "bytes": 28467,
+        "sha256": "2153ed2803cfeaeddaa58ddcf756aedc3006114d9356841406a25881e9cea5f8"
+      },
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": {
+        "bytes": 36625792,
+        "sha256": "60c6c3fa22567b33f1adf5769b7328d463c5aab357612c7befde7ac842c02a72"
+      }
+    }
+  },
+  "boundaries": [
+    "Not a full release package size measurement",
+    "C4D MSVC helper unchanged; bridge tested with new compiler",
+    "No new in-game session",
+    "Linux and MSVC compact builds require separate CI validation",
+    "No performance claim from single compile trials"
+  ]
+}

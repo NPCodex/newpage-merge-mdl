@@ -1,4 +1,20 @@
-# v1.2.23 当前验证
+# v1.2.24 当前验证
+
+本轮为发布体积优化，保留全部导入器和原有 Release `-O3` 优化等级。Windows x64 llvm-mingw 20260922 UCRT 实测：
+
+| 主编译器 | 字节 | MiB |
+| --- | ---: | ---: |
+| v1.2.23 本地原始产物 | 27,856,896 | 26.57 |
+| 仅移除符号的实验副本 | 21,965,312 | 20.95 |
+| v1.2.24 函数/数据分节、链接清理与符号移除 | 16,738,816 | 15.96 |
+
+主程序减少 **39.9%**。这不是完整发布包的压缩率，其他编译器/平台的体积需分别测量。`.pdata` 异常展开信息、`.rsrc` Windows 资源和重定位段仍保留。反编译器为 942,080 字节，VRML 转换器为 755,712 字节；独立 MSVC 构建的 C4D helper 本轮未重编。
+
+新二进制通过 **369 项兼容性、20 项自动化、7 项 C4D 桥接测试**。Plum 原始 `playermodel_f_compile2_hair.qc` 使用已有隔离 AppID 4000 gameinfo 挂载桌面 gmod 资源，在两个独立输出目录分别由旧、新二进制编译；**11 个输出文件逐字节 SHA-256 完全一致**，原 QC SHA-256 未变。单次编译时间不用于性能提升结论。本轮未重新启动游戏，不将此前实机结果计为新验证；Linux/MSVC 构建仍需各自 CI 验证。机器可读结果见 [v1.2.24-validation.json](tests/reports/v1.2.24-validation.json)。
+
+`NEWPAGE_COMPACT_RELEASE=OFF` 可恢复原构建策略；Debug/RelWithDebInfo 不受此次精简影响。五编译器功能范围及已知兼容边界沿用 v1.2.23 固定结账，不因体积变化扩大兼容性声明。
+
+## v1.2.23 历史验证
 
 本轮固定五编译器清单见 [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md)，机器可读结果见 [v1.2.23-validation.json](tests/reports/v1.2.23-validation.json)。本地 Windows x64 编译器通过 **369 项兼容回归、20 项自动化、9 项 CONTENT 挂载、9 项 Lua、7 项 C4D、9 项输出事务恢复测试**。专项数量单独列出，不作为新增功能数量。
 

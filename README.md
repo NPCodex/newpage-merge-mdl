@@ -1,6 +1,10 @@
-# NewPageMergeMDL v1.2.23
+# NewPageMergeMDL v1.2.24
 
 [English](README.en.md) | 简体中文
+
+## v1.2.24 发布体积优化
+
+Release/MinSizeRel 构建默认剔除未使用的函数和数据；GNU/Clang 链接产物同时移除开发符号。保留全部导入器和现有编译功能，不降低 Release 的优化等级。需要保留完整发布符号时使用 `-DNEWPAGE_COMPACT_RELEASE=OFF`；Debug/RelWithDebInfo 不启用此项精简。具体实测体积和输出对照见 [验证记录](VALIDATION.md)。
 
 ## 编译前必读
 
@@ -19,7 +23,7 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
 - **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
-项目版本：**v1.2.23**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.24**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
