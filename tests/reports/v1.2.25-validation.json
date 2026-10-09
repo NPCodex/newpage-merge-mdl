@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "version": "1.2.25",
+  "date": "2026-10-10",
+  "compiler_sha256": "2ac75a1edcfbab09deb07fbd001488120cf53c22464bc94d70ecdded38db7887",
+  "gameinfo_sha256": "c616a6f675f69b6fe2d35d5950949a8379b49e4e26c6690ba40c3b33822a7df4",
+  "inputs_unchanged": true,
+  "used_skin_mappings_match_ce": true,
+  "plum_model_files_identical": true,
+  "scope": "Original viewarms QC compile failure: namespaced VRD parent collapse and unused shared skin columns",
+  "game": "Installed Garry's Mod gameinfo; SteamAppId 4000; isolated outputs",
+  "compiler_bytes": 16739840,
+  "input_qc_sha256": "a3167734c7da15b072021f353fa92e0d7b97502689f23e1329c790e00413e15d",
+  "input_vrd_sha256": "fa93f0e5e32fafe8a4d1b3740d4d7a7755edb2254a8496df60d61707da45fe51",
+  "input_files_checked": 50,
+  "suites": {
+    "compatibility": {
+      "tests": 377,
+      "passed": true,
+      "log_sha256": "4e9dbc5efedbee9255fefca25a2d2af0e8e65b3173accd0eee71f512ae01e7e1"
+    },
+    "automation": {
+      "tests": 20,
+      "passed": true,
+      "log_sha256": "d0950a37bc4ee3bb9a6daef23f807f77e0a2774a0c46796d0a8f99dee8bcba34"
+    }
+  },
+  "viewarms": {
+    "baseline-actual": {
+      "exit_code": 1,
+      "compiler_sha256": "e6cb85f271a2030637347e278445d5180f2d6a85074334e8128b7f7ca1eb7711",
+      "log_sha256": "7491f8b1a922d32e122c9d76dd6dc2ce50e9721a4bf95750fc25a714901847cb",
+      "files": {}
+    },
+    "ce-actual": {
+      "exit_code": 0,
+      "compiler_sha256": "bc5cbbcb1444d539d35a36afdc7a84b7419839fd1b15674e2d0ec6ffc37e0758",
+      "log_sha256": "aea7dfdbc685baa2a9f2e257958ff3a29470d7ada3cdd9e5a019ddf733aada1e",
+      "files": {
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx90.vtx": "ecfaa8b3d7e1acd5a28b3f65b1feb0f2402870cd9ebf0cd774bb47ee09119e9f",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.mdl": "8652250b4ae4884e17ec2464db6e24148e00a0d57965937d26961758362f6846",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.vvd": "f82e73e8ae7382bdfd9f376b19e821e74d0d2f5ce08a0c24992614199a922a06"
+      },
+      "structure": {
+        "model": "plum_kisekae_p.mdl",
+        "bones": 55,
+        "vertices": 214697
+      },
+      "model": {
+        "bones": 55,
+        "materials": 44,
+        "skin_families": 42,
+        "procedural_constraints": [
+          {
+            "helper": "ValveBiped.Bip01_L_Twist",
+            "parent": "ValveBiped.Bip01_L_Forearm",
+            "driver": "ValveBiped.Bip01_L_Hand",
+            "triggers": 7
+          },
+          {
+            "helper": "arm_roll_L",
+            "parent": "ValveBiped.Bip01_L_UpperArm",
+            "driver": "ValveBiped.Bip01_L_UpperArm",
+            "triggers": 7
+          },
+          {
+            "helper": "ValveBiped.Bip01_R_Twist",
+            "parent": "ValveBiped.Bip01_R_Forearm",
+            "driver": "ValveBiped.Bip01_R_Hand",
+            "triggers": 7
+          },
+          {
+            "helper": "arm_roll_R",
+            "parent": "ValveBiped.Bip01_R_UpperArm",
+            "driver": "ValveBiped.Bip01_R_UpperArm",
+            "triggers": 7
+          }
+        ]
+      },
+      "used_base_materials": 23,
+      "used_skin_mappings_sha256": "eda886ed40b94f877e2a4d72bcc80457e161ad4d88edec1555bade4d1e1104df"
+    },
+    "fixed-actual": {
+      "exit_code": 0,
+      "compiler_sha256": "2ac75a1edcfbab09deb07fbd001488120cf53c22464bc94d70ecdded38db7887",
+      "log_sha256": "22feb66f1e824256ed7c0796c87e123352b60a8879e80746c2305a4c9dd52895",
+      "files": {
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx80.vtx": "71df36a98d24f2875e4f52f48a6cf905017cf5fbfe535ebf11eaba5958310683",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx90.vtx": "54a4e81536cb2c9917bb8786127cc169a724a968d4228a4b5f6a4c4252b33c3d",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.mdl": "ccdf9286b09c000e52e72ab895c139b30e17af66d05f7111ab7bea8f3b7a1e91",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.vvd": "a3b454414b6910aca2e49b7f42b57e285cd5531e54804b72b8a2c67862662f1a"
+      },
+      "structure": {
+        "model": "plum_kisekae_p.mdl",
+        "bones": 17,
+        "vertices": 214697
+      },
+      "model": {
+        "bones": 17,
+        "materials": 24,
+        "skin_families": 42,
+        "procedural_constraints": [
+          {
+            "helper": "ValveBiped.Bip01_L_Twist",
+            "parent": "ValveBiped.Bip01_L_UpperArm",
+            "driver": "ValveBiped.Bip01_L_Hand",
+            "triggers": 7
+          },
+          {
+            "helper": "arm_roll_L",
+            "parent": "ValveBiped.Bip01_L_UpperArm",
+            "driver": "ValveBiped.Bip01_L_UpperArm",
+            "triggers": 7
+          },
+          {
+            "helper": "ValveBiped.Bip01_R_Twist",
+            "parent": "ValveBiped.Bip01_R_UpperArm",
+            "driver": "ValveBiped.Bip01_R_Hand",
+            "triggers": 7
+          },
+          {
+            "helper": "arm_roll_R",
+            "parent": "ValveBiped.Bip01_R_UpperArm",
+            "driver": "ValveBiped.Bip01_R_UpperArm",
+            "triggers": 7
+          }
+        ]
+      },
+      "used_base_materials": 23,
+      "used_skin_mappings_sha256": "eda886ed40b94f877e2a4d72bcc80457e161ad4d88edec1555bade4d1e1104df"
+    }
+  },
+  "plum": {
+    "model_files": 5,
+    "files": {
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": "29752d5e7b545d99d92bfc28611e6eb7a29b9ce9dd6e4a342ea6af2032ce6686",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": "bdbe537eaa8f3728e43a1a3e6fd87b866024e922a033b87de1960f9e944c25bd",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": "4fd3e2a4110575026810c2e5658672b45e7924ee80c93ae603660b3576517c9d",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": "2153ed2803cfeaeddaa58ddcf756aedc3006114d9356841406a25881e9cea5f8",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": "60c6c3fa22567b33f1adf5769b7328d463c5aab357612c7befde7ac842c02a72"
+    },
+    "structure": {
+      "model": "plum_dreaming_hair_p.mdl",
+      "bones": 126,
+      "vertices": 572277
+    },
+    "original_input_sha256": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783"
+  },
+  "limits": [
+    "Compilation, model structure and skin mappings were checked; no new in-game visual certification.",
+    "CE registers unused skin-only textures; this compiler prunes them while retaining all family rows and used mesh substitutions.",
+    "Native bone-retention policy is unchanged; this does not assert complete CE skeleton/animation parity."
+  ]
+}

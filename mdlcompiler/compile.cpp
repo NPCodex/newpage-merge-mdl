@@ -1896,7 +1896,6 @@ bool BoneHasChildren(const CompiledModel& m, int k) {
 // grandparent's space before k goes away.
 void ResolveProceduralParentCollapse(Ctx& ctx, int k) {
     CompiledModel& m = *ctx.out;
-    const std::string gone = m.bones[k].name;
     const std::string newparent =
         m.bones[k].parent >= 0 ? m.bones[m.bones[k].parent].name : std::string();
 
@@ -1916,7 +1915,10 @@ void ResolveProceduralParentCollapse(Ctx& ctx, int k) {
     auto isAuthoredParent = [&](const std::string& named, const std::string& child,
                                 bool strict) {
         if (!named.empty())
-            return _stricmp(named.c_str(), gone.c_str()) == 0;
+            // Use the same namespace and strict-name lookup as the final remap.
+            // VRD parents may omit "ValveBiped."; compare resolved identity so
+            // an unrelated bone with the same suffix cannot transform the pose.
+            return FindProcBone(m, named, strict) == k;
         const int c = FindProcBone(m, child, strict);
         return c >= 0 && m.bones[c].parent == k;
     };
@@ -12698,16 +12700,41 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     if (out.cdtextures.empty())
         out.cdtextures.push_back("models/" + out.outname + "/");
 
+    // A shared skin group can contain columns for meshes absent from this
+    // model (for example, player hair in a view-arms QC). Only render meshes
+    // establish base columns. Snapshot them before replacements add materials,
+    // so one replacement cannot make an otherwise unused column appear used.
+    std::vector<bool> meshMaterials(input.mats.materialToTexture.size(), false);
+    auto markMeshMaterial = [&meshMaterials](int material) {
+        if (material >= 0 && material < static_cast<int>(meshMaterials.size()))
+            meshMaterials[material] = true;
+    };
+    for (const Model& model : out.models) {
+        if (model.source)
+            for (int i = 0; i < model.source->nummeshes; ++i)
+                markMeshMaterial(model.source->meshindex[i]);
+        for (const src::Source* lod : model.lodSources) {
+            if (lod)
+                for (int i = 0; i < lod->nummeshes; ++i)
+                    markMeshMaterial(lod->meshindex[i]);
+        }
+    }
+    std::vector<src::MaterialTable::Texture> skinBaseTextures;
+    for (const auto& tex : input.mats.textures)
+        if (tex.material >= 0 && meshMaterials[tex.material])
+            skinBaseTextures.push_back(tex);
+
     // $texturegroup skin families, resolved before the row width is taken: a
     // replacement the model does not already use appends a texture, and that
     // texture has to be a material to be nameable in the skin table at all.
     std::vector<std::vector<std::pair<int, int>>> families; // material -> material
+    std::vector<std::string> unusedSkinColumns;
     for (size_t f = 0; f < input.skinFamilies.size(); ++f) {
         std::vector<std::pair<int, int>> pairs;
         for (const CompileInput::SkinReplace& r : input.skinFamilies[f]) {
             int from = -1;
             bool relative = true;
-            for (const auto& tex : input.mats.textures) {
+            for (const auto& tex : skinBaseTextures) {
                 if (tex.material >= 0 && MaterialNameMatches(tex.name, r.from)) {
                     from = tex.material;
                     relative = tex.relative;
@@ -12715,11 +12742,14 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                 }
             }
             if (from < 0) {
-                if (err)
-                    *err = "$texturegroup: set " + std::to_string(f + 1) +
-                           " replaces \"" + r.from + "\", which is not a material of "
-                           "this model";
-                return false;
+                const bool warned = std::any_of(unusedSkinColumns.begin(), unusedSkinColumns.end(),
+                    [&](const std::string& name) { return _stricmp(name.c_str(), r.from.c_str()) == 0; });
+                if (!warned) {
+                    std::printf("WARNING: $texturegroup: ignoring unused base material \"%s\" "
+                                "(no render mesh); preserving skin family rows.\n", r.from.c_str());
+                    unusedSkinColumns.push_back(r.from);
+                }
+                continue;
             }
             // the replacement inherits the relative-path flag of what it
             // replaces, so both resolve against the same cdmaterials rule
@@ -12781,24 +12811,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     {
         src::MaterialTable& mats = input.mats;
         const int numPreCull = static_cast<int>(mats.materialToTexture.size());
-        std::vector<bool> used(numPreCull, false);
+        std::vector<bool> used = meshMaterials;
+        used.resize(numPreCull, false);
         auto markUsed = [&used, numPreCull](int material) {
             if (material >= 0 && material < numPreCull)
                 used[material] = true;
         };
 
-        // every mesh that can be written names its material through meshindex
-        for (const Model& model : out.models) {
-            if (model.source)
-                for (int i = 0; i < model.source->nummeshes; i++)
-                    markUsed(model.source->meshindex[i]);
-            for (const src::Source* pLod : model.lodSources) {
-                if (!pLod)
-                    continue;
-                for (int i = 0; i < pLod->nummeshes; i++)
-                    markUsed(pLod->meshindex[i]);
-            }
-        }
         // $texturegroup: both ends of every replacement, including family 0's
         for (const auto& pairs : families)
             for (const auto& p : pairs) {

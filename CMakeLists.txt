@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 # Upstream TOOL_VERSION declarations remain as merge context only.
 # C is enabled only for the vendored ufbx single-file reader; all of our own
 # code is C++.
-project(NewPageMergeMDL VERSION 1.2.24 LANGUAGES CXX C)
+project(NewPageMergeMDL VERSION 1.2.25 LANGUAGES CXX C)
 
 # Keep every importer, but omit unused code and development symbols from release
 # executables. Debug/RelWithDebInfo and compilation optimization levels stay intact.

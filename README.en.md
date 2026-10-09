@@ -1,10 +1,6 @@
-# NewPageMergeMDL v1.2.24
+# NewPageMergeMDL v1.2.25
 
 English | [简体中文](README.md)
-
-## v1.2.24 release size optimization
-
-Release/MinSizeRel builds discard unused functions and data by default; GNU/Clang outputs also omit development symbols. All importers and compiler features remain enabled, with the existing Release optimization level. Use `-DNEWPAGE_COMPACT_RELEASE=OFF` to retain release symbols. Debug/RelWithDebInfo builds are unaffected. Measured sizes and output comparisons are recorded in [VALIDATION.md](VALIDATION.md).
 
 ## Before compiling
 
@@ -21,7 +17,7 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
-**Project version: v1.2.24.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.25.** The compiler, decompiler and bundled tools share this
 version.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -33,6 +29,14 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.
+
+## v1.2.25: viewarms QC compatibility fixes
+
+VRD constraints that omit a dotted namespace such as `ValveBiped.` now follow parent-bone collapse, re-expressing driver rotations and helper poses relative to the surviving parent. Shared `$texturegroup` columns whose base material is unused by the model now warn and are skipped, preserving family count and substitutions for used materials. The original QC and VRD need no changes. See [compatibility notes](COMPATIBILITY.md) and [validation](VALIDATION.md).
+
+## v1.2.24 release size optimization
+
+Release/MinSizeRel builds discard unused functions and data by default; GNU/Clang outputs also omit development symbols. All importers and compiler features remain enabled, with the existing Release optimization level. Use `-DNEWPAGE_COMPACT_RELEASE=OFF` to retain release symbols. Debug/RelWithDebInfo builds are unaffected. Measured sizes and output comparisons are recorded in [VALIDATION.md](VALIDATION.md).
 
 ## v1.2.23: fixed five-compiler integration scope
 

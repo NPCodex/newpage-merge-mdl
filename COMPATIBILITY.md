@@ -15,7 +15,13 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current version: **v1.2.24**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+Current version: **v1.2.25**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+
+## v1.2.25: procedural parents and shared skin tables
+
+VRD short names and fully qualified names use the same bone lookup during parent collapse and final constraint mapping. Helper poses and driver triggers are transformed into the surviving parent's space, including successive collapses. Lookup identity prevents an unrelated namespaced bone with the same suffix from transforming the constraint. Strict QC driver names and errors for missing parents remain in effect.
+
+For a shared `$texturegroup`, a column whose base material is absent from the model now warns and is skipped. All skin-family rows remain; used base materials retain their substitutions. CE retains unused skin-only textures in its serialized table; this compiler continues to prune them, so table sizes need not match CE. Material-merge conflicts and malformed row lengths remain errors.
 
 ## v1.2.24: compact release binaries
 

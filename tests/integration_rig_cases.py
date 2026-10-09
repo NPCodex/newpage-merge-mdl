@@ -3,8 +3,10 @@ from pathlib import Path
 import base64
 import copy
 import json
+import math
 import re
 import struct
+from procedural_cases import compose, dot, euler, skeletal_smd
 from scene_fixtures import scene_bytes
 
 
@@ -160,6 +162,87 @@ class IntegrationRigCases:
         self.write('names.vrd','<helper> unused_child root root missing_driver\n')
         output=self.scene_qc('$modelname bad_proc\n$body m mesh.smd\n$proceduralbones names.vrd\n',success=False)
         self.assertIn('animconstraint "unused_child": missing driver bone "missing_driver"',output)
+
+    def integration_quatinterp_record(self,model,helper,driver,parent):
+        data,bones=self.csgo_bone_table(model)
+        bone=bones[helper][1]
+        self.assertEqual(struct.unpack_from('<i',data,bone+4)[0],bones[parent][0])
+        self.assertEqual(struct.unpack_from('<i',data,bones[driver][1]+4)[0],bones[parent][0])
+        flags,kind,offset=struct.unpack_from('<3i',data,bone+160)
+        self.assertTrue(flags&4);self.assertEqual(kind,2)
+        proc=bone+offset;control,count,triggers=struct.unpack_from('<3i',data,proc)
+        self.assertEqual(control,bones[driver][0]);self.assertEqual(count,1)
+        trigger=proc+triggers
+        self.assertAlmostEqual(struct.unpack_from('<f',data,trigger)[0],2/math.pi,places=6)
+        return (bones,struct.unpack_from('<4f',data,trigger+4),
+                struct.unpack_from('<3f',data,trigger+20),struct.unpack_from('<4f',data,trigger+32))
+
+    def test_integration_vrd_namespaced_parent_collapse_preserves_trigger_and_pose(self):
+        # Independent rigid-pose composition checks both authored coordinate
+        # spaces, including the accumulated transform of two removed ancestors.
+        trigger=euler(tuple(map(math.radians,(13,-27,41))))
+        helper_pose=((1.5,-2,3.25),euler(tuple(map(math.radians,(-19,23,11)))))
+        for levels in (1,2):
+            names=['root']+['ValveBiped.'+n for n in (['parent'] if levels==1 else ['ancestor','parent'])]+['ValveBiped.driver','ValveBiped.helper']
+            parents=[-1]+list(range(levels))+[levels,levels]
+            positions=[(0,0,0)]+[(2,-1,4),(-3,5,2)][:levels]+[(1,2,3),(4,2,1)]
+            rotations=[(0,0,0)]+[(.2,-.3,.4),(-.25,.15,.35)][:levels]+[(.1,.2,-.1),(-.2,.1,.3)]
+            self.write('proc.smd',skeletal_smd(names,parents,positions,rotations))
+            parent_pose=((0,0,0),(0,0,0,1))
+            for i in range(1,levels+1):parent_pose=compose(parent_pose,(positions[i],euler(rotations[i])))
+            expected_trigger=compose(parent_pose,((0,0,0),trigger))[1]
+            expected_pose=compose(parent_pose,helper_pose)
+            for prefix in ('','ValveBiped.'):
+                with self.subTest(levels=levels,spelling=prefix or 'short'):
+                    self.write('proc.vrd',f'<helper> {prefix}helper {prefix}parent {prefix}parent {prefix}driver\n'
+                               '<basepos> 1 -.5 2\n<trigger> 90 13 -27 41 -19 23 11 .5 -1.5 1.25\n')
+                    output=self.scene_qc('$modelname proc\n$origin 0 0 0 -90\n$body m proc.smd\n'
+                                         '$bonemerge root\n$bonemerge ValveBiped.helper\n$bonemerge ValveBiped.driver\n'
+                                         '$proceduralbones proc.vrd\n')
+                    self.assertIn('Collapsing bone "ValveBiped.parent"',output)
+                    bones,actual_trigger,actual_pos,actual_quat=self.integration_quatinterp_record(
+                        'proc','ValveBiped.helper','ValveBiped.driver','root')
+                    self.assertEqual(set(bones),{'root','ValveBiped.helper','ValveBiped.driver'})
+                    self.assertAlmostEqual(abs(dot(actual_trigger,expected_trigger)),1,places=5)
+                    self.assertAlmostEqual(abs(dot(actual_quat,expected_pose[1])),1,places=5)
+                    for actual,expected in zip(actual_pos,expected_pose[0]):
+                        self.assertAlmostEqual(actual,expected,places=5)
+
+    def test_integration_vrd_parent_collapse_uses_resolved_bone_identity(self):
+        # "parent" resolves to A.parent first. Removing B.parent must not
+        # re-express this constraint in the unrelated B coordinate system.
+        names=['root','A.parent','A.driver','A.helper','B.parent','B.child']
+        self.write('proc.smd',skeletal_smd(names,[-1,0,1,1,0,4],
+                   [(0,0,0),(2,3,4),(1,0,0),(0,1,0),(-4,5,6),(0,0,1)],
+                   [(0,0,0),(.2,.3,-.1),(.1,-.2,.3),(-.2,.1,.3),(-.4,.2,.6),(0,0,0)]))
+        self.write('proc.vrd','<helper> helper parent parent driver\n'
+                   '<trigger> 90 13 -27 41 -19 23 11 1.5 -2 3.25\n')
+        output=self.scene_qc('$modelname proc\n$origin 0 0 0 -90\n$body m proc.smd\n'
+                             '$bonemerge root\n$bonemerge A.parent\n$bonemerge A.helper\n$bonemerge A.driver\n'
+                             '$bonemerge B.child\n$proceduralbones proc.vrd\n')
+        self.assertIn('Collapsing bone "B.parent"',output)
+        bones,trigger,pos,quat=self.integration_quatinterp_record('proc','A.helper','A.driver','A.parent')
+        self.assertNotIn('B.parent',bones);self.assertIn('A.parent',bones)
+        self.assertAlmostEqual(abs(dot(trigger,euler(tuple(map(math.radians,(13,-27,41)))))),1,places=5)
+        self.assertAlmostEqual(abs(dot(quat,euler(tuple(map(math.radians,(-19,23,11)))))),1,places=5)
+        for actual,expected in zip(pos,(1.5,-2,3.25)):self.assertAlmostEqual(actual,expected,places=5)
+
+    def test_integration_vrd_parent_collapse_preserves_missing_and_strict_diagnostics(self):
+        self.write('proc.smd',skeletal_smd(['root','ValveBiped.parent','ValveBiped.driver','ValveBiped.helper'],
+                   [-1,0,1,1],[(0,0,0),(2,3,4),(1,0,0),(0,1,0)],[(0,0,0)]*4))
+        qc='$modelname proc\n$body m proc.smd\n$bonecullmethod none\n'
+        for helper_parent,driver_parent,message in (
+                ('missing','parent',"can't find helper parent"),
+                ('parent','missing',"can't find driver parent")):
+            with self.subTest(message=message):
+                self.write('proc.vrd',f'<helper> helper {helper_parent} {driver_parent} driver\n'
+                           '<trigger> 90 0 0 0 0 0 0 1 2 3\n')
+                self.assertIn(message,self.scene_qc(qc+'$proceduralbones proc.vrd\n',success=False))
+        # Unlike VRD, the QC driver name must remain an exact spelling.
+        output=self.scene_qc(qc+'$driverbone ValveBiped.helper driver { trigger 90 0 0 0 0 0 0 1 2 3 }\n',success=False)
+        self.assertIn('missing driver bone "driver"',output)
+        self.scene_qc(qc+'$driverbone ValveBiped.helper ValveBiped.driver { trigger 90 0 0 0 0 0 0 1 2 3 }\n')
+        self.integration_quatinterp_record('proc','ValveBiped.helper','ValveBiped.driver','ValveBiped.parent')
 
     def test_integration_invalid_animation_diagnostic_and_output_preservation(self):
         self.scene_qc('$modelname bad_anim\n$body m mesh.smd\n$sequence idle mesh.smd\n')

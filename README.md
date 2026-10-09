@@ -1,10 +1,6 @@
-# NewPageMergeMDL v1.2.24
+# NewPageMergeMDL v1.2.25
 
 [English](README.en.md) | 简体中文
-
-## v1.2.24 发布体积优化
-
-Release/MinSizeRel 构建默认剔除未使用的函数和数据；GNU/Clang 链接产物同时移除开发符号。保留全部导入器和现有编译功能，不降低 Release 的优化等级。需要保留完整发布符号时使用 `-DNEWPAGE_COMPACT_RELEASE=OFF`；Debug/RelWithDebInfo 不启用此项精简。具体实测体积和输出对照见 [验证记录](VALIDATION.md)。
 
 ## 编译前必读
 
@@ -23,7 +19,7 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
 - **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
-项目版本：**v1.2.24**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.25**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -33,6 +29,14 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 支持 Windows x64 和 Linux 构建。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
+
+## v1.2.25：手臂 QC 兼容修复
+
+修复 VRD 省略 `ValveBiped.` 等命名空间时，父骨折叠未同步更新辅助骨约束的问题；折叠后的驱动旋转和辅助骨姿态按存活父骨重新计算。共用 `$texturegroup` 中模型未使用的基材质列改为警告并跳过，保留皮肤组数量和实际使用的材质替换。无须修改原始 QC 或 VRD。详见 [兼容说明](COMPATIBILITY.md) 和 [验证记录](VALIDATION.md)。
+
+## v1.2.24 发布体积优化
+
+Release/MinSizeRel 构建默认剔除未使用的函数和数据；GNU/Clang 链接产物同时移除开发符号。保留全部导入器和现有编译功能，不降低 Release 的优化等级。需要保留完整发布符号时使用 `-DNEWPAGE_COMPACT_RELEASE=OFF`；Debug/RelWithDebInfo 不启用此项精简。具体实测体积和输出对照见 [验证记录](VALIDATION.md)。
 
 ## v1.2.23：五编译器固定清单收尾
 

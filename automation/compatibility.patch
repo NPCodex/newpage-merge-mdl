@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index fed7eaf..8377d95 100644
+index fed7eaf..ad87104 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,9 +1,25 @@
@@ -11,7 +11,7 @@ index fed7eaf..8377d95 100644
  # C is enabled only for the vendored ufbx single-file reader; all of our own
  # code is C++.
 -project(PulseModel LANGUAGES CXX C)
-+project(NewPageMergeMDL VERSION 1.2.24 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.25 LANGUAGES CXX C)
 +
 +# Keep every importer, but omit unused code and development symbols from release
 +# executables. Debug/RelWithDebInfo and compilation optimization levels stay intact.
@@ -1113322,7 +1113322,7 @@ index 0000000..f747c53
 +}
 +#endif
 diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
-index bdb0c90..88f78b0 100644
+index bdb0c90..7f53f9f 100644
 --- a/mdlcompiler/compile.cpp
 +++ b/mdlcompiler/compile.cpp
 @@ -1,9 +1,13 @@
@@ -1113704,7 +1113704,27 @@ index bdb0c90..88f78b0 100644
      }
  }
  
-@@ -1721,11 +1973,10 @@ void CollapseBones(Ctx& ctx) {
+@@ -1644,7 +1896,6 @@ bool BoneHasChildren(const CompiledModel& m, int k) {
+ // grandparent's space before k goes away.
+ void ResolveProceduralParentCollapse(Ctx& ctx, int k) {
+     CompiledModel& m = *ctx.out;
+-    const std::string gone = m.bones[k].name;
+     const std::string newparent =
+         m.bones[k].parent >= 0 ? m.bones[m.bones[k].parent].name : std::string();
+ 
+@@ -1664,7 +1915,10 @@ void ResolveProceduralParentCollapse(Ctx& ctx, int k) {
+     auto isAuthoredParent = [&](const std::string& named, const std::string& child,
+                                 bool strict) {
+         if (!named.empty())
+-            return _stricmp(named.c_str(), gone.c_str()) == 0;
++            // Use the same namespace and strict-name lookup as the final remap.
++            // VRD parents may omit "ValveBiped."; compare resolved identity so
++            // an unrelated bone with the same suffix cannot transform the pose.
++            return FindProcBone(m, named, strict) == k;
+         const int c = FindProcBone(m, child, strict);
+         return c >= 0 && m.bones[c].parent == k;
+     };
+@@ -1721,11 +1975,10 @@ void CollapseBones(Ctx& ctx) {
      do {
          collapsedAny = false;
          for (int k = 0; k < static_cast<int>(m.bones.size()); k++) {
@@ -1113719,7 +1113739,7 @@ index bdb0c90..88f78b0 100644
  
              // "none" keeps every bone the script authored. Non-skeletal bones
              // (mesh dags, defaultRoot) are exempt - exporter noise, not part of
-@@ -1735,7 +1986,7 @@ void CollapseBones(Ctx& ctx) {
+@@ -1735,7 +1988,7 @@ void CollapseBones(Ctx& ctx) {
  
              // "leaf only" never reparents: an unreferenced bone that still has
              // children stays where it is.
@@ -1113728,7 +1113748,7 @@ index bdb0c90..88f78b0 100644
                  continue;
  
              // BoneShouldCollapse. $donotcollapse is checked first so it wins
-@@ -1743,6 +1994,7 @@ void CollapseBones(Ctx& ctx) {
+@@ -1743,6 +1996,7 @@ void CollapseBones(Ctx& ctx) {
              if (!always &&
                 (BoneIsDoNotCollapse(ctx, m.bones[k].name.c_str()) ||
                  BoneHasAnimation(ctx, m.bones[k].name.c_str()) ||
@@ -1113736,7 +1113756,7 @@ index bdb0c90..88f78b0 100644
                  BoneIsIK(ctx, m.bones[k].name.c_str()) ||
                  BoneHasAttachments(ctx, m.bones[k].name.c_str()) ||
                  BoneHasHitbox(ctx, m.bones[k].name.c_str()) ||
-@@ -2097,6 +2349,10 @@ bool PushAnimSrcRealignOverride(Ctx& ctx, const Anim& panim, std::vector<SrcReal
+@@ -2097,6 +2351,10 @@ bool PushAnimSrcRealignOverride(Ctx& ctx, const Anim& panim, std::vector<SrcReal
      BoneEditState& st = ctx.boneEdits;
      saved.clear();
  
@@ -1113747,7 +1113767,7 @@ index bdb0c90..88f78b0 100644
      if (st.applied.empty())
          return false;
      if (!panim.ignoreTransformPosition && !panim.ignoreTransformAngles &&
-@@ -2248,7 +2504,19 @@ bool RealignBones(Ctx& ctx, std::string* err) {
+@@ -2248,7 +2506,19 @@ bool RealignBones(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -1113768,7 +1113788,7 @@ index bdb0c90..88f78b0 100644
  
      // build realignment transforms
      for (size_t k = 0; k < numbones; k++) {
-@@ -2375,7 +2643,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
+@@ -2375,7 +2645,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
          size_t matches = 0;
          for (size_t mi = 0; mi < m.models.size() && texture >= 0; ++mi) {
              source::Source* ps = m.models[mi].source;
@@ -1113777,7 +1113797,7 @@ index bdb0c90..88f78b0 100644
              for (int i = 0; i < ps->nummeshes; ++i) {
                  if (ps->meshindex[i] != texture)
                      continue;
-@@ -2415,7 +2683,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
+@@ -2415,7 +2685,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
              return false;
          }
  
@@ -1113786,7 +1113806,7 @@ index bdb0c90..88f78b0 100644
          Vector3 tmp = {eye.org.x * scale, eye.org.y * scale, eye.org.z * scale};
  
          // `center`: sit on the bbox center of the verts wearing the eyeball's
-@@ -2441,9 +2709,9 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
+@@ -2441,9 +2711,9 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
              }
          }
  
@@ -1113798,7 +1113818,7 @@ index bdb0c90..88f78b0 100644
  
          ctx.eyeAbsZSum += std::fabs(tmp.z);
          ctx.eyeAbsZCount++;
-@@ -2713,6 +2981,31 @@ void RemapVertices(Ctx& ctx) {
+@@ -2713,6 +2983,31 @@ void RemapVertices(Ctx& ctx) {
              pm::VectorNormalize(ndest);
              dstVertex.normal = ndest;
          }
@@ -1113830,7 +1113850,7 @@ index bdb0c90..88f78b0 100644
      }
  }
  
-@@ -3074,34 +3367,46 @@ void ExpandLodBoneCollapses(Ctx& ctx) {
+@@ -3074,34 +3369,46 @@ void ExpandLodBoneCollapses(Ctx& ctx) {
                  collapseToParent(pb.helper);
              for (const AimAtBone& ab : m.aimatbones)
                  collapseToParent(ab.bone);
@@ -1113895,7 +1113915,7 @@ index bdb0c90..88f78b0 100644
  }
  
  // $jointcontents (reference GetContents). Resolved against
-@@ -3318,10 +3623,61 @@ const src::SrcMesh* FindMeshByMaterial(const src::Source* pSrc, int nMaterialID)
+@@ -3318,10 +3625,61 @@ const src::SrcMesh* FindMeshByMaterial(const src::Source* pSrc, int nMaterialID)
      return nullptr;
  }
  
@@ -1113957,7 +1113977,7 @@ index bdb0c90..88f78b0 100644
  
      model.meshVertIndexMaps.assign(nNumLODs, {});
      for (int lodID = 0; lodID < nNumLODs; lodID++)
-@@ -3363,6 +3719,10 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
+@@ -3363,6 +3721,10 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
              lv.position = sv.position;
              lv.normal = sv.normal;
              lv.texcoord = sv.texcoord;
@@ -1113968,7 +1113988,7 @@ index bdb0c90..88f78b0 100644
              lv.tangentS = sv.tangentS;
              lv.lodFlag = 1 << 0;
              const int id = AddDictVertex(model.vertices, lv);
-@@ -3403,6 +3763,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
+@@ -3403,6 +3765,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
          if (anyLowerLod)
              dictIndex.Build(model.vertices, pVertexDictMesh->vertexoffset,
                              pVertexDictMesh->vertexoffset + pVertexDictMesh->numvertices);
@@ -1113978,7 +1113998,7 @@ index bdb0c90..88f78b0 100644
  
          for (int lodID = 1; lodID < nNumLODs; ++lodID) {
              const src::Source* pCurrLod = model.lodSources[lodID];
-@@ -3417,6 +3780,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
+@@ -3417,6 +3782,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
  
              std::vector<int> boneMap;
              BuildBoneLodMapping(m, m.scriptLods[lodID], boneMap);
@@ -1113988,7 +1114008,7 @@ index bdb0c90..88f78b0 100644
  
              for (int v = 0; v < pCurrMesh->numvertices; ++v) {
                  const int nSrcID = pCurrMesh->vertexoffset + v;
-@@ -3427,9 +3793,26 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
+@@ -3427,9 +3795,26 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
                  lv.position = sv.position;
                  lv.normal = sv.normal;
                  lv.texcoord = sv.texcoord;
@@ -1114015,7 +1114035,7 @@ index bdb0c90..88f78b0 100644
                  RemapBoneWeights(boneMap, lv.boneweight);
                  CollapseBoneWeights(lv.boneweight);
                  SortBoneWeightByWeight(lv.boneweight);
-@@ -3506,11 +3889,94 @@ std::vector<src::SrcFace> BuildLodFaceList(const Model& model, int lodID,
+@@ -3506,11 +3891,94 @@ std::vector<src::SrcFace> BuildLodFaceList(const Model& model, int lodID,
      return faces;
  }
  
@@ -1114111,7 +1114131,7 @@ index bdb0c90..88f78b0 100644
      std::vector<std::vector<src::SrcFace>> lodFaces;
  };
  
-@@ -3523,27 +3989,31 @@ struct MeshBucket {
+@@ -3523,27 +3991,31 @@ struct MeshBucket {
  // land on both sides of a cut is duplicated into both; those few duplicates are
  // the entire cost of the split.
  std::vector<MeshBucket> PartitionMesh(int numvertices,
@@ -1114152,7 +1114172,7 @@ index bdb0c90..88f78b0 100644
              if (s < 0) {
                  s = static_cast<int>(b.verts.size());
                  b.verts.push_back(static_cast<int>(v));
-@@ -3562,7 +4032,7 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
+@@ -3562,7 +4034,7 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
      if (!lodFaces.empty()) {
          size_t cur = 0;
          for (const src::SrcFace& f : lodFaces[0]) {
@@ -1114161,7 +1114181,7 @@ index bdb0c90..88f78b0 100644
                  addBucket();
                  cur = buckets.size() - 1;
              }
-@@ -3594,28 +4064,20 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
+@@ -3594,28 +4066,20 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
      // Verts no triangle names still have to reach the .vvd: the buckets are what
      // Model::vertices becomes, and dropping entries would renumber every flex
      // delta behind them for no gain.
@@ -1114197,7 +1114217,7 @@ index bdb0c90..88f78b0 100644
          dst->verts.push_back(v);
      }
  
-@@ -3692,13 +4154,13 @@ void BuildOutputMeshes(Ctx& ctx) {
+@@ -3692,13 +4156,13 @@ void BuildOutputMeshes(Ctx& ctx) {
                  model.outMeshes.push_back(std::move(om));
              };
  
@@ -1114213,7 +1114233,7 @@ index bdb0c90..88f78b0 100644
              for (MeshBucket& bucket : buckets)
                  emit(static_cast<int>(bucket.verts.size()), bucket.verts.data(),
                       std::move(bucket.lodFaces));
-@@ -3717,7 +4179,7 @@ void BuildOutputMeshes(Ctx& ctx) {
+@@ -3717,7 +4181,7 @@ void BuildOutputMeshes(Ctx& ctx) {
              }
              std::printf("Splitting material \"%s\": %d vertices exceeds the %d a mesh can "
                          "index, using %d meshes (%s), %d vertices duplicated\n",
@@ -1114222,7 +1114242,7 @@ index bdb0c90..88f78b0 100644
                          static_cast<int>(buckets.size()), pieces.c_str(),
                          total - range.numvertices);
          }
-@@ -3758,6 +4220,102 @@ void BuildOutputMeshes(Ctx& ctx) {
+@@ -3758,6 +4222,102 @@ void BuildOutputMeshes(Ctx& ctx) {
      }
  }
  
@@ -1114325,7 +1114345,7 @@ index bdb0c90..88f78b0 100644
  // ---------------------------------------------------------------------------
  // Collision model (reference ProcessSingleBody / CreateCollide /
  // BuildConvexListForFaceList)
-@@ -3801,19 +4359,62 @@ Vector3 ApplyShapeFraming(const ShapeFraming& f, Vector3 p) {
+@@ -3801,19 +4361,62 @@ Vector3 ApplyShapeFraming(const ShapeFraming& f, Vector3 p) {
      return {p.x + f.offset.x, p.y + f.offset.y, p.z + f.offset.z};
  }
  
@@ -1114391,7 +1114411,7 @@ index bdb0c90..88f78b0 100644
  }
  
  // IsApproximatelyPlanar. A hull thinner than the epsilon is not a solid -
-@@ -4524,8 +5125,29 @@ bool ConvexesFromGenerated(const GeneratedShape& gen, const matrix3x4* poseToBon
+@@ -4524,8 +5127,29 @@ bool ConvexesFromGenerated(const GeneratedShape& gen, const matrix3x4* poseToBon
      return true;
  }
  
@@ -1114421,7 +1114441,7 @@ index bdb0c90..88f78b0 100644
      CompiledModel& m = *ctx.out;
      const CompileInput& in = *ctx.in;
  
-@@ -4600,8 +5222,14 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4600,8 +5224,14 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
          // bonemap[i] == i means "build a body here"; -1 is skipped, anything
          // else folds this bone's geometry into that bone's body.
          std::vector<int> bonemap(numLocalBones);
@@ -1114437,7 +1114457,7 @@ index bdb0c90..88f78b0 100644
          for (const PhysicsMarkup& mk : in.physMarkups) {
              if (!mk.skip && mk.mergeInto.empty())
                  continue;
-@@ -4621,6 +5249,18 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4621,6 +5251,18 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
              bonemap[idx] = parent;
          }
  
@@ -1114456,7 +1114476,7 @@ index bdb0c90..88f78b0 100644
          std::vector<SrcTri> allFaces;
          CollectSourceFaces(ps, allFaces);
          const int totalSourceFaces = static_cast<int>(allFaces.size());
-@@ -4673,6 +5313,7 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4673,6 +5315,7 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
              for (size_t i = 0; i < ps->vertex.size(); i++) {
                  Vector3 p = haveGlobal ? ps->globalVertices[i].position : ps->vertex[i].position;
                  p = ApplyShapeFraming(framing, p);
@@ -1114464,7 +1114484,7 @@ index bdb0c90..88f78b0 100644
                  Vector3 local = pm::VectorITransform(p, boneToPose);
                  boneVerts.push_back({local.x, local.y, local.z});
              }
-@@ -4686,9 +5327,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4686,9 +5329,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
                  BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
  
              std::vector<phys::Convex*> convexes;
@@ -1114478,7 +1114498,7 @@ index bdb0c90..88f78b0 100644
                  for (phys::Convex* c : convexes)
                      phys::ConvexFree(c);
                  freeBodies();
-@@ -4781,10 +5423,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4781,10 +5425,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
              std::vector<phys::Convex*> convexes;
              // gameData is the 1-based global bone, which is how vphysics maps a
              // hull back to the bone it drives (0 is reserved for a single body).
@@ -1114493,7 +1114513,7 @@ index bdb0c90..88f78b0 100644
                  for (phys::Convex* c : convexes)
                      phys::ConvexFree(c);
                  freeBodies();
-@@ -5116,12 +5758,24 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5116,12 +5760,24 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -1114523,7 +1114543,7 @@ index bdb0c90..88f78b0 100644
              if (err) *err = "physics shape \"" + shape.name + "\" has no vertices";
              freeConvexes();
              return false;
-@@ -5130,15 +5784,14 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5130,15 +5786,14 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
          // import_type 2 keeps only the geometry on parent_bone. Type 1 reskins
          // everything onto one bone, which is already what a single body is, so
          // it needs no filtering here.
@@ -1114543,7 +1114563,7 @@ index bdb0c90..88f78b0 100644
                  if (err) *err = "physics shape \"" + shape.name +
                                  "\" has import_type 2 but no geometry on bone \"" +
                                  shape.parentBone + "\"";
-@@ -5146,6 +5799,36 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5146,6 +5801,36 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
                  return false;
              }
          }
@@ -1114580,7 +1114600,7 @@ index bdb0c90..88f78b0 100644
  
          std::vector<bool> used(shapeVerts.size(), false);
          for (const SrcTri& f : faces) {
-@@ -5160,11 +5843,46 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5160,11 +5845,46 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
          anyConcave = anyConcave || shape.concave;
          maxConvexPieces = std::max(maxConvexPieces, shape.maxConvex);
  
@@ -1114628,7 +1114648,7 @@ index bdb0c90..88f78b0 100644
                                   in.physWeldPosition, in.physWeldNormal, islands);
          }
          if (islands.empty()) {
-@@ -5180,6 +5898,7 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5180,6 +5900,7 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
              freeConvexes();
              return false;
          }
@@ -1114636,7 +1114656,7 @@ index bdb0c90..88f78b0 100644
      }
  
      if (static_cast<int>(convexes.size()) > maxConvexPieces) {
-@@ -5270,9 +5989,8 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5270,9 +5991,8 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
      m.physSolids.push_back(std::move(solid));
      m.bones[physBone].physicsbone = 0; // single body is always physics bone 0
  
@@ -1114648,7 +1114668,7 @@ index bdb0c90..88f78b0 100644
      m.physTotalMass = in.physAutoMass ? -1.0f : in.physMass;
      m.physName = in.physName;
      m.physConcave = in.physBuildMode == PhysicsBuildMode::Auto
-@@ -5406,6 +6124,17 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
+@@ -5406,6 +6126,17 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
          // srcRealign deltas back for the affected bones while it converts
          std::vector<SrcRealignSave> savedRealign;
          const bool overrode = PushAnimSrcRealignOverride(ctx, panim, savedRealign);
@@ -1114666,7 +1114686,7 @@ index bdb0c90..88f78b0 100644
  
          int n = panim.startframe - pSourceAnim->startframe;
          for (int j = 0; j < panim.numframes; j++) {
-@@ -5420,6 +6149,208 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
+@@ -5420,6 +6151,208 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
      return true;
  }
  
@@ -1114875,7 +1114895,7 @@ index bdb0c90..88f78b0 100644
  // ---------------------------------------------------------------------------
  // buildAnimationWeights: resolve each weightlist to
  // per-global-bone weight/posweight arrays. List 0 is the implicit default
-@@ -6301,9 +7232,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6301,9 +7234,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
              }
              case AnimCmd::Match: {
                  // processMatch: rotate every frame by the
@@ -1114888,7 +1114908,7 @@ index bdb0c90..88f78b0 100644
                  std::vector<Quaternion> deltaQ(m.bones.size());
                  for (size_t k = 0; k < m.bones.size(); k++) {
                      Quaternion qd, qs;
-@@ -6313,11 +7245,43 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6313,11 +7247,43 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
                  }
                  for (int j = 0; j < panim.numframes; j++) {
                      for (size_t k = 0; k < m.bones.size(); k++) {
@@ -1114934,7 +1114954,7 @@ index bdb0c90..88f78b0 100644
                      }
                  }
                  break;
-@@ -6899,6 +7863,11 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6899,6 +7865,11 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
                      }
                  }
  
@@ -1114946,7 +1114966,7 @@ index bdb0c90..88f78b0 100644
                  int numerror = rule.end - rule.start + 1;
                  if (rule.end >= panim.numframes)
                      numerror += 2;
-@@ -7180,68 +8149,56 @@ void CompressAnimations(Ctx& ctx) {
+@@ -7180,68 +8151,56 @@ void CompressAnimations(Ctx& ctx) {
      CompiledModel& m = *ctx.out;
      int numbones = static_cast<int>(m.bones.size());
  
@@ -1115060,7 +1115080,7 @@ index bdb0c90..88f78b0 100644
  
      // reduce animations
      for (Anim& panim : m.anims) {
-@@ -7494,8 +8451,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
+@@ -7494,8 +8453,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -1115071,7 +1115091,7 @@ index bdb0c90..88f78b0 100644
          int j = m.bones[k].parent;
          if (j != -1) {
              const Vector3& p = m.bones[k].pos;
-@@ -8693,6 +9650,28 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8693,6 +9652,28 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
      for (size_t k = 0; k < m.bones.size(); k++)
          poseToBone[k] = pm::MatrixInvert(m.bones[k].boneToPose);
  
@@ -1115100,7 +1115120,7 @@ index bdb0c90..88f78b0 100644
      // Seam/LOD copies skin to the same bits, and VecMin/VecMax keep the
      // accumulator on a tie, so dropping later duplicates leaves the boxes exact.
      struct SkinVert {
-@@ -8734,11 +9713,26 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8734,11 +9715,26 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
          }
      }
  
@@ -1115129,7 +1115149,7 @@ index bdb0c90..88f78b0 100644
  
          std::vector<matrix3x4> bonetransform;
          std::vector<matrix3x4> posetransform(m.bones.size());
-@@ -8748,9 +9742,12 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8748,9 +9744,12 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                  posetransform[k] = pm::ConcatTransforms(bonetransform[k], poseToBone[k]);
  
              // include hitboxes / bone render bounds
@@ -1115143,7 +1115163,7 @@ index bdb0c90..88f78b0 100644
                  bmin = VecMin(tmpMin, bmin);
                  bmax = VecMax(tmpMax, bmax);
              }
-@@ -8764,6 +9761,12 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8764,6 +9763,12 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                      pos.y += v.weight[mm] * tmp.y;
                      pos.z += v.weight[mm] * tmp.z;
                  }
@@ -1115156,7 +1115176,7 @@ index bdb0c90..88f78b0 100644
                  bmin = VecMin(pos, bmin);
                  bmax = VecMax(pos, bmax);
              }
-@@ -8796,21 +9799,38 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8796,21 +9801,38 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
      for (Anim& panim : m.anims) {
          Vector3& bmin = panim.bmin;
          Vector3& bmax = panim.bmax;
@@ -1115203,7 +1115223,7 @@ index bdb0c90..88f78b0 100644
          for (int a : seq.animIndices) {
              if (a < 0) continue;
              bmin = VecMin(m.anims[a].bmin, bmin);
-@@ -9066,6 +10086,13 @@ struct FlexSortEntry {
+@@ -9066,6 +10088,13 @@ struct FlexSortEntry {
      int sourceOrder;
  };
  
@@ -1115217,7 +1115237,7 @@ index bdb0c90..88f78b0 100644
  int FlexKeysSortFunc(const void* pv1, const void* pv2) {
      const FlexSortEntry* k1 = static_cast<const FlexSortEntry*>(pv1);
      const FlexSortEntry* k2 = static_cast<const FlexSortEntry*>(pv2);
-@@ -9107,7 +10134,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9107,7 +10136,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
          FlexKey* pFlexKey = sorted[i].key;
          src::Source* pVSource = pFlexKey->source;
          src::SrcMorphAnim* pVSourceAnim =
@@ -1115226,7 +1115246,7 @@ index bdb0c90..88f78b0 100644
          if (!pVSourceAnim)
              continue;
  
-@@ -9133,7 +10160,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9133,7 +10162,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
      }
  
      // remap each key's deltas onto its model's vertices (original key order)
@@ -1115235,7 +1115255,7 @@ index bdb0c90..88f78b0 100644
      int nSkippedUnmapped = 0;
      size_t nMaxModelVerts = 0;
      for (const Model& model : m.models)
-@@ -9144,7 +10171,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9144,7 +10173,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
      std::vector<uint8_t> pDoesMove(nMaxModelVerts, 0);
  
      for (FlexKey& key : m.flexkeys) {
@@ -1115244,7 +1115264,7 @@ index bdb0c90..88f78b0 100644
          if (!pVSourceAnim)
              continue;
          auto it = morphMaps.find(pVSourceAnim);
-@@ -9212,18 +10239,12 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9212,18 +10241,12 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -1115268,7 +1115288,7 @@ index bdb0c90..88f78b0 100644
  
      if (nSkippedUnmapped > 0) {
          std::fprintf(stderr, 
-@@ -9345,7 +10366,7 @@ void CullDuplicateFlex(Ctx& ctx) {
+@@ -9345,7 +10368,7 @@ void CullDuplicateFlex(Ctx& ctx) {
      std::vector<FlexController> kept;
      for (size_t c = 0; c < m.flexcontrollers.size(); ++c) {
          int survivor = -1;
@@ -1115277,7 +1115297,7 @@ index bdb0c90..88f78b0 100644
              if (_stricmp(kept[k].name.c_str(), m.flexcontrollers[c].name.c_str()) == 0) {
                  survivor = static_cast<int>(k);
                  break;
-@@ -9453,7 +10474,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
+@@ -9453,7 +10476,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
      std::vector<FlexKey> kept;
      kept.reserve(m.flexkeys.size());
      for (FlexKey& key : m.flexkeys) {
@@ -1115286,7 +1115306,7 @@ index bdb0c90..88f78b0 100644
              (key.flexdesc >= 0 && key.flexdesc < static_cast<int>(usedDesc.size()) &&
               usedDesc[key.flexdesc]) ||
              (key.flexpair > 0 && key.flexpair < static_cast<int>(usedDesc.size()) &&
-@@ -9792,6 +10813,7 @@ static std::string AnimSignature(const Anim& a) {
+@@ -9792,6 +10815,7 @@ static std::string AnimSignature(const Anim& a) {
      SigVal(s, a.looprestartpercent);
      SigVal(s, a.isBindPose);
      SigVal(s, a.noAutoIK);
@@ -1115294,7 +1115314,7 @@ index bdb0c90..88f78b0 100644
      SigVal(s, a.ignoreTransformAngles);
      SigVal(s, a.ignoreTransformPosition);
      SigVal(s, a.motionrollback);
-@@ -9831,6 +10853,7 @@ static std::string AnimSignature(const Anim& a) {
+@@ -9831,6 +10855,7 @@ static std::string AnimSignature(const Anim& a) {
          SigVal(s, c.copyEndFrame);
          SigVal(s, c.fadeIn);
          SigVal(s, c.fadeOut);
@@ -1115302,7 +1115322,7 @@ index bdb0c90..88f78b0 100644
          SigVal(s, c.copyPos);
          SigVal(s, c.copyRot);
          SigStr(s, c.xform.bone);
-@@ -10296,6 +11319,160 @@ bool ConvertIkRule(const CompileInput& input, const CompileInput::InIkRule& ir,
+@@ -10296,6 +11321,160 @@ bool ConvertIkRule(const CompileInput& input, const CompileInput::InIkRule& ir,
  }
  
  bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
@@ -1115463,7 +1115483,7 @@ index bdb0c90..88f78b0 100644
      Ctx ctx;
      ctx.in = &input;
      ctx.out = &out;
-@@ -10310,6 +11487,19 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10310,6 +11489,19 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                    : RadianEuler{0.0f, 0.0f, static_cast<float>(kPiD / 2.0)};
  
      out.outname = input.outname;
@@ -1115483,7 +1115503,7 @@ index bdb0c90..88f78b0 100644
      out.forceWriteVertexData = input.forceWriteVertexData;
      out.mats = &input.mats;
      // gamedatalist. CompiledModel already defaults surfaceprop to "default";
-@@ -10328,6 +11518,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10328,6 +11520,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      out.zeroFramesHighres = input.zeroFramesHighres;
      out.minZeroFramePosDelta = input.minZeroFramePosDelta;
      out.boneSaveFrames = input.boneSaveFrames;
@@ -1115491,7 +1115511,7 @@ index bdb0c90..88f78b0 100644
      out.bbox[0] = input.bbox[0];
      out.bbox[1] = input.bbox[1];
      out.bboxset = input.bboxSet;
-@@ -10383,11 +11574,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10383,11 +11576,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      out.jigglebones = std::move(input.jigglebones);
      out.proceduralbones = std::move(input.proceduralbones);
      out.aimatbones = std::move(input.aimatbones);
@@ -1115508,7 +1115528,7 @@ index bdb0c90..88f78b0 100644
          CompileInput::InAnim a;
          a.name = "@reference";
          a.bindpose = true;
-@@ -10400,12 +11595,32 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10400,12 +11597,32 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      }
  
      // ---- build models/bodyparts + anims/sequences from the script input ----
@@ -1115544,7 +1115564,7 @@ index bdb0c90..88f78b0 100644
          for (const auto& im : bp.models) {
              Model model;
              model.name = im.source ? im.name : "blank";
-@@ -10441,10 +11656,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10441,10 +11658,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             ch.first + "\" (" + std::to_string(nummodels) + " choices)";
                  return false;
              }
@@ -1115564,7 +1115584,7 @@ index bdb0c90..88f78b0 100644
          }
          out.bodygrouppresets.push_back(std::move(preset));
      }
-@@ -10467,6 +11689,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10467,6 +11691,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          a.fudgeloop = ia.fudgeloop;
          a.noAutoIK = ia.noAutoIK;
          a.nocull = ia.nocull;
@@ -1115572,7 +1115592,7 @@ index bdb0c90..88f78b0 100644
          a.ignoreTransformAngles = ia.ignoreTransformAngles;
          a.ignoreTransformPosition = ia.ignoreTransformPosition;
          a.motiontype = ia.motiontype;
-@@ -10703,6 +11926,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10703,6 +11928,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  cmd.forceRot = ic.forceRot;
                  break;
              case InCmd::RefMotion:
@@ -1115580,7 +1115600,7 @@ index bdb0c90..88f78b0 100644
              case InCmd::AppendAnim:
              case InCmd::WorldspaceBlend:
              case InCmd::MatchBlend:
-@@ -10714,7 +11938,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10714,7 +11940,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                      "\" in " + a.name;
                      return false;
                  }
@@ -1115594,7 +1115614,7 @@ index bdb0c90..88f78b0 100644
                             : (ic.kind == InCmd::Match)      ? AnimCmd::Match
                             : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
                             : (ic.kind == InCmd::WorldspaceBlend)
-@@ -10722,6 +11952,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10722,6 +11954,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
                                                             : AnimCmd::AppendAnim;
                  cmd.matchPre = ic.matchPre;
@@ -1115612,7 +1115632,7 @@ index bdb0c90..88f78b0 100644
                  cmd.matchPost = ic.matchPost;
                  cmd.worldLoops = ic.worldLoops;
                  cmd.motiontype = ic.motiontype;
-@@ -11045,6 +12286,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11045,6 +12288,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
              out.gflags |= STUDIOHDR_FLAGS_USE_SHADOWLOD_MATERIALS;
      }
      { PULSE_TIME_PASS("LoadLodSources"); LoadLodSources(ctx); }
@@ -1115626,7 +1115646,7 @@ index bdb0c90..88f78b0 100644
  
      // ---- bone pipeline (RemapBones) ----
      // $setbindpose / $setflex bake into the rest mesh first, so an archetype
-@@ -11085,6 +12333,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11085,6 +12335,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      PruneFlexDriverBones(ctx);
      CullUnskinnedJiggleBones(ctx);
  
@@ -1115642,7 +1115662,7 @@ index bdb0c90..88f78b0 100644
      { PULSE_TIME_PASS("TagUsedBones"); TagUsedBones(ctx); }
      {
          PULSE_TIME_PASS("BuildGlobalBonetable");
-@@ -11126,6 +12383,10 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11126,6 +12385,10 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // loader filled in script order, to pick attachment-vs-bone targeting.
      if (!MapAimAtBones(ctx, err))
          return false;
@@ -1115653,7 +1115673,7 @@ index bdb0c90..88f78b0 100644
  
      // ik chains/locks link against the final bone table BEFORE RealignBones
      // (reference: RemapBones -> LinkIKChains -> LinkIKLocks ->
-@@ -11149,6 +12410,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11149,6 +12412,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // straight after the realign that produced them.
      if (!RemapProceduralBones(ctx, err))
          return false;
@@ -1115662,7 +1115682,7 @@ index bdb0c90..88f78b0 100644
      if (input.stopAfterProcedural)
          return true;
  
-@@ -11161,9 +12424,26 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11161,9 +12426,26 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // resulting replacebone chains are flattened before any vertex is remapped
      // (reference: after RealignBones)
      ExpandLodBoneCollapses(ctx);
@@ -1115690,7 +1115710,7 @@ index bdb0c90..88f78b0 100644
      if (!input.bboxMeshes.empty()) {
          out.bbox[0] = out.bbox[1] = input.bboxMeshes.front()->globalVertices.front().position;
          for (const src::Source* mesh : input.bboxMeshes) {
-@@ -11190,10 +12470,12 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11190,10 +12472,12 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // the model bounds.
      { PULSE_TIME_PASS("BuildCollisionModel");
        if (!BuildCollisionModel(ctx, err)) return false; }
@@ -1115703,7 +1115723,7 @@ index bdb0c90..88f78b0 100644
  
      std::vector<WeightList> weightlists;
      BuildAnimationWeights(ctx, weightlists);
-@@ -11256,7 +12538,9 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11256,7 +12540,9 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // (RemapVertexAnimations, GenerateVertexAveragedAttachments, CullFlex) has
      // to have had its say first. What follows only ever takes min/max over all
      // vertices, which duplication cannot change.
@@ -1115714,7 +1115734,97 @@ index bdb0c90..88f78b0 100644
  
      { PULSE_TIME_PASS("SetupHitBoxes"); if (!SetupHitBoxes(ctx, err)) return false; }
      { PULSE_TIME_PASS("CompressAnimations"); CompressAnimations(ctx); }
-@@ -11575,6 +12859,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11414,16 +12700,41 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+     if (out.cdtextures.empty())
+         out.cdtextures.push_back("models/" + out.outname + "/");
+ 
++    // A shared skin group can contain columns for meshes absent from this
++    // model (for example, player hair in a view-arms QC). Only render meshes
++    // establish base columns. Snapshot them before replacements add materials,
++    // so one replacement cannot make an otherwise unused column appear used.
++    std::vector<bool> meshMaterials(input.mats.materialToTexture.size(), false);
++    auto markMeshMaterial = [&meshMaterials](int material) {
++        if (material >= 0 && material < static_cast<int>(meshMaterials.size()))
++            meshMaterials[material] = true;
++    };
++    for (const Model& model : out.models) {
++        if (model.source)
++            for (int i = 0; i < model.source->nummeshes; ++i)
++                markMeshMaterial(model.source->meshindex[i]);
++        for (const src::Source* lod : model.lodSources) {
++            if (lod)
++                for (int i = 0; i < lod->nummeshes; ++i)
++                    markMeshMaterial(lod->meshindex[i]);
++        }
++    }
++    std::vector<src::MaterialTable::Texture> skinBaseTextures;
++    for (const auto& tex : input.mats.textures)
++        if (tex.material >= 0 && meshMaterials[tex.material])
++            skinBaseTextures.push_back(tex);
++
+     // $texturegroup skin families, resolved before the row width is taken: a
+     // replacement the model does not already use appends a texture, and that
+     // texture has to be a material to be nameable in the skin table at all.
+     std::vector<std::vector<std::pair<int, int>>> families; // material -> material
++    std::vector<std::string> unusedSkinColumns;
+     for (size_t f = 0; f < input.skinFamilies.size(); ++f) {
+         std::vector<std::pair<int, int>> pairs;
+         for (const CompileInput::SkinReplace& r : input.skinFamilies[f]) {
+             int from = -1;
+             bool relative = true;
+-            for (const auto& tex : input.mats.textures) {
++            for (const auto& tex : skinBaseTextures) {
+                 if (tex.material >= 0 && MaterialNameMatches(tex.name, r.from)) {
+                     from = tex.material;
+                     relative = tex.relative;
+@@ -11431,11 +12742,14 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+                 }
+             }
+             if (from < 0) {
+-                if (err)
+-                    *err = "$texturegroup: set " + std::to_string(f + 1) +
+-                           " replaces \"" + r.from + "\", which is not a material of "
+-                           "this model";
+-                return false;
++                const bool warned = std::any_of(unusedSkinColumns.begin(), unusedSkinColumns.end(),
++                    [&](const std::string& name) { return _stricmp(name.c_str(), r.from.c_str()) == 0; });
++                if (!warned) {
++                    std::printf("WARNING: $texturegroup: ignoring unused base material \"%s\" "
++                                "(no render mesh); preserving skin family rows.\n", r.from.c_str());
++                    unusedSkinColumns.push_back(r.from);
++                }
++                continue;
+             }
+             // the replacement inherits the relative-path flag of what it
+             // replaces, so both resolve against the same cdmaterials rule
+@@ -11497,24 +12811,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+     {
+         src::MaterialTable& mats = input.mats;
+         const int numPreCull = static_cast<int>(mats.materialToTexture.size());
+-        std::vector<bool> used(numPreCull, false);
++        std::vector<bool> used = meshMaterials;
++        used.resize(numPreCull, false);
+         auto markUsed = [&used, numPreCull](int material) {
+             if (material >= 0 && material < numPreCull)
+                 used[material] = true;
+         };
+ 
+-        // every mesh that can be written names its material through meshindex
+-        for (const Model& model : out.models) {
+-            if (model.source)
+-                for (int i = 0; i < model.source->nummeshes; i++)
+-                    markUsed(model.source->meshindex[i]);
+-            for (const src::Source* pLod : model.lodSources) {
+-                if (!pLod)
+-                    continue;
+-                for (int i = 0; i < pLod->nummeshes; i++)
+-                    markUsed(pLod->meshindex[i]);
+-            }
+-        }
+         // $texturegroup: both ends of every replacement, including family 0's
+         for (const auto& pairs : families)
+             for (const auto& p : pairs) {
+@@ -11575,6 +12878,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          return false;
      }
      out.numskinref = nummaterials;
@@ -1115730,7 +1115840,7 @@ index bdb0c90..88f78b0 100644
      out.numskinfamilies = 1 + static_cast<int>(families.size());
      out.skinref.assign(out.numskinfamilies, std::vector<int16_t>(nummaterials));
      for (auto& row : out.skinref)
-@@ -11584,6 +12877,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11584,6 +12896,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          for (const auto& p : families[f])
              out.skinref[f + 1][p.first] = static_cast<int16_t>(p.second);
  
@@ -1115748,7 +1115858,7 @@ index bdb0c90..88f78b0 100644
      // $renamebone, last of everything: the bone name plus every string still
      // resolved by name at write time - $bonesaveframe, and the .phy text tail
      // (solid, parent, rootname, jointmerge).
-@@ -11594,7 +12898,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11594,7 +12917,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                          rename.first.c_str());
              continue;
          }
@@ -1115758,7 +1115868,7 @@ index bdb0c90..88f78b0 100644
              if (err)
                  *err = "$renamebone: \"" + rename.second + "\" is already a bone of "
                         "this model";
-@@ -11616,6 +12921,60 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11616,6 +12940,60 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
              swap(merge.first);
              swap(merge.second);
          }
