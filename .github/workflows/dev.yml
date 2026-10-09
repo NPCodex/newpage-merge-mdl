@@ -40,6 +40,13 @@ jobs:
           cp "dist/NewPageMergeMDL${{ matrix.ext }}" "dist/NewPageMergeMDL-Decompiler${{ matrix.ext }}" \
              LICENSE NewPageMergeMDL/
           cp -r dist/subtools NewPageMergeMDL/
+          cp "dist/NewPageVRMLtoX3D${{ matrix.ext }}" NewPageMergeMDL/
+          cp -r tools integration NewPageMergeMDL/
+          cp README.md README.en.md FIVE_COMPILER_COMPLETION.md O5_FORMAT_IMPORTS.md \
+             MESH_STATE_WORKFLOW.md VRM_RUNTIME.md NewPageMergeMDL/
+          mkdir -p NewPageMergeMDL/libs/assimp/contrib
+          cp -r libs/assimp/contrib/pugixml NewPageMergeMDL/libs/assimp/contrib/
+          cp -r libs/tinyusdz NewPageMergeMDL/libs/
 
       - uses: actions/upload-artifact@v7
         with:

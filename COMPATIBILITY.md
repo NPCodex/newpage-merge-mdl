@@ -13,9 +13,25 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current version: **v1.2.22**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+Current version: **v1.2.23**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
 
-## v1.2.22: fixed scope complete
+## v1.2.23: five-compiler integration
+
+The fixed R1–R6 / E1–E3 / V1–V7 / S1–S6 / O1–O5 scope and explicit H exclusions are tracked in [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md). Older restrictions below are historical where superseded.
+
+`$qccompatibility neko` allows bare RHS strings, makes an undefined LHS comparison false (including `!=`), and skips later `elif` evaluation after a winner. Scientific notation is not newly promoted to decimal comparison. Native strict conditions remain the default. `$boneweightpolicy ce` culls normalized imported weights below .001 and renormalizes; native/neko keep .0001. Policies capture their source context and participate in cache identity.
+
+`$fbxcompatibility neko` selects Assimp, a default 30 Hz sample rate, and its UpAxis setting; native uses ufbx/file FPS. True FBX cluster bind matrices are independent of sampled rest/animation transforms. Assimp pre/post behaviors and authored key interpolation are consumed; Collada STEP/LINEAR/BEZIER is evaluated before Assimp can discard the curve. Unsupported tangent representations require explicit author-side baking.
+
+Game defaults are read once from `Tools/studiomdl` and `cfg/commandline.cfg` keyed by the case-insensitive QC filename stem. Priority is gameinfo < cfg < explicit CLI; `-nodefaultargs` disables injection. Output transactions recover their durable journal before sequence remapping on the next compile. Changed files and damaged journals are retained for review; hardware failure cannot be made unconditionally lossless.
+
+The former model-wide flex thresholds are removed: each final split mesh still obeys the uint16 index boundary. The 511451-moving-vertex case preserves all deltas/geometry; this is a file-writing validation, not a guarantee about every game's runtime budget. Early bone usage now includes lower LOD skin, explicit hitboxes and surviving animation.
+
+Runtime extensions require their supplied consumers: [mesh states](MESH_STATE_WORKFLOW.md), [VRM](VRM_RUNTIME.md). Positive uniform skinned instance transforms expand into actual independent geometry/bones; arbitrary nonuniform/sheared skeletal instance animation requires prior baking. Extra import formats and dependency/license boundaries are documented in [O5_FORMAT_IMPORTS.md](O5_FORMAT_IMPORTS.md). `-importformats` lists actual enabled importers rather than a universal format-equivalence claim.
+
+The complete locally built Windows x64 package includes the separately linked C4D helper. Automated Windows CI packages omit it because they do not acquire the licensed Cineware SDK; Linux accepts previously converted GLB files. C4D acceptance covers editable polygons, hierarchy, material names/basic diffuse colors, UVs and normals. Generated caches, skin/animation and shader baking are outside that importer. The main Windows executable embeds its UTF-8 manifest in MinGW builds as well as MSVC; VPK index keys remain raw bytes so legacy Latin-1 archive names do not break unrelated resource lookup.
+
+## v1.2.22 historical record: fixed scope complete
 
 The following 11 packages are implemented in actual input, compilation and output paths. “Complete” refers to their fixed scope and stated validation, rather than universal model or runtime equivalence.
 
@@ -167,10 +183,10 @@ before QC commands. `$PUSHDProcedural` is a QC command only.
 
 | Commands / options | Implemented behavior |
 | --- | --- |
-| `$DontDestroy`, `-DontDestroy` | Accepts the project's default no-cleanup-on-error policy. v1.2.9 stages checked writes and rolls back handled replacement failures. Power loss and forced termination are not covered. |
+| `$DontDestroy`, `-DontDestroy` | Accepts the project's default no-cleanup-on-error policy. v1.2.23 adds durable transaction journals, per-output locks and recovery after process termination before the next compile reads old sequence order. Externally changed files/corrupt journals are preserved and reported; arbitrary hardware failure or power-loss reordering is not guaranteed lossless. |
 | `$OverrideFlexControllers` | Reuses an existing controller index and replaces its type and range. |
 | `$AllowDuplicationFlexControllers` | Retains distinct controller table entries with the same name. |
-| `$AddInvStudioFlexes`, model-block `InvertControllers` | Adds `_Inv` morphs, negative vertex deltas and negative flex rules, including stereo descriptors. Referenced ordinary controllers use range -1..1. Complex DMX controller remaps need further parity testing. |
+| `$AddInvStudioFlexes`, model-block `InvertControllers` | Adds `_Inv` morphs, negative vertex deltas and negative flex rules, including stereo descriptors. Referenced ordinary controllers use range -1..1. v1.2.23 fixed acceptance covers multi-bone/controller-remap and corrective/inverse combinations; arbitrary rigs are not claimed equivalent. |
 | `addcontrollerbyflex [type min max]` | Toggles automatic controller creation for subsequent flexes; type/range are required when enabling. Honors the documented range. |
 | `$ZeroFlexDecay` | Sets VTA/DMX vertex animation speeds to 255. |
 | `$DefaqScale`, `$IgnoreDMXDefaq`, flex `fscale value` | Multiplies flex position and normal deltas by 10; DMX can opt out. Per-VTA-key `fscale` overrides the global multiplier and supports negative values. |
@@ -207,7 +223,7 @@ is a behavioral reference, not bundled or called by this compiler.
 | `$RenameMorph old new` | Native mode retains strict global renaming. With preceding `$dmxcompatibility neko`, maps exact FBX/glTF names once, ignores missing names, uses the latest definition and preserves QC declarations. Named flex blocks select keys. Ambiguous destinations fail explicitly. |
 | `$prefer_fbx`, `$forcecapsules` | v1.2.8 accepts both with warnings and no arguments. FBX import is automatic; capsules are not generated. |
 | `-usenvtristrip` | v1.2.8 historical alias for `-nvtristrip`, selecting NvTriStrip. |
-| `$NoFastGltf` | Uses Assimp for subsequent glTF geometry/skin references. Since v1.2.11, original glTF animation accessors are sampled separately to retain LINEAR/STEP/CUBICSPLINE semantics, including quaternions and bake tracks. Parsed scene geometry is shared between private InNode loads. |
+| `$NoFastGltf` | Uses Assimp for subsequent glTF geometry/skin references. Since v1.2.11, original glTF animation accessors are sampled separately to retain LINEAR/STEP/CUBICSPLINE semantics, including quaternions and bake tracks. Parsed scene geometry is shared between private InNode loads. v1.2.23 detects GPU instances and explicitly switches to the native expansion path so instances are retained. |
 | `studio file InNode name` | Selects meshes on that scene node and descendants; a missing node is an error. Supported by body/model/bodygroup and NekoModel; available for FBX too. |
 | `$FPS N`, `Pick name`, `SampleRate N` | FPS sets subsequent default animation playback and scene sampling. Pick aliases blockname. SampleRate changes import sampling, independently of playback FPS. Default clip is the first non-BindPose animation. Rates must be finite, positive and at most 1000. FBX keeps its original scene rate unless FPS/SampleRate explicitly overrides it. |
 | `$UpAxis y\|z gltf`, `$UpAxis y\|z assimp` | Independent scene import axes, default Y-up. A bare UpAxis retains existing model-wide behavior. ufbx FBX retains its native coordinate conversion. |
@@ -230,10 +246,15 @@ is a behavioral reference, not bundled or called by this compiler.
 
 Static node scale is baked into geometry. Animated scene scale is supported via opt-in sampled vertex-cache baking; see VALIDATION.md. Native MDL bone-scale tracks are not emitted.
 
-Unimplemented or unverified: complete historical source-clamp
-algorithm parity, all scene formats/complex rigs, mesh swaps, skinned instancing, and engine integration beyond the bounded GMod validation. v1.2.11 fixes lost STEP/CUBICSPLINE semantics on the glTF Assimp path; interpolation in other formats remains unverified. No claim of whole-file or
-performance equality is made. PulseModel updates retain these maintained source
-changes through the overlay; Neko reference updates are reviewed manually.
+Current v1.2.23 scope includes positive-uniform skinned instances, finite mesh-state
+switching with a GMod consumer, explicit VRM preparation/runtime helpers and the
+extra import paths documented above. Assimp key/boundary and Collada curve cases
+extend the earlier glTF interpolation checks. Source-stage clamp ordering, arbitrary
+scene/rig equivalence, complete foreign runtimes and universal performance equality
+are not promised. The fixed policies and reference evidence are closed in
+[FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md). PulseModel updates
+retain these maintained changes through the overlay; Neko reference updates are
+reviewed manually.
 
 ## CS:GO reference investigation
 
@@ -258,13 +279,13 @@ Historical core compiler reference files remain outside the release archives. Th
 
 No performance improvement is claimed from this bounds correctness fix.
 
-## v1.2.0 safety and stress validation
+## v1.2.0 historical record safety and stress validation
 
 SMD nodes require a valid parent defined before the child. Coordinates and weights must be finite; influences are nonnegative and limited to the loader's 16 input slots. Invalid inputs fail before output. A 256-bone model uses frame animation encoding to avoid the RLE bone-255 terminator collision. Standard MDL/VVD tables cannot encode more than 256 final bones; the writer rejects this even when a larger `$ModelBudget` is requested. 512 source bones can be collapsed to fit the output budget.
 
 A real 172.88 MiB VTA and 130 output materials pass serialization tests. See [RESEARCH.md](RESEARCH.md) for measured partition/loading improvements, the supplied extreme model and reference-program startup limitations.
 
-## v1.2.1 investigation results
+## v1.2.1 historical record investigation results
 
 LOD replacement chains are flattened; identity mappings are accepted, cycles and conflicting targets fail. Output tests verify bone-palette remapping over DX80/DX90 palette boundaries and LOD replacement, alongside retained IK links and procedural controls.
 
@@ -274,7 +295,7 @@ Oversized RLE records and constant translations outside the half-float range swi
 
 PHY string serialization no longer uses fixed 512-byte buffers for keyed strings or joint-merge names. A 600-character surface property and root-bone name survive output. Simulation behavior remains unverified. See RESEARCH.md for benchmark scope and unresolved global clamp, full rig and 512-final-bone work.
 
-## v1.2.2 capacity, clamp and collision behavior
+## v1.2.2 historical record capacity, clamp and collision behavior
 
 Body combination capacity is 2^31, with signed nonnegative body values; integer multiplication and preset handling are checked. Since v1.2.5, validation checks the actual stored base for each selectable group rather than rejecting solely on the final Cartesian product; presets use checked 64-bit intermediates. Skin family count is capped at 8388608, but the actual table must also fit signed 32-bit offsets and configured MDL/file budgets.
 
@@ -286,19 +307,19 @@ Body combination capacity is 2^31, with signed nonnegative body values; integer 
 
 The supplied extreme QC now fails at Shoes: 2774532096 body combinations exceed capacity. Its source files are unchanged. Isolated Hair1 geometry passes global clamping, and complete Alyx/Neko examples pass. See RESEARCH.md for tests and remaining work.
 
-## v1.2.3 material merging and glTF extensions
+## v1.2.3 historical record material merging and glTF extensions
 
 Model-scoped `RenameMat` can merge several material IDs into one name. Vertex and face ranges are regrouped in ascending material order; morph indices and face tags follow the remapping. Vertices are retained rather than welded, preserving normal/UV seams. Other body choices remain private. This does not change top-level `$renamematerial` or `$renametextures` table-renaming semantics.
 
-The fast glTF/GLB/VRM path decodes meshopt compressed buffer views using the bundled meshoptimizer v1.1 codecs. Supported modes: ATTRIBUTES, TRIANGLES, INDICES; filters: NONE, OCTAHEDRAL, QUATERNION, EXPONENTIAL, COLOR. EXPONENTIAL and both index modes have dedicated fixture comparisons; other filters use the dependency decoder but lack dedicated output fixtures. Quantization filters need not reproduce the original floats bit-for-bit. Buffer range, decoded size and stream failures are checked before output.
+The fast glTF/GLB/VRM path decodes meshopt compressed buffer views using the bundled meshoptimizer v1.1 codecs. Supported modes: ATTRIBUTES, TRIANGLES, INDICES; filters: NONE, OCTAHEDRAL, QUATERNION, EXPONENTIAL, COLOR. At v1.2.3, EXPONENTIAL and both index modes had dedicated fixture comparisons; v1.2.23 adds OCTAHEDRAL, QUATERNION and COLOR output fixtures. Quantization filters need not reproduce the original floats bit-for-bit. Buffer range, decoded size and stream failures are checked before output.
 
-`EXT_mesh_gpu_instancing` expands unskinned meshes into generated child nodes sharing imported mesh data. Node/ancestor transforms compose with instance translation/rotation/scale. Morph deltas remain attached to each instance. `InNode` includes generated children. Singular scales, zero/non-finite quaternions and malformed accessor types fail explicitly. Generated names avoid collisions; the expanded scene is still subject to the source bone/node limit. Draco and sampled scale/morph-weight baking are implemented and bounded GMod verification is available. Skinned instances remain unsupported.
+At v1.2.3, `EXT_mesh_gpu_instancing` expanded unskinned meshes into generated child nodes sharing imported mesh data. Node/ancestor transforms compose with instance translation/rotation/scale. Morph deltas remain attached to each instance. `InNode` includes generated children. Singular scales, zero/non-finite quaternions and malformed accessor types fail explicitly. Generated names avoid collisions; the expanded scene is still subject to the source bone/node limit. Draco and sampled scale/morph-weight baking were added subsequently. Skinned instances were absent at v1.2.3; v1.2.23 implements positive-uniform instances as documented above.
 
-## v1.2.4 resources and baking
+## v1.2.4 historical record resources and baking
 
 See [VALIDATION.md](VALIDATION.md) for mounts, Draco, vertex-cache QC/playback, ragdolls, reference differentials and repeatable performance reports. VTA eyelid poses no longer create an orphan generic descriptor before their actual eyelid registration.
 
-## v1.2.7 explicit reference flex policies
+## v1.2.7 historical record explicit reference flex policies
 
 `$dmxcompatibility native|ce|neko` selects flex registration behavior. Native is the default and retains controller/rule deduplication and automatic DMX rules. CE preserves per-body controllers and omits automatic combination rules; Neko preserves per-body controllers and repeated rules. Explicit QC expressions remain supported. Generated scene-baking playback rules are retained in all modes. Selecting a reference mode sets `$flexcullmethod none`; a later explicit `$flexcullmethod` can override that choice. Use this command before model declarations for clarity. It does not claim complete byte-level reference parity. Twenty-eight bounded reference comparisons cover DMX, VTA, stereo, descriptor dependencies, eyelids, IK, LOD, attachments and jiggle combinations.
 
@@ -346,7 +367,7 @@ The table records v1.2.15 behavior. CONTENT/LOD limits were superseded in v1.2.1
 
 The 31 supported entries include legacy warning aliases and existing native behavior, not 31 new algorithms or full CSGO parity. Nineteen targeted cases inspect output controllers/flags, geometry, UV/tangents, hierarchy, bounding boxes, physics output changes, lookup, attachment/bodygroup indices, virtual morphs and pre-write remap errors. These are native output regressions against the inspected command contracts; they are not new CE/CSGO binary differential or in-game certification. Reference programs/source files and user model assets are excluded from this repository.
 
-## v1.2.16: target game VTX selection
+## v1.2.16 historical record: target game VTX selection
 
 `-game` gameinfo FileSystem/SteamAppId 730 and 1012110 select extended VTX (33-byte strip groups, 35-byte strips), even when SearchPaths is absent. Unknown/missing targets retain legacy defaults. Explicit pulseqc vtx_archetype or QC $vtxformat wins over detection, and CLI -vtxformat wins over both. Explicit legacy selection for these targets warns. Full VTX does not emit DX80.
 

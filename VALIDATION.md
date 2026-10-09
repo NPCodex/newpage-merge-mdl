@@ -1,4 +1,34 @@
-# v1.2.22 当前验证
+# v1.2.23 当前验证
+
+本轮固定五编译器清单见 [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md)，机器可读结果见 [v1.2.23-validation.json](tests/reports/v1.2.23-validation.json)。本地 Windows x64 编译器通过 **368 项兼容回归、20 项自动化、9 项 CONTENT 挂载、9 项 Lua、7 项 C4D、5 项输出事务恢复测试**。专项数量单独列出，不作为新增功能数量。
+
+| 范围 | 结果与边界 |
+| --- | --- |
+| 默认参数及兼容策略 | gameinfo/cfg/CLI 优先级、Neko 条件、CE 归一化权重过滤和两条 FBX 导入策略通过；互斥默认值采用明确选项。 |
+| 容量与骨骼 | 32769、65537、511451 移动 flex 顶点验证实际增量/索引/几何与 VTX；局部 uint16 边界仍保留。低 LOD、显式 hitbox 和动画使用骨的提前裁除已修复。NoBoneRealign 数值对照使用输出 MDL 本身的量化精度上界。 |
+| 场景与动画 | FBX cluster bind 与 rest 分离、双骨/多采样、Collada STEP/LINEAR/BEZIER、PMX 命名 vertex/group morph、四种 meshopt filter、蒙皮实例展开及 VRM 1.0 显式弹簧链通过。非均匀/反射物理变换需要烘焙或自定义适配。 |
+| 额外格式 | M3D、固定 tinyusdz 的 USDA 单根/多根场景、独立 VRML 转换/编译通过。实际 Assimp 注册表为 50 项、77 个唯一扩展名；不是每种格式完整行为认证。VRML 独立构建成功，源码及依赖随包提供。 |
+| C4D | 自制四边形文档验证几何、层级、材质颜色/名称、UV/法线、节点筛选、错误保护、临时清理、Unicode/空格路径。SDK 和示例/文档不分发。完整本地 Windows ZIP 附静态桥接，CI 包无桥接；程序化生成器、蒙皮、动画和着色网络不在 importer 范围。 |
+| 输出恢复与路径 | 五项真实进程中断/并发测试通过；损坏 journal 或外部修改文件保留并报错。MinGW 主程序嵌入 UTF-8 manifest；L4D2 VPK 中两个历史 Latin1 文件名不再使无关资源索引崩溃，附安全路径回归。 |
+| Plum 原始生产输入 | 126 bones、572277 vertices、18 physics bodies；MDL/PHY 总质量均 30，65 个材质均可解析且引用贴图完整。原始 QC 与 249 个供给材质文件散列未变。 |
+| 参考边界 | CE replacemesh 候选语法均失败，保留未知。2013 依赖恢复后确认 max64 材质、255 最终骨、9000 移动顶点的大 VTA；30000 移动顶点触发 max10000。Neko 128 个不同 skin 行成功，256/1024 测试崩溃，只报告成功下界。 |
+| 性能 | 对原始 Plum 和自制 90000 顶点模型，成功配置各三次顺序测量。Plum 本工具/CE 中位 1.713s/10.850s、峰值 628.6/696.1 MiB；最终骨数 126/104 不同，不作为等同输出倍数。其他参考失败和 Neko VTX 覆盖不足均记录。 |
+
+| 本轮游戏 | 实测结果 |
+| --- | --- |
+| Garry's Mod，2026.10.08 | `gm_flatgrass` 离线：6 项客户端及 2 项服务端检查通过。bodygroup 读回序列 0/1/2/1/0，LOD 0/1、jiggle 骨矩阵、2 物理体/质量 10 及落地有限坐标通过。VRM flex 读回约 .8，独立材质 RGB=(1,.2,.1)、alpha=.7、UV=(1.25,1.5)，真实弹簧回调产生有限 tail；画面确认红色三角与蓝色模型，无缺失材质棋盘。 |
+| L4D2，2.2.4.3 / build 10097 | `c1m1_hotel` 离线：states/avatar/basic 三个自制模型均创建为 prop_dynamic，模型名读回正确；画面可见几何，无 ERROR/缺失材质棋盘。此项证明普通模型加载，不是 GMod Lua 模块在 L4D2 可执行的声明。 |
+| Insurgency，build 9810 | 自有实例进入 `contact`，三模型已编译并临时安装，但 netconsole 指令无回显；并发用户输入及 Steam 启动弹窗阻挡进一步 UI 检查。模型加载/动画/材质/物理均未认证。 |
+| HL2 / CS:S / TF2 / SFM | 本轮未发现对应已安装应用清单，未运行；不记为通过。 |
+| CSGO / MCV | 沿用各历史章节所述证据，没有将它们计为本轮新执行。 |
+
+GMod 的 `GetSubMaterial` 在客户端读回服务器值，空字符串不代表客户端覆盖失败。材质模块返回实际克隆记录用于检查，并允许 `previousOverrides` 显式保存原客户端覆盖；这不是禁止客户端专用模型的理由。弹簧验收没有逐帧参考等价或零穿透保证。自有测试进程结束后，登记的临时文件与配置按清单清理/恢复，详情见报告。
+
+最终发行包会解压并运行包内编译器、VRML 脚本/转换器和随附 C4D 桥接的测试。云端 Windows/MSVC 与 Linux 产物拥有独立的构建、测试和包清单，不套用本地二进制散列。
+
+原始证据保存在本机 `.diagnostics/v1223-*`、`c4d-bridge-validation/`、`runtime-v1223/`、`integration-reference-20261009/` 与 `integration-performance-v1223/`。公开报告保留散列和有界结论，用户素材及参考二进制不进入仓库。以下均为历史记录。
+
+# v1.2.22 历史验证
 
 最终 Windows x64 二进制通过 **325 项兼容回归、20 项自动化回归、6 项 CONTENT 挂载专项**。完整记录见 [v1.2.22-validation.json](tests/reports/v1.2.22-validation.json)。固定的 A1–A7、B1–B4 共 11 个功能包已完成，逐项范围与排除项见 [CSGO_PORTING_SCOPE.md](CSGO_PORTING_SCOPE.md)；输入说明见 [布料指南](CSGO_CLOTH_AUTHORING.md) 和 [DMX 指南](CSGO_DMX_INPUTS.md)。
 

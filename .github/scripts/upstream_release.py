@@ -130,7 +130,8 @@ def create_source(root, pulse_repo, revision, base, patch):
     # Preserve upstream vendored source/license formatting. Whitespace checks
     # still gate maintained compiler code; apply --3way --index rejects conflicts.
     run('git', 'diff', '--check', '--cached', '--', '.',
-        ':(exclude)libs/assimp/**', ':(exclude)libs/cgltf/cgltf.h', cwd=root)
+        ':(exclude)libs/assimp/**', ':(exclude)libs/tinyusdz/**',
+        ':(exclude)libs/cgltf/cgltf.h', cwd=root)
 
 
 def release_version(base, previous, content_fingerprint):
@@ -221,7 +222,7 @@ def prepare(args):
     candidate = work / 'candidate'
     create_source(candidate, config['pulsemodel'], state['pulsemodel']['sha'], config['pulse_base'], overlay)
     # Ship the controller's automation, tests and user documentation, never upstream workflows.
-    for name in ('.github', 'automation', 'tests', 'integration'):
+    for name in ('.github', 'automation', 'tests', 'integration', 'tools'):
         target = candidate / name
         if target.exists():
             if candidate.resolve() not in target.resolve().parents:
@@ -231,7 +232,8 @@ def prepare(args):
     for name in ('README.md', 'README.en.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md', 'AGENTS.md', '.gitignore'):
         shutil.copy2(ROOT / name, candidate / name)
     stamp_version(candidate, base_version, state['project_version'])
-    for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md'):
+    for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md',
+                 'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
         if (ROOT / name).is_file():
             shutil.copy2(ROOT / name, candidate / name)
     run(sys.executable, candidate / '.github/scripts/refresh_overlay.py', '--base-repository', candidate)
@@ -262,6 +264,13 @@ def prepare(args):
         'per-bone ragdoll decomposition, expanded reference differentials, actual GMod '
         'geometry/LOD/facial/physics checks and phase/memory benchmark reports. '
         'See VALIDATION.md for usage and bounded verification results.\n\n'
+        'The v1.2.23 fixed five-compiler ledger is in FIVE_COMPILER_COMPLETION.md. '
+        'It adds explicit QC/weight/FBX policies, true FBX bind poses, expanded flex capacity, '
+        'scene interpolation, PMX morphs, skinned instancing, mesh-state/VRM consumers and '
+        'journaled output recovery. M3D and pinned USD import are built in; VRML uses a '
+        'separate GPL converter with corresponding source. Automated packages omit the '
+        'optional proprietary-SDK C4D helper; a separately verified complete local Windows '
+        'package may include it. See O5_FORMAT_IMPORTS.md for format and license scope.\n\n'
         'Both platform builds and compatibility tests must pass before publication. '
         'The attached source archive is the actual merged build input; '
         'GitHub-generated source archives correspond to the controller commit.\n'
@@ -292,7 +301,8 @@ def package(args):
         for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
             archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
-        for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md'):
+        for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md',
+                     'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
             if (Path(args.source) / name).is_file():
                 archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
         for path in sorted((Path(args.source) / 'tests/reports').glob('*-validation.json')):
@@ -300,10 +310,14 @@ def package(args):
         for path in sorted((Path(args.source) / 'integration').rglob('*')):
             if path.is_file():
                 archive.write(path, Path('NewPageMergeMDL') / path.relative_to(args.source))
+        for folder in ('tools', 'libs/assimp/contrib/pugixml', 'libs/tinyusdz'):
+            for path in sorted((Path(args.source) / folder).rglob('*')):
+                if path.is_file() and '__pycache__' not in path.parts and path.suffix != '.pyc':
+                    archive.write(path, Path('NewPageMergeMDL') / path.relative_to(args.source))
         # Preserve bundled third-party license notices.
         for path in sorted((Path(args.source) / 'libs').rglob('*')):
             nv_notice = path.parent.name in {'nvtristrip', 'meshoptimizer'} and path.name in {'README.txt', 'SOURCE.md'}
-            if path.is_file() and ('license' in path.name.lower() or 'copying' in path.name.lower() or nv_notice):
+            if path.is_file() and 'pugixml' not in path.parts and 'tinyusdz' not in path.parts and ('license' in path.name.lower() or 'copying' in path.name.lower() or nv_notice):
                 archive.write(path, Path('NewPageMergeMDL') / path.relative_to(args.source))
 
 

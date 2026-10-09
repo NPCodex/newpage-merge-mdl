@@ -1,7 +1,7 @@
 # mdlcompiler - the single portable executable.
 
 add_executable(mdlcompiler main.cpp dmxloader.cpp dmxrig.cpp smdloader.cpp
-               fbxloader.cpp sceneloader.cpp gltfscene.cpp resources.cpp meshedit.cpp compile.cpp facemarkup.cpp
+               fbxloader.cpp sceneloader.cpp gltfscene.cpp c4dbridge.cpp resources.cpp meshedit.cpp compile.cpp facemarkup.cpp
                flexreg.cpp qcloader.cpp writemdl.cpp outputfiles.cpp writevtx.cpp writephy.cpp
                surfaceproperties.cpp cloth.cpp clothadvanced.cpp clothprojection.cpp subd.cpp dmxeval.cpp)
 # Each tool owns its own version; there is no project-wide one.
@@ -12,9 +12,16 @@ target_compile_definitions(mdlcompiler PRIVATE PULSEMODEL_VERSION="${PROJECT_VER
 # Explorer's Details tab (file description, product name/version, copyright).
 if(WIN32)
     target_link_libraries(mdlcompiler PRIVATE user32 advapi32 psapi)
+    set(MDL_UTF8_MANIFEST_RESOURCE "")
+    if(MINGW)
+        # MinGW ignores .manifest target sources; embed it through windres.
+        set(MDL_UTF8_MANIFEST_RESOURCE "1 24 \"${CMAKE_SOURCE_DIR}/utf8.manifest\"")
+    endif()
     configure_file(version.rc.in "${CMAKE_CURRENT_BINARY_DIR}/version.rc" @ONLY)
-    target_sources(mdlcompiler PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
-                                       "${CMAKE_SOURCE_DIR}/utf8.manifest")
+    target_sources(mdlcompiler PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc")
+    if(NOT MINGW)
+        target_sources(mdlcompiler PRIVATE "${CMAKE_SOURCE_DIR}/utf8.manifest")
+    endif()
 endif()
 # pulse_vhacd is named directly (not just via pulse_phys) because the compile
 # stage calls the decomposition API for PhysicsShapeFromRender.

@@ -3344,7 +3344,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
         outputs.push_back({phyPath, phyBuf.data(), phyBuf.size()});
     }
 
-    if (!SaveOutputSet(outputs, err)) return false;
+    if (!SaveOutputSet(outputs, base, err)) return false;
 
     // footer: the shared output dir once, then each file by name with its
     // checksum (mstudiohdr_t::checksum, mdl.h - shared by .mdl/.vvd/

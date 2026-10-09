@@ -6,10 +6,12 @@ import argparse
 import json
 import os
 from pathlib import Path, PurePosixPath
+import struct
 import subprocess
 import sys
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 
 
 def verify(archive, expected, destination):
@@ -24,10 +26,23 @@ def verify(archive, expected, destination):
         manifest = json.loads(package.read('NewPageMergeMDL/upstream-manifest.json'))
         if manifest != expected:
             raise ValueError('Packaged source provenance does not match preparation manifest')
-        for name in ('README.md', 'README.en.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'integration/gmod/newpage_vertexanim.lua'):
+        for name in (
+            'README.md', 'README.en.md', 'VALIDATION.md', 'IMPROVEMENTS.md',
+            'FIVE_COMPILER_COMPLETION.md', 'O5_FORMAT_IMPORTS.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md',
+            'integration/gmod/newpage_vertexanim.lua', 'integration/gmod/newpage_meshstates.lua',
+            'integration/gmod/newpage_vrm.lua', 'integration/gmod/newpage_vrm_materials.lua',
+            'tools/mesh_states.py', 'tools/vrm_runtime.py', 'tools/vrml_import.py',
+            'tools/vrml_converter/CMakeLists.txt', 'tools/vrml_converter/main.cpp',
+            'tools/vrml_converter/meshlab/Parser.cpp', 'tools/vrml_converter/meshlab/Parser.h',
+            'tools/vrml_converter/meshlab/Scanner.cpp', 'tools/vrml_converter/meshlab/Scanner.h',
+            'tools/vrml_converter/meshlab/LICENSE', 'tools/vrml_converter/meshlab/SOURCE.md',
+            'libs/assimp/contrib/pugixml/src/pugixml.cpp', 'libs/assimp/contrib/pugixml/src/pugixml.hpp',
+            'libs/assimp/contrib/pugixml/src/pugiconfig.hpp', 'libs/assimp/contrib/pugixml/LICENSE.md',
+            'libs/tinyusdz/LICENSE', 'libs/tinyusdz/LICENSE-APACHE-2.0',
+        ):
             package.getinfo('NewPageMergeMDL/' + name)
         suffix = '.exe' if os.name == 'nt' else ''
-        for tool in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler'):
+        for tool in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D'):
             binary = package.read('NewPageMergeMDL/' + tool + suffix)
             if not binary.startswith(b'MZ' if os.name == 'nt' else b'\x7fELF'):
                 raise ValueError('Invalid native executable: ' + tool)
@@ -38,6 +53,33 @@ def verify(archive, expected, destination):
             if binary.is_file() and binary.read_bytes()[:4] == b'\x7fELF':
                 binary.chmod(0o755)
     return root / ('NewPageMergeMDL' + suffix)
+
+
+def exercise_packaged_vrml(compiler, destination):
+    """Exercise the shipped script/helper rather than the checkout copies."""
+    work=Path(destination)/'vrml-smoke';work.mkdir()
+    source=work/'source 场景.wrl';output=work/'converted 场景.x3d'
+    source.write_text('''#VRML V2.0 utf8
+Transform { translation 2 3 4 children [ Shape { geometry IndexedFaceSet {
+  coord Coordinate { point [0 0 0, 1 0 0, 0 1 0] }
+  coordIndex [0 1 2 -1]
+} } ] }
+''',encoding='utf-8')
+    script=compiler.parent/'tools/vrml_import.py'
+    converter=compiler.with_name('NewPageVRMLtoX3D'+compiler.suffix)
+    subprocess.run([sys.executable,str(script),str(source),'--output',str(output),
+                    '--compiler',str(compiler),'--game',str(work),'--modelname','vrml_package','--upaxis','z'],check=True)
+    tree=ET.parse(output)
+    if tree.find('.//IndexedFaceSet') is None or tree.find('.//Transform').get('translation')!='2 3 4':
+        raise ValueError('Packaged VRML converter lost geometry/hierarchy')
+    from validate_outputs import validate
+    validate(work/'models/vrml_package.mdl')
+    if struct.unpack_from('<i',(work/'models/vrml_package.vvd').read_bytes(),16)[0]!=3:
+        raise ValueError('Packaged VRML bridge did not compile its triangle')
+    old=output.read_bytes();source.write_text('#VRML V2.0 utf8\nShape { geometry IndexedFaceSet {\n')
+    failed=subprocess.run([str(converter),str(source),str(output)],capture_output=True)
+    if failed.returncode==0 or output.read_bytes()!=old:
+        raise ValueError('Packaged VRML converter replaced output for an invalid source')
 
 
 def main():
@@ -51,6 +93,13 @@ def main():
         banner = subprocess.run([str(compiler), '-version'], capture_output=True, text=True, errors='replace')
         if 'v' + expected['project_version'] not in banner.stdout:
             raise ValueError('Executable version does not match packaged source version')
+        exercise_packaged_vrml(compiler,folder)
+        c4d=compiler.with_name('NewPageMergeMDL-C4D.exe')
+        if os.name=='nt' and c4d.is_file():
+            if c4d.read_bytes()[:2]!=b'MZ':raise ValueError('Invalid native C4D helper')
+            subprocess.run([sys.executable,str(Path(__file__).with_name('c4d_bridge_test.py')),str(compiler)],check=True)
+        else:
+            print('Optional Windows Cineware C4D helper is not included; C4D-specific checks skipped.',flush=True)
         subprocess.run([sys.executable, str(Path(__file__).with_name('compatibility.py')), str(compiler)], check=True)
     print('Packaged binaries, version, provenance, runtime files and compatibility suite verified.')
 

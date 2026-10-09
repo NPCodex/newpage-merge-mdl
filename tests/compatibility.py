@@ -24,12 +24,19 @@ from cloth_scope_cases import ClothScopeCases
 from dmx_scope_cases import DmxScopeCases
 from procedural_scope_cases import ProceduralScopeCases
 from cloth_projection_cases import ClothProjectionCases
+from integration_capacity_cases import IntegrationCapacityCases
+from integration_rig_cases import IntegrationRigCases
+from scene_integration_cases import SceneIntegrationCases
+from integration_mesh_states_cases import IntegrationMeshStatesCases
+from integration_workflow_cases import IntegrationWorkflowCases
+from integration_policy_cases import IntegrationPolicyCases
+from integration_vrm_cases import IntegrationVrmCases
 from validate_outputs import validate
 
 COMPILER = str(Path(sys.argv.pop(1)).resolve())
 
 
-class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,SubdCases,DmxDependencyCases,ProceduralCases,AxisExportCases,CsgoClosureCases,ClothAdvancedCases,ClothScopeCases,DmxScopeCases,ProceduralScopeCases,ClothProjectionCases,unittest.TestCase):
+class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,SubdCases,DmxDependencyCases,ProceduralCases,AxisExportCases,CsgoClosureCases,ClothAdvancedCases,ClothScopeCases,DmxScopeCases,ProceduralScopeCases,ClothProjectionCases,IntegrationCapacityCases,IntegrationRigCases,SceneIntegrationCases,IntegrationMeshStatesCases,IntegrationWorkflowCases,IntegrationPolicyCases,IntegrationVrmCases,unittest.TestCase):
     def test_merged_materials_keep_geometry_flexes_and_lods(self):
         import json,copy
         doc=json.loads(scene_bytes());doc['materials'].append({'name':'Second'})
@@ -289,8 +296,17 @@ class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,
                     '$definebone root "" 0 0 0 30 0 0 0 0 0 20 10 5\n'
                     '$animation aligned moving.smd\n$animation raw moving.smd NoBoneRealign\n$sequence idle raw\n')
         raw=self.animation_poses('realigned','raw'); aligned=self.animation_poses('realigned','aligned')
+        # Retained animated bones can use the animation's first pose as the
+        # bind pose. The explicit definebone has a different bind pose, so
+        # their RLE residuals quantize independently; compare within both
+        # emitted scale steps instead of an arbitrary decimal-place cutoff.
+        steps=[]
+        for name in ('plain','realigned'):
+            data=self.mdl(name);bone=struct.unpack_from('<i',data,160)[0]
+            steps.append(struct.unpack_from('<6f',data,bone+72))
         for a,b in zip(plain,raw):
-            for x,y in zip(a,b): self.assertAlmostEqual(x,y,places=3)
+            for axis,(x,y) in enumerate(zip(a,b)):
+                self.assertAlmostEqual(x,y,delta=abs(steps[0][axis])+abs(steps[1][axis])+2e-6)
         self.assertNotEqual(raw,aligned)
 
     def test_split_mesh_preserves_flexes_and_reduced_lod(self):

@@ -37,7 +37,6 @@ inline constexpr int kUncapped = 1 << 23; // 8388608
 inline constexpr int kMaxVerts = INT32_MAX / 64; // 33554431
 // [file] Three uint16 indices per triangle in the .vtx index array.
 inline constexpr int kMaxTriangles = INT32_MAX / 6; // 357913941
-inline constexpr int kMaxFlexVerts = 65536; // [format] mstudiovertanim_t::index uint16
 inline constexpr int kMaxMeshes    = kUncapped; // [file] mstudiomesh_t is 116 bytes
 // [format] vtx::Vertex_t::origMeshVertID / mstudiovertanim_t::index are uint16
 // mesh-relative. Overflow splits across meshes (BuildOutputMeshes).
@@ -94,7 +93,9 @@ inline constexpr int kMaxFlexCtrl = kUncapped; // [file] 20 bytes each
 inline constexpr int kMaxFlexRules = kUncapped; // [file] 12 bytes each
 inline constexpr int kMaxFlexKeys = kMaxFlexDesc / 2; // reference: always half of FlexDesc
 inline constexpr int kMaxFlexOps = kUncapped; // [file] 8 bytes each
-inline constexpr int kBudgetFlexMorphVerts = 32768; // [tool] checked before kMaxFlexVerts
+// Flex deltas keep model-relative int indices until BuildOutputMeshes splits
+// them. Only the final mesh-relative index is uint16 (kMaxMeshVerts), so there
+// is no separate model-wide moving-vertex budget.
 inline constexpr int kMaxEyeballs = 4; // [tool] engine-side eyeball arrays are fixed
 
 // --- Animation / sequences ------------------------------------------------

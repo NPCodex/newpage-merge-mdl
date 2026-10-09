@@ -231,6 +231,8 @@ private:
     bool ignoreUpDirection;
     bool ignoreUnitSize;
     bool useColladaName;
+    // Maintained compiler import rate, used to retain authored curve semantics.
+    float sceneSampleRate = 0.0f;
 
     /** Used by FindNameForNode() to generate unique node names */
     unsigned int mNodeNameCounter;

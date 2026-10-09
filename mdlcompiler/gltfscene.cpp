@@ -2,6 +2,7 @@
 #include "cgltf.h"
 #include "assimp/scene.h"
 #include "assimp/material.h"
+#include "assimp/SceneCombiner.h"
 #include "pulselimits.h"
 #include "dependencies.h"
 #include "pathcompat.h"
@@ -173,6 +174,13 @@ std::vector<float> Evaluate(const cgltf_animation_sampler& s,double time,int wid
     return result;
 }
 }
+bool GltfHasInstancing(const std::string& path) {
+    cgltf_options options{};cgltf_data* raw=nullptr;options.file.read=ReadFile;options.file.release=ReleaseFile;
+    if(cgltf_parse_file(&options,path.c_str(),&raw)!=cgltf_result_success)throw std::runtime_error("cannot parse glTF/GLB");
+    std::unique_ptr<cgltf_data,decltype(&cgltf_free)> data(raw,cgltf_free);
+    for(size_t n=0;n<raw->nodes_count;++n)if(raw->nodes[n].has_mesh_gpu_instancing)return true;
+    return false;
+}
 std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights,bool animationsOnly) {
     cgltf_options options{}; cgltf_data* raw=nullptr;
     options.file.read=ReadFile; options.file.release=ReleaseFile;
@@ -197,6 +205,10 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
         scene->mMaterials[i]->AddProperty(&name,AI_MATKEY_NAME);
     }
     std::vector<std::unique_ptr<aiMesh>> meshes;
+    struct InstanceJoint { const cgltf_node* mesh; const cgltf_node* joint; aiMatrix4x4 instance; aiNode* output; };
+    std::vector<InstanceJoint> instanceJoints;
+    std::vector<std::unique_ptr<aiNode>> extraRoots;
+    auto uniqueName=[&](std::string name) { while(!reservedNames.insert(name).second)name+="_";return name; };
     std::function<aiNode*(const cgltf_node*,aiNode*)> node=[&](const cgltf_node* n,aiNode* parent) {
         std::unique_ptr<aiNode> out(new aiNode(names.at(n))); out->mParent=parent;
         float local[16]; cgltf_node_transform_local(n,local); out->mTransformation=Matrix(local);
@@ -263,13 +275,15 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
             }
         }
         if(n->has_mesh_gpu_instancing) {
-            if(n->skin || !n->mesh) throw std::runtime_error("glTF instancing requires an unskinned mesh");
+            if(!n->mesh) throw std::runtime_error("glTF instancing requires a mesh");
             const auto& inst=n->mesh_gpu_instancing;
+            if(!inst.attributes_count)throw std::runtime_error("glTF instancing has no attributes");
             size_t count=inst.attributes[0].data->count;
             if(count>size_t(limits::kMaxSrcBones)) throw std::runtime_error("glTF instance count exceeds source bone limit");
             std::vector<float> translation,rotation,scale;
             for(size_t k=0;k<inst.attributes_count;++k) {
                 const auto& attr=inst.attributes[k];
+                if(attr.data->count!=count)throw std::runtime_error("glTF instance attribute counts differ");
                 const std::string name=attr.name?attr.name:"";
                 int width=name=="ROTATION"?4:3;
                 if(name!="TRANSLATION" && name!="ROTATION" && name!="SCALE") continue;
@@ -285,8 +299,7 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
             if(previous) std::copy(out->mChildren,out->mChildren+previous,children);
             delete[] out->mChildren;out->mChildren=children;out->mNumChildren=unsigned(previous+count);
             for(size_t i=0;i<count;++i) {
-                std::string instanceName=names.at(n)+"_instance_"+std::to_string(i);
-                while(!reservedNames.insert(instanceName).second) instanceName+="_";
+                std::string instanceName=uniqueName(names.at(n)+"_instance_"+std::to_string(i));
                 auto child=out->mChildren[previous+i]=new aiNode(instanceName);
                 child->mParent=out.get();
                 aiVector3D p=translation.empty()?aiVector3D():V(translation,i);
@@ -300,7 +313,50 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
                 if(s.x==0 || s.y==0 || s.z==0) throw std::runtime_error("singular glTF instance scale");
                 child->mTransformation=aiMatrix4x4(s,q,p);
                 child->mNumMeshes=out->mNumMeshes;child->mMeshes=new unsigned[child->mNumMeshes];
-                std::copy(out->mMeshes,out->mMeshes+out->mNumMeshes,child->mMeshes);
+                if(!n->skin) std::copy(out->mMeshes,out->mMeshes+out->mNumMeshes,child->mMeshes);
+                else {
+                    // EXT defines N * I * vertex-local. A skinned local
+                    // vertex is inverse(N) * J * inverseBind * vertex, so
+                    // expand each instance as A=N*I*inverse(N), including its
+                    // own joints. This preserves animation and morphs while
+                    // consuming normal MDL geometry/bone capacity.
+                    if(s.x<=0 || std::abs(s.x-s.y)>1e-5f || std::abs(s.x-s.z)>1e-5f)
+                        throw std::runtime_error("skinned glTF instances require positive uniform scale; nonuniform animated skinning needs vertex baking");
+                    float worldValues[16];cgltf_node_transform_world(n,worldValues);
+                    const auto world=Matrix(worldValues);
+                    if(std::abs(world.Determinant())<1e-12f)throw std::runtime_error("singular glTF instance node transform");
+                    const auto adjust=world*child->mTransformation*aiMatrix4x4(world).Inverse();
+                    const auto inverseAdjust=aiMatrix4x4(adjust).Inverse();
+                    aiMatrix3x3 normal(adjust);normal.Inverse().Transpose();
+                    std::vector<std::string> jointNames;
+                    for(size_t b=0;b<n->skin->joints_count;++b) {
+                        if(raw->nodes_count+extraRoots.size()>=size_t(limits::kMaxSrcBones))
+                            throw std::runtime_error("expanded glTF skin instances exceed source bone limit");
+                        const auto joint=n->skin->joints[b];
+                        auto name=uniqueName(instanceName+"_"+names.at(joint));jointNames.push_back(name);
+                        auto generated=std::make_unique<aiNode>(name);generated->mParent=scene->mRootNode;
+                        cgltf_node_transform_world(joint,worldValues);generated->mTransformation=adjust*Matrix(worldValues);
+                        instanceJoints.push_back({n,joint,child->mTransformation,generated.get()});
+                        extraRoots.push_back(std::move(generated));
+                    }
+                    for(unsigned p=0;p<child->mNumMeshes;++p) {
+                        aiMesh* copy=nullptr;Assimp::SceneCombiner::Copy(&copy,meshes[out->mMeshes[p]].get());
+                        std::unique_ptr<aiMesh> mesh(copy);child->mMeshes[p]=unsigned(meshes.size());
+                        auto transform=[&](aiVector3D* positions,aiVector3D* normals) {
+                            for(unsigned v=0;v<mesh->mNumVertices;++v) {
+                                if(positions)positions[v]=adjust*positions[v];
+                                if(normals)normals[v]=(normal*normals[v]).Normalize();
+                            }
+                        };
+                        transform(mesh->mVertices,mesh->mNormals);
+                        for(unsigned m=0;m<mesh->mNumAnimMeshes;++m)transform(mesh->mAnimMeshes[m]->mVertices,mesh->mAnimMeshes[m]->mNormals);
+                        for(unsigned b=0;b<mesh->mNumBones;++b) {
+                            mesh->mBones[b]->mName=aiString(jointNames.at(b));
+                            mesh->mBones[b]->mOffsetMatrix=mesh->mBones[b]->mOffsetMatrix*inverseAdjust;
+                        }
+                        meshes.push_back(std::move(mesh));
+                    }
+                }
             }
             delete[] out->mMeshes;out->mMeshes=nullptr;out->mNumMeshes=0;
         }
@@ -309,8 +365,13 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
     std::vector<const cgltf_node*> roots;
     if(raw->scene) for(size_t i=0;i<raw->scene->nodes_count;++i) roots.push_back(raw->scene->nodes[i]);
     else for(size_t i=0;i<raw->nodes_count;++i) if(!raw->nodes[i].parent) roots.push_back(&raw->nodes[i]);
-    scene->mRootNode->mNumChildren=unsigned(roots.size()); scene->mRootNode->mChildren=new aiNode*[roots.size()]{};
-    for(size_t i=0;i<roots.size();++i) scene->mRootNode->mChildren[i]=node(roots[i],scene->mRootNode);
+    std::vector<std::unique_ptr<aiNode>> parsedRoots;
+    for(const auto root:roots)parsedRoots.emplace_back(node(root,scene->mRootNode));
+    scene->mRootNode->mNumChildren=unsigned(parsedRoots.size()+extraRoots.size());
+    scene->mRootNode->mChildren=new aiNode*[scene->mRootNode->mNumChildren]{};
+    unsigned rootIndex=0;
+    for(auto& root:parsedRoots)scene->mRootNode->mChildren[rootIndex++]=root.release();
+    for(auto& root:extraRoots)scene->mRootNode->mChildren[rootIndex++]=root.release();
     scene->mNumMeshes=unsigned(meshes.size()); scene->mMeshes=new aiMesh*[meshes.size()]{};
     for(size_t i=0;i<meshes.size();++i) scene->mMeshes[i]=meshes[i].release();
     SamplerCache samplerCache;
@@ -331,7 +392,7 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
             channels[channel.target_node].push_back(&channel);
         }
         if(!std::isfinite(duration) || duration<0 || duration*sampleRate>=limits::kMaxAnimFrames) throw std::runtime_error("glTF animation exceeds frame limit");
-        result->mDuration=duration; result->mNumChannels=unsigned(channels.size()); result->mChannels=new aiNodeAnim*[channels.size()]{};
+        result->mDuration=duration; result->mNumChannels=unsigned(channels.size()+instanceJoints.size()); result->mChannels=new aiNodeAnim*[result->mNumChannels]{};
         unsigned ch=0; unsigned frames=1+unsigned(std::lround(duration*sampleRate));
         if(bakeWeights)frames=1+unsigned(std::ceil(duration*sampleRate));
         result->mNumMorphMeshChannels=unsigned(morphChannels.size());
@@ -361,6 +422,47 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
                     else if(channel->target_path==cgltf_animation_path_type_scale) s={values[0],values[1],values[2]};
                 }
                 dst->mPositionKeys[f]=aiVectorKey(time,p); dst->mRotationKeys[f]=aiQuatKey(time,q); dst->mScalingKeys[f]=aiVectorKey(time,s);
+            }
+        }
+        // Sample generated instance joints in world space: they are explicit
+        // root bones, avoiding duplicated ancestor rigs and animation channels.
+        std::vector<aiNodeAnim*> generatedChannels;
+        for(const auto& instance:instanceJoints) {
+            auto dst=result->mChannels[ch++]=new aiNodeAnim();dst->mNodeName=instance.output->mName;
+            dst->mNumPositionKeys=dst->mNumRotationKeys=dst->mNumScalingKeys=frames;
+            dst->mPositionKeys=new aiVectorKey[frames];dst->mRotationKeys=new aiQuatKey[frames];dst->mScalingKeys=new aiVectorKey[frames];
+            generatedChannels.push_back(dst);
+        }
+        for(unsigned f=0;f<frames && !instanceJoints.empty();++f) {
+            const double time=std::min(duration,double(f)/sampleRate);
+            std::map<const cgltf_node*,aiMatrix4x4> worlds;
+            std::function<aiMatrix4x4(const cgltf_node*)> world=[&](const cgltf_node* n) {
+                if(!n)return aiMatrix4x4();auto cached=worlds.find(n);if(cached!=worlds.end())return cached->second;
+                float values[16];cgltf_node_transform_local(n,values);auto local=Matrix(values);
+                auto found=channels.find(n);
+                if(found!=channels.end()) {
+                    aiVector3D s,p;aiQuaternion q;local.Decompose(s,q,p);
+                    for(const auto channel:found->second) {
+                        bool rotation=channel->target_path==cgltf_animation_path_type_rotation;
+                        const auto v=Evaluate(*channel->sampler,time,rotation?4:3,rotation,samplerCache);
+                        if(rotation)q=aiQuaternion(v[3],v[0],v[1],v[2]);
+                        else if(channel->target_path==cgltf_animation_path_type_translation)p={v[0],v[1],v[2]};
+                        else if(channel->target_path==cgltf_animation_path_type_scale)s={v[0],v[1],v[2]};
+                    }
+                    local=aiMatrix4x4(s,q,p);
+                }
+                return worlds[n]=world(n->parent)*local;
+            };
+            for(size_t i=0;i<instanceJoints.size();++i) {
+                const auto& entry=instanceJoints[i];const auto meshWorld=world(entry.mesh);
+                if(std::abs(meshWorld.Determinant())<1e-12f)throw std::runtime_error("singular animated glTF instance node transform");
+                const auto matrix=meshWorld*entry.instance*aiMatrix4x4(meshWorld).Inverse()*world(entry.joint);
+                aiVector3D s,p;aiQuaternion q;matrix.Decompose(s,q,p);
+                const aiMatrix4x4 rebuilt(s,q,p);
+                for(unsigned r=0;r<3;++r)for(unsigned c=0;c<4;++c)
+                    if(std::abs(rebuilt[r][c]-matrix[r][c])>1e-4f)
+                        throw std::runtime_error("animated glTF skin instance introduces shear; bake vertices before MDL import");
+                auto dst=generatedChannels[i];dst->mPositionKeys[f]=aiVectorKey(time,p);dst->mRotationKeys[f]=aiQuatKey(time,q);dst->mScalingKeys[f]=aiVectorKey(time,s);
             }
         }
     }

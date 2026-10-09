@@ -36,6 +36,7 @@ struct SceneOptions {
     bool noFastGltf = false;
     bool explicitSampleRate=false;
     bool gltfZUp=false;
+    bool fbxAssimp=false;
 };
 
 // One unified vertex, single UV channel.

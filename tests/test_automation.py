@@ -195,8 +195,25 @@ class PackageValidationTests(unittest.TestCase):
         archive=root/'package.zip'
         with zipfile.ZipFile(archive,'w') as z:
             z.writestr('NewPageMergeMDL/upstream-manifest.json',json.dumps(manifest or {'project_version':'1.2.6'}))
-            for name in ('README.md','README.en.md','VALIDATION.md','IMPROVEMENTS.md','integration/gmod/newpage_vertexanim.lua'):z.writestr('NewPageMergeMDL/'+name,'fixture')
-            for name in ('NewPageMergeMDL','NewPageMergeMDL-Decompiler'):z.writestr('NewPageMergeMDL/'+name+suffix,binary)
+            # This fixture checks archive validation only; executables are
+            # magic-byte stubs and support files model the complete release
+            # layout, including the standalone GPL converter's source.
+            for name in (
+                'README.md','README.en.md','VALIDATION.md','IMPROVEMENTS.md',
+                'FIVE_COMPILER_COMPLETION.md','O5_FORMAT_IMPORTS.md','MESH_STATE_WORKFLOW.md','VRM_RUNTIME.md',
+                'integration/gmod/newpage_vertexanim.lua','integration/gmod/newpage_meshstates.lua',
+                'integration/gmod/newpage_vrm.lua','integration/gmod/newpage_vrm_materials.lua',
+                'tools/mesh_states.py','tools/vrm_runtime.py','tools/vrml_import.py',
+                'tools/vrml_converter/CMakeLists.txt','tools/vrml_converter/main.cpp',
+                'tools/vrml_converter/meshlab/Parser.cpp','tools/vrml_converter/meshlab/Parser.h',
+                'tools/vrml_converter/meshlab/Scanner.cpp','tools/vrml_converter/meshlab/Scanner.h',
+                'tools/vrml_converter/meshlab/LICENSE','tools/vrml_converter/meshlab/SOURCE.md',
+                'libs/assimp/contrib/pugixml/src/pugixml.cpp','libs/assimp/contrib/pugixml/src/pugixml.hpp',
+                'libs/assimp/contrib/pugixml/src/pugiconfig.hpp','libs/assimp/contrib/pugixml/LICENSE.md',
+                'libs/tinyusdz/LICENSE','libs/tinyusdz/LICENSE-APACHE-2.0',
+            ):z.writestr('NewPageMergeMDL/'+name,'fixture')
+            for name in ('NewPageMergeMDL','NewPageMergeMDL-Decompiler','NewPageVRMLtoX3D'):
+                z.writestr('NewPageMergeMDL/'+name+suffix,binary)
             if extra:z.writestr(extra,'unexpected')
         return archive
 

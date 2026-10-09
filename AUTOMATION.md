@@ -54,7 +54,11 @@ python .github/scripts/refresh_overlay.py
 
 ## 本地验证
 
-v1.2.22 完成固定 A1–A7/B1–B4 共 11 个 CSGO 功能包；最终本地验证为 325 项兼容、20 项自动化、6 项挂载专项，以及原始 Plum 编译和 12 个自制 CSGO 模型的运行/地图重载。发布包包含 `CSGO_PORTING_SCOPE.md`、`CSGO_CLOTH_AUTHORING.md`、`CSGO_DMX_INPUTS.md` 与 `tests/reports/*-validation.json`，不包含游戏或用户资产。报告中的本地 Windows 编译器哈希只对应所记录的本地二进制；GitHub 自动构建的 MSVC/Linux 产物以各自打包验证日志和发布清单为准。以下 v1.2.19–v1.2.21 段落均是历史记录，不代表当前版本或发布状态。
+v1.2.23 按 [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md)完成五编译器固定清单的实现、策略与有界验收；当前测试和运行证据见 [VALIDATION.md](VALIDATION.md)。v1.2.22 完成 A1–A7/B1–B4 共 11 个 CSGO 功能包时的历史结果为 325 项兼容、20 项自动化、6 项挂载专项，以及原始 Plum 编译和 12 个自制 CSGO 模型的运行/地图重载。报告中的本地 Windows 编译器哈希只对应所记录的本地二进制；GitHub 自动构建的 MSVC/Linux 产物以各自打包验证日志和发布清单为准。以下 v1.2.19–v1.2.21 段落均是历史记录，不代表当前版本或发布状态。
+
+发布包包含两份 README、兼容说明、CSGO 范围及作者指南、新的 `FIVE_COMPILER_COMPLETION.md`、`MESH_STATE_WORKFLOW.md`、`VRM_RUNTIME.md`、`O5_FORMAT_IMPORTS.md` 和 `tests/reports/*-validation.json`。同时提供 `tools/` 的准备/转换工具及其源文件、`integration/gmod/` 客户端模块、独立 GPL VRML 转换器的对应源码和 `libs/assimp/contrib/pugixml/` 源码/许可。实际合并源码包含固定版本的 `libs/tinyusdz/` 及其他构建依赖和各自许可证，常规构建无需联网获取这些源码。不打包游戏、用户模型或参考编译器。
+
+本次本地构建的完整 Windows x64 包另含 `NewPageMergeMDL-C4D.exe`，它在用户接受独立 Cineware SDK 许可后以 MSVC 静态链接构建。自动 CI 不下载/安装该专有 SDK，Windows CI 包不含 C4D helper；Linux 导入 Windows 预转换的 GLB。SDK 的头文件、静态库、示例和文档均不进入源码包或二进制包。相关范围和独立构建方法见 [O5_FORMAT_IMPORTS.md](O5_FORMAT_IMPORTS.md)。
 
 
 ```powershell
@@ -70,7 +74,7 @@ v1.2.20 将 FE settings/吸引/弯曲/地面参数、零重力回退修复、默
 
 ## 项目版本与双语文档
 
-当前项目版本为 **v1.2.22**，程序和 Windows 文件版本统一采用该版本，独立于 PulseModel 上游版本号。
+当前项目版本为 **v1.2.23**，程序和 Windows 文件版本统一采用该版本，独立于 PulseModel 上游版本号。
 `CMakeLists.txt` 的项目版本与 `automation/upstreams.json` 的 `project_version` 应同步维护。
 自动发布标签采用 `v1.2.0`、`v1.2.1` 等语义版本。每次检测到新的上游或项目改动，补丁号递增；配置版本作为最低版本，可手动提高主/次版本。上游没有变化则跳过发布，强制重建同一内容沿用已发布的版本和标签。合并源码内的 CMake、发布配置和 README 会同步写入实际发布版本，并重新生成对应补丁。
 中文 `README.md` 与英文 `README.en.md` 都会包含在合并源码和二进制发布包中。

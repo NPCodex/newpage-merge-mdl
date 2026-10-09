@@ -1424,20 +1424,29 @@ bool RemapProceduralBones(Ctx& ctx, std::string* err) {
 }
 
 // ---------------------------------------------------------------------------
-// TagUsedBones - minimal subset
+// TagUsedBones
 // ---------------------------------------------------------------------------
+bool BoneHasAnimation(Ctx& ctx, const char* pName);
+
 void TagUsedBones(Ctx& ctx) {
+    std::unordered_map<const src::Source*, int> renderLods;
+    for (const Model& model : ctx.out->models)
+        for (size_t lod = 0; lod < model.lodSources.size(); ++lod)
+            if (model.lodSources[lod])
+                renderLods[model.lodSources[lod]] |= BONE_USED_BY_VERTEX_LOD0 << lod;
     for (auto& sp : ctx.in->sources) {
         src::Source* psource = sp.get();
         psource->boneflags.assign(psource->numbones, 0);
         psource->boneref.assign(psource->numbones, 0);
 
-        if (!psource->isActiveModel)
+        const auto lods = renderLods.find(psource);
+        if (!psource->isActiveModel && lods == renderLods.end())
             continue;
 
         for (const src::SrcVertex& v : psource->vertex)
             for (int k = 0; k < v.boneweight.numbones; ++k)
-                psource->boneflags[v.boneweight.bone[k]] |= BONE_USED_BY_VERTEX_LOD0;
+                psource->boneflags[v.boneweight.bone[k]] |=
+                    lods == renderLods.end() ? BONE_USED_BY_VERTEX_LOD0 : lods->second;
     }
 
     for (auto& sp : ctx.in->sources) {
@@ -1524,6 +1533,15 @@ void TagUsedBones(Ctx& ctx) {
         // tag bones used as bone morph drivers
         TagFlexDriverBones(ctx, psource);
 
+        // Explicit hitboxes are read after the global bone union. Tag them
+        // now, otherwise an unskinned hitbox bone disappears before the later
+        // BoneHasHitbox collapse guard can protect it.
+        for (const HitboxSet& set : ctx.in->hitboxsets)
+            for (const HitBox& box : set.hitboxes)
+                for (int j = 0; j < psource->numbones; ++j)
+                    if (_stricmp(box.bonename.c_str(), psource->localBone[j].name.c_str()) == 0)
+                        psource->boneflags[j] |= BONE_USED_BY_HITBOX;
+
         // Local hierarchy references must survive the initial unused-bone cull.
         for (const Anim& anim : ctx.out->anims) for (const AnimCmd& cmd : anim.cmds)
             if (cmd.kind == AnimCmd::LocalHierarchy)
@@ -1577,6 +1595,12 @@ void TagUsedBones(Ctx& ctx) {
                 break;
             }
         };
+        // Motion is also a real reference. The initial union must retain a
+        // source bone that changes in a surviving animation even when it has
+        // no skin/hitbox/attachment; CollapseBones still applies force rules.
+        for (int j = 0; j < psource->numbones; ++j)
+            if (!psource->boneref[j] && BoneHasAnimation(ctx, psource->localBone[j].name.c_str()))
+                keepProceduralBone(psource->localBone[j].name);
         // (these live on `out` by now - Compile moves them off the input before
         // the bone passes, same as BoneIsProcedural reads them)
         for (const JiggleBone& jb : ctx.out->jigglebones)
@@ -9689,11 +9713,26 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
         }
     }
 
+    struct BoundsViolation {
+        int frame = -1;
+        int bone = -1;
+        bool vertex = false;
+        Vector3 position{};
+    };
+    std::vector<BoundsViolation> violations(m.anims.size());
+    const Vector3& worldMin = ctx.in->csgo.worldMin;
+    const Vector3& worldMax = ctx.in->csgo.worldMax;
+    auto outsideWorld = [&](const Vector3& p) {
+        return p.x < worldMin.x || p.y < worldMin.y || p.z < worldMin.z ||
+               p.x > worldMax.x || p.y > worldMax.y || p.z > worldMax.z;
+    };
+
     // Cost is frames x vertices, so animations run in parallel; min/max is
     // order-independent, so the boxes match a serial run bit for bit.
     auto calcAnim = [&](Anim& panim) {
         Vector3 bmin{FLT_MAX, FLT_MAX, FLT_MAX};
         Vector3 bmax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
+        BoundsViolation& violation = violations[&panim - m.anims.data()];
 
         std::vector<matrix3x4> bonetransform;
         std::vector<matrix3x4> posetransform(m.bones.size());
@@ -9706,6 +9745,9 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
             for (size_t k = 0; !ctx.in->csgo.bboxOnlyVerts && k < m.bones.size(); k++) {
                 Vector3 tmpMin, tmpMax;
                 TransformAABB(bonetransform[k], boundsMin[k], boundsMax[k], tmpMin, tmpMax);
+                if (violation.frame < 0 && (outsideWorld(tmpMin) || outsideWorld(tmpMax)))
+                    violation = {j, static_cast<int>(k), false,
+                                 outsideWorld(tmpMin) ? tmpMin : tmpMax};
                 bmin = VecMin(tmpMin, bmin);
                 bmax = VecMax(tmpMax, bmax);
             }
@@ -9718,6 +9760,12 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                     pos.x += v.weight[mm] * tmp.x;
                     pos.y += v.weight[mm] * tmp.y;
                     pos.z += v.weight[mm] * tmp.z;
+                }
+                if (violation.frame < 0 && outsideWorld(pos)) {
+                    int dominant = 0;
+                    for (int mm = 1; mm < v.numbones; ++mm)
+                        if (v.weight[mm] > v.weight[dominant]) dominant = mm;
+                    violation = {j, v.numbones ? v.bone[dominant] : -1, true, pos};
                 }
                 bmin = VecMin(pos, bmin);
                 bmax = VecMax(pos, bmax);
@@ -9760,6 +9808,21 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                          "max (%g, %g, %g) exceeds coordinate range [(%g, %g, %g), (%g, %g, %g)]; clamping\n",
                          panim.name.c_str(), bmin.x, bmin.y, bmin.z,
                          bmax.x, bmax.y, bmax.z, lo.x, lo.y, lo.z, hi.x, hi.y, hi.z);
+            const BoundsViolation& violation = violations[&panim - m.anims.data()];
+            if (violation.frame >= 0) {
+                const char* bone = violation.bone >= 0 ? m.bones[violation.bone].name.c_str() : "<none>";
+                std::fprintf(stderr,
+                             "  first out-of-range %s: bone \"%s\", frame %d (zero-based), "
+                             "position (%g, %g, %g)\n",
+                             violation.vertex ? "skinned vertex (dominant influence)" : "bone render bounds",
+                             bone, violation.frame, violation.position.x, violation.position.y,
+                             violation.position.z);
+                if (!violation.vertex && !ctx.in->skipBoneInBBox)
+                    std::fprintf(stderr,
+                                 "  Check the bone pose, hitboxes and animation; $skipboneinbbox "
+                                 "can remove unused bone-origin contributions, but does not "
+                                 "remove out-of-range vertices or authored hitboxes.\n");
+            }
             bmin = VecMin(VecMax(bmin, lo), hi);
             bmax = VecMax(VecMin(bmax, hi), lo);
         }
@@ -10097,7 +10160,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
     }
 
     // remap each key's deltas onto its model's vertices (original key order)
-    int nNumMoved = 0;
+    size_t nNumMoved = 0;
     int nSkippedUnmapped = 0;
     size_t nMaxModelVerts = 0;
     for (const Model& model : m.models)
@@ -10176,18 +10239,12 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
         }
     }
 
-    if (nNumMoved > lim::kBudgetFlexMorphVerts) {
-        if (err) *err = "flexmorphverts budget exceeded: " + std::to_string(nNumMoved) +
-                        " flexed verts, budget " + std::to_string(lim::kBudgetFlexMorphVerts);
-        return false;
-    }
-    if (nNumMoved > lim::kMaxFlexVerts) {
-        if (err) *err = "too many flexed verts " + std::to_string(nNumMoved) + " (" +
-                        std::to_string(lim::kMaxFlexVerts) + ")";
-        return false;
-    }
+    // SrcVertAnim keeps an int model-relative index. BuildOutputMeshes later
+    // remaps each delta into one or more output meshes, whose vertex counts
+    // are bounded by kMaxMeshVerts before writemdl writes uint16 indices.
+    // Applying that per-mesh limit here used to reject valid large models.
     if (nNumMoved > 0)
-        std::printf("Max flex verts %d\n", nNumMoved);
+        std::printf("Max flex verts %zu\n", nNumMoved);
 
     if (nSkippedUnmapped > 0) {
         std::fprintf(stderr, 

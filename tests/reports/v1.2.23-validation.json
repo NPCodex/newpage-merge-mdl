@@ -1,0 +1,1132 @@
+{
+  "schema": 1,
+  "version": "1.2.23",
+  "build_platform": "Windows x64 Release; llvm-mingw 20260922 UCRT; static C++ runtime; C4D helper MSVC 14.44 static CRT",
+  "compiler_sha256": "9b9e1005bd520f089879443f6aaef794e6eaff035f79e55e68189c9cdfbaf801",
+  "source_kind": "maintained source tree; exact publication commit recorded in packaged manifest",
+  "source_base_commit": "9e181c769519d6d336f818975e1f8a76b0e62479",
+  "source_tree_sha256": "6eb715e3dc1f66343f50561b5a9e68783b6d1894163cdd6841a5cab87605431e",
+  "suites": {
+    "compatibility": {
+      "tests": 368,
+      "passed": true,
+      "log_sha256": "c2bc70ef786153b944da92d3c2d91324a945610ffd4b5390de08963ffdca3e93"
+    },
+    "automation": {
+      "tests": 20,
+      "passed": true,
+      "log_sha256": "5d11e34a01716298935bca3df9478d0d417b0db9ef8df0783d53c33c51aa3fd7"
+    },
+    "content_mounts": {
+      "tests": 9,
+      "passed": true,
+      "log_sha256": "f88a9fef8d13d95227b8566ea178623721e13f8e96b84839230c19d1ed0fb547"
+    },
+    "lua_runtime": {
+      "tests": 9,
+      "passed": true,
+      "log_sha256": "38a3effb0a7670e3838b854b1d88eb84ea17c679b7644a209f810ecf02ce82c7"
+    },
+    "c4d_bridge": {
+      "tests": 7,
+      "passed": true,
+      "log_sha256": "131799534ad987ecbf701702dd0ce1d7a9cf130a2462055aa1217001e5cf291c"
+    },
+    "output_recovery": {
+      "tests": 5,
+      "passed": true,
+      "log_sha256": "0712e8390091f9b04024a1bc6defd17a1eb3419d900dcdd947485b81756b0bb2"
+    }
+  },
+  "fixed_scope": {
+    "R1": {
+      "status": "implemented_and_bounded",
+      "description": "读取 gameinfo 的 `Tools/studiomdl` 及 `cfg/commandline.cfg` 中 `CommandLine/<QC stem>/studiomdl`。优先级 gameinfo < cfg < 显式 CLI，同层后值胜；QC stem 忽略大小写、不带 `.qc`。引号参数、名字匹配、CLI 覆盖与 `-nodefaultargs` 有回归，八组 ++ 对照确定优先级。"
+    },
+    "R2": {
+      "status": "implemented_and_bounded",
+      "description": "`$qccompatibility native|neko`。neko 模式覆盖裸 ON、未定义左值、OR 未定义操作数、已胜出后的 elif、`1e2 == 100` 及引号基线；native 保留严格未知变量错误。"
+    },
+    "R3": {
+      "status": "implemented_and_bounded",
+      "description": "移除错误的全模型 32768/65536 flex 顶点预算。最终 mesh 的 uint16 局部索引仍严格限制。32769、两材质+LOD 共 65537、分割的 511451 个移动顶点检查索引、增量、完整几何及 VTX 三角总数；不是任意游戏接受该容量的保证。"
+    },
+    "R4": {
+      "status": "implemented_and_bounded",
+      "description": "ufbx 使用独立 cluster bind/geometry-to-bone 矩阵；检测共享骨绑定冲突。场景 rest 与 bind 不同的双骨、两个动画采样及没有 NodeAttribute 但被蒙皮引用的骨均有固定验收。"
+    },
+    "R5": {
+      "status": "implemented_and_bounded",
+      "description": "Assimp key STEP/LINEAR/SLERP 与 DEFAULT/CONSTANT/LINEAR/REPEAT 边界；Collada 原始 STEP/LINEAR/BEZIER 在读取时按采样率求值。缺少可表达切线的插值要求作者预烘焙，避免伪装为线性。原有 glTF STEP/CUBICSPLINE 保留。"
+    },
+    "R6": {
+      "status": "implemented_and_bounded",
+      "description": "现有世界坐标范围裁剪警告增加首个越界帧（从 0 计）、骨名和位置；顶点越界标注主影响骨，骨 bounds 越界给出有适用条件的 `$skipboneinbbox` 提示。不会声称它能消除越界顶点或作者 hitbox。"
+    },
+    "E1": {
+      "status": "unresolved_reference_semantics",
+      "description": "CE x86/x64 的 `replacemodel` 控制样例成功，三类候选 `replacemesh` 用法均拒绝，两程序无对应 ASCII/UTF16 命令字。现有日志不足以确定可实施语法；保留“参考证据未解决”，不猜成 `replacemodel` 别名。需要新的有效版本/语法/输入才会改变这个结论。"
+    },
+    "E2": {
+      "status": "reference_evidence",
+      "description": "同一个 2013 EXE 搭配 2012 包依赖置于隔离 `bin/` 已恢复编译。实测 130 材质被 max64 拒绝；255 最终骨通过，256/257/512 拒绝；约 172.9 MiB VTA、30000 几何顶点+9000 移动顶点通过，30000 移动顶点被 max10000 拒绝。当前 CSGO DLL 配置仍访问违例，分别记录。这些受限参考能力没有暴露本工具的新移植缺口。"
+    },
+    "E3": {
+      "status": "reference_evidence",
+      "description": "Neko “40 多种格式”指向浮动 Assimp 文档，未给版本化集合；不能从宣传恢复精确集合。本工具 `-importformats` 实测 50 个 Assimp registry 条目、77 个唯一扩展名，原生入口另列。Neko 128 个不同 skin 行成功写出；256/1024 行测试访问违例，因此只确定成功下界 128，不宣称精确上限。未测格式不宣称完整等价。"
+    },
+    "V1": {
+      "status": "bounded_validation",
+      "description": "CE 多骨 controller remap、corrective/inverse、硬边/自定义法线、wrinkle/眼睑组合。"
+    },
+    "V2": {
+      "status": "bounded_validation",
+      "description": "Neko 两个 studio、flex/flexpair/眼睑、RenameMorph、材质预改名、分割与一层 LOD 组合；两个不同源分别声明 replacemodel。"
+    },
+    "V3": {
+      "status": "bounded_validation",
+      "description": "九类骨规则组合。发现并修正早期裁骨丢失仅用于低 LOD、显式 hitbox 和动画的骨；后续 force-collapse 策略继续生效。"
+    },
+    "V4": {
+      "status": "bounded_validation",
+      "description": "PMX 蒙皮及命名 vertex/group morph（补齐 Assimp 未拷贝 morph 的缺口）；FBX 多 take/InNode/采样率/轴；通用边界；meshopt OCTAHEDRAL/QUATERNION/COLOR 及现有 EXPONENTIAL。"
+    },
+    "V5": {
+      "status": "bounded_validation",
+      "description": "碰撞改名、512 源骨、staticprop+blank、90000 顶点/30000 面、procedural 错误名顺序、无效动画错误及已有输出保留。"
+    },
+    "V6": {
+      "status": "bounded_validation",
+      "description": "GMod 本轮6项客户端/2项服务端检查与画面通过，覆盖状态、VRM表情/材质/弹簧、LOD及双刚体；L4D2三模型在离线地图实体创建、模型名读回及画面通过。Insurgency仅进入contact，模型加载未认证；未安装HL2/CS:S/TF2/SFM未运行。历史CSGO/MCV证据不计作本轮；详情见发布验证报告。"
+    },
+    "V7": {
+      "status": "bounded_validation",
+      "description": "原始 Plum 和自制 90000 顶点 SMD，成功配置各三次。Plum 本工具/CE 中位 1.713s/10.850s，峰值 628.6/696.1 MiB；大 SMD 0.224s/0.475s、80.7/211.4 MiB。Plum 最终骨分别126/104，不能宣称同等输出倍数。Neko Plum 缺 dmxconvert，++ Plum 拒 MaxVerts，++ 大 SMD 超限；Neko 大 SMD 虽 exit0，VTX 仅覆盖65536唯一局部顶点，尝试时间不作同等输出比较。记录对应测试二进制散列，未声称最终所有平台普遍更快。"
+    },
+    "S1": {
+      "status": "explicit_policy",
+      "description": "`$boneweightpolicy native|neko|ce`：前两者阈值 .0001，ce 在已归一化导入权重上额外剔除小于 .001 的影响并再次归一化，至少保留最强影响。按源读取时捕获并进入缓存键；不是对未归一化作者数据的逐字节 CE 模仿。"
+    },
+    "S2": {
+      "status": "explicit_policy",
+      "description": "面部模式 `$dmxcompatibility native|ce|neko`、CEBoneRules、眼球开关继续显式选择。NoAutoDMXRules 是按源关闭自动规则；Legacy 会清先前规则/控制器，不能等同 CE 保留控制器的观察行为。"
+    },
+    "S3": {
+      "status": "explicit_policy",
+      "description": "统一 LOD 字典后分割，保持有效几何。Neko 的源阶段预分割次序不是输出字节一致承诺。"
+    },
+    "S4": {
+      "status": "explicit_policy",
+      "description": "`$fbxcompatibility native|neko`：native 使用 ufbx 与文件帧率，neko 使用 Assimp 与默认30Hz或显式 SampleRate；`$UpAxis ... assimp` 作用于该兼容后端。固定24/30/60帧率及Y/Z轴样例。"
+    },
+    "S5": {
+      "status": "explicit_policy",
+      "description": "保留255默认骨预算、动态容器、默认序列顺序保护；可显式设预算及 `-noremap`。不倒退到 Neko 默认129或旧固定缓冲。"
+    },
+    "S6": {
+      "status": "explicit_policy",
+      "description": "不复制 CE addcontrollerbyflex 范围解析缺陷；保留 copy 的扩展语义。本工具 MDL49、++ MDL48，不要求全文件相同。"
+    },
+    "O1": {
+      "status": "implemented_and_bounded",
+      "description": "蒙皮 GPU 实例离线展开成独立骨/几何/动画，局部蒙皮组合固定为 `N*I*inverse(N)*J*inverseBind`。支持正的均匀实例缩放；非均匀缩放/剪切需先烘焙，不能用普通刚体骨轨道保留任意仿射动画。NoFastGltf 遇实例自动提示并改用原生展开，避免静默丢实例。"
+    },
+    "O2": {
+      "status": "implemented_and_bounded",
+      "description": "`tools/mesh_states.py` + GMod bodygroup 播放器：有限拓扑状态、blank、显式时间或fps、重复顺序与循环/末帧保持。见 [工作流](MESH_STATE_WORKFLOW.md)。"
+    },
+    "O3": {
+      "status": "implemented_and_bounded",
+      "description": "VRM 0/1 命名表情、binary/override、采样表情片段、独立材质适配、弹簧骨/球胶囊碰撞/center/父子传播客户端。见 [VRM_RUNTIME.md](VRM_RUNTIME.md)。有界物理近似、需要模组与匹配Source材质；不声称任意Unity/MToon运行时透明复现。"
+    },
+    "O4": {
+      "status": "implemented_and_bounded",
+      "description": "输出事务持久 journal、每输出进程锁、hash保护、commit标记；下次编译在读旧序列前恢复中断。五项真实进程中断/并发验收。损坏日志或被外部修改的文件保留并报错；不保证任意硬盘损坏、断电重排序下绝对无损。"
+    },
+    "O5": {
+      "status": "implemented_and_bounded",
+      "description": "M3D、USD内置；VRML独立GPL转换器；Windows C4D使用独立Cineware桥接。SDK仅在本地构建，不发布SDK示例或文档。依赖版本、许可证及各格式固定验收见 [O5_FORMAT_IMPORTS.md](O5_FORMAT_IMPORTS.md)。"
+    },
+    "H1": {
+      "status": "format_or_engine_boundary",
+      "description": "不改模型格式和引擎，不能让 uint8 最终骨索引表示512/1024可蒙皮骨；大量源骨可先折叠。"
+    },
+    "H2": {
+      "status": "format_or_engine_boundary",
+      "description": "每顶点3最终权重、mesh/strip局部16位编号、8 LOD、相关16位索引、32位文件偏移及bodygroup范围不能无限扩展。R3全局flex限制已单独修复。"
+    },
+    "H3": {
+      "status": "format_or_engine_boundary",
+      "description": "未改引擎不会自动执行UTC、任意骨缩放/顶点动画、FE世界碰撞、作者约束、完整VRM/Unity行为；客户端适配和离线烘焙有明确契约。"
+    },
+    "H4": {
+      "status": "format_or_engine_boundary",
+      "description": "现有renderer的原生SubD分配stub需引擎修复；默认离线SubD已可用。"
+    },
+    "H5": {
+      "status": "format_or_engine_boundary",
+      "description": "五者互相冲突的默认值和算法不可能同时成为同一个默认，也不能保证所有文件、所有帧相同。"
+    }
+  },
+  "production": {
+    "original_qc_unchanged": true,
+    "qc_sha256": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783",
+    "compiler_sha256": "9b9e1005bd520f089879443f6aaef794e6eaff035f79e55e68189c9cdfbaf801",
+    "bones": 126,
+    "vertices": 572277,
+    "physics_bodies": 18,
+    "mdl_mass": 30.0,
+    "phy_totalmass": 30.0,
+    "resolved_materials": 65,
+    "missing_materials": [],
+    "missing_referenced_textures": [],
+    "supplied_material_files": 249,
+    "supplied_materials_unchanged": true,
+    "evidence_sha256": "b687178e0306cff53b5c6ca00e06bb9a01f308412481b4d7ec5eb312dc92790e"
+  },
+  "runtime": {
+    "schema": 1,
+    "version": "1.2.23",
+    "date_utc": "2026-10-09T04:18:47.252256+00:00",
+    "scope": "Self-authored bounded engine fixtures; production Plum input not altered or used in these tests.",
+    "compiler": {
+      "path": "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+      "sha256": "9b9e1005bd520f089879443f6aaef794e6eaff035f79e55e68189c9cdfbaf801"
+    },
+    "runtime_sha256": {
+      "newpage_meshstates.lua": "532862ef5261b27f7723dace27a5c19374f5e6c0b80b3694b598ab3dc97a4c23",
+      "newpage_vrm.lua": "8d385a445bb41c707e9974ca7061e0e75eb3efe92c82e5abf8d7b6776a47ceeb",
+      "newpage_vrm_materials.lua": "2488e2ccd03d71aaadd9ae03420c9c3b03ea1eb973ce1f8578385dd92e4689c1"
+    },
+    "gmod": {
+      "status": "passed",
+      "engine": "2026.10.08",
+      "client_checks": {
+        "vrm_expression_material_and_clip": {
+          "passed": true,
+          "result": {
+            "weight": 0.800000011920929,
+            "uv": [
+              1.25,
+              1.5
+            ],
+            "alpha": 0.699999988079071,
+            "entity": 64,
+            "override": "!newpage_vrm_entity_64_1",
+            "controller": "ctrl_vrm_n1_m0",
+            "color": [
+              1,
+              0.20000000298023224,
+              0.10000000149011612
+            ]
+          }
+        },
+        "spring_real_engine_callback_and_finite_tails": {
+          "passed": true,
+          "result": [
+            {
+              "previous": [
+                119.9991455078125,
+                0.1811218112707138,
+                -1.3642420526593924e-12
+              ],
+              "name": "vrm_node_3",
+              "now": [
+                119.9991455078125,
+                0.18111799657344818,
+                -1.4779288903810084e-12
+              ]
+            }
+          ]
+        },
+        "mesh_state_real_bodygroups": {
+          "passed": true,
+          "result": [
+            0,
+            1,
+            2,
+            1,
+            0
+          ]
+        },
+        "models_and_materials_load": {
+          "passed": true,
+          "result": {
+            "basic_bones": 3,
+            "avatar_bones": 3,
+            "avatar_flexes": 2
+          }
+        },
+        "lod_and_procedural_bone": {
+          "passed": true,
+          "result": {
+            "position": [
+              100,
+              -14,
+              42.5
+            ],
+            "helper": 2,
+            "lod0_and_lod1_loaded": true
+          }
+        },
+        "spring_callback_attach": {
+          "passed": true,
+          "result": {
+            "joints": 1
+          }
+        }
+      },
+      "server_checks": {
+        "collision_load": {
+          "passed": true,
+          "result": {
+            "mass": 10,
+            "bodies": 2,
+            "bones": 3
+          }
+        },
+        "collision_ground_and_finite": {
+          "passed": true,
+          "result": [
+            [
+              -12.32530403137207,
+              5.844718933105469,
+              -12287.6220703125
+            ],
+            [
+              0.570374608039856,
+              18.403013229370117,
+              -12287.5966796875
+            ]
+          ]
+        }
+      },
+      "errors": [],
+      "visual_observation": "Parent Sky observation: dark blue background; blue square at left; red avatar triangles and blue procedural/collision fixture. No missing-material checkerboard.",
+      "known_engine_api_note": "GMod GetSubMaterial on the client reports the server value (Facepunch issue 3362). Actual cloned IMaterial values were checked; rendered expression color was visually observed. previousOverrides supports caller-known local baseline restoration.",
+      "cleanup": {
+        "addon_files_removed": 38,
+        "configs_restored": {
+          "config.cfg": "4eb61f44e32e01355bcb4169220674601f0f113ba5a8489ae73e1a159eb6327c",
+          "video.txt": null,
+          "game.cfg": "318702230feaf7c37f1bf59cf07d0fa82c88e6492694b552fff99c1b262ca63c"
+        },
+        "addon_absent": true
+      }
+    },
+    "l4d2": {
+      "status": "passed_bounded_model_load",
+      "engine": "2.2.4.3 build 10097 (2026-06-30), app 550",
+      "map": "c1m1_hotel",
+      "host": "Existing user installation launches L4D2Bridge64; no bridge configuration was changed.",
+      "models": [
+        "states",
+        "avatar",
+        "basic"
+      ],
+      "evidence": "net-console.log records precache/spawn/GetModelName for all three real prop_dynamic entities; parent Sky confirmed visible geometry without ERROR models or missing-material checkerboard.",
+      "limits": "No claim of exact shader, flex, physics or LOD parity in L4D2; detailed runtime feature checks were performed in GMod.",
+      "compiler": {
+        "path": "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+        "sha256": "9b9e1005bd520f089879443f6aaef794e6eaff035f79e55e68189c9cdfbaf801"
+      },
+      "cleanup": {
+        "files_removed": 18,
+        "configs_restored": {
+          "config.cfg": "fc7ffd58520c41d188acacba48b90da1ecf2b56bc5c67cbcdef3c0287b4f597c",
+          "video.txt": "51c475632de18f8cb5a5c76f923aa0df92288e52b65c982cdafc38f7fbbed864",
+          "video.txt.bak": null,
+          "videodefaults.txt": "51c475632de18f8cb5a5c76f923aa0df92288e52b65c982cdafc38f7fbbed864"
+        },
+        "netconsole_credentials_removed": true
+      }
+    },
+    "insurgency": {
+      "status": "engine_started_model_load_unverified",
+      "cleanup": {
+        "files_removed": 17,
+        "configs_restored": {
+          "config.cfg": "d3ade7b2ad3db5fa50d0a8024f5a1a632ba862cf88df98844f56f66de8513531",
+          "video.txt": "b9ef0d88dee589c1f84c435374d283afb672735cb02b4cdd7fc6e17131ae9e7c",
+          "video.txt.bak": null,
+          "videodefaults.txt": "b9ef0d88dee589c1f84c435374d283afb672735cb02b4cdd7fc6e17131ae9e7c"
+        },
+        "netconsole_credentials_removed": true,
+        "process_cleanup": {
+          "pid": 12680,
+          "created": "2026-10-09T12:16:03.889735+08:00",
+          "launch_record_time": "2026-10-09T12:16:03.8946879+08:00",
+          "reason": "netconsole quit produced no effect; concurrent user input prevented UI close",
+          "method": "terminated_task_owned_process",
+          "time_delta_seconds": 0.0049529,
+          "path": "E:\\Steam\\steamapps\\common\\insurgency2\\insurgency.exe"
+        }
+      },
+      "engine": "Insurgency build 9810",
+      "map": "contact",
+      "models_compiled": [
+        "states",
+        "avatar",
+        "basic"
+      ],
+      "evidence": "Own offline engine process reached contact with a task-specific engine log and task models installed. Netconsole TCP connected but supplied commands produced no output; no task model spawn could be confirmed.",
+      "limitation": "Concurrent user input and a separate Steam launch dialog prevented safe UI interaction. No runtime model, animation, material, or physics success is claimed for Insurgency. Existing user game instances were not stopped or modified by this test."
+    },
+    "fixes_discovered": [
+      "Official L4D2 DLC3 VPK contains Latin1 filename bytes. Indexing unrelated archive paths no longer converts them to Windows UTF8 paths.",
+      "GMod client GetSubMaterial is not a valid readback of local SetSubMaterial; helper exposes its created clone records and accepts previousOverrides."
+    ],
+    "limits": [
+      "Spring simulation is a bounded approximation, not Unity solver parity.",
+      "These finite fixtures do not certify every model, game, shader or addon combination."
+    ]
+  },
+  "performance": {
+    "schema": 1,
+    "task": "V7 fixed performance comparison",
+    "limitations": [
+      "Three sequential trials per successful compiler/input; no CPU pinning or cold-cache reset.",
+      "Different compilers retain their defaults and may differ in output layout/behavior.",
+      "Peak RSS is process working set, not system-wide memory or committed virtual memory.",
+      "Failed compiles are recorded but excluded from timing comparisons; not a universal speed claim.",
+      "The default Neko synthetic run exits successfully but retains one 90000-vertex mesh and only 65536 distinct uint16 render-vertex references. Its timing is a recorded attempt, not equal-output performance evidence.",
+      "Plum reference outputs differ: CE has 104 bones versus NewPageMergeMDL 126. Neko cannot start its required dmxconvert; StudioMDL++ rejects the original $MaxVerts. Original QC is not adapted for references."
+    ],
+    "compilers": {
+      "NewPageMergeMDL": {
+        "path": "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+        "sha256": "191c1b53c90381f9bf87a156b2e9dc014fe8241f3e435908b6a316333f087b0d"
+      },
+      "CE-x64": {
+        "path": "C:\\Users\\Kud\\Desktop\\CODEMDL\\StudioMDL-CE\\bin\\x64\\cestudiomdl.exe",
+        "sha256": "bc5cbbcb1444d539d35a36afdc7a84b7419839fd1b15674e2d0ec6ffc37e0758"
+      },
+      "NekoMDL": {
+        "path": "C:\\Users\\Kud\\Desktop\\CODEMDL\\nekomdl\\nekomdl.exe",
+        "sha256": "36b7eaad13af84a492733a09bfe56d11b1c3b7e1d8bfe0070b99188198f9aa77"
+      },
+      "StudioMDL++": {
+        "path": "C:\\Users\\Kud\\Desktop\\CODEMDL\\studiomdl++.exe",
+        "sha256": "77791bdd9c0e09b6ae4efbadad9674d9398fc06bee74d3f6598ac2bacd128713"
+      }
+    },
+    "inputs": {
+      "plum": {
+        "qc": "C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc",
+        "sha256": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783"
+      },
+      "synthetic90000": {
+        "qc": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc",
+        "qc_sha256": "bf346243122a916cff109ea8749d68814580816e75846228c8a63cbdecf94b7f",
+        "source_sha256": "2143b71b8d87791b2abe3a7181b35d15a002141c958add576a4f2d35c84943d3",
+        "vertices": 90000,
+        "triangles": 30000
+      }
+    },
+    "runs": [
+      {
+        "compiler": "NewPageMergeMDL",
+        "input": "synthetic90000",
+        "trial": 1,
+        "args": [
+          "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\synthetic90000\\1\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\synthetic90000\\1\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 0.23320490000014615,
+        "peak_working_set_bytes": 84525056,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\synthetic90000\\1\\compile.log",
+        "log_sha256": "d3ffee4d33c7d5010d2021afe617407709cbc1d73ead2ec6edd3b9997c8778a1",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "753d0063ff154f28f2f16f6fa5ddcd745e874d749f50d5c397b7f3c739a1a230",
+            "size": 1808,
+            "version": 49,
+            "bones": 1,
+            "vvd_vertices": 90000
+          }
+        ]
+      },
+      {
+        "compiler": "NewPageMergeMDL",
+        "input": "synthetic90000",
+        "trial": 2,
+        "args": [
+          "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\synthetic90000\\2\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\synthetic90000\\2\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 0.22361529999989216,
+        "peak_working_set_bytes": 84643840,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\synthetic90000\\2\\compile.log",
+        "log_sha256": "641339baebd0f6dfd2da90ab57f5c113f3ba27a576497cad3378bfed6aa70314",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "753d0063ff154f28f2f16f6fa5ddcd745e874d749f50d5c397b7f3c739a1a230",
+            "size": 1808,
+            "version": 49,
+            "bones": 1,
+            "vvd_vertices": 90000
+          }
+        ]
+      },
+      {
+        "compiler": "NewPageMergeMDL",
+        "input": "synthetic90000",
+        "trial": 3,
+        "args": [
+          "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\synthetic90000\\3\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\synthetic90000\\3\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 0.22306460000027073,
+        "peak_working_set_bytes": 84586496,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\synthetic90000\\3\\compile.log",
+        "log_sha256": "e7f13735f6b6594845f9660bc2a067d64a80387f663c42ab2744de9fab60d42b",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "753d0063ff154f28f2f16f6fa5ddcd745e874d749f50d5c397b7f3c739a1a230",
+            "size": 1808,
+            "version": 49,
+            "bones": 1,
+            "vvd_vertices": 90000
+          }
+        ]
+      },
+      {
+        "compiler": "CE-x64",
+        "input": "synthetic90000",
+        "trial": 1,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\StudioMDL-CE\\bin\\x64\\cestudiomdl.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\synthetic90000\\1\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\synthetic90000\\1\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 0.47321670000019367,
+        "peak_working_set_bytes": 221634560,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\synthetic90000\\1\\compile.log",
+        "log_sha256": "db9b2f9d0e6cccf0b616920c9873fc3929efbf00234ecd572cbb267383d52f61",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "80a175dee377b2dd40a9692df7e8ccd08c83fa1a714554183eb9c886c7ef3111",
+            "size": 2432,
+            "version": 49,
+            "bones": 1,
+            "vvd_vertices": 90000
+          }
+        ]
+      },
+      {
+        "compiler": "CE-x64",
+        "input": "synthetic90000",
+        "trial": 2,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\StudioMDL-CE\\bin\\x64\\cestudiomdl.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\synthetic90000\\2\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\synthetic90000\\2\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 0.4761975999999777,
+        "peak_working_set_bytes": 221573120,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\synthetic90000\\2\\compile.log",
+        "log_sha256": "98d73a770bdb5d6479f52e4717051ecad5c80fe1a7cd5ef33ba1457fe754af8e",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "80a175dee377b2dd40a9692df7e8ccd08c83fa1a714554183eb9c886c7ef3111",
+            "size": 2432,
+            "version": 49,
+            "bones": 1,
+            "vvd_vertices": 90000
+          }
+        ]
+      },
+      {
+        "compiler": "CE-x64",
+        "input": "synthetic90000",
+        "trial": 3,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\StudioMDL-CE\\bin\\x64\\cestudiomdl.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\synthetic90000\\3\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\synthetic90000\\3\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 0.47462469999982204,
+        "peak_working_set_bytes": 221634560,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\synthetic90000\\3\\compile.log",
+        "log_sha256": "d4f9a7275755a650690741dc7a5c5b8d01decc13a19461b2ad206d65e61af710",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "80a175dee377b2dd40a9692df7e8ccd08c83fa1a714554183eb9c886c7ef3111",
+            "size": 2432,
+            "version": 49,
+            "bones": 1,
+            "vvd_vertices": 90000
+          }
+        ]
+      },
+      {
+        "compiler": "NekoMDL",
+        "input": "synthetic90000",
+        "trial": 1,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\nekomdl\\nekomdl.exe",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NekoMDL\\synthetic90000\\1\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 10.048891699999785,
+        "peak_working_set_bytes": 391835648,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NekoMDL\\synthetic90000\\1\\compile.log",
+        "log_sha256": "f57b023b237806c85567e3f95d5c0bd93970e8d976f00ae15b909388befb53b7",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "2252b583c03362958fbb96660adad6ca05cb4d595d0f86adc687136da3f03bac",
+            "size": 1660,
+            "version": 49,
+            "bones": 1,
+            "vvd_vertices": 90000
+          }
+        ]
+      },
+      {
+        "compiler": "NekoMDL",
+        "input": "synthetic90000",
+        "trial": 2,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\nekomdl\\nekomdl.exe",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NekoMDL\\synthetic90000\\2\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 10.171053399999892,
+        "peak_working_set_bytes": 208588800,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NekoMDL\\synthetic90000\\2\\compile.log",
+        "log_sha256": "5ef8a88cb8faf362172e646be4482eb809c1921b90ae122062a097d5da760233",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "3807d7e83b755ecf95dd55e8a1e85d350f577f4bb648bb3e1a1786872ddcfab4",
+            "size": 1660,
+            "version": 49,
+            "bones": 1,
+            "vvd_vertices": 90000
+          }
+        ]
+      },
+      {
+        "compiler": "NekoMDL",
+        "input": "synthetic90000",
+        "trial": 3,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\nekomdl\\nekomdl.exe",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NekoMDL\\synthetic90000\\3\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 10.031736700000238,
+        "peak_working_set_bytes": 208498688,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NekoMDL\\synthetic90000\\3\\compile.log",
+        "log_sha256": "0c86cdfa0a5301a1f1675fdaf14f078a096e2acef3317213de783d183eca93d6",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "d15b69eb9f0013bc0382f9668f7235ba70b07f0ccf7dcd172dea94abcb038a82",
+            "size": 1660,
+            "version": 49,
+            "bones": 1,
+            "vvd_vertices": 90000
+          }
+        ]
+      },
+      {
+        "compiler": "StudioMDL++",
+        "input": "synthetic90000",
+        "trial": 1,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\studiomdl++.exe",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\StudioMDL++\\synthetic90000\\1\\game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc"
+        ],
+        "seconds": 5.214153599999918,
+        "peak_working_set_bytes": 92647424,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 4294967295,
+        "timeout": false,
+        "success": false,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\StudioMDL++\\synthetic90000\\1\\compile.log",
+        "log_sha256": "23e2b1ab534a242df20174653953de44b6ab6d01452a9d1064414029b0853b69",
+        "models": [
+          {
+            "path": "models/integration_performance/large.mdl",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size": 0
+          }
+        ],
+        "error_tail": "\nBreadworks - studiomdlplusplus (Oct  3 2026)\nqdir:    \"C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\\"\ngamedir: \"C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\StudioMDL++\\synthetic90000\\1\\game\\\"\ng_path:  \"C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\synthetic\\large.qc\"\nBuilding binary model files...\nWorking on \"large.qc\"\nSMD MODEL large.smd\n---------------------\nwriting C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\StudioMDL++\\synthetic90000\\1\\game\\models/integration_performance/large.mdl:\nbones          896 bytes (1)\nanimations     128 bytes (1/1 anims) (1 frames) [0:00]\nsequences      220 bytes (1 seq) \nik/pose        164 bytes\nERROR: Too many verts in model. (90000 verts, MAXSTUDIOVERTS==65536)\nERROR: Aborted Processing on 'integration_performance/large.mdl'\n"
+      },
+      {
+        "compiler": "NewPageMergeMDL",
+        "input": "plum",
+        "trial": 1,
+        "args": [
+          "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\plum\\1\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\plum\\1\\game",
+          "C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc"
+        ],
+        "seconds": 2.3731402999997044,
+        "peak_working_set_bytes": 659152896,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\plum\\1\\compile.log",
+        "log_sha256": "b75e9f1339bff05cccf5aff34c1b1b5b704150c24fa7c709d7ef78e3fbeae279",
+        "models": [
+          {
+            "path": "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl",
+            "sha256": "4fd3e2a4110575026810c2e5658672b45e7924ee80c93ae603660b3576517c9d",
+            "size": 1548640,
+            "version": 49,
+            "bones": 126,
+            "vvd_vertices": 572277
+          }
+        ]
+      },
+      {
+        "compiler": "NewPageMergeMDL",
+        "input": "plum",
+        "trial": 2,
+        "args": [
+          "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\plum\\2\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\plum\\2\\game",
+          "C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc"
+        ],
+        "seconds": 1.7029600000000755,
+        "peak_working_set_bytes": 659312640,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\plum\\2\\compile.log",
+        "log_sha256": "c5e79bda0ead60356f8cf9197e8c965ba83c7e08b6f7f728bfde9c4aeaf41134",
+        "models": [
+          {
+            "path": "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl",
+            "sha256": "4fd3e2a4110575026810c2e5658672b45e7924ee80c93ae603660b3576517c9d",
+            "size": 1548640,
+            "version": 49,
+            "bones": 126,
+            "vvd_vertices": 572277
+          }
+        ]
+      },
+      {
+        "compiler": "NewPageMergeMDL",
+        "input": "plum",
+        "trial": 3,
+        "args": [
+          "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\plum\\3\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\plum\\3\\game",
+          "C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc"
+        ],
+        "seconds": 1.713214699999753,
+        "peak_working_set_bytes": 658776064,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NewPageMergeMDL\\plum\\3\\compile.log",
+        "log_sha256": "d0707472c68f1b6bd4415382d6aac21b9d65fb7340b1ff8ef58b675b25c803b9",
+        "models": [
+          {
+            "path": "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl",
+            "sha256": "4fd3e2a4110575026810c2e5658672b45e7924ee80c93ae603660b3576517c9d",
+            "size": 1548640,
+            "version": 49,
+            "bones": 126,
+            "vvd_vertices": 572277
+          }
+        ]
+      },
+      {
+        "compiler": "CE-x64",
+        "input": "plum",
+        "trial": 1,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\StudioMDL-CE\\bin\\x64\\cestudiomdl.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\plum\\1\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\plum\\1\\game",
+          "C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc"
+        ],
+        "seconds": 10.762647399999878,
+        "peak_working_set_bytes": 729874432,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\plum\\1\\compile.log",
+        "log_sha256": "492972fa7705396b34c933e1de11a2d048b67213b896249a711fba75fd166ce2",
+        "models": [
+          {
+            "path": "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl",
+            "sha256": "6e019893c60ca2faa4c49e35b1d9c38e84d963a73d78afa22f0bfed440f9aff4",
+            "size": 1602236,
+            "version": 49,
+            "bones": 104,
+            "vvd_vertices": 572277
+          }
+        ]
+      },
+      {
+        "compiler": "CE-x64",
+        "input": "plum",
+        "trial": 2,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\StudioMDL-CE\\bin\\x64\\cestudiomdl.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\plum\\2\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\plum\\2\\game",
+          "C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc"
+        ],
+        "seconds": 10.849590900000294,
+        "peak_working_set_bytes": 729874432,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\plum\\2\\compile.log",
+        "log_sha256": "9d3920099e22d6b3ffdd15ccf1194ef9fc9f8e6cb1db21d0bd3c60a7b936aa9f",
+        "models": [
+          {
+            "path": "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl",
+            "sha256": "6e019893c60ca2faa4c49e35b1d9c38e84d963a73d78afa22f0bfed440f9aff4",
+            "size": 1602236,
+            "version": 49,
+            "bones": 104,
+            "vvd_vertices": 572277
+          }
+        ]
+      },
+      {
+        "compiler": "CE-x64",
+        "input": "plum",
+        "trial": 3,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\StudioMDL-CE\\bin\\x64\\cestudiomdl.exe",
+          "-OutDir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\plum\\3\\game",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\plum\\3\\game",
+          "C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc"
+        ],
+        "seconds": 11.373451399999794,
+        "peak_working_set_bytes": 729866240,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 0,
+        "timeout": false,
+        "success": true,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\CE-x64\\plum\\3\\compile.log",
+        "log_sha256": "51d196f71d1cd536a6b98b61a8fa41a5980440bdfb51650d4acbec5a64b6db43",
+        "models": [
+          {
+            "path": "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl",
+            "sha256": "6e019893c60ca2faa4c49e35b1d9c38e84d963a73d78afa22f0bfed440f9aff4",
+            "size": 1602236,
+            "version": 49,
+            "bones": 104,
+            "vvd_vertices": 572277
+          }
+        ]
+      },
+      {
+        "compiler": "NekoMDL",
+        "input": "plum",
+        "trial": 1,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\nekomdl\\nekomdl.exe",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NekoMDL\\plum\\1\\game",
+          "C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc"
+        ],
+        "seconds": 0.10839869999972507,
+        "peak_working_set_bytes": 77893632,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 4294967295,
+        "timeout": false,
+        "success": false,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NekoMDL\\plum\\1\\compile.log",
+        "log_sha256": "56238f8d3d1a949ee71b14ccc2c83d48d4edfc295f082192a399f5b2397a6c5e",
+        "models": [],
+        "error_tail": "        \n  x+++X       Xx;+xX  Xx;+X         X+++X      x;;;;;;;;;;X      X++xX       Xx++xX \n  +::;;+X     x+;++X  x;::;+X     X+;:;;+X     x;::;;;;;;+X      +::;;+X     x+:++X \n X;;;;;;;+X   x+;++x   x;;;;;+XXX+;;:;;+X     X+;;xX  X+;;x     X+;;;;;;+X   x+;++X \n x;;;;;;;;;+x x;;;;x    X+;;;;;;;;::;xX       x;;;x    x;;+X    x;:;;;;;;;xX x;;;;x \n x;;;;x;;;;;;xx;;;;x      X++;;;::;x         X;;;;;;;;;;;;;+X   x;;;;x;;;;;;xx;;;;x \n x;;;;x +;::;;;;;;;X         x;::;X          +;::;;;;;;;;;;;x   x;;;;xX+;;:;;+;;;;X \n x;;;;x  X+;:::;:;;X         x;::;X         x;::;;xXXxx+;::;+   x;;;;x  X;;::;;:;;X \n X;;;;+    X+;:::;+          x;:;;X         x;:;;x      ;::;;X  X;;;;+    x;;:::;+  \n  x;;;+      Xx;;;x          x;;;;X         x;;;+x      x;;;;x   x;;;+      X+;;;x  \n\nnekomdl 2.3.0 馃惐 by: starfelll\nqdir:    \"c:\\users\\kud\\desktop\\gmod\\\"\ngamedir: \"C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\NekoMDL\\plum\\1\\game\\\"\ng_path:  \"C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc\"\nBuilding binary model files...\nWorking on \"playermodel_f_compile2_hair.qc\"\nIncluding: @qci/meshes2_hair.qci\nMaxVertexLimit: 128000\tMaxVertexClamp: 128000\nWARNING: Mismatch DMX version 1 , current supported version is 18.\nWARNING: Could not execute the command:\n   dmxconvert -allowdebug -i \"c:\\users\\kud\\desktop\\gmod\\@playermodel_mesh\\Head.dmx\" -ie binary -o \"c:\\users\\kud\\desktop\\gmod\\@playermodel_mesh\\_temp_conversion_file_.dmx\" -oe binary -of model\nWindows gave the error message:\n   \"绯荤粺鎵句笉鍒版寚瀹氱殑鏂囦欢銆�\"\nWARNING: Unerialize: Unable to start dmxconvert process\nERROR: c:\\users\\kud\\desktop\\gmod\\@qci/meshes2_hair.qci(227): - could not load file '@playermodel_mesh\\Head'\nERROR: Aborted Processing on 'player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl'\nWARNING: Leaking 1 elements\n"
+      },
+      {
+        "compiler": "StudioMDL++",
+        "input": "plum",
+        "trial": 1,
+        "args": [
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\studiomdl++.exe",
+          "-game",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\StudioMDL++\\plum\\1\\game",
+          "C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc"
+        ],
+        "seconds": 0.04576489999999467,
+        "peak_working_set_bytes": 14860288,
+        "peak_rss_method": "Windows GetProcessMemoryInfo PeakWorkingSetSize, sampled every 10 ms and after process exit",
+        "exit_code": 4294967295,
+        "timeout": false,
+        "success": false,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\StudioMDL++\\plum\\1\\compile.log",
+        "log_sha256": "96f80700b4a87091b2700893c3e9f76a596a69b559b743e416f2bd7a7ad80d7f",
+        "models": [],
+        "error_tail": "\nBreadworks - studiomdlplusplus (Oct  3 2026)\nqdir:    \"C:\\Users\\Kud\\Desktop\\gmod\\\"\ngamedir: \"C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\integration-performance-v1223\\StudioMDL++\\plum\\1\\game\\\"\ng_path:  \"C:\\Users\\Kud\\Desktop\\gmod\\playermodel_f_compile2_hair.qc\"\nBuilding binary model files...\nWorking on \"playermodel_f_compile2_hair.qc\"\nERROR: C:\\Users\\Kud\\Desktop\\gmod\\@qci\\meshes2_hair.qci(225): - bad command $maxverts\nERROR: Aborted Processing on 'player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl'\n"
+      }
+    ],
+    "summary": [
+      {
+        "input": "plum",
+        "compiler": "NewPageMergeMDL",
+        "trials": 3,
+        "successful": 3,
+        "median_seconds": 1.713214699999753,
+        "median_peak_rss_mib": 628.6171875
+      },
+      {
+        "input": "plum",
+        "compiler": "CE-x64",
+        "trials": 3,
+        "successful": 3,
+        "median_seconds": 10.849590900000294,
+        "median_peak_rss_mib": 696.0625
+      },
+      {
+        "input": "plum",
+        "compiler": "NekoMDL",
+        "trials": 1,
+        "successful": 0,
+        "median_seconds": null,
+        "median_peak_rss_mib": null
+      },
+      {
+        "input": "plum",
+        "compiler": "StudioMDL++",
+        "trials": 1,
+        "successful": 0,
+        "median_seconds": null,
+        "median_peak_rss_mib": null
+      },
+      {
+        "input": "synthetic90000",
+        "compiler": "NewPageMergeMDL",
+        "trials": 3,
+        "successful": 3,
+        "median_seconds": 0.22361529999989216,
+        "median_peak_rss_mib": 80.66796875
+      },
+      {
+        "input": "synthetic90000",
+        "compiler": "CE-x64",
+        "trials": 3,
+        "successful": 3,
+        "median_seconds": 0.47462469999982204,
+        "median_peak_rss_mib": 211.3671875
+      },
+      {
+        "input": "synthetic90000",
+        "compiler": "NekoMDL",
+        "trials": 3,
+        "successful": 3,
+        "median_seconds": 10.048891699999785,
+        "median_peak_rss_mib": 198.92578125
+      },
+      {
+        "input": "synthetic90000",
+        "compiler": "StudioMDL++",
+        "trials": 1,
+        "successful": 0,
+        "median_seconds": null,
+        "median_peak_rss_mib": null
+      }
+    ],
+    "original_qc_unchanged": true,
+    "supplied_materials_unchanged": true,
+    "supplied_material_files": 249,
+    "output_observations": [
+      {
+        "compiler": "NewPageMergeMDL",
+        "input": "synthetic90000",
+        "mesh_vertex_counts": [
+          65535,
+          24465
+        ],
+        "unique_mesh_relative_render_vertex_references": 90000,
+        "expected_referenced_vertices": 90000,
+        "render_vertex_coverage_complete": true
+      },
+      {
+        "compiler": "CE-x64",
+        "input": "synthetic90000",
+        "mesh_vertex_counts": [
+          32766,
+          32766,
+          24468
+        ],
+        "unique_mesh_relative_render_vertex_references": 90000,
+        "expected_referenced_vertices": 90000,
+        "render_vertex_coverage_complete": true
+      },
+      {
+        "compiler": "NekoMDL",
+        "input": "synthetic90000",
+        "mesh_vertex_counts": [
+          90000
+        ],
+        "unique_mesh_relative_render_vertex_references": 65536,
+        "expected_referenced_vertices": 90000,
+        "render_vertex_coverage_complete": false
+      }
+    ],
+    "neko_failed_conversion_temp_exists": false
+  },
+  "dependencies": {
+    "tinyusdz_commit": "6050eef932f7d2788656d63297aa488fb0961ed1",
+    "vrml": "Separate GPL-3.0-or-later converter; complete converter and pugixml sources included. Standalone build passed. No GPL parser code linked into main compiler.",
+    "cineware_sdk": {
+      "version": "22.008",
+      "archive_sha256": "44f3372322161f7062c3f664181758d7e2938929f2257717c54f61d6ff1f3c2b",
+      "user_accepted_license": true,
+      "sdk_redistributed": false,
+      "helper_sha256": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97",
+      "scope": "Editable polygon objects, hierarchy, UV/normals and basic material names/colors. No procedural cache, skin, animation or shader baking. Local complete Windows ZIP includes helper; automated Windows/Linux packages do not."
+    }
+  },
+  "c4d_recovery_evidence": {
+    "time_utc": "2026-10-09T03:56:49Z",
+    "files": {
+      "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe": {
+        "sha256": "0bda62108a2e77ae9d206a0e943e83e50970e88942425dd7383f25a9796b673d",
+        "bytes": 27855360
+      },
+      "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL-C4D.exe": {
+        "sha256": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97",
+        "bytes": 2643968
+      },
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\output_transaction_harness.exe": {
+        "sha256": "969a82fbb562ef3ed3ff704aa0966fad14b1969e1a4a700582f5d45979d6cfbb",
+        "bytes": 1608192
+      },
+      "D:\\newpage-merge-mdl\\tests\\fixtures\\cineware-static.c4d": {
+        "sha256": "dca7324f10362a4c60f32952a3f300b12bdc45527f7799847c43f4db66fe8024",
+        "bytes": 23679
+      }
+    },
+    "tests": [
+      {
+        "command": [
+          "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+          "D:\\newpage-merge-mdl\\tests\\c4d_bridge_test.py",
+          "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+          "-v"
+        ],
+        "exit": 0,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\c4d-bridge-validation\\c4d-final-tests.log"
+      },
+      {
+        "command": [
+          "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+          "D:\\newpage-merge-mdl\\tests\\output_transaction_test.py",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\output_transaction_harness.exe",
+          "-v"
+        ],
+        "exit": 0,
+        "log": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\c4d-bridge-validation\\output-recovery-final-tests.log"
+      }
+    ]
+  },
+  "reference_evidence_sha256": {
+    "integration-defaults-20261009/results.json": "9189dae937cdeda3d0f3972c26d07cb125feeffcf111ca908e0247996ce3fc11",
+    "integration-reference-20261009/ce-replacemesh.json": "bb32196211fdff35835000a03cff26cf0932020ec8343cea3bb068079716bd9f",
+    "integration-reference-20261009/studio2013-capacity.json": "4e0cee59c1005ba8baa689de45c86b0259f6d4042a798efaf623b8ca621c1973",
+    "integration-reference-20261009/studio2013-environments.json": "744e6a148d617d0b6ffab3746b7a0d87d96f8aea71a11d803770fe0a1d092111",
+    "neko-skin-capacity/results.json": "f0daa949b266a3722cb83982e93b9aa6bb4643887f0aecd76adbefd2f2758158",
+    "importformats-v1223.txt": "f0b7594514e71bdd8dc0ab930309ddebc325540709920e4cd9e969c0cffa2872"
+  },
+  "notes": [
+    "NoBoneRealign comparison is bounded by each emitted MDL position/rotation quantization scale, with distinct raw/aligned behavior still required.",
+    "Final version-resource patch changes FILEVERSION to 1.2.23.0 only; earlier helper/recovery and performance evidence preserves actual tested hashes.",
+    "Windows UTF8 manifest now embedded for MinGW; archive indexing preserves non-UTF8 VPK names without converting unrelated entries to Windows paths.",
+    "Historical CSGO v1.2.22 game checks are not claimed as a new v1.2.23 run.",
+    "Reference binaries, SDK files, original user models and raw game logs are not published."
+  ]
+}

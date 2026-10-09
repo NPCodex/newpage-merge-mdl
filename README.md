@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.22
+# NewPageMergeMDL v1.2.23
 
 [English](README.en.md) | 简体中文
 
-项目版本：**v1.2.22**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.23**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
@@ -11,9 +11,20 @@
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
 支持 Windows x64 和 Linux 构建。Windows 和 Linux 构建由 GitHub Actions 验证。
 
-目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态和后续顺序见 [五编译器功能清单](FEATURE_MATRIX.md)。
+目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
 
-## v1.2.22：完成固定的 11 项 CSGO 移植功能包
+## v1.2.23：五编译器固定清单收尾
+
+全部已知项目及证据边界统一记录在 [五编译器结账表](FIVE_COMPILER_COMPLETION.md)，包括明确无法由当前格式/引擎独立完成的 H 项。此后以新的上游版本或具体缺陷作为维护输入，不再把本表子项拆成下一批“可挖掘功能”。
+
+- 补齐 ++ 默认启动参数、Neko 条件模式、CE 权重策略、51 万级移动 flex、FBX 真正 bind pose 与通用动画采样；修复仅 hitbox/动画/低 LOD 使用骨被提前删除。
+- 新增中断后的多文件输出恢复、PMX 命名 morph、蒙皮 GPU 实例展开；`-importformats` 给出实际构建格式清单。
+- 提供 [有限拓扑状态](MESH_STATE_WORKFLOW.md)、[VRM 表情/弹簧骨运行模块](VRM_RUNTIME.md)；新增 [M3D、USD、VRML 和 C4D 导入路径](O5_FORMAT_IMPORTS.md)。VRML 转换器独立按 GPL 分发，主程序保持现有许可。
+- 2013 参考环境已恢复；其实际容量与宣传的差异、CE replacemesh 缺有效语法的证据也已记录。验证结果见当前版本报告，不将参考未知信息算作已兼容。
+
+本次本地验证并打包的完整 Windows x64 发行包包含 `NewPageMergeMDL-C4D.exe`。自动 CI 的 Windows/Linux 包不获取专有 Cineware SDK，Windows CI 包因此不含该辅助程序；可从完整 Windows 包补充到主程序旁，Linux 使用预先转换的 GLB。普通 CMake 构建无需该 SDK。具体格式和重建条件见 [O5 导入说明](O5_FORMAT_IMPORTS.md)。
+
+## v1.2.22 历史记录：完成固定的 11 项 CSGO 移植功能包
 
 [CSGO 移植范围](CSGO_PORTING_SCOPE.md) 中的 **A1–A7、B1–B4 全部完成**。本轮按这 11 项收口；下面保留的兼容边界和测试覆盖范围不另算新增移植待办。
 
@@ -52,9 +63,9 @@ v1.2.21 当时 **285 项兼容、20 项自动化、6 项挂载回归通过**，P
 
 这是限定范围的移植，具体语法、数值规则和拒绝项见 [COMPATIBILITY.md](COMPATIBILITY.md)。新增回归检查真实 MDL/VTX 数据、反编译再编译及动画数值；完整测试、生产模型和游戏内验证范围以 [VALIDATION.md](VALIDATION.md) 为准，文件加载或结构吻合本身不证明完整运行时行为一致。
 
-以下版本章节保留当时的实现和验证状态；当前能力以 v1.2.22 及“兼容边界与验证覆盖”为准。
+以下版本章节保留当时的实现和验证状态；当前能力以 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)及“兼容边界与验证覆盖”为准。
 
-## v1.2.19：自动质量、追加碰撞源与 CSGO FE 布料
+## v1.2.19 历史记录：自动质量、追加碰撞源与 CSGO FE 布料
 
 本节记录 v1.2.19 当时的范围；布料设置和 SubD 的后续扩展见上文 v1.2.20。
 
@@ -69,7 +80,7 @@ Windows 本地 **209 项兼容回归、20 项自动化回归**通过，包含 6 
 原版 CSGO 默认材质四面体对照中，边长 10/20 的总质量分别为 5.462355/43.698837 kg，与当前工具相同到打印的 6 位小数。同几何布料对照中，固定点、逆质量、固定偏移及平面约束吻合；骨骼回算采用不同算法，尚不能据此认定变形等价。
 
 
-## v1.2.18：CSGO LOD 蒙皮与 CONTENT 挂载
+## v1.2.18 历史记录：CSGO LOD 蒙皮与 CONTENT 挂载
 
 CSGO legacy（gameinfo SteamAppId 730）的低 LOD 默认从根模型最近顶点获取蒙皮权重，距离相同时按 UV、法线和源索引选择；`$skinnedLODs` 保留低 LOD 自带权重。其他游戏保持原默认行为。查询使用空间索引，之后仍执行对应 LOD 的骨骼重映射。同时实现根 LOD 与更高 LOD 的两阶段容差匹配，检查位置、UV、法线、权重和切线；小型 UV 边界样例与安装目录中的原版 CSGO StudioMDL 对照一致，但不宣称任意模型逐字节相同。
 
@@ -77,11 +88,11 @@ CSGO legacy（gameinfo SteamAppId 730）的低 LOD 默认从根模型最近顶�
 
 CSGO / MCV 目标还修正为 256 字节扩展头，保留 FE 指针槽（v1.2.18 当时为零），身体组预设写入正确偏移；其他目标保留原布局。两款游戏的预设样例分别通过 15 秒 HLMV 调试器监测，无访问异常，临时游戏文件已清理。这是布料序列化前置修正，不代表 FE 布料功能完成。
 
-## v1.2.17：启动信息说明修正
+## v1.2.17 历史记录：启动信息说明修正
 
 编译器和反编译器启动信息使用 `Source model toolchain`，移除固定 MDL 版本显示；本次不改变模型输出格式。
 
-## v1.2.16：CSGO / MCV 加载崩溃修复
+## v1.2.16 历史记录：CSGO / MCV 加载崩溃修复
 
 `-game` 指向含 `gameinfo.txt` 的游戏目录时，SteamAppId 730（CSGO legacy）和 1012110（MCV）自动选择扩展 VTX：strip-group / strip 分别为 33 / 35 字节。此前默认的 25 / 27 字节布局会被这两款游戏错误解释，即使 MDL 都是 v49，HLMV 和游戏仍可能崩溃。其他目标保留旧默认值；显式 `$vtxformat` / pulseqc `vtx_archetype` 仍优先于检测，CLI `-vtxformat` 优先级最高。对这两个目标强制旧布局会警告。
 
@@ -89,7 +100,7 @@ CSGO / MCV 目标还修正为 256 字节扩展头，保留 FE 指针槽（v1.2.1
 
 182 项兼容和 20 项自动化回归通过。Yvette 的身体与三份手臂 QC、MCV 的身体/手臂/腿部 QC 均重新编译，并用两款游戏各自的 HLMV 加载；七份输出各监测 15 秒，无访问异常。实际角色渲染及 Yvette 引用动画另经观察。MCV 在 mcv_camp / mcv_bridge 验证玩家、第一人称手臂、机器人、布娃娃及地图重载；CSGO 在 de_dust2 / ar_baggage 验证玩家/机器人、11 种皮肤 × 18 种身体组合（原生动态实体分批加载）、正常玩家死亡及地图重载。运行记录见 [v1.2.16 验证报告](tests/reports/v1.2.16-validation.json)。Plum 保持原布局，126 骨骼、572,277 顶点结构检查通过。这是指定模型和场景的覆盖，不代表所有游戏/模型已验证。
 
-## v1.2.15：CSGO 指令兼容（31 个入口；当时尚无布料输出）
+## v1.2.15 历史记录：CSGO 指令兼容（31 个入口；当时尚无布料输出）
 
 本轮补上此前 33 个缺失入口中的 31 个，包含骨骼控制器与运行时标志、前缀/子串改名、绑定轴与骨骼中心、边界框策略、碰撞精度、源模型追加、附件重定义、CONTENT 路径查找、内部/物理文件名以及 OBJ 生成虚拟 VTA。实际写入 MDL/VVD/PHY；虚拟 VTA 支持 flexfile、原生 `$vta` 及 VCA，不产生中间文件，并拒绝帧间拓扑改变。
 
@@ -97,51 +108,51 @@ CSGO / MCV 目标还修正为 256 字节扩展头，保留 FE 指针槽（v1.2.1
 
 在 v1.2.15，`$cloth` 与 `$clothplanecollision` **当时尚未实现**并明确拒绝；v1.2.19 已新增上文所述的限定 FE 路径。它们需要有限元节点/约束/控制骨回解与 CSGO 扩展头数据，不能用 jigglebone 或保存一段 keyvalues 代替。19 项新增专项回归、181 项完整兼容测试、20 项自动化测试通过；Plum（126 骨骼、572,277 顶点）及 Yvette 编译/结构检查通过。本轮未做 CSGO 游戏内验证。详细语法和差异见 [COMPATIBILITY.md](COMPATIBILITY.md)，逐入口状态见 [验证记录](tests/reports/v1.2.15-validation.json)。
 
-## v1.2.14：CSGO QC 三角形顺序兼容
+## v1.2.14 历史记录：CSGO QC 三角形顺序兼容
 
 新增 `$preservetriangleorder`，实际跳过 meshoptimizer 缓存/过度绘制排序和 NvTriStrip 排序，采用参考编译器的深度优先边遍历顺序。开关优先于 `$UseLegacyStripify`；不改变骨骼调色板、flex 分组或格式设置，也不保证跨材质/分组保留源文件全局面顺序。32 面自制网格与 CE 输出顺序对照通过，并覆盖大小写、DX80/DX90、两种 VTX 格式、LOD 及 legacy 组合。用户 Yvette 原始 QC 编译通过（144 骨骼、65,902 顶点）；Plum 回归通过。162 项兼容、20 项自动化测试通过；未做 CSGO 游戏内验证。
 
-## v1.2.13：叛乱 2 / 军事冲突：越南 QC 修复
+## v1.2.13 历史记录：叛乱 2 / 军事冲突：越南 QC 修复
 
 恢复传统单/双反斜杠续行宏，保留 `$endmacro` 语法；修复附件、命中盒及 hitgroup 使用 `$renamebone` 最终名称时的解析，并允许仅修改骨骼名称大小写。真实不同骨骼的重名仍报错。两份用户原始 QC/QCI 无需修改即可编译，MDL/VVD/VTX 结构检查通过；161 项兼容、20 项自动化回归通过。本轮不代表这两款游戏内表现已验证。
 
-## v1.2.12：反向分析补齐 CE LOD 选项
+## v1.2.12 历史记录：反向分析补齐 CE LOD 选项
 
 通过 CE x64 LOD 解析器的静态反汇编与自制模型对照，补齐 `$lod { replacemodel 原模型 替换模型 reverse }`。`reverse` 大小写不敏感，在命令同一行使用；仅翻转替换 LOD 的三角形绕序，保留导入法线，并隔离共享网格，避免影响其他 LOD。普通、reverse、混合大小写三组 CE 输出确认行为，DX80/DX90 回归检查后续普通 LOD 不被翻转。当时 158 项兼容、20 项自动化回归通过。
 
 CE 日志中的 `replacemesh` 仍未确认：提供的 x86/x64 程序未找到该入口；x64 实际解析分支为 replacemodel/replacematerial/removemesh。不能把本轮补齐的 reverse 选项当作该日志条目已经实现。
 
-## v1.2.11：Assimp 路径的 glTF 动画插值
+## v1.2.11 历史记录：Assimp 路径的 glTF 动画插值
 
 修复 `$NoFastGltf` 路径丢失 STEP 标记和 CUBICSPLINE 切线的问题。几何与蒙皮仍由 Assimp 导入，动画使用原始 glTF 采样器精确采样，不生成第二份几何。glTF/GLB/VRM 的 LINEAR、STEP、CUBICSPLINE 位移共 18 组双后端检查通过，另验证四元数、无名节点/动画，以及两个后端的缩放与形态键烘焙。当时 157 项兼容、20 项自动化回归通过；这不代表所有 Assimp 格式已验证。
 
-## v1.2.10：Neko 驱动骨父级兼容
+## v1.2.10 历史记录：Neko 驱动骨父级兼容
 
 修复 `$NekoDriverBone` 只采样局部姿态的问题：现在累积姿态动画的父级世界变换，再转换到最终模型父级的绑定空间，保留父级动画并支持姿态文件与模型的不同层级。姿态采样源不再定义模型骨架，命令写在 `$body` 前后均可。6 组自制参考案例（不同父级、父级动画、层级变化、缩放、重命名、多辅助骨）与 Neko 2.3.0 对照通过，12 组命令顺序回归通过。原生 `$driverbone` 采样语义保留。当时 154 项兼容、20 项自动化回归通过。
 
-## v1.2.9：Neko 形态键与输出故障保留
+## v1.2.9 历史记录：Neko 形态键与输出故障保留
 
 在 `$dmxcompatibility neko` 模式下，`$RenameMorph` 按 FBX/glTF 导入原名映射：区分大小写、缺失忽略、同名定义后者覆盖、不连续映射、不改写 QC 声明；命名 flex 块只保留声明的源键。native 全局重命名行为保留。多个源键映射到同名时明确报错。
 
-输出先全部暂存，检查写入、刷新及关闭，再备份并替换文件集；可处理的故障回滚。目录冲突和 Windows VTX 锁定测试确认旧文件不变；不保证断电或强制终止恢复。153 项兼容、20 项自动化回归通过。
+v1.2.9 当时将输出全部暂存，检查写入、刷新及关闭，再备份并替换文件集；可处理的故障回滚。目录冲突和 Windows VTX 锁定测试确认旧文件不变；该版本没有强制终止后的恢复。153 项兼容、20 项自动化回归通过。v1.2.23 已增加持久日志和下次编译恢复；任意硬盘损坏或断电重排序仍不能保证无损。
 
-## v1.2.8：回归五编译器整合主线
+## v1.2.8 历史记录：回归五编译器整合主线
 
 补齐 Neko 历史 QC 指令 `$prefer_fbx`、`$forcecapsules` 的警告式接受，以及旧参数 `-usenvtristrip`。CE `$DontDestroy` / `-DontDestroy` 接入默认保留输出策略。前两者不改变导入或生成胶囊，符合 Neko 2.3.0 当前行为；旧 QC 不再因这些指令中断。150 项兼容回归通过。StudioMDL 2013 两包按同一编译器、不同依赖配置记录。
 
-## v1.2.7：参考面部模式与生产模型验证
+## v1.2.7 历史记录：参考面部模式与生产模型验证
 
 新增 `$dmxcompatibility native|ce|neko`，保留默认行为并支持两种参考编译器的规则及控制器策略；CE/Neko 各 14 项对照一致。Claudia 在 GMod 使用真实材质验证面部变化、生成的减面 LOD 和布娃娃；Hair 两份原始 QC 继续通过编译。修复重复关节权重与宏报错来源，增加写出前及序列化文件检查，`-perfjson` 包含各处理阶段耗时。当时 146 项兼容回归、20 项自动化回归。详见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。
 
-## v1.2.6：兼容、物理与发布验证
+## v1.2.6 历史记录：兼容、物理与发布验证
 
 新增显式 copy weightlist、修复 jiggle 碰撞几何导致的布娃娃异常、改善 include 诊断和长场景动画采样性能。完整 Hair player/NPC 已在 GMod 检查；当时 138 项兼容回归、20 项自动化回归。七项结果及明确保留的问题见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。
 
-## v1.2.5：Hair QC 编译修复
+## v1.2.5 历史记录：Hair QC 编译修复
 
 修正误拒绝有效 bodygroup 基数的检查；增加最终组合乘积与预设整数检查回归，当时共 128 项兼容测试。
 
-## v1.2.4：七项改进
+## v1.2.4 历史记录：七项改进
 
 - **资源挂载**：SearchPaths 顺序、`|appid_N|`、Steam 多游戏库、目录和 VPK v1/v2（预载/分卷）；`-steamdir` 指定 Steam 路径。
 - **Draco glTF**：直接解码压缩几何及属性映射，保留 UV、法线和未压缩形态键；损坏数据明确失败。
@@ -207,17 +218,17 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 - 编译器、反编译器及辅助工具统一使用 NewPageMergeMDL 项目命名和当前项目版本号；编译器启动信息及重定向日志均为纯文本，不显示彩色横幅。
 - 自动拉取 PulseModel、套用维护补丁，完成 Windows/Linux 构建与测试后发布 GitHub Release；冲突或检查失败停止发布。CE/++/Neko 的新增闭源功能仍需人工分析。
-- 当前 325 项兼容、20 项自动化及 6 项挂载回归通过；测试检查实际模型输出。历史验证中，NekoMDL 的完整 `survivor_teenangst.qc` 通过混合 DMX/GLB 编译，用户的 Alyx QC 也成功编译。测试和发布包不包含用户模型或参考编译器二进制。
+- v1.2.22 的历史结果为 325 项兼容、20 项自动化及 6 项挂载回归通过；测试检查实际模型输出。当前结果见 [VALIDATION.md](VALIDATION.md)。更早验证中，NekoMDL 的完整 `survivor_teenangst.qc` 通过混合 DMX/GLB 编译，用户的 Alyx QC 也成功编译。测试和发布包不包含用户模型或参考编译器二进制。
 
-## v1.2.3 缩减未完成项
+## v1.2.3 历史记录 缩减未完成项
 
 - **同名材质合并**：模型级 `RenameMat` 支持多个材质指向同一名称；重建材质网格范围，同步三角形、表情顶点和面分组。验证六个顶点、两级 LOD 和 flex，其他身体组选项保持独立。
-- **meshopt 压缩 glTF**：快路径直接解码 ATTRIBUTES、TRIANGLES 和 INDICES 流，并应用 NONE / OCTAHEDRAL / QUATERNION / EXPONENTIAL / COLOR 滤波。实测 EXPONENTIAL 属性流及两种索引流，检查几何、UV、flex 和反编译动画；其他滤波路径尚未逐项专项验证。量化滤波会保留源编码自身的误差。损坏流或非法范围会在写入前报错。
+- **meshopt 压缩 glTF**：v1.2.3 快路径直接解码 ATTRIBUTES、TRIANGLES 和 INDICES 流，并应用 NONE / OCTAHEDRAL / QUATERNION / EXPONENTIAL / COLOR 滤波。当时实测 EXPONENTIAL 属性流及两种索引流，检查几何、UV、flex 和反编译动画；v1.2.23 已补齐 OCTAHEDRAL/QUATERNION/COLOR 的专项样例。量化滤波会保留源编码自身的误差。损坏流或非法范围会在写入前报错。
 - **静态 GPU 实例**：展开无蒙皮的 `EXT_mesh_gpu_instancing`，共享解析后的网格；烘焙每个实例的平移、旋转和缩放，保留形态键与 InNode 子树筛选。验证旋转、镜像缩放及错误四元数；展开后的场景仍受源骨骼/节点数量上限约束。
 
-本轮将“材质重命名合并不支持”从未完成表删除，并缩小 glTF 压缩/实例限制。未认证的游戏表现、Draco、AppID 挂载、动画缩放/权重和复杂 rig 差分仍保留，未以文档修改代替实现。共 127 项兼容回归与 16 项自动发布测试。
+v1.2.3 当时将“材质重命名合并不支持”从未完成表删除，并缩小 glTF 压缩/实例限制。游戏表现、Draco、AppID 挂载、动画缩放/权重和复杂 rig 差分是该版本当时的后续项目，后续版本已补实现与有界验收；当前结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。当时共 127 项兼容回归与 16 项自动发布测试。
 
-## v1.2.2 六项改进
+## v1.2.2 历史记录 六项改进
 
 - **Bodygroups**：组合数乘积使用 64 位计算，允许最多 2^31 种组合（body 值 0..2147483647）；31 个二选一组可编译，32 个会在写出前报错。固定单选组不再造成无意义的 preset mask 累加。
 - **Skin groups**：在分配皮肤表前检查材质数 × 皮肤数 × 2 字节，应用文件格式及 `$MDLOutputBufferSize` / `$FileBufferSize` 限制；验证 1001 个皮肤及超限不改写已有输出。
@@ -228,7 +239,7 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 **v1.2.5 修复**：修正完整 Hair QC 被过度严格检查阻止编译的问题。玩家和 NPC 两份原始 QC 均通过编译，分别输出 126 / 124 根骨骼和 572277 个顶点；不修改原始模型。检查实际写入的 bodygroup 基数和预设值，保留诊断。
 
-## v1.2.1 新增功能与修复
+## v1.2.1 历史记录 新增功能与修复
 
 - `$UseLegacyStripify` / `-nvtristrip` 使用随源码附带的 NvTriStrip 后端；默认继续使用 meshoptimizer。验证 DX80/DX90、两种 VTX 布局、LOD 和跨硬件骨骼调色板的蒙皮映射。旧算法会移除重复及索引退化面。
 - LOD 骨骼替换拒绝循环与冲突，正确解析连续替换；增加 IK 链、驱动骨、骨骼重命名和未使用骨骼折叠的联合输出测试。
@@ -239,30 +250,31 @@ CE 兼容开关需显式启用；部分布尔开关重复使用会切换状态�
 
 NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题的验证范围及剩余工作见 [RESEARCH.md](RESEARCH.md)。
 
-## v1.2.0 新增验证与优化
+## v1.2.0 历史记录 新增验证与优化
 
 - SMD/VTA 按行读取，去掉整文件的重复缓冲；拒绝无效父骨、非有限坐标以及越界/负权重，修复超过 16 个骨骼权重时的越界读取。
 - 网格分割使用稀疏映射与已分配顶点标记。9000 顶点、分割上限 3 的专项测试从 300.7 ms 降至 15.8 ms，四个输出文件逐字节一致；这是极端小分割测试，不代表所有模型都获得同样提速。
 - 实测编译 181,271,943 字节（172.88 MiB）、240 万条实际顶点记录的 VTA；加载优化后的峰值工作集从 880 MB 降至 376 MB，输出逐字节一致。`tests/stress_vta.py` 可独立复现。
 - 已验证 130 个输出材质、512 个源骨骼折叠、256 个输出骨骼及最高编号骨骼动画；256 骨骼改用帧动画编码。**512 个最终输出骨骼仍未实现**：标准 MDL/VVD 有 8 位骨骼索引，超过 256 会在写入前明确报错。
-- 增加 DMX 多骨骼形态键、网格分割后的 flex/LOD 和碰撞重命名/父子关系回归。用户提供的极限模型已成功编译：126 骨骼、572277 个 VVD 顶点；后续 v1.2.6/v1.2.7 已补充 GMod 几何与物理验证，材质验证仍缺资源。
+- 增加 DMX 多骨骼形态键、网格分割后的 flex/LOD 和碰撞重命名/父子关系回归。用户提供的极限模型当时成功编译：126 骨骼、572277 个 VVD 顶点；后续 v1.2.6/v1.2.7 补充 GMod 几何与物理验证，当时的材质资源缺口已由 v1.2.8 Plum 验证补齐。
 - 自动发布递增补丁版本，修复旧版标签识别。调查结果及尚未解决的课题见 [RESEARCH.md](RESEARCH.md)。
 
 ## 兼容边界与验证覆盖
 
-以下按 v1.2.22 的实现和验证整理。固定的 11 项 CSGO 移植包已全部完成；本表集中记录运行条件、测试边界及其他来源的整合限制，“未验证”不表示移植包尚未实现。
+以下按 v1.2.23 的实现整理，固定范围和验收结果以 [结账表](FIVE_COMPILER_COMPLETION.md)为准。固定的 11 项 CSGO 移植包已全部完成；本表记录运行条件及不可无限推广的验证边界，不再将这些边界拆为后续功能包。
 
 | 内容 | 当前状态与边界 |
 | --- | --- |
 | CSGO 布料 | `flex_borders`、`prerotate`、混合拟合、多权重固定点、高级 FE、绳索及渲染蒙皮投影均已实现。仍限 CSGO AppID 730 骨骼/扩展 VTX；平面代理须同骨刚性绑定，稀疏回解须有效邻接基。世界碰撞需要游戏提供碰撞体，体积反馈需要 FitMatrix。高级碰撞无定量 A/B 或逐帧零穿透证明。详见 [布料指南](CSGO_CLOTH_AUTHORING.md)。 |
 | SubD | 默认离线 Catmull-Clark 烘焙普通三角形，接收 authored DMX 四边形，轮数 1–3。原生 patch 必须显式 `$subd native` 且使用扩展 VTX；已测 CSGO legacy/HLMV 原生路径会崩溃。非流形、三角减面、顶点增长超限及不能可靠传播的 morph/融合部件数据明确拒绝。 |
 | DMX rig 与动画求值 | Point/Orient/Aim/Parent/Rotation/IK/Twist 在统一图中烘焙；外部 rig 导入仍限 CSGO 目标，运行时 IK/混合及后续 QC 不重算作者约束，原始 delta、运行时程序骨依赖和 `$centerbonesonverts` 组合仍拒绝。已扩展值类型、倒放和嵌套时间线；压缩 log 仍限 Vector3/Quaternion，不包含完整 SFM 会话或轨道交叉混合。AxisInterp 不能表达的控制骨轴变换仍拒绝。详见 [DMX 指南](CSGO_DMX_INPUTS.md)。 |
-| 五者整合缺口 | CE replacemesh 参考语义仍需确认；Neko 驱动骨的不同父级、父级动画与层级变化已修复并对照。更多导入格式及超出已验证案例的骨骼组合仍需覆盖；断电/强制终止恢复未实现。详见 FEATURE_MATRIX.md。 |
-| 额外扩展：蒙皮实例与网格切换 | 不作为五者整合的先决条件；尚未支持蒙皮网格的 `EXT_mesh_gpu_instancing`，也未支持动画中的网格切换；静态非蒙皮实例已支持。 |
-| 额外扩展：VRM 运行时行为 | 不作为五者整合的先决条件；完整弹簧骨和专有表情映射的运行时语义尚未实现；已有 VRM 导入与默认形态键权重回归不代表完整 VRM 行为兼容。 |
-| 导入格式与插值覆盖 | glTF 后备路径的 STEP/CUBICSPLINE 丢失问题已修复并验证；尚未逐一覆盖所有 Assimp 格式、复杂 FBX/VRM 层级及其他格式的插值。 |
-| 复杂 rig 与碰撞覆盖 | 已有 IK、jiggle、驱动骨、corrective、眼睑、联合面部 rig 和按骨骼 VHACD 回归；任意复杂层级、硬边、自定义法线、控制器重映射和复杂碰撞仍需具体模型验证。单骨权重仍属实验功能。 |
-| 跨游戏与参考覆盖 | 已验证指定 GMod、CSGO legacy 与 MCV 样例；其他模型、游戏和材质着色仍需独立测试；尚未覆盖所有参考编译器的语法边界、诊断文本和性能场景。 |
+| 参考证据 | 提供的 CE 两个架构均拒绝所测 `replacemesh` 语法；E1 以缺少有效参考证据结账，不虚构别名。2013 环境及实际容量已测，Neko 未冻结的历史格式宣传不能变成逐格式等价承诺。详见 [结账表](FIVE_COMPILER_COMPLETION.md)。 |
+| 中断输出恢复 | 持久 journal、每输出进程锁、commit 标记和指纹检查已实现；进程被终止后，下次编译同模型会先恢复再读旧序列。损坏日志或外部改动保留并报错；不保证任意硬盘故障或断电重排序无损，也不提供读者视角的多文件瞬时原子替换。 |
+| 蒙皮实例与网格状态 | 蒙皮 `EXT_mesh_gpu_instancing` 展开为独立骨骼、几何和动画，支持正的均匀实例缩放；非均匀缩放/剪切须先烘焙。[有限拓扑状态](MESH_STATE_WORKFLOW.md)通过 bodygroup 和随附 GMod 播放器切换，需要显式客户端消费。 |
+| VRM 运行时 | 已提供 VRM 0/1 命名表情、binary/override、材质适配、弹簧骨及球/胶囊碰撞的[准备工具与 GMod 模块](VRM_RUNTIME.md)。它是有界适配，需要匹配的 Source 材质；不自动执行 Unity/MToon，也不承诺任意场景逐帧或零穿透等价。 |
+| 导入格式与插值 | FBX cluster bind、PMX 命名 morph、Assimp 关键帧/边界与 Collada STEP/LINEAR/BEZIER 已有固定验收；glTF STEP/CUBICSPLINE 保留。未能表达的切线需预烘焙。M3D/USD 内置，VRML 独立转换，C4D 限 Windows 辅助程序的可编辑多边形；见 [格式说明](O5_FORMAT_IMPORTS.md)。 |
+| 复杂 rig 与碰撞覆盖 | 已验收 CE 多骨/控制器重映射、硬边/自定义法线、corrective/眼睑组合、Neko 多 studio/LOD 和九类骨规则组合，以及既有 IK/jiggle/按骨 VHACD。固定样例不构成任意层级或模型的全量参考等价。单骨权重仍按显式首影响策略处理。 |
+| 跨游戏与性能 | 原始 Plum、自制模型、逐引擎运行及固定性能比较统一记录在 [当前验证](VALIDATION.md)。未安装的游戏不计通过；参考器输出骨数、索引覆盖或环境不同的尝试不计为同等输出性能比较。 |
 
 v1.2.8 生产验证改用 Plum：原始 Hair QC 编译及文件结构检查通过；新增材质在 GMod 加载无缺失，28 个截图状态包含身体组、皮肤和表情，18 个布娃娃刚体稳定。首帧增加材质预热后复测通过。后续不再使用 Claudia 作为生产测试模型。详见 [v1.2.8 验证记录](tests/reports/v1.2.8-validation.json)。
 
@@ -316,7 +328,7 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-325 项兼容、20 项自动化和 6 项挂载回归通过。测试使用临时 SMD/QC 和自制 DMX，检查实际 MDL/VVD/VTX/FE 文件，并反编译动画验证位移、旋转和分支行为。当前生产验证使用未改动的 Plum 原始 QC/材质，得到 126 骨骼、572,277 顶点、18 个物理体、30 kg 一致质量和 65 个无缺失材质；运行验证范围见本页 v1.2.22 及 [VALIDATION.md](VALIDATION.md)。
+v1.2.23 通过 368 项兼容、20 项自动化、9 项挂载、9 项 Lua、7 项 C4D 和 5 项输出恢复测试。测试使用临时 SMD/QC 和自制场景，检查实际 MDL/VVD/VTX/FE 文件，并反编译动画验证位移、旋转和分支行为。当前生产验证使用未改动的 Plum 原始 QC/材质，得到 126 骨骼、572,277 顶点、18 个物理体、30 kg 一致质量和 65 个无缺失材质；当前结果与运行验证范围见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)及 [VALIDATION.md](VALIDATION.md)。
 
 历史上已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。v1.2.4 另完成 GMod 几何、表情/眼睑与 LOD 验证。
 

@@ -71,6 +71,25 @@ uint16_t U16(const std::vector<char>& b,size_t& i){if(i+2>b.size())throw std::ru
 uint32_t U32(const std::vector<char>& b,size_t& i){uint32_t lo=U16(b,i),hi=U16(b,i);return lo|(hi<<16);}
 std::string CString(const std::vector<char>& b,size_t& i){size_t start=i;while(i<b.size()&&b[i])++i;if(i==b.size())throw std::runtime_error("truncated VPK string");std::string s(b.data()+start,i-start);++i;return s;}
 bool SafeRelative(const fs::path& p){if(p.empty()||p.is_absolute()||p.has_root_name())return false;for(const auto& part:p)if(part=="..")return false;return true;}
+std::string ArchivePath(std::string name) {
+ // VPK keys are byte strings, not host filesystem paths. Official L4D2
+ // archives contain Latin-1 names alongside ASCII. Converting every entry to
+ // a Windows wide path would reject the whole mount on an unrelated name.
+ std::replace(name.begin(),name.end(),'\\','/');
+ if(name.empty()||name.front()=='/'||name.find(':')!=std::string::npos)
+  throw std::runtime_error("unsafe VPK path");
+ std::vector<std::string> parts;size_t start=0;
+ while(start<name.size()) {
+  auto end=name.find('/',start);if(end==std::string::npos)end=name.size();
+  auto part=name.substr(start,end-start);start=end+1;
+  if(part.empty()||part==".")continue;
+  if(part==".."){if(parts.empty())throw std::runtime_error("unsafe VPK path");parts.pop_back();}
+  else parts.push_back(std::move(part));
+ }
+ if(parts.empty())throw std::runtime_error("unsafe VPK path");
+ std::string result;for(const auto& part:parts){if(!result.empty())result+='/';result+=part;}
+ return Lower(std::move(result));
+}
 void Index(Mount& m) {
  if(m.loaded)return;m.loaded=true;std::ifstream f(m.path,std::ios::binary);
  std::vector<char> header(12);f.read(header.data(),12);size_t h=0;
@@ -86,8 +105,8 @@ void Index(Mount& m) {
     U32(tree,i);uint16_t preload=U16(tree,i);Entry e;e.archive=U16(tree,i);e.offset=U32(tree,i);e.length=U32(tree,i);
     if(U16(tree,i)!=0xffff||preload>tree.size()-i)throw std::runtime_error("invalid VPK entry");
     e.preload.assign(tree.begin()+i,tree.begin()+i+preload);i+=preload;
-    auto p=FilePath((dir==" "?"":dir+"/")+name+(ext==" "?"":"."+ext)).lexically_normal();
-    if(!SafeRelative(p))throw std::runtime_error("unsafe VPK path");m.entries.emplace(Lower(p.generic_string()),std::move(e));
+    auto key=ArchivePath((dir==" "?"":dir+"/")+name+(ext==" "?"":"."+ext));
+    m.entries.emplace(std::move(key),std::move(e));
    }
  dependencies::Note(m.path.string());
 }
@@ -148,6 +167,46 @@ fs::path AppDirectory(const fs::path& steam,const std::string& id) {
   auto install=Child(app->children,"installdir");if(install){auto relative=FilePath(install->value);if(!SafeRelative(relative))throw std::runtime_error("unsafe Steam install directory");return lib/"steamapps/common"/relative;}}
  return {};
 }
+}
+bool LaunchDefaults(const std::string& gameDirectory,const std::string& script,
+                    std::vector<std::string>& arguments,std::string* err) {
+ try {
+  if(gameDirectory.empty()||script.empty())return true;
+  const auto game=fs::absolute(FilePath(gameDirectory));
+  const auto info=ReadKV(game/"gameinfo.txt");
+  const auto root=Child(info,"gameinfo");
+  const auto tools=root?Child(root->children,"tools"):nullptr;
+  const auto defaults=tools?Child(tools->children,"studiomdl"):nullptr;
+  // This is command-line tokenization, not a second KeyValues parse: braces,
+  // // and single backslashes can be ordinary option values. Quoted paths may
+  // contain whitespace; Windows backslash-before-quote rules are preserved.
+  auto append=[&](const KV* node,const char* source) {
+   if(!node||node->value.empty())return;
+   const auto& text=node->value;size_t p=0;
+   while(p<text.size()) {
+    while(p<text.size()&&std::isspace(static_cast<unsigned char>(text[p])))++p;
+    if(p==text.size())break;
+    std::string value;bool quoted=false;
+    while(p<text.size()&&(quoted||!std::isspace(static_cast<unsigned char>(text[p])))) {
+     size_t slashes=0;while(p<text.size()&&text[p]=='\\'){++slashes;++p;}
+     if(p<text.size()&&text[p]=='"') {
+      value.append(slashes/2,'\\');
+      if(slashes%2)value+='"';else quoted=!quoted;
+      ++p;
+     }else {value.append(slashes,'\\');if(p<text.size()&&(quoted||!std::isspace(static_cast<unsigned char>(text[p]))))value+=text[p++];}
+    }
+    if(quoted)throw std::runtime_error(std::string(source)+": unterminated command-line quote");
+    arguments.push_back(std::move(value));
+   }
+   std::printf("Adding arguments from %s: %s\n",source,text.c_str());
+  };
+  append(defaults,"gameinfo");
+  const auto config=ReadKV(game/"cfg/commandline.cfg");
+  const auto commands=Child(config,"commandline");
+  const auto entry=commands?Child(commands->children,FilePath(script).stem().string()):nullptr;
+  append(entry?Child(entry->children,"studiomdl"):nullptr,"cfg");
+  return true;
+ }catch(const std::exception& e){if(err)*err="default arguments: "+std::string(e.what());return false;}
 }
 bool Initialize(const std::string& gameDirectory,const std::string& steamDirectory,std::string* err) {
  try {

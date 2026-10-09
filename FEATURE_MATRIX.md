@@ -1,12 +1,14 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.22。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.23。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
 “待确认”表示资料不足或参考程序未复现。未列出的历史缺陷不能自动算作已修复。
 兼容性测试通过也不等于所有格式、模型、游戏均通过。
+
+本轮五编译器 R/E/V/S/O 固定总账及 H 边界见 [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md)。所有已知类别均在该表结账；未公开参考信息保留未知，不伪装兼容。
 
 本轮 CSGO 固定范围 A1–A7/B1–B4 共 11 包已全部完成；原可选扩展 B 区已获授权并交付。完整范围与排除项见 [CSGO_PORTING_SCOPE.md](CSGO_PORTING_SCOPE.md)，新增布料语法见 [CSGO_CLOTH_AUTHORING.md](CSGO_CLOTH_AUTHORING.md)。
 
@@ -42,11 +44,11 @@
 | 宏默认值、`$endmacro`、全局变量回退 | 已实现；v1.2.13 恢复传统单/双反斜杠续行宏。重复宏报错、重复变量警告与 `$setvariable` 已实现。 |
 | 数字 contents、可选 activity weight/attachment offset | 已实现 QC 解析。 |
 | `-noremap`、`-cullanims`/`nocull`、`gmtime` | 已实现；UTC 播放需模组支持。 |
-| 选择网格计算 bbox、大位移边界框 | 已实现；参考警告阈值和诊断文本仍需对照。 |
+| 选择网格计算 bbox、大位移边界框 | 已实现；v1.2.23 增加首个越界骨/零基帧/位置和有适用条件的 skipboneinbbox 提示，触发当前世界坐标范围裁剪。 |
 | cmdlist 容量检查、缺失 weightlist 骨骼警告 | 动态命令列表及语法校验已实现；不复刻参考固定数组上限。 |
-| 源骨骼、扩展名省略、权重阈值 | 源容量保护、碰撞/LOD 扩展名解析与 0.0001 阈值已实现。 |
+| 源骨骼、扩展名省略、权重阈值 | 源容量保护、碰撞/LOD 扩展名解析已实现；新增显式 $boneweightpolicy native|neko|ce，见固定总账 S1。 |
 | 强制折叠和各类依赖骨骼保留 | 已实现 `$CEBoneRules` 显式策略；默认保留 PulseModel 策略，复杂骨骼组合仍需模型对照。 |
-| 骨骼重命名/碰撞、空身体组、超量网格等修复 | 对应路径有回归或提前错误保护；所有历史崩溃/输出诊断尚未逐项复现，不按日志标题宣称全面等同。 |
+| 骨骼重命名/碰撞、空身体组、超量网格等修复 | v1.2.23 按固定 V5 六类输入验收；不以有限用例宣称任意历史崩溃均等价。 |
 
 ## StudioMDL-CE：命令与算法
 
@@ -89,18 +91,14 @@
 | --- | --- |
 | 材质容量提升 | 当前 130 材质输出专项通过；页面未给出具体新上限，不能据此宣称完全相同。 |
 | 大 VTA | 172.88 MiB、240 万条真实顶点记录已编译并检查输出。 |
-| 页面第三项容量声明与运行依赖 | 既有调查结论保留在 RESEARCH.md，不重复开启已讨论的格式限制课题。参考启动仍需按两包对应的游戏依赖核对；不得把启动失败当作不支持某功能的证据。 |
+| 页面第三项容量声明与运行依赖 | 既有调查结论保留在 RESEARCH.md，不重复开启已讨论的格式限制课题。v1.2.23 已用2012包隔离bin依赖恢复同EXE；130材质拒绝、255骨通过/256以上拒绝、大VTA9000移动顶点通过/30000移动拒绝。CSGO DLL配置另记访问违例。 |
 
-## 后续工作顺序 / Next integration work
+## 固定清单结账 / Fixed integration ledger
 
-1. **维护已完成的 CSGO 固定范围**：A1–A7/B1–B4 全 11 包已交付，当前没有以“可选”保留的未完成包；只按具体资产反例处理后续缺陷，不自动扩展范围。122 个参考顶层 QC 名称均有入口，但名称覆盖及本轮完成均不等于全量行为等价。CE replacemesh 的真实语义及其他编译器差异另按所属来源核对。
-2. **导入覆盖**：对 Neko 明确列出的 Assimp 场景格式优先验证真实几何/蒙皮/形态键/动画组合；glTF 后备 STEP/CUBICSPLINE 差异已修复；继续核对其他格式的可复现插值差异。
-3. **已实现功能组合**：验证面部块、材质重命名、网格分割与 LOD 同时使用；必要的回归用于证明移植功能，不新增无关测试体系课题。
-4. **参考环境**：按游戏依赖恢复 StudioMDL 2013 对照，复核页面公开能力；两包只计一个功能来源。
-
-完整 VRM 运行时、蒙皮 GPU 实例和动画网格切换可保留为额外扩展，但当前资料
-未证明它们是五者已经提供的独有编译功能，**不能把它们当作整合完成的先决条件**。
-游戏验证、诊断、性能和自动发布只支持上述整合主线。
+R/E/V/S/O 已统一纳入 [完成总账](FIVE_COMPILER_COMPLETION.md)，不再保留旧的“后续顺序”。
+`$qccompatibility`、`$fbxcompatibility`、`$boneweightpolicy` 是显式策略；材质/面部/分割/LOD组合、九类骨规则、2013依赖恢复及有限性能对照已有固定证据。
+独立扩展现有有限拓扑播放器、VRM客户端、蒙皮实例、恢复journal与额外格式路径；运行适配不是未经修改引擎的原生能力。
+CE replacemesh及闭源未公开精确格式集合继续标为证据不足，需要新资料才改变结论。CSGO固定11包保持关闭。
 
 English: the tables track advertised compiler capabilities separately from project
 extensions. Existing implementations, intentional differences and unresolved

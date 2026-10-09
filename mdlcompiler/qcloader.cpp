@@ -267,6 +267,8 @@ struct Ctx {
 
     float defaultFps = 30.0f;
     source::SceneOptions sceneOptions;
+    bool nekoConditions = false;
+    float boneWeightThreshold = pulse::limits::kMinBoneWeight;
     bool discardVertexAnimationNormals=false;
     float defaultMotionRollback = 0.3f; // seed for a new anim's motionrollback
     float defaultFadeIn = 0.2f;
@@ -635,8 +637,9 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
         kind == source::LoadKind::Collision ? c.physMats : c.in.mats;
 
     const source::SceneOptions& scene = sceneOptions ? *sceneOptions : (edit ? edit->sceneOptions : c.sceneOptions);
-    std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate);
+    std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate)+"|"+std::to_string(scene.fbxAssimp);
     if (proceduralPoseOnly) key += "|procedural-pose";
+    key += "|weight:" + std::to_string(c.boneWeightThreshold);
     // Sources may contain flex expressions. A later variable definition must
     // not reuse expressions expanded under a previous import's QC context.
     for (const auto& variable : (c.flexVariables?*c.flexVariables:c.variables))
@@ -777,6 +780,19 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
         }
     }
 
+    // The policy operates on normalized imported weights, before any bone
+    // collapse or mesh edits. Keep at least the strongest influence.
+    if (c.boneWeightThreshold > pulse::limits::kMinBoneWeight) {
+        for (auto& vertex : src->vertex) {
+            auto& w = vertex.boneweight;
+            int count = 0;
+            for (int i=0; i<w.numbones; ++i) if (w.weight[i] >= c.boneWeightThreshold) {
+                w.bone[count]=w.bone[i]; w.weight[count++]=w.weight[i];
+            }
+            if (!count && w.numbones) count=1;
+            if (count) w.numbones=source::SortAndBalanceBones(count,pulse::limits::kMaxSrcBoneWeights,w.bone,w.weight);
+        }
+    }
     if (expandFlex && !ExpandFlexRules(c, src->dmeFlexRules, line)) return nullptr;
 
     // Neko's RenameMorph is a raw FBX/glTF-name map, not a rewrite of QC
@@ -9374,14 +9390,14 @@ bool CollectBlock(Ctx& c, const Token& cmd, std::vector<Token>& body) {
 
 // Read a condition up to the '{' that opens its block, expanding $name$ as it
 // goes. Operators are whitespace-separated tokens: "a == b", not "a==b".
-bool ReadCondition(Ctx& c, const Token& cmd, std::vector<CondTok>& out) {
+bool ReadCondition(Ctx& c, const Token& cmd, std::vector<CondTok>& out, bool expand=true) {
     for (;;) {
         if (c.Eof() || (!c.Cur().quoted && c.Cur().text == "}"))
             return c.Fail(cmd.line, cmd.text + " is missing the \"{\" that opens its block");
         Token t = c.toks[c.pos++];
         if (!t.quoted && t.text == "{")
             break;
-        if (!ExpandVars(c, t))
+        if (expand && !ExpandVars(c, t))
             return false;
         out.push_back({t.text, t.line, t.quoted || t.expanded});
     }
@@ -9399,6 +9415,7 @@ struct CondEval {
     const std::vector<CondTok>& toks;
     size_t pos = 0;
     bool ok = true;
+    bool missingOperand = false;
 
     bool AtEnd() const { return pos >= toks.size(); }
     const std::string& Cur() const { return toks[pos].text; }
@@ -9410,7 +9427,8 @@ struct CondEval {
     }
 
     // An operand: its value text (for a comparison) plus its own truth value.
-    bool Operand(std::string& value) {
+    bool Operand(std::string& value, bool rhs=false) {
+        missingOperand=false;
         value.clear();
         if (AtEnd())
             return Stop(cmd.line, "the condition ends early");
@@ -9424,6 +9442,13 @@ struct CondEval {
             if (t.text.find_first_of("=<>&|") != std::string::npos)
                 return Stop(t.line, "cannot read \"" + t.text + "\" - an operator "
                                     "needs a space on each side");
+            if (c.nekoConditions) {
+                // Neko treats bare RHS words as strings, while an undefined
+                // LHS makes the entire comparison false (including !=).
+                if (rhs) value=t.text;
+                else missingOperand=true;
+                return rhs && CondTruthy(value);
+            }
             return Stop(t.line, "unknown variable \"" + t.text + "\" - no "
                                 "$definevariable for it above this line (a string "
                                 "literal goes in quotes)");
@@ -9435,12 +9460,13 @@ struct CondEval {
     bool Comparison() {
         std::string lhs;
         const bool truth = Operand(lhs);
+        const bool missingLeft=missingOperand;
         if (!ok || AtEnd() || !IsCondOp(Cur()))
             return truth;
         const std::string op = toks[pos++].text;
         std::string rhs;
-        Operand(rhs);
-        return ok ? CondCompare(lhs, op, rhs) : false;
+        Operand(rhs,true);
+        return ok && !missingLeft ? CondCompare(lhs, op, rhs) : false;
     }
 
     bool And() {
@@ -9509,7 +9535,8 @@ bool IfChain(Ctx& c, const Token& cmd, bool ifdef, bool negate = false) {
             val = val != negate;
         } else {
             std::vector<CondTok> cond;
-            if (!ReadCondition(c, clause, cond) || !EvalCondition(c, clause, cond, val))
+            const bool skip=c.nekoConditions && taken;
+            if (!ReadCondition(c, clause, cond,!skip) || (!skip && !EvalCondition(c, clause, cond, val)))
                 return false;
         }
         if (!CollectBlock(c, clause, body))
@@ -9549,7 +9576,8 @@ bool AnimationIf(Ctx& c, const Token& cmd) {
             std::vector<CondTok> cond;
             std::vector<Token> body;
             bool value = false;
-            if (!ReadCondition(c, clause, cond) || !EvalCondition(c, clause, cond, value) ||
+            const bool skip=c.nekoConditions && taken;
+            if (!ReadCondition(c, clause, cond,!skip) || (!skip && !EvalCondition(c, clause, cond, value)) ||
                 !CollectBlock(c, clause, body))
                 return false;
             if (value && !taken) { taken = true; chosen = std::move(body); }
@@ -9662,6 +9690,23 @@ bool CmdCeOption(Ctx& c, const Token& cmd) {
     // spelling without changing write limits or promising atomic mid-write recovery.
     if (Lower(cmd.text) == "$dontdestroy") return true;
     const std::string name=Lower(cmd.text.substr(1));
+    if(name=="boneweightpolicy") {
+        std::string mode;
+        if(!c.Want("native, ce or neko",cmd,mode)) return false;
+        mode=Lower(mode);
+        if(mode!="native" && mode!="ce" && mode!="neko") return c.Fail(cmd.line,"$boneweightpolicy expects native, ce or neko");
+        c.boneWeightThreshold=mode=="ce"?0.001f:pulse::limits::kMinBoneWeight;
+        return true;
+    }
+    if(name=="fbxcompatibility" || name=="qccompatibility") {
+        std::string mode;
+        if(!c.Want("native or neko",cmd,mode)) return false;
+        mode=Lower(mode);
+        if(mode!="native" && mode!="neko") return c.Fail(cmd.line,cmd.text+" expects native or neko");
+        if(name=="fbxcompatibility") c.sceneOptions.fbxAssimp=mode=="neko";
+        else c.nekoConditions=mode=="neko";
+        return true;
+    }
     if(name=="dmxcompatibility") {
         std::string mode;
         if(!c.Want("native, ce or neko",cmd,mode)) return false;
@@ -10034,6 +10079,9 @@ bool CmdCloth(Ctx& c, const Token& cmd) {
 }
 
 constexpr Command kCommands[] = {
+    {"$boneweightpolicy", CmdCeOption},
+    {"$fbxcompatibility", CmdCeOption},
+    {"$qccompatibility", CmdCeOption},
     {"$cloth", CmdCloth},
     {"$clothplanecollision", CmdCloth},
     {"$fakevta", CmdFakeVta},

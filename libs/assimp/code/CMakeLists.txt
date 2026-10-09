@@ -1006,37 +1006,12 @@ IF (ASSIMP_BUILD_USD_IMPORTER)
         ADD_DEFINITIONS( -DASSIMP_USD_VERBOSE_LOGS)
     endif ()
 
-    # Note: ALWAYS specify a git commit hash (or tag) instead of a branch name; using a branch
-    #       name can lead to non-deterministic (unpredictable) results since the code is potentially
-    #       in flux
-    # "dev" branch, 14 Mar 2025
-    set(TINYUSDZ_GIT_TAG "6050eef932f7d2788656d63297aa488fb0961ed1")
-    message("****")
-    message("\n\n**** Cloning tinyusdz repo, git tag ${TINYUSDZ_GIT_TAG}\n\n")
-
-    # Patch required to build arm32 on android
-    set(TINYUSDZ_PATCHFILE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../contrib/tinyusdz/patches/tinyusdz.patch")
-    set(TINYUSDZ_PATCH_CMD git apply ${TINYUSDZ_PATCHFILE_PATH})
-
-    # Note: CMake's "FetchContent" (which executes at configure time) is much better for this use case
-    #       than "ExternalProject" (which executes at build time); we just want to clone a repo and
-    #       block (wait) as long as necessary until cloning is complete, so we immediately have full
-    #       access to the cloned source files
-    include(FetchContent)
-    set(FETCHCONTENT_QUIET on) # Turn off to troubleshoot repo clone problems
-    set(FETCHCONTENT_UPDATES_DISCONNECTED on) # Prevent other ABIs from re-cloning/re-patching etc
-    FetchContent_Declare(
-            tinyusdz_repo
-            EXCLUDE_FROM_ALL TRUE
-            GIT_REPOSITORY "https://github.com/lighttransport/tinyusdz"
-            GIT_TAG        ${TINYUSDZ_GIT_TAG}
-            PATCH_COMMAND  ${TINYUSDZ_PATCH_CMD}
-    )
-    FetchContent_MakeAvailable(tinyusdz_repo)
-    message("**** Finished cloning tinyusdz repo")
-    message("****")
-
-    set(Tinyusdz_SRC_ABSPATH "${CMAKE_BINARY_DIR}/_deps/tinyusdz_repo-src/src")
+    # NewPageMergeMDL vendors the pinned tinyusdz source snapshot; configuring
+    # the supported importers never clones repositories or downloads code.
+    set(Tinyusdz_SRC_ABSPATH "${CMAKE_CURRENT_SOURCE_DIR}/../../tinyusdz/src")
+    if(NOT EXISTS "${Tinyusdz_SRC_ABSPATH}/tinyusdz.cc")
+        message(FATAL_ERROR "Vendored tinyusdz source is missing")
+    endif()
     set(Tinyusdz_SRCS
             ${Tinyusdz_SRC_ABSPATH}/ascii-parser.cc
             ${Tinyusdz_SRC_ABSPATH}/ascii-parser-basetype.cc

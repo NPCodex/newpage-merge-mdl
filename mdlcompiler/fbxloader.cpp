@@ -10,12 +10,15 @@
 #include "dependencies.h"
 
 #include <cmath>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+#include <stdexcept>
 
 #include "math/math.h"
 #include "pulselimits.h"
@@ -49,10 +52,11 @@ pm::Vector3 ToVec3(const ufbx_vec3& v) {
 // the same container dag. `inSkeleton` keeps that to the chain above the first
 // real node: a Null *inside* a rig is a helper joint and stays.
 void AddNodes(const ufbx_node* node, int parentIndex, bool inSkeleton, Source& out,
-              std::unordered_map<uint32_t, int>& nodeToBone) {
+              std::unordered_map<uint32_t, int>& nodeToBone,
+              const std::unordered_set<uint32_t>& skinJoints) {
     const bool isContainer = !node->attrib || node->attrib_type == UFBX_ELEMENT_EMPTY;
     int index = parentIndex;
-    if (inSkeleton || !isContainer) {
+    if (inSkeleton || !isContainer || skinJoints.count(node->typed_id)) {
         index = static_cast<int>(out.localBone.size());
         LocalBone lb;
         lb.name = std::string(node->name.data, node->name.length);
@@ -65,7 +69,7 @@ void AddNodes(const ufbx_node* node, int parentIndex, bool inSkeleton, Source& o
         inSkeleton = true;
     }
     for (size_t i = 0; i < node->children.count; ++i)
-        AddNodes(node->children.data[i], index, inSkeleton, out, nodeToBone);
+        AddNodes(node->children.data[i], index, inSkeleton, out, nodeToBone,skinJoints);
 }
 
 // Parent-relative transform for a bone node, container-folded for a root (its
@@ -94,33 +98,85 @@ void SampleFrame(const ufbx_scene* scene, const std::unordered_map<uint32_t, int
     }
 }
 
-// Rest transforms become the bind pose: an FBX exported in a pose
-// other than its bind pose will bind wrong - the fix is ufbx_scene.poses
-// (is_bind_pose) per skin cluster, added when a sample actually needs it.
+bool SameMatrix(const ufbx_matrix& a, const ufbx_matrix& b) {
+    for (int c=0;c<4;++c) for (int r=0;r<3;++r)
+        if (!std::isfinite(a.cols[c].v[r]) || !std::isfinite(b.cols[c].v[r]) ||
+            std::abs(a.cols[c].v[r]-b.cols[c].v[r])>1e-4 *
+                std::max(1.0, std::max(std::abs(a.cols[c].v[r]),std::abs(b.cols[c].v[r])))) return false;
+    return true;
+}
+
+// Skin clusters retain the actual bind matrices even when an exporter saves
+// the scene in an animated pose. Mesh geometry and joints must use that same
+// bind space; the separately sampled takes still use the evaluated scene.
 void BuildSkeleton(const ufbx_scene* scene, float scale, Source& out,
-                   std::unordered_map<uint32_t, int>& nodeToBone) {
-    AddNodes(scene->root_node, -1, false, out, nodeToBone);
+                   std::unordered_map<uint32_t, int>& nodeToBone,
+                   std::unordered_map<uint32_t, ufbx_matrix>& geometryBinds) {
+    std::unordered_set<uint32_t> skinJoints;
+    for(size_t c=0;c<scene->skin_clusters.count;++c)
+        if(scene->skin_clusters.data[c]->bone_node)skinJoints.insert(scene->skin_clusters.data[c]->bone_node->typed_id);
+    AddNodes(scene->root_node, -1, false, out, nodeToBone,skinJoints);
     out.numbones = static_cast<int>(out.localBone.size());
 
     SourceAnim anim;
     anim.name = "BindPose";
     anim.numframes = 1;
     anim.frames.assign(1, std::vector<SrcBonePose>(out.numbones));
-    SampleFrame(scene, nodeToBone, scale, anim.frames[0]);
-
-    // boneToPose is the bind-pose world fold, parents-before-children (ufbx
-    // orders scene->nodes that way, which AddNodes also relies on).
+    std::unordered_map<uint32_t,ufbx_matrix> binds;
+    // Pose entries fill unweighted helper joints. A cluster is authoritative
+    // for its joint; separate clusters sharing a joint must agree.
+    for (size_t p=0;p<scene->poses.count;++p) {
+        const auto pose=scene->poses.data[p];
+        if (!pose->is_bind_pose) continue;
+        for (size_t b=0;b<pose->bone_poses.count;++b) {
+            const auto& entry=pose->bone_poses.data[b];
+            if (entry.bone_node) binds.emplace(entry.bone_node->typed_id,entry.bone_to_world);
+        }
+    }
+    std::unordered_map<uint32_t,ufbx_matrix> clusterBinds;
+    for (size_t n=0;n<scene->nodes.count;++n) {
+        const auto node=scene->nodes.data[n];
+        if (!node->mesh || !node->mesh->skin_deformers.count) continue;
+        const auto skin=node->mesh->skin_deformers.data[0];
+        for (size_t c=0;c<skin->clusters.count;++c) {
+            const auto cluster=skin->clusters.data[c];
+            if (!cluster->bone_node) continue;
+            const auto id=cluster->bone_node->typed_id;
+            if (std::abs(ufbx_matrix_determinant(&cluster->bind_to_world))<1e-12)
+                throw std::runtime_error("singular FBX skin bind for joint: "+std::string(cluster->bone_node->name.data,cluster->bone_node->name.length));
+            auto previous=clusterBinds.find(id);
+            if (previous!=clusterBinds.end() && !SameMatrix(previous->second,cluster->bind_to_world))
+                throw std::runtime_error("conflicting FBX bind poses for shared skin joint: "+std::string(cluster->bone_node->name.data,cluster->bone_node->name.length));
+            binds[id]=clusterBinds[id]=cluster->bind_to_world;
+            const auto geometry=ufbx_matrix_mul(&cluster->bind_to_world,&cluster->geometry_to_bone);
+            auto existing=geometryBinds.find(node->typed_id);
+            if (existing!=geometryBinds.end() && !SameMatrix(existing->second,geometry))
+                throw std::runtime_error("conflicting FBX geometry bind matrices in mesh: "+std::string(node->name.data,node->name.length));
+            geometryBinds[node->typed_id]=geometry;
+        }
+    }
+    std::vector<const ufbx_node*> boneNodes(out.numbones);
+    for (size_t i=0;i<scene->nodes.count;++i) {
+        const auto node=scene->nodes.data[i]; auto it=nodeToBone.find(node->typed_id);
+        if (it!=nodeToBone.end()) boneNodes[it->second]=node;
+    }
+    // AddNodes produces parent-before-child indices, independently of the
+    // exporter's object ordering in scene->nodes.
     out.boneToPose.resize(out.numbones);
-    for (size_t i = 0; i < scene->nodes.count; ++i) {
-        const ufbx_node* node = scene->nodes.data[i];
-        auto it = nodeToBone.find(node->typed_id);
-        if (it == nodeToBone.end())
-            continue;
-        const int b = it->second;
+    std::vector<ufbx_matrix> worlds(out.numbones);
+    for (int b=0;b<out.numbones;++b) {
+        const auto node=boneNodes[b];
         const int parent = out.localBone[b].parent;
-        const pm::matrix3x4 local = BoneLocal(node, parent == -1, scale);
-        out.boneToPose[b] =
-            parent == -1 ? local : pm::ConcatTransforms(out.boneToPose[parent], local);
+        auto explicitBind=binds.find(node->typed_id);
+        worlds[b]=explicitBind!=binds.end()?explicitBind->second:
+            parent<0?node->node_to_world:ufbx_matrix_mul(&worlds[parent],&node->node_to_parent);
+        ufbx_matrix local=worlds[b];
+        if (parent>=0) { const auto inverse=ufbx_matrix_invert(&worlds[parent]); local=ufbx_matrix_mul(&inverse,&worlds[b]); }
+        auto pose=ToMatrix3x4(local);
+        for (int r=0;r<3;++r) pose.m[r][3]*=scale;
+        pm::MatrixAngles(pose,anim.frames[0][b].rot,anim.frames[0][b].pos);
+        out.boneToPose[b]=ToMatrix3x4(worlds[b]);
+        for (int r=0;r<3;++r) out.boneToPose[b].m[r][3]*=scale;
     }
 
     out.anims.push_back(std::move(anim));
@@ -219,12 +275,16 @@ SrcBoneWeight CornerWeights(const ufbx_mesh* mesh, const ufbx_skin_deformer* ski
 // 1.0 default.
 // ---------------------------------------------------------------------------
 void LoadMorphs(const std::vector<const ufbx_node*>& meshes, const std::vector<int>& bases,
-                const std::vector<std::vector<int>>& srcToUnified, float scale, Source& out) {
+                const std::vector<std::vector<int>>& srcToUnified, float scale, Source& out,
+                const std::unordered_map<uint32_t,ufbx_matrix>& geometryBinds) {
     // one morph per channel NAME - the same shape key can live on several
     // meshes, and the compile stage wants a single delta state driving them all
     for (size_t m = 0; m < meshes.size(); ++m) {
         const ufbx_node* node = meshes[m];
         const ufbx_mesh* mesh = node->mesh;
+        const auto bind=geometryBinds.find(node->typed_id);
+        const auto& geometry=bind==geometryBinds.end()?node->geometry_to_world:bind->second;
+        const auto normalMatrix=ufbx_matrix_for_normals(&geometry);
         for (size_t d = 0; d < mesh->blend_deformers.count; ++d) {
             const ufbx_blend_deformer* def = mesh->blend_deformers.data[d];
             for (size_t c = 0; c < def->channels.count; ++c) {
@@ -254,14 +314,14 @@ void LoadMorphs(const std::vector<const ufbx_node*>& meshes, const std::vector<i
                     // offsets are geometry-space directions, placed the same
                     // way the positions they displace were
                     pm::Vector3 pos = ToVec3(ufbx_transform_direction(
-                        &node->geometry_to_world, shape->position_offsets.data[k]));
+                        &geometry, shape->position_offsets.data[k]));
                     pos.x *= scale; pos.y *= scale; pos.z *= scale;
                     // Blender sizes normal_offsets to match but fills it with
                     // zeros, so in practice these arrive empty; an exporter
                     // that does write them gets them through to ndelta.
                     pm::Vector3 nrm;
                     if (k < shape->normal_offsets.count)
-                        nrm = ToVec3(ufbx_transform_direction(&node->geometry_to_world,
+                        nrm = ToVec3(ufbx_transform_direction(&normalMatrix,
                                                               shape->normal_offsets.data[k]));
                     // Blender writes an offset entry for every vertex in the
                     // shape's group, noise included, where a DMX delta state is
@@ -304,6 +364,8 @@ void LoadMorphs(const std::vector<const ufbx_node*>& meshes, const std::vector<i
 
 bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, float scale,
                    std::string* err, bool morphSource, MeshFilter* filter, bool animOnly,const SceneOptions* options) {
+    if (options && options->fbxAssimp)
+        return LoadSceneSource(path,out,mats,scale,err,morphSource,filter,animOnly,*options);
     ufbx_load_opts opts = {};
     // Source is right-handed Z-up; ADJUST_TRANSFORMS bakes the conversion into
     // each node so it survives dropping the root node.
@@ -333,7 +395,9 @@ bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, fl
     }
 
     std::unordered_map<uint32_t, int> nodeToBone;
-    BuildSkeleton(scene, scale, out, nodeToBone);
+    std::unordered_map<uint32_t,ufbx_matrix> geometryBinds;
+    try { BuildSkeleton(scene, scale, out, nodeToBone,geometryBinds); }
+    catch (const std::exception& e) { if(err)*err=e.what(); ufbx_free_scene(scene); return false; }
     if (out.numbones <= 0) {
         if (err) *err = "the scene has no nodes";
         ufbx_free_scene(scene);
@@ -370,6 +434,9 @@ bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, fl
         const ufbx_mesh* mesh = node->mesh;
         if (!mesh)
             continue;
+        const auto bind=geometryBinds.find(node->typed_id);
+        const auto& geometry=bind==geometryBinds.end()?node->geometry_to_world:bind->second;
+        const auto normalMatrix=ufbx_matrix_for_normals(&geometry);
         if(selected) { bool keep=false; for(auto parent=node;parent;parent=parent->parent) if(parent==selected) keep=true; if(!keep) continue; }
         // a rejected mesh skips its geometry only - the node is already a bone
         if (filter && !filter->Keep(std::string(mesh->name.data, mesh->name.length),
@@ -447,14 +514,14 @@ bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, fl
                     // Source vertices are model space; bones carry the same
                     // hierarchy, so both come from the node's world transform.
                     corner.position = ToVec3(ufbx_transform_position(
-                        &node->geometry_to_world,
+                        &geometry,
                         ufbx_get_vertex_vec3(&mesh->vertex_position, index)));
                     corner.position.x *= scale;
                     corner.position.y *= scale;
                     corner.position.z *= scale;
                     if (mesh->vertex_normal.exists) {
                         corner.normal = ToVec3(ufbx_transform_direction(
-                            &node->geometry_to_world,
+                            &normalMatrix,
                             ufbx_get_vertex_vec3(&mesh->vertex_normal, index)));
                         pm::VectorNormalize(corner.normal);
                     }
@@ -477,7 +544,7 @@ bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, fl
     std::vector<std::vector<int>> srcToUnified;
     BuildUnifiedMeshes(tris, out, morphSource ? &srcToUnified : nullptr);
     if (morphSource)
-        LoadMorphs(morphMeshes, morphBase, srcToUnified, scale, out);
+        LoadMorphs(morphMeshes, morphBase, srcToUnified, scale, out,geometryBinds);
 
     ufbx_free_scene(scene);
     return true;

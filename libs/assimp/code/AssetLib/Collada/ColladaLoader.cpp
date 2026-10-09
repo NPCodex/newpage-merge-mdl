@@ -58,6 +58,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assimp/Importer.hpp>
 
 #include <numeric>
+#include <cmath>
 
 namespace Assimp {
 
@@ -129,6 +130,7 @@ void ColladaLoader::SetupProperties(const Importer *pImp) {
     ignoreUpDirection = pImp->GetPropertyInteger(AI_CONFIG_IMPORT_COLLADA_IGNORE_UP_DIRECTION, 0) != 0;
     ignoreUnitSize = pImp->GetPropertyInteger(AI_CONFIG_IMPORT_COLLADA_IGNORE_UNIT_SIZE, 0) != 0;
     useColladaName = pImp->GetPropertyInteger(AI_CONFIG_IMPORT_COLLADA_USE_COLLADA_NAMES, 0) != 0;
+    sceneSampleRate = pImp->GetPropertyFloat("NPMDL_SCENE_SAMPLE_RATE",0.0f);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1239,11 +1241,24 @@ void ColladaLoader::CreateAnimation(aiScene *pScene, const ColladaParser &pParse
 
         // resolve the data pointers for all anim channels. Find the minimum time while we're at it
         ai_real startTime = ai_real(1e20), endTime = ai_real(-1e20);
+        std::map<const AnimationChannel*,std::vector<std::string>> interpolation;
         for (ChannelEntry & e : entries) {
             e.mTimeAccessor = &pParser.ResolveLibraryReference(pParser.mAccessorLibrary, e.mChannel->mSourceTimes);
             e.mTimeData = &pParser.ResolveLibraryReference(pParser.mDataLibrary, e.mTimeAccessor->mSource);
             e.mValueAccessor = &pParser.ResolveLibraryReference(pParser.mAccessorLibrary, e.mChannel->mSourceValues);
             e.mValueData = &pParser.ResolveLibraryReference(pParser.mDataLibrary, e.mValueAccessor->mSource);
+            if(sceneSampleRate>0 && !e.mChannel->mInterpolationValues.empty()) {
+                const auto& accessor=pParser.ResolveLibraryReference(pParser.mAccessorLibrary,e.mChannel->mInterpolationValues);
+                const auto& data=pParser.ResolveLibraryReference(pParser.mDataLibrary,accessor.mSource);
+                if(accessor.mCount!=e.mTimeAccessor->mCount)throw DeadlyImportError("Collada interpolation key count mismatch");
+                auto& modes=interpolation[e.mChannel];
+                for(size_t k=0;k<accessor.mCount;++k) {
+                    const auto mode=ReadString(accessor,data,k);
+                    if(mode!="LINEAR" && mode!="STEP" && mode!="BEZIER")
+                        throw DeadlyImportError("Collada interpolation ",mode," requires author-side animation baking (supported: LINEAR, STEP, BEZIER)");
+                    modes.push_back(mode);
+                }
+            }
 
             // time count and value count must match
             if (e.mTimeAccessor->mCount != e.mValueAccessor->mCount) {
@@ -1256,6 +1271,9 @@ void ColladaLoader::CreateAnimation(aiScene *pScene, const ColladaParser &pParse
                 endTime = std::max(endTime, ReadFloat(*e.mTimeAccessor, *e.mTimeData, e.mTimeAccessor->mCount - 1, 0));
             }
         }
+        if(sceneSampleRate>0 && (!std::isfinite(startTime) || !std::isfinite(endTime) ||
+            endTime<startTime || (endTime-startTime)*sceneSampleRate>1048576))
+            throw DeadlyImportError("Collada sampled animation exceeds import frame budget");
 
         std::vector<aiMatrix4x4> resultTrafos;
         if (!entries.empty() && entries.front().mTimeAccessor->mCount > 0) {
@@ -1267,6 +1285,7 @@ void ColladaLoader::CreateAnimation(aiScene *pScene, const ColladaParser &pParse
             ai_real time = startTime;
             while (true) {
                 for (ChannelEntry & e : entries) {
+                    if(e.mTransformIndex==SIZE_MAX || !e.mTimeAccessor->mCount)continue;
                     // find the keyframe behind the current point in time
                     size_t pos = 0;
                     ai_real postTime = 0.0;
@@ -1293,10 +1312,34 @@ void ColladaLoader::CreateAnimation(aiScene *pScene, const ColladaParser &pParse
                     if (postTime > time && pos > 0) {
                         ai_real preTime = ReadFloat(*e.mTimeAccessor, *e.mTimeData, pos - 1, 0);
                         ai_real factor = (time - postTime) / (preTime - postTime);
-
+                        const auto modes=interpolation.find(e.mChannel);
+                        const std::string mode=modes==interpolation.end()?"LINEAR":modes->second[pos-1];
                         for (size_t c = 0; c < e.mValueAccessor->mSize; ++c) {
                             ai_real v = ReadFloat(*e.mValueAccessor, *e.mValueData, pos - 1, c);
-                            temp[c] += (v - temp[c]) * factor;
+                            if(mode=="STEP")temp[c]=v;
+                            else if(mode=="BEZIER") {
+                                // COLLADA tangents are (time,value) control
+                                // points, not derivatives. Invert the monotone
+                                // time cubic before evaluating the value cubic.
+                                auto tangent=[&](const std::string& source,size_t index) {
+                                    if(source.empty())throw DeadlyImportError("Collada BEZIER animation is missing tangent accessors");
+                                    const auto& accessor=pParser.ResolveLibraryReference(pParser.mAccessorLibrary,source);
+                                    const auto& data=pParser.ResolveLibraryReference(pParser.mDataLibrary,accessor.mSource);
+                                    if(index>=accessor.mCount)throw DeadlyImportError("Collada BEZIER tangent count mismatch");
+                                    size_t t=0,value=c+1;
+                                    if(accessor.mSize==e.mValueAccessor->mSize*2){t=c*2;value=t+1;}
+                                    else if(accessor.mSize!=e.mValueAccessor->mSize+1)
+                                        throw DeadlyImportError("Collada BEZIER tangents must contain time/value control points; bake other tangent layouts");
+                                    return std::pair<ai_real,ai_real>(ReadFloat(accessor,data,index,t),ReadFloat(accessor,data,index,value));
+                                };
+                                const auto out=tangent(e.mChannel->mOutTanValues,pos-1),in=tangent(e.mChannel->mInTanValues,pos);
+                                if(out.first<preTime || in.first>postTime || out.first>in.first)
+                                    throw DeadlyImportError("Collada BEZIER control times must be ordered within their key interval");
+                                auto cubic=[](ai_real a,ai_real b,ai_real c,ai_real d,ai_real u){ai_real one=1-u;return one*one*one*a+3*one*one*u*b+3*one*u*u*c+u*u*u*d;};
+                                ai_real lo=0,hi=1;
+                                for(int k=0;k<30;++k){const ai_real mid=(lo+hi)*.5f;if(cubic(preTime,out.first,in.first,postTime,mid)<time)lo=mid;else hi=mid;}
+                                temp[c]=cubic(v,out.second,in.second,temp[c],(lo+hi)*.5f);
+                            } else temp[c] += (v - temp[c]) * factor;
                         }
                     }
 
@@ -1313,6 +1356,10 @@ void ColladaLoader::CreateAnimation(aiScene *pScene, const ColladaParser &pParse
 
                 // find next point in time to evaluate. That's the closest frame larger than the current in any channel
                 ai_real nextTime = ai_real(1e20);
+                if(sceneSampleRate>0 && time<endTime) {
+                    const double frame=std::floor(double(time)*sceneSampleRate+1e-4)+1.0;
+                    nextTime=ai_real(std::min(double(endTime),frame/sceneSampleRate));
+                }
                 for (ChannelEntry & channelElement : entries) {
                     // find the next time value larger than the current
                     size_t pos = 0;
@@ -1328,7 +1375,7 @@ void ColladaLoader::CreateAnimation(aiScene *pScene, const ColladaParser &pParse
                     // https://github.com/assimp/assimp/issues/458
                     // Sub-sample axis-angle channels if the delta between two consecutive
                     // key-frame angles is >= 180 degrees.
-                    if (transforms[channelElement.mTransformIndex].mType == TF_ROTATE && channelElement.mSubElement == 3 && pos > 0 && pos < channelElement.mTimeAccessor->mCount) {
+                    if (channelElement.mTransformIndex!=SIZE_MAX && transforms[channelElement.mTransformIndex].mType == TF_ROTATE && channelElement.mSubElement == 3 && pos > 0 && pos < channelElement.mTimeAccessor->mCount) {
                         const ai_real cur_key_angle = ReadFloat(*channelElement.mValueAccessor, *channelElement.mValueData, pos, 0);
                         const ai_real last_key_angle = ReadFloat(*channelElement.mValueAccessor, *channelElement.mValueData, pos - 1, 0);
                         const ai_real cur_key_time = ReadFloat(*channelElement.mTimeAccessor, *channelElement.mTimeData, pos, 0);

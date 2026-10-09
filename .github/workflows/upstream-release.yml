@@ -22,6 +22,12 @@ on:
       - 'mdlcompiler/**'
       - 'mdldecompiler/**'
       - 'subtools/**'
+      - 'tools/**'
+      - 'integration/**'
+      - 'FIVE_COMPILER_COMPLETION.md'
+      - 'MESH_STATE_WORKFLOW.md'
+      - 'VRM_RUNTIME.md'
+      - 'O5_FORMAT_IMPORTS.md'
       - 'CMakeLists.txt'
       - 'CMakePresets.json'
   workflow_dispatch:

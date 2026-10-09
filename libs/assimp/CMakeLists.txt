@@ -637,11 +637,17 @@ SET ( ASSIMP_BUILD_NONFREE_C4D_IMPORTER OFF CACHE BOOL
 )
 
 IF (ASSIMP_BUILD_NONFREE_C4D_IMPORTER)
-  SET(C4D_INCLUDES "${CMAKE_CURRENT_SOURCE_DIR}/contrib/Cineware/includes")
+  SET(ASSIMP_CINEWARE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/contrib/Cineware" CACHE PATH
+    "External Cineware SDK root; the proprietary SDK must not be vendored")
+  SET(ASSIMP_CINEWARE_LIBRARY_POSTFIX "" CACHE STRING
+    "Explicit compatible SDK library suffix, e.g. _2019_MT for a static-runtime build")
+  SET(C4D_INCLUDES "${ASSIMP_CINEWARE_ROOT}/includes")
 
   IF (WIN32)
     # pick the correct prebuilt library
-    IF(MSVC143)
+    IF(ASSIMP_CINEWARE_LIBRARY_POSTFIX)
+      SET(C4D_LIB_POSTFIX "${ASSIMP_CINEWARE_LIBRARY_POSTFIX}")
+    ELSEIF(MSVC143)
       SET(C4D_LIB_POSTFIX "_2022")
     ELSEIF(MSV142)
       SET(C4D_LIB_POSTFIX "_2019")
@@ -661,7 +667,7 @@ IF (ASSIMP_BUILD_NONFREE_C4D_IMPORTER)
       )
     ENDIF()
 
-    SET(C4D_LIB_BASE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/contrib/Cineware/libraries/win")
+    SET(C4D_LIB_BASE_PATH "${ASSIMP_CINEWARE_ROOT}/libraries/win")
 
     SET(C4D_DEBUG_LIBRARIES
       "${C4D_LIB_BASE_PATH}/cinewarelib${C4D_LIB_POSTFIX}/cinewarelib_debug.lib"
@@ -676,7 +682,7 @@ IF (ASSIMP_BUILD_NONFREE_C4D_IMPORTER)
     # it can be used to communicate with a running Cinema 4D instance
     SET(C4D_EXTRA_LIBRARIES WSock32.lib Winmm.lib)
   ELSEIF (APPLE)
-    SET(C4D_LIB_BASE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/contrib/Cineware/libraries/osx")
+    SET(C4D_LIB_BASE_PATH "${ASSIMP_CINEWARE_ROOT}/libraries/osx")
 
     SET(C4D_DEBUG_LIBRARIES
       "${C4D_LIB_BASE_PATH}/debug/libcinewarelib.a"

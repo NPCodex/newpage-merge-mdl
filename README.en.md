@@ -1,8 +1,8 @@
-# NewPageMergeMDL v1.2.22
+# NewPageMergeMDL v1.2.23
 
 English | [简体中文](README.md)
 
-**Project version: v1.2.22.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.23.** The compiler, decompiler and bundled tools share this
 version.
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
@@ -13,9 +13,20 @@ The compiler is `NewPageMergeMDL.exe`; the decompiler is
 GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
 
-The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and priorities.
+The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.
 
-## v1.2.22: all 11 fixed CSGO porting packages complete
+## v1.2.23: fixed five-compiler integration scope
+
+The [completion ledger](FIVE_COMPILER_COMPLETION.md) accounts for every R/E/V/S/O item and the H format/runtime exclusions. New upstream revisions and concrete defects remain maintenance inputs; the known scope is not split into an endless sequence of extra feature batches.
+
+- Adds ++ configured defaults, an explicit Neko condition mode, CE weight policy, large flex splitting, true FBX bind poses and authored scene animation sampling; fixes premature removal of hitbox-, animation- and lower-LOD-only bones.
+- Adds interrupted-output recovery, PMX named morphs, skinned GPU instances and a build-derived `-importformats` inventory.
+- Includes [finite mesh states](MESH_STATE_WORKFLOW.md), an explicit [VRM runtime](VRM_RUNTIME.md), and [M3D/USD/VRML/C4D import workflows](O5_FORMAT_IMPORTS.md). The GPL VRML converter is a separate executable; the main program retains its existing license.
+- Restores the 2013 reference environment and records its measured limits. Unresolved CE replacemesh syntax and unspecified closed-source format details are documented as unknown, not claimed as parity.
+
+The complete, locally validated Windows x64 package includes `NewPageMergeMDL-C4D.exe`. Automated Windows/Linux CI builds do not acquire the proprietary Cineware SDK, so the Windows CI package omits this helper. It can be added beside the compiler from the complete Windows package; Linux imports a GLB converted beforehand. The ordinary CMake build needs no Cineware SDK. See the [O5 import guide](O5_FORMAT_IMPORTS.md) for format and rebuild requirements.
+
+## v1.2.22 historical record: all 11 fixed CSGO porting packages complete
 
 **A1–A7 and B1–B4 are complete** within the [fixed CSGO scope](CSGO_PORTING_SCOPE.md). This closes the 11-package scope; the compatibility boundaries and validation coverage below do not add new porting packages.
 
@@ -52,11 +63,11 @@ This historical section records the four v1.2.20 compilation paths; see v1.2.22 
 
 These are bounded implementations; [COMPATIBILITY.md](COMPATIBILITY.md) lists syntax, numeric rules and rejected inputs. Added regressions inspect actual MDL/VTX records, decompile/recompile output and animation values. See [VALIDATION.md](VALIDATION.md) for complete test, production-model and runtime evidence. Loading or matching structural data alone does not establish complete runtime parity.
 
-Older version sections preserve their implementation and validation state at the time. Current capabilities are described by v1.2.22 and the compatibility-boundaries table.
+Older version sections preserve their implementation and validation state at the time. Current capabilities are described by the [v1.2.23 ledger](FIVE_COMPILER_COMPLETION.md) and the compatibility-boundaries table.
 
 Final Windows validation: **248 compatibility, 20 automation and 6 content-mount tests passed**. Original Plum inputs/materials remain unchanged; bounded in-game cloth, baked SubD and constraint animation results are recorded in [v1.2.20 validation](tests/reports/v1.2.20-validation.json).
 
-## v1.2.19: automatic mass, appended collision sources and CSGO FE cloth
+## v1.2.19 historical record: automatic mass, appended collision sources and CSGO FE cloth
 
 This section records v1.2.19 behavior; later cloth settings and SubD support are described above under v1.2.20.
 
@@ -71,7 +82,7 @@ All **209 compatibility and 20 automation tests** pass locally on Windows, inclu
 Stock CSGO default-surface tetrahedra with edges 10 and 20 produce total masses of 5.462355 and 43.698837 kg, matching this compiler to six printed decimal places. An equivalent-geometry cloth comparison matches fixed nodes, inverse masses, fixed offsets and plane constraints within floating-point precision. Bone backsolving uses different algorithms, so deformation equivalence remains unverified.
 
 
-## v1.2.18: CSGO LOD skinning and CONTENT mounts
+## v1.2.18 historical record: CSGO LOD skinning and CONTENT mounts
 
 For CSGO legacy (gameinfo SteamAppId 730), lower LODs inherit skin weights from the nearest root-model vertex; ties use UV, normal and source index. `$skinnedLODs` preserves authored lower-LOD weights. Other games retain their defaults. Spatial lookup precedes the existing LOD bone remapping. Two-stage root/higher-LOD tolerance matching checks position, UVs, normals, weights and tangents. Small UV-boundary fixtures match the installed stock CSGO StudioMDL; this is not whole-file parity for arbitrary models.
 
@@ -79,11 +90,11 @@ For CSGO legacy (gameinfo SteamAppId 730), lower LODs inherit skin weights from 
 
 Supply the correct `-game` directory for CSGO/MCV, even with a separate OutDir; `-vtxformat` alone only selects VTX layout. CSGO/MCV targets now use a 256-byte extended header with an FE pointer slot that was zero at v1.2.18, before bodygroup presets. Other targets retain their layout. Installed stock models confirm this span. Each game's preset fixture survives 15 seconds under its HLMV/debugger without access violations; temporary game files were removed. This fixes the serialization prerequisite, not the full cloth pipeline.
 
-## v1.2.17: startup description correction
+## v1.2.17 historical record: startup description correction
 
 Compiler and decompiler startup messages now use `Source model toolchain` instead of a fixed MDL version label. Model output formats are unchanged.
 
-## v1.2.16: CSGO / MCV loading crash fix
+## v1.2.16 historical record: CSGO / MCV loading crash fix
 
 When `-game` supplies a gameinfo.txt with SteamAppId 730 (CSGO legacy) or 1012110 (MCV), the compiler automatically selects extended VTX headers: 33-byte strip groups and 35-byte strips. The former 25/27-byte default is misinterpreted by these loaders and can crash HLMV or the game even though the MDL version is 49. Other targets keep their defaults. Explicit QC `$vtxformat` / pulseqc `vtx_archetype` override detection; CLI `-vtxformat` has highest priority. Forcing legacy layout for these targets emits a warning.
 
@@ -91,7 +102,7 @@ One compiler supports both targets. Use the actual `.../csgo` or `.../vietnam` d
 
 All 182 compatibility and 20 automation tests pass. Yvette body/three arms QCs and MCV body/arms/legs QCs compile and load in their respective installed HLMV tools; all seven outputs survive 15-second debugger checks without access violations. Actual character rendering and Yvette included-animation playback were separately observed. MCV tests cover players, first-person arms, bots, ragdolls and map reload on mcv_camp/mcv_bridge. CSGO tests on de_dust2/ar_baggage cover player/bot replacement, 11 skins × 18 body combinations in bounded native-entity batches, normal player death and map reload. See the [v1.2.16 report](tests/reports/v1.2.16-validation.json) for CSGO runtime evidence. Plum retains legacy output and passes structural validation with 126 bones / 572,277 vertices. These are bounded model/scenario checks, not universal game compatibility.
 
-## v1.2.15: CSGO QC compatibility (31 entries; cloth was unfinished then)
+## v1.2.15 historical record: CSGO QC compatibility (31 entries; cloth was unfinished then)
 
 Implements 31 of the previously missing 33 command entries: bone controllers/runtime flags, prefix/substr renaming, bind-axis and center adjustments, bounding-box policies, collision precision, appended sources, attachment replacement, CONTENT lookup, internal/physics naming, and virtual VTA generation from OBJ frames. Output changes are serialized into MDL/VVD/PHY. Virtual VTA supports flexfile, native `$vta` and VCA without intermediate files and rejects changed frame topology.
 
@@ -99,51 +110,51 @@ This is not 31 new algorithms. `$externaltextures` warns and ignores as in the r
 
 At v1.2.15, `$cloth` and `$clothplanecollision` were **unimplemented and rejected**; v1.2.19 adds the bounded FE path described above. They require finite-element nodes, constraints, control-bone backsolving and the CSGO extended-header data, rather than a jigglebone or keyvalues substitute. All 19 new targeted cases, 181 compatibility tests and 20 automation tests pass. Plum (126 bones, 572,277 vertices) and Yvette compile and pass serialized-output checks. No CSGO in-game validation is claimed. See [COMPATIBILITY.md](COMPATIBILITY.md) and the [validation record](tests/reports/v1.2.15-validation.json).
 
-## v1.2.14: CSGO QC triangle-order compatibility
+## v1.2.14 historical record: CSGO QC triangle-order compatibility
 
 Adds `$preservetriangleorder` with actual cache/overdraw and NvTriStrip sorting bypass, using reference depth-first edge traversal. It takes precedence over `$UseLegacyStripify`, retaining bone palettes, flex groups and the selected VTX format. Global source-face order across materials/groups is not guaranteed. A self-authored 32-face grid matches CE order; regression covers command case, DX80/DX90, both VTX layouts, LODs and legacy combinations. The original Yvette QC compiles (144 bones, 65,902 vertices), and Plum still compiles. All 162 compatibility and 20 automation tests pass; CSGO in-game behavior has not been tested.
 
-## v1.2.13: Insurgency 2 / Military Conflict: Vietnam QC fixes
+## v1.2.13 historical record: Insurgency 2 / Military Conflict: Vietnam QC fixes
 
 Restores legacy single/double-backslash macro continuations alongside `$endmacro`. Attachments, hitboxes and hitgroups accept final `$renamebone` aliases before bone retention; case-only bone renames are allowed, while collisions with a different bone remain errors. Both supplied original QC/QCI sets compile without input changes and pass MDL/VVD/VTX structure validation. All 161 compatibility and 20 automation tests pass. In-game behavior in these two games has not been tested in this batch.
 
-## v1.2.12: CE LOD option recovered through binary analysis
+## v1.2.12 historical record: CE LOD option recovered through binary analysis
 
 Static analysis of the CE x64 LOD parser and three self-authored reference compiles confirm `replacemodel source replacement reverse`. The case-insensitive option belongs on the same command line and reverses replacement LOD winding. Imported normals and shared sources remain unchanged. DX80/DX90 regression checks cover reversed and later ordinary LODs. All 158 compatibility and 20 automation tests pass.
 
 The changelog's `replacemesh` remains unresolved: neither supplied x86 nor x64 binary contains that token, and the inspected x64 parser exposes replacemodel/replacematerial/removemesh. This recovered reverse option is not treated as proof of that changelog entry.
 
-## v1.2.11: glTF animation interpolation on the Assimp path
+## v1.2.11 historical record: glTF animation interpolation on the Assimp path
 
 Fixes lost STEP markers and CUBICSPLINE tangents with `$NoFastGltf`. Assimp still imports geometry and skins; animation is sampled from original glTF accessors without building a second geometry copy. Eighteen translation checks cover LINEAR, STEP and CUBICSPLINE on both backends across glTF/GLB/VRM. Quaternion animation, unnamed nodes/clips and scale/morph-weight baking are also checked. All 157 compatibility and 20 automation tests pass. Other Assimp formats are not universally verified.
 
-## v1.2.10: Neko procedural parent compatibility
+## v1.2.10 historical record: Neko procedural parent compatibility
 
 `$NekoDriverBone` now accumulates pose-animation ancestor transforms and resolves world poses against the final model's bind parents. Animated ancestors and differing pose/model hierarchies are retained. Sampling sources no longer define the model skeleton, including when the command precedes `$body`. Six self-authored Neko 2.3.0 reference cases cover separate parents, parent animation, hierarchy changes, scale, renamed parents and multiple helpers; twelve command-order regression cases pass. Native `$driverbone` sampling semantics remain unchanged. All 154 compatibility and 20 automation tests pass.
 
-## v1.2.9: Neko morph mapping and output preservation
+## v1.2.9 historical record: Neko morph mapping and output preservation
 
 With `$dmxcompatibility neko`, `$RenameMorph` maps exact imported FBX/glTF names once: missing names are ignored, the latest definition wins, mappings do not chain, and QC declarations remain unchanged. Named flex blocks retain declared keys. Native global renaming is preserved; ambiguous target names are rejected.
 
-Output files are staged with checked writes, flushes and closes, then backed up and replaced. Handled failures roll back the set. Directory conflicts and Windows VTX sharing locks preserve prior bytes in tests. Power loss and forced termination recovery are not guaranteed. All 153 compatibility and 20 automation tests pass.
+At v1.2.9, output files were staged with checked writes, flushes and closes, then backed up and replaced. Handled failures rolled back the set. Directory conflicts and Windows VTX sharing locks preserved prior bytes in tests, but restart recovery after forced termination was absent. All 153 compatibility and 20 automation tests passed. v1.2.23 adds a durable journal and recovery on the next compile; arbitrary hardware failure or power-loss reordering cannot be guaranteed lossless.
 
-## v1.2.8: five-compiler integration focus
+## v1.2.8 historical record: five-compiler integration focus
 
 Restores warning-only acceptance of older Neko `$prefer_fbx` and `$forcecapsules` directives, matching Neko 2.3.0 without changing import or generating capsules. `-usenvtristrip` selects the existing legacy backend. CE `$DontDestroy` / `-DontDestroy` accepts the default output-preservation policy. All 150 compatibility tests pass. The two StudioMDL 2013 archives count as one compiler with different dependencies.
 
-## v1.2.7: reference flex policies and production validation
+## v1.2.7 historical record: reference flex policies and production validation
 
 Adds `$dmxcompatibility native|ce|neko`, preserving native defaults while matching distinct reference rule/controller policies in 14 cases per compiler. Claudia is tested with its actual materials, facial changes, an isolated generated decimated LOD and ragdoll physics in GMod. Both original Hair QCs still compile. Repeated joint weights and macro error provenance are fixed; output preflight and serialized-table checks are expanded. `-perfjson` includes individual processing stages. There are 146 compatibility and 20 automation tests. See [IMPROVEMENTS.md](IMPROVEMENTS.md).
 
-## v1.2.6: compatibility, ragdolls and package verification
+## v1.2.6 historical record: compatibility, ragdolls and package verification
 
 Adds explicit copy weightlists, fixes procedural collision geometry causing unstable ragdolls, improves include diagnostics and long-scene sampling. Complete Hair player/NPC models were tested in GMod. There are 138 compatibility and 20 automation tests. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for all seven areas and unresolved differences.
 
-## v1.2.5: Hair QC compilation fix
+## v1.2.5 historical record: Hair QC compilation fix
 
 Correct overly strict bodygroup validation; add final-product and preset-integer regressions. The suite then had 128 compatibility tests.
 
-## v1.2.4: seven improvements
+## v1.2.4 historical record: seven improvements
 
 - Ordered SearchPaths, AppID/Steam library discovery, directories and VPK v1/v2 with preload/split archives; `-steamdir` overrides Steam discovery.
 - Direct Draco decoding with attribute IDs, normals, UVs and uncompressed morphs; corrupt streams fail explicitly.
@@ -209,17 +220,17 @@ Implementation follows the supplied **Chinese v2.3.0 changelog**.
 
 - The compiler, decompiler and utilities share the NewPageMergeMDL project naming and current project version; compiler startup messages and redirected logs are plain text, without a colored banner.
 - Automatic PulseModel integration through a maintained patch, followed by Windows/Linux builds, tests and GitHub Release publication. Conflicts or failed checks stop publication. New closed-source CE/++/Neko features require manual analysis.
-- The current 325 compatibility, 20 automation and 6 content-mount regressions pass and inspect actual outputs. Historical checks compiled the supplied complete `survivor_teenangst.qc` with mixed DMX/GLB bodies and the user-provided Alyx QC. User models and reference compiler binaries are not redistributed.
+- The historical v1.2.22 result was 325 compatibility, 20 automation and 6 content-mount regressions passing with actual-output inspection. Current results are in [VALIDATION.md](VALIDATION.md). Earlier checks compiled the supplied complete `survivor_teenangst.qc` with mixed DMX/GLB bodies and the user-provided Alyx QC. User models and reference compiler binaries are not redistributed.
 
-## v1.2.3: fewer incomplete features
+## v1.2.3 historical record: fewer incomplete features
 
 - Model-scoped `RenameMat` now supports many-to-one material names. Mesh ranges, triangles, morph vertex indices and face tags are regrouped without affecting other body choices. Tests cover six vertices, two LODs and flex output.
-- The fast glTF path decodes meshopt ATTRIBUTES, TRIANGLES and INDICES streams and applies NONE/OCTAHEDRAL/QUATERNION/EXPONENTIAL/COLOR filters. EXPONENTIAL attributes and both index modes have output tests for geometry, UV, flex and decompiled animation; other filters are not individually certified. Encoding quantization remains observable. Invalid ranges and corrupt streams fail before output.
+- At v1.2.3, the fast glTF path decoded meshopt ATTRIBUTES, TRIANGLES and INDICES streams and applied NONE/OCTAHEDRAL/QUATERNION/EXPONENTIAL/COLOR filters. EXPONENTIAL attributes and both index modes had output tests for geometry, UV, flex and decompiled animation; v1.2.23 adds individual OCTAHEDRAL/QUATERNION/COLOR fixtures. Encoding quantization remains observable. Invalid ranges and corrupt streams fail before output.
 - Static unskinned `EXT_mesh_gpu_instancing` expands shared meshes under per-instance translation, rotation and scale, retaining inherited transforms, morph targets and InNode subtree selection. Rotation, mirrored scale and invalid quaternions have tests. Expanded scenes retain the source node/bone budget.
 
-The unsupported material-merge row is removed and the glTF compression/instance limitation is narrowed. Draco, AppID mounting, animated scale/weights, complex-rig parity and engine validation remain open. There are 127 compatibility and 20 automation tests.
+At v1.2.3, material merging was removed from the unfinished list, while Draco, AppID mounting, animated scale/weights and expanded rig/runtime checks were still open. Those historical items were addressed by subsequent releases; current implementation and evidence boundaries are in the [v1.2.23 ledger](FIVE_COMPILER_COMPLETION.md). The historical count was 127 compatibility and 20 automation tests.
 
-## v1.2.2: six improvements
+## v1.2.2 historical record: six improvements
 
 - **Bodygroups:** 64-bit combination arithmetic accepts up to 2^31 combinations (body values 0..2147483647). Tests accept 31 binary groups and reject 32 before output. Fixed single-choice parts no longer add meaningless preset-mask digits.
 - **Skin groups:** check materials × families × 2 bytes before allocating the table, including configured MDL/file budgets. Tests cover 1001 skins and preservation of prior outputs on rejection.
@@ -230,7 +241,7 @@ The unsupported material-merge row is removed and the glTF compression/instance 
 
 **v1.2.5 fix:** correct an overly strict check that blocked the complete Hair QC. Both original player and NPC QCs compile, with 126 / 124 bones and 572277 vertices, without changing the user models. Validate stored bodygroup bases and preset values while retaining diagnostics.
 
-## v1.2.1 additions and fixes
+## v1.2.1 historical record additions and fixes
 
 - `$UseLegacyStripify` / `-nvtristrip` select the bundled NvTriStrip backend; meshoptimizer remains the default. Tests cover DX80/DX90, both VTX layouts, LODs and skin remapping across hardware bone palettes. The legacy algorithm removes duplicate and index-degenerate faces.
 - LOD bone replacement resolves chains and rejects cycles or conflicting targets. Added combined output checks for IK chains, procedural drivers, renamed bones and unused-bone collapse.
@@ -241,30 +252,31 @@ The unsupported material-merge row is removed and the glTF compression/instance 
 
 See `libs/nvtristrip/SOURCE.md` for dependency provenance and [RESEARCH.md](RESEARCH.md) for the six investigations and remaining work.
 
-## v1.2.0 validation and optimizations
+## v1.2.0 historical record validation and optimizations
 
 - SMD/VTA loading reads lines directly instead of retaining redundant whole-file buffers. Invalid bone parents, non-finite coordinates and invalid weights fail explicitly; more than 16 source weights no longer cause an out-of-bounds read.
 - Sparse mesh partition maps and ownership tracking reduce a 9000-vertex, 3-vertex-cap benchmark from 300.7 ms to 15.8 ms, with four byte-identical output files. This measures an extreme partition case, not a universal speedup.
 - A 181,271,943-byte (172.88 MiB) VTA with 2.4 million real vertex records compiles successfully. Peak working set falls from 880 MB to 376 MB with byte-identical output. Run `tests/stress_vta.py` to reproduce.
 - Tests cover 130 output materials, collapse of 512 source bones, 256 output bones and animation of bone 255. The 256-bone case uses frame animation encoding. **512 final output bones remain unsupported**: standard MDL/VVD byte-sized bone indices require rejection above 256 before writing.
-- Added multi-bone DMX morph, split flex/LOD and collision rename/parent regressions. The supplied extreme model compiles with 126 bones and 572277 VVD vertices. Subsequent v1.2.6/v1.2.7 checks cover GMod geometry and physics; material validation still lacks assets.
+- Added multi-bone DMX morph, split flex/LOD and collision rename/parent regressions. The supplied extreme model compiled with 126 bones and 572277 VVD vertices. Later v1.2.6/v1.2.7 checks covered GMod geometry and physics; the material-asset gap at that time was closed by the v1.2.8 Plum validation.
 - Automatic releases increment patch versions and recognize existing versioned tags. See [RESEARCH.md](RESEARCH.md) for investigation results and remaining work.
 
 ## Compatibility boundaries and validation coverage
 
-This list reflects v1.2.22 implementation and validation. All 11 fixed CSGO porting packages are complete. This table records runtime requirements, validation boundaries and integration limits from other sources; “unverified” does not mean a porting package is unimplemented.
+This list reflects v1.2.23 implementation; the [completion ledger](FIVE_COMPILER_COMPLETION.md) records the fixed scope and acceptance results. All 11 CSGO porting packages are complete. These are runtime requirements and limits on extrapolating the evidence, not an additional sequence of feature packages.
 
 | Area | Current status and boundaries |
 | --- | --- |
 | CSGO cloth | `flex_borders`, `prerotate`, mixed fitting, multiweight anchors, advanced FE, ropes and render-skinning projection are implemented. The target remains skeletal CSGO AppID 730 with extended VTX. Plane proxies require rigid single-bone binding; sparse fits need valid adjacent bases. World collision needs game-supplied colliders and volume feedback needs FitMatrix. Advanced collision lacks quantitative A/B or frame-by-frame zero-penetration proof. See the [cloth guide](CSGO_CLOTH_AUTHORING.md). |
 | SubD | Offline Catmull-Clark baking is the default: authored DMX quads, 1–3 iterations and ordinary triangles. Native patches require explicit `$subd native` and extended VTX; the tested CSGO legacy/HLMV native path crashes. Non-manifold input, triangle decimation, excessive growth and unsupported morph/merged-part combinations are rejected. |
 | DMX rig and animation evaluation | Point/Orient/Aim/Parent/Rotation/IK/Twist bake through a unified graph. External rig import remains CSGO-only; runtime IK/blending and later QC edits do not re-solve authoring constraints. Raw delta inputs, runtime-procedural dependencies and `$centerbonesonverts` combinations remain rejected. Value types, reverse sampling and nested timelines are expanded; compressed logs remain Vector3/Quaternion-only. Full SFM sessions and track crossfades are outside scope. AxisInterp rejects unrepresentable control-axis changes. See the [DMX guide](CSGO_DMX_INPUTS.md). |
-| Integration gaps | CE replacemesh semantics remain unconfirmed. Separate/animated Neko parents and differing pose hierarchies are fixed and compared with reference output. Additional formats and rig combinations beyond tested cases still need coverage; power-loss/forced termination recovery remains incomplete. See FEATURE_MATRIX.md. |
-| Extra extension: skinned instances and mesh swaps | These are not prerequisites for five-compiler integration. Skinned `EXT_mesh_gpu_instancing` and animated mesh swaps remain unsupported. Static unskinned instances are supported. |
-| Extra extension: VRM runtime behavior | These are not prerequisites for five-compiler integration. Complete spring-bone and proprietary expression-mapping runtime semantics remain unimplemented. Existing VRM import and default morph-weight regressions do not establish complete VRM compatibility. |
-| Import format and interpolation coverage | Lost STEP/CUBICSPLINE semantics on the glTF fallback are fixed and tested. Other Assimp formats, complex FBX/VRM hierarchies and interpolation in other formats still need coverage. |
-| Complex rig and collision coverage | IK, jiggle, drivers, correctives, eyelids, combined facial rigs and per-bone VHACD have regressions. Arbitrary complex hierarchies, hard edges, authored normals, controller remapping and complex collisions still need model-specific checks. Single-bone weighting remains experimental. |
-| Cross-game and reference coverage | Specific GMod, CSGO legacy and MCV samples are tested. Other models, games and shaders need independent checks; not all reference compiler syntax edge cases, diagnostic text or performance scenarios are covered. |
+| Reference evidence | Both supplied CE architectures reject the tested `replacemesh` forms. E1 closes as unavailable reference evidence without an invented alias. The 2013 environment and actual capacity were measured; Neko's unfrozen historical format claim cannot establish per-format equivalence. See the [ledger](FIVE_COMPILER_COMPLETION.md). |
+| Interrupted output recovery | Durable journals, per-output process locks, commit markers and fingerprint checks are implemented. The next compile recovers before reading old sequence order. Damaged journals or externally changed files are retained and reported. Arbitrary hardware failure/power-loss reordering is not guaranteed lossless; readers do not see an instantaneous atomic replacement of every file. |
+| Skinned instances and mesh states | Skinned `EXT_mesh_gpu_instancing` expands into independent bones, geometry and animation, with positive uniform instance scale. Nonuniform scale/shear requires prior baking. [Finite topology states](MESH_STATE_WORKFLOW.md) switch bodygroups through the supplied GMod player and require that explicit consumer. |
+| VRM runtime | The [preparation tool and GMod modules](VRM_RUNTIME.md) implement VRM 0/1 named expressions, binary/override behavior, material adaptation, springs and sphere/capsule collisions. This bounded adapter needs corresponding Source materials; it does not execute Unity/MToon or promise arbitrary frame-for-frame/zero-penetration equivalence. |
+| Import formats and interpolation | FBX cluster binds, PMX named morphs, Assimp keys/boundaries and Collada STEP/LINEAR/BEZIER have fixed acceptance cases; glTF STEP/CUBICSPLINE is preserved. Unrepresentable tangents need baking. M3D/USD are built in, VRML converts separately, and C4D editable polygons use the Windows helper; see the [format guide](O5_FORMAT_IMPORTS.md). |
+| Complex rigs and collision | Fixed cases cover CE multi-bone/controller remapping, hard edges/authored normals, corrective/eyelid combinations, Neko multi-studio/LOD and nine bone-rule combinations, alongside existing IK/jiggle/per-bone VHACD. These fixtures do not establish complete reference equivalence for every hierarchy or model. Explicit single-bone weighting uses the first imported influence. |
+| Cross-game behavior and performance | The original Plum, self-authored models, per-engine runs and fixed benchmarks are recorded in [current validation](VALIDATION.md). Uninstalled games do not count as passed. Reference runs with different bone counts, index coverage or required environments are not treated as equal-output speed comparisons. |
 
 v1.2.8 production validation uses Plum. Its original Hair QC and serialized output checks pass. Supplied materials load in GMod without missing entries; 28 captures cover bodygroups, skins and facial changes, and all 18 ragdoll bodies settle stably. The initial capture was retested with material warm-up. Future production validation uses Plum rather than Claudia. See the [v1.2.8 validation record](tests/reports/v1.2.8-validation.json).
 
@@ -320,7 +332,7 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 python -m unittest discover -s tests -p test_automation.py
 ```
 
-All 325 compatibility, 20 automation and 6 content-mount regressions pass. Temporary SMD/QC and synthetic DMX fixtures inspect MDL/VVD/VTX/FE data and decompile animations to check positions, rotations and conditions. Current production validation uses unchanged original Plum QC/materials: 126 bones, 572,277 vertices, 18 physics bodies, matching 30 kg totals and 65 materials with none missing. See v1.2.22 above and [VALIDATION.md](VALIDATION.md) for runtime coverage.
+v1.2.23 passes 368 compatibility, 20 automation, 9 content-mount, 9 Lua, 7 C4D and 5 output-recovery tests. Temporary SMD/QC and synthetic scene fixtures inspect MDL/VVD/VTX/FE data and decompile animations to check positions, rotations and conditions. Current production validation uses unchanged original Plum QC/materials: 126 bones, 572,277 vertices, 18 physics bodies, matching 30 kg totals and 65 materials with none missing. See the [v1.2.23 ledger](FIVE_COMPILER_COMPLETION.md) and [VALIDATION.md](VALIDATION.md) for current results and runtime coverage.
 
 Historically, the user-provided Alyx QC compiled successfully with 113 bones and 27,571 VVD vertices; that compile check alone did not cover in-game loading or rendering.
 

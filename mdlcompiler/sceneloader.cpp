@@ -1,11 +1,14 @@
 #include "sceneloader.h"
 #include "dependencies.h"
 #include "gltfscene.h"
+#include "c4dbridge.h"
 #include "pathcompat.h"
 #include "assimp/Importer.hpp"
 #include "assimp/scene.h"
 #include "assimp/postprocess.h"
 #include "assimp/material.h"
+#include "assimp/importerdesc.h"
+#include "../libs/assimp/code/AssetLib/MMD/MMDPmxParser.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -13,6 +16,8 @@
 #include <stdexcept>
 #include <filesystem>
 #include <cctype>
+#include <fstream>
+#include <sstream>
 
 namespace pulse::source {
 namespace {
@@ -29,14 +34,114 @@ pm::matrix3x4 Matrix(const aiMatrix4x4& m,float scale) {
     return o;
 }
 template<class Key,class Value,class Interpolate>
-Value Sample(const Key* keys,unsigned count,double time,Value fallback,Interpolate interpolate) {
+Value Sample(const Key* keys,unsigned count,double time,Value fallback,aiAnimBehaviour pre,
+             aiAnimBehaviour post,Interpolate interpolate) {
     if(!count) return fallback;
-    if(time<=keys[0].mTime) return keys[0].mValue;
+    const bool before=time<keys[0].mTime,after=time>keys[count-1].mTime;
+    if(before || after) {
+        const auto behaviour=before?pre:post;
+        switch(behaviour) {
+        case aiAnimBehaviour_DEFAULT:return fallback;
+        case aiAnimBehaviour_CONSTANT:return keys[before?0:count-1].mValue;
+        case aiAnimBehaviour_LINEAR: {
+            if(count==1)return keys[0].mValue;
+            const unsigned lo=before?0:count-2,hi=lo+1;
+            const double span=keys[hi].mTime-keys[lo].mTime;
+            return interpolate(keys[lo].mValue,keys[hi].mValue,float((time-keys[lo].mTime)/span),aiAnimInterpolation_Linear);
+        }
+        case aiAnimBehaviour_REPEAT: {
+            const double span=keys[count-1].mTime-keys[0].mTime;
+            if(span<=0)return keys[0].mValue;
+            double phase=std::fmod(time-keys[0].mTime,span);if(phase<0)phase+=span;
+            time=keys[0].mTime+phase;break;
+        }
+        default:throw std::runtime_error("unknown Assimp animation boundary behaviour");
+        }
+    }
+    if(time<=keys[0].mTime)return keys[0].mValue;
     const auto upper=std::upper_bound(keys,keys+count,time,[](double t,const Key& key){return t<key.mTime;});
     if(upper==keys+count) return keys[count-1].mValue;
     const auto lower=upper-1; const double span=upper->mTime-lower->mTime;
-    return interpolate(lower->mValue,upper->mValue,span>0?float((time-lower->mTime)/span):0);
+    if(lower->mInterpolation==aiAnimInterpolation_Step)return lower->mValue;
+    if(lower->mInterpolation==aiAnimInterpolation_Cubic_Spline)
+        throw std::runtime_error("Assimp cubic animation keys have no tangent data; bake this format's animation before import");
+    return interpolate(lower->mValue,upper->mValue,span>0?float((time-lower->mTime)/span):0,lower->mInterpolation);
 }
+template<class Key>
+void ValidateKeys(const Key* keys,unsigned count) {
+    for(unsigned k=0;k<count;++k) {
+        if(!std::isfinite(keys[k].mTime) || (k && keys[k].mTime<=keys[k-1].mTime))
+            throw std::runtime_error("scene animation key times must be finite and strictly increasing");
+    }
+}
+
+void AddPmxMorphs(const std::string& path,aiScene& scene) {
+    // Assimp's MMD reader parses PMX morphs but does not expose them in the
+    // aiScene. Its meshes duplicate vertices in material/index order, so map
+    // the parsed PMX deltas through that exact index stream before unification.
+    std::ifstream file(pulse::FilePath(path),std::ios::binary);
+    pmx::PmxModel model;model.Read(&file);
+    if(!file)throw std::runtime_error("truncated PMX morph source");
+    if(scene.mNumMeshes!=unsigned(model.material_count))throw std::runtime_error("PMX material mesh mapping differs from importer");
+    std::vector<std::map<int,aiVector3D>> deltas(model.morph_count);
+    std::vector<unsigned char> state(model.morph_count);
+    std::function<bool(int)> expand=[&](int index) {
+        if(index<0 || index>=model.morph_count)throw std::runtime_error("PMX group morph references an invalid morph");
+        if(state[index]==1)throw std::runtime_error("cyclic PMX group morph");
+        if(state[index]>=2)return state[index]==2;
+        state[index]=1;const auto& morph=model.morphs[index];
+        bool supported=true;
+        if(int(morph.morph_type)==1) {
+            for(int k=0;k<morph.offset_count;++k) {
+                const auto& offset=morph.vertex_offsets[k];
+                if(offset.vertex_index<0 || offset.vertex_index>=model.vertex_count)throw std::runtime_error("PMX morph vertex index out of range");
+                const auto p=offset.position_offset;
+                if(!std::isfinite(p[0]) || !std::isfinite(p[1]) || !std::isfinite(p[2]))throw std::runtime_error("non-finite PMX morph delta");
+                deltas[index][offset.vertex_index]+=aiVector3D(p[0],p[1],-p[2]);
+            }
+        } else if(int(morph.morph_type)==0) {
+            for(int k=0;k<morph.offset_count;++k) {
+                const auto& offset=morph.group_offsets[k];
+                if(!std::isfinite(offset.morph_weight))throw std::runtime_error("non-finite PMX group morph weight");
+                if(!expand(offset.morph_index)) { supported=false;continue; }
+                for(const auto& entry:deltas[offset.morph_index])deltas[index][entry.first]+=entry.second*offset.morph_weight;
+            }
+        } else supported=false;
+        state[index]=supported?2:3;return supported;
+    };
+    for(int m=0;m<model.morph_count;++m)expand(m);
+    int indexBase=0;
+    for(unsigned n=0;n<scene.mNumMeshes;++n) {
+        auto mesh=scene.mMeshes[n];const int count=model.materials[n].index_count;
+        if(count<0 || indexBase>model.index_count-count || mesh->mNumVertices!=unsigned(count))throw std::runtime_error("invalid PMX morph mesh index mapping");
+        std::vector<std::unique_ptr<aiAnimMesh>> targets;
+        for(int m=0;m<model.morph_count;++m)if(state[m]==2 && !deltas[m].empty()) {
+            auto target=std::make_unique<aiAnimMesh>();const auto& morph=model.morphs[m];
+            target->mName=aiString(morph.morph_name.empty()?morph.morph_english_name:morph.morph_name);
+            target->mNumVertices=mesh->mNumVertices;target->mVertices=new aiVector3D[mesh->mNumVertices];
+            for(unsigned v=0;v<mesh->mNumVertices;++v) {
+                target->mVertices[v]=mesh->mVertices[v];auto found=deltas[m].find(model.indices[indexBase+v]);
+                if(found!=deltas[m].end())target->mVertices[v]+=found->second;
+            }
+            targets.push_back(std::move(target));
+        }
+        mesh->mNumAnimMeshes=unsigned(targets.size());mesh->mAnimMeshes=new aiAnimMesh*[targets.size()]{};
+        for(size_t m=0;m<targets.size();++m)mesh->mAnimMeshes[m]=targets[m].release();
+        indexBase+=count;
+    }
+    unsigned skipped=0;for(auto status:state)if(status==3)++skipped;
+    if(skipped)std::printf("PMX: %u non-vertex morphs are not representable as MDL vertex flexes (UV/material/bone/physics or groups containing them)\n",skipped);
+}
+}
+std::string SceneImportFormats() {
+    Assimp::Importer importer;std::ostringstream result;
+    result<<"Native\tSource DMX/SMD/VTA, ufbx, cgltf\tdmx smd vta fbx gltf glb vrm\n";
+    for(size_t i=0;i<importer.GetImporterCount();++i) {
+        const auto info=importer.GetImporterInfo(i);
+        result<<"Assimp\t"<<info->mName<<"\t"<<info->mFileExtensions<<"\n";
+    }
+    result<<"Optional bridge\tCineware C4D cached geometry ("<<(HasC4dBridge()?"available":"Windows helper not present")<<")\tc4d\n";
+    return result.str();
 }
 bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,float scale,
                      std::string* err,bool morphSource,MeshFilter* filter,bool animOnly,
@@ -48,23 +153,39 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
         static std::map<std::string,std::shared_ptr<aiScene>> cache;
         std::string ext=pulse::FilePath(path).extension().string();
         std::transform(ext.begin(),ext.end(),ext.begin(),[](unsigned char c){return char(std::tolower(c));});
-        const bool gltf=ext==".gltf" || ext==".glb" || ext==".vrm";
-        const bool fast=!options.noFastGltf && gltf;
+        const bool c4d=ext==".c4d";
+        const bool gltf=c4d || ext==".gltf" || ext==".glb" || ext==".vrm";
+        const bool nativeInstances=gltf && !c4d && options.noFastGltf && GltfHasInstancing(path);
+        const bool fast=gltf && (!options.noFastGltf || nativeInstances);
+        if(nativeInstances)std::printf("glTF instancing: using native expansion because Assimp does not retain EXT_mesh_gpu_instancing\n");
         const std::string key=path+"|"+std::to_string(static_cast<long long>(std::filesystem::last_write_time(pulse::FilePath(path)).time_since_epoch().count()))+
                               "|"+std::to_string(fast)+"|"+std::to_string(options.sampleRate)+"|"+options.bakeAnimation;
         auto found=cache.find(key);
         if(found==cache.end()) {
+            TemporaryC4dScene converted;
+            // Generated GLB files are implementation details. Track the original
+            // C4D as the source dependency, even on a conversion/import failure.
+            struct ConversionDependency {
+                const TemporaryC4dScene& temporary;
+                ~ConversionDependency() {
+                    if(!temporary.path.empty())pulse::dependencies::Files().erase(temporary.path.lexically_normal().string());
+                }
+            } conversionDependency{converted};
+            std::string parsePath=path;
+            if(c4d) {ConvertC4dScene(path,converted);parsePath=converted.path.u8string();}
             std::shared_ptr<aiScene> parsed;
-            if(fast) parsed=LoadFastGltfScene(path,options.sampleRate,!options.bakeAnimation.empty());
+            if(fast) parsed=LoadFastGltfScene(parsePath,options.sampleRate,!options.bakeAnimation.empty());
             else {
                 Assimp::Importer importer;
-                if(!importer.ReadFile(path,aiProcess_Triangulate|aiProcess_GenSmoothNormals)) throw std::runtime_error(importer.GetErrorString());
+                importer.SetPropertyFloat("NPMDL_SCENE_SAMPLE_RATE",options.sampleRate);
+                if(!importer.ReadFile(parsePath,aiProcess_Triangulate|aiProcess_GenSmoothNormals)) throw std::runtime_error(importer.GetErrorString());
                 parsed.reset(importer.GetOrphanedScene());
+                if(ext==".pmx")AddPmxMorphs(path,*parsed);
                 if (gltf && parsed->mNumAnimations) {
                     // Assimp drops glTF STEP markers and cubic tangents.
                     // Keep its geometry/skin import, but sample animation from
                     // original accessors, without building a second mesh copy.
-                    auto precise = LoadFastGltfScene(path, options.sampleRate,
+                    auto precise = LoadFastGltfScene(parsePath, options.sampleRate,
                         !options.bakeAnimation.empty(), true);
                     for (unsigned i=0;i<parsed->mNumAnimations;++i) delete parsed->mAnimations[i];
                     delete[] parsed->mAnimations;
@@ -152,6 +273,12 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
             if(bake){clip.numframes=1+int(std::ceil(duration*options.sampleRate));clip.endframe=clip.numframes-1;
                 if(clip.numframes>4096)throw std::runtime_error("BakeSceneAnimation exceeds 4096 sampled frames");bakedAnimation=animation;}
             clip.frames.resize(clip.numframes);
+            for(unsigned ch=0;ch<animation->mNumChannels;++ch) {
+                const auto channel=animation->mChannels[ch];
+                ValidateKeys(channel->mPositionKeys,channel->mNumPositionKeys);
+                ValidateKeys(channel->mRotationKeys,channel->mNumRotationKeys);
+                ValidateKeys(channel->mScalingKeys,channel->mNumScalingKeys);
+            }
             // Check immutable keys once, rather than for every sampled frame.
             if(!bake) for(unsigned ch=0;ch<animation->mNumChannels;++ch) {
                 auto channel=animation->mChannels[ch]; auto i=byName.find(channel->mNodeName.C_Str());
@@ -169,11 +296,16 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
                     if(i==byName.end()) throw std::runtime_error("animation node not found");
                     int b=i->second; out.localBone[b].isNonSkeletal=false;
                     aiVector3D s,p; aiQuaternion q; locals[b].Decompose(s,q,p);
-                    auto lerp=[](aiVector3D x,aiVector3D y,float t) { return x+(y-x)*t; };
-                    p=Sample(channel->mPositionKeys,channel->mNumPositionKeys,time,p,lerp);
-                    s=Sample(channel->mScalingKeys,channel->mNumScalingKeys,time,s,lerp);
-                    q=Sample(channel->mRotationKeys,channel->mNumRotationKeys,time,q,[](aiQuaternion x,aiQuaternion y,float t) {
-                        aiQuaternion o; aiQuaternion::Interpolate(o,x,y,t); return o.Normalize(); });
+                    auto lerp=[](aiVector3D x,aiVector3D y,float t,aiAnimInterpolation) { return x+(y-x)*t; };
+                    p=Sample(channel->mPositionKeys,channel->mNumPositionKeys,time,p,channel->mPreState,channel->mPostState,lerp);
+                    s=Sample(channel->mScalingKeys,channel->mNumScalingKeys,time,s,channel->mPreState,channel->mPostState,lerp);
+                    q=Sample(channel->mRotationKeys,channel->mNumRotationKeys,time,q,channel->mPreState,channel->mPostState,
+                        [](aiQuaternion x,aiQuaternion y,float t,aiAnimInterpolation mode) {
+                            aiQuaternion o;
+                            if(mode==aiAnimInterpolation_Spherical_Linear) aiQuaternion::Interpolate(o,x,y,t);
+                            else { if(x.w*y.w+x.x*y.x+x.y*y.y+x.z*y.z<0)y=aiQuaternion(-y.w,-y.x,-y.y,-y.z);
+                                o=aiQuaternion(x.w+(y.w-x.w)*t,x.x+(y.x-x.x)*t,x.y+(y.y-x.y)*t,x.z+(y.z-x.z)*t); }
+                            return o.Normalize(); });
                     locals[b]=aiMatrix4x4(s,q,p);
                 }
                 std::vector<aiMatrix4x4> w(nodes.size());

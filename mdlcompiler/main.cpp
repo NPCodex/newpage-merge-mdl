@@ -29,6 +29,8 @@
 #include "branding.h"
 #include "sequence_remap.h"
 #include "resources.h"
+#include "sceneloader.h"
+#include "outputfiles.h"
 #ifdef _WIN32
 #include <windows.h>
 #include <psapi.h>
@@ -115,6 +117,9 @@ static int Usage() {
     std::printf("  -perfmetrics  print wall time in ms for each stage of the compile\n");
     std::printf("  -perfjson <file> write stage timings and peak working set as JSON\n");
     std::printf("  -steamdir <dir> override Steam root for gameinfo AppID mounts\n");
+    std::printf("  -nodefaultargs skip gameinfo Tools/studiomdl and cfg/commandline.cfg defaults\n");
+    std::printf("                Default priority: gameinfo < QC-stem cfg entry < explicit CLI.\n");
+    std::printf("  -importformats print the enabled scene import formats and exit\n");
     return 1;
 }
 
@@ -227,6 +232,29 @@ static int RunCompile(int argc, char** argv) {
         return Usage();
 
     g_stage = "command line";
+    // Discover the explicit target and script before injecting defaults. Never
+    // follow a -game from a configuration recursively into another gameinfo.
+    std::string explicitGame,explicitScript;
+    bool noDefaultArgs=false;
+    const std::vector<std::string> oneValue={"-game","-outdir","-steamdir","-modelname","-includeanimprefix",
+        "-eyeballscale","-maxbones","-outputbuffersize","-mdloutputbuffersize","-anioutputbuffersize",
+        "-includesearchdir","-filesearchdir","-tempcontent","-vtxformat","-minlod","-alwayscollapsebyprefix","-perfjson"};
+    for(int i=1;i<argc;++i) {
+        std::string key=argv[i];for(char& c:key)c=char(std::tolower(static_cast<unsigned char>(c)));
+        if(key=="-nodefaultargs")noDefaultArgs=true;
+        if(key=="-game"&&i+1<argc)explicitGame=argv[i+1];
+        int count=key=="-defvar"||key=="-includeprefix"?2:
+            (std::find(oneValue.begin(),oneValue.end(),key)!=oneValue.end()||
+             (argv[i][0]=='-'&&argv[i][1]=='D'&&argv[i][2])?1:0);
+        if(count){i+=count;continue;}
+        if(argv[i][0]!='-'&&pulse::loader::IsQcScriptPath(argv[i]))explicitScript=argv[i];
+    }
+    std::vector<std::string> merged{argv[0]};std::string defaultError;
+    if(!noDefaultArgs&&!pulse::resources::LaunchDefaults(explicitGame,explicitScript,merged,&defaultError))
+        return Fail("bad defaults",defaultError);
+    for(int i=1;i<argc;++i)merged.emplace_back(argv[i]);
+    std::vector<char*> mergedPointers;for(auto& value:merged)mergedPointers.push_back(value.data());
+    argc=static_cast<int>(mergedPointers.size());argv=mergedPointers.data();
     const char* script = nullptr;
     std::string outdir;
     std::string gameDirectory,steamDirectory;
@@ -371,6 +399,8 @@ static int RunCompile(int argc, char** argv) {
             pulse::perf::g_enabled = true;
         } else if (std::strcmp(argv[i], "-perfmetrics") == 0) {
             pulse::perf::g_enabled = true;
+        } else if (std::strcmp(argv[i], "-nodefaultargs") == 0) {
+            // Already handled while loading launch defaults.
         } else if (std::strcmp(argv[i], "-pause") == 0) {
             pulse::fatal::g_pause = true;
         } else if (argv[i][0] == '-') {
@@ -487,6 +517,9 @@ static int RunCompile(int argc, char** argv) {
     }
 
     if (!verify) {
+        const auto outputRoot=pulse::FilePath(outdir.empty()?".":outdir)/"models";
+        const auto outputModel=outputRoot/pulse::FilePath(model.outname+".mdl");
+        if(!RecoverOutputFiles(outputModel,outputRoot,&err))return Fail("output recovery error",err);
         if (!noRemap) {
             std::string warning;
             if (!newpage::PreserveSequenceOrder(model, outdir, warning)) {
@@ -573,6 +606,10 @@ int main(int argc, char** argv) {
     // -dumpcommands takes no script and runs before the banner: the output is
     // read by tools, so stdout carries the command list and nothing else.
     for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "-importformats") == 0) {
+            std::printf("%s\n",pulse::source::SceneImportFormats().c_str());
+            return 0;
+        }
         if (std::strcmp(argv[i], "-dumpcommands") == 0) {
             pulse::loader::PrintCommandNames();
             return 0;

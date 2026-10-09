@@ -161,7 +161,7 @@ void USDImporterImplTinyusdz::InternReadFile(const std::string &pFile, aiScene *
         ss.str("");
         ss << "InternReadFile(): ERROR: load failed! ret: " << ret;
         TINYUSDZLOGE(TAG, "%s", ss.str().c_str());
-        return;
+        throw DeadlyImportError("tinyusdz failed to load USD: ", err);
     }
     
     RenderScene render_scene;
@@ -213,7 +213,10 @@ void USDImporterImplTinyusdz::InternReadFile(const std::string &pFile, aiScene *
         ss.str("");
         ss << "InternReadFile(): ConvertToRenderScene() failed!";
         TINYUSDZLOGE(TAG, "%s", ss.str().c_str());
-        return;
+        throw DeadlyImportError("tinyusdz failed to convert USD scene");
+    }
+    if (render_scene.nodes.empty()) {
+        throw DeadlyImportError("USD scene has no root nodes");
     }
 
     // sanityCheckNodesRecursive(pScene->mRootNode);
@@ -223,7 +226,16 @@ void USDImporterImplTinyusdz::InternReadFile(const std::string &pFile, aiScene *
     textures(render_scene, pScene, nameWExt);
     textureImages(render_scene, pScene, nameWExt);
     buffers(render_scene, pScene, nameWExt);
-    pScene->mRootNode = nodesRecursive(nullptr, render_scene.nodes[0], render_scene.skeletons);
+    if (render_scene.nodes.size() == 1) {
+        pScene->mRootNode = nodesRecursive(nullptr, render_scene.nodes[0], render_scene.skeletons);
+    } else {
+        pScene->mRootNode = new aiNode("USD_Root");
+        pScene->mRootNode->mNumChildren = unsigned(render_scene.nodes.size());
+        pScene->mRootNode->mChildren = new aiNode *[pScene->mRootNode->mNumChildren]{};
+        for (size_t i = 0; i < render_scene.nodes.size(); ++i) {
+            pScene->mRootNode->mChildren[i] = nodesRecursive(pScene->mRootNode, render_scene.nodes[i], render_scene.skeletons);
+        }
+    }
 
     setupBlendShapes(render_scene, pScene, nameWExt);
 }

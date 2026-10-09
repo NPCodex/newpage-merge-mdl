@@ -127,12 +127,17 @@ void C4DImporter::InternReadFile( const std::string& pFile, aiScene* pScene, IOS
     }
 
     const size_t file_size = file->FileSize();
+    if (!file_size) {
+        ThrowException("empty C4D document " + pFile);
+    }
 
     std::vector<uint8_t> mBuffer(file_size);
-    file->Read(&mBuffer[0], 1, file_size);
+    if (file->Read(mBuffer.data(), 1, file_size) != file_size) {
+        ThrowException("incomplete C4D document " + pFile);
+    }
 
     Filename f;
-    f.SetMemoryReadMode(&mBuffer[0], file_size);
+    f.SetMemoryReadMode(mBuffer.data(), file_size);
 
     // open document first
     BaseDocument* doc = LoadDocument(f, SCENEFILTER_OBJECTS | SCENEFILTER_MATERIALS);
@@ -200,6 +205,7 @@ bool C4DImporter::ReadShader(aiMaterial* out, BaseShader* shader) {
             if (!blend_list)
             {
                 LogWarn("ignoring XLayer shader: no blend list given");
+                shader = shader->GetNext();
                 continue;
             }
 
@@ -257,7 +263,9 @@ void C4DImporter::ReadMaterials(BaseMaterial* mat) {
             auto const ai_name = aiStringFrom(mat->GetName());
             out->AddProperty(&ai_name, AI_MATKEY_NAME);
 
-            Material& m = dynamic_cast<Material&>(*mat);
+            // Cineware exposes typed facade classes over BaseList2D nodes;
+            // GetType(), not the C++ dynamic type, identifies the facade.
+            Material& m = static_cast<Material&>(*mat);
 
             if (m.GetChannelState(CHANNEL_COLOR)) {
                 GeData data;
@@ -334,7 +342,7 @@ void C4DImporter::RecurseHierarchy(BaseObject* object, aiNode* parent) {
                 meshes.push_back(mesh);
             }
         } else {
-            LogWarn("ignoring object: ", GetObjectTypeName(type));
+            LogWarn("ignoring object type: ", type);
         }
 
         RecurseHierarchy(object->GetDown(), nd);
@@ -343,8 +351,10 @@ void C4DImporter::RecurseHierarchy(BaseObject* object, aiNode* parent) {
 
     // copy nodes over to parent
     parent->mNumChildren = static_cast<unsigned int>(nodes.size());
-    parent->mChildren = new aiNode*[parent->mNumChildren]();
-    std::copy(nodes.begin(), nodes.end(), parent->mChildren);
+    if (parent->mNumChildren) {
+        parent->mChildren = new aiNode*[parent->mNumChildren]();
+        std::copy(nodes.begin(), nodes.end(), parent->mChildren);
+    }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -353,12 +363,14 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     ai_assert( object->GetType() == Opolygon );
 
     // based on Cineware sample code
-    PolygonObject* const polyObject = dynamic_cast<PolygonObject*>(object);
+    // SDK object nodes are BaseObject instances with a checked type ID. A
+    // dynamic_cast returns null even for a valid Opolygon saved by Cineware.
+    PolygonObject* const polyObject = static_cast<PolygonObject*>(object);
     ai_assert(polyObject != nullptr);
 
     const Int32 pointCount = polyObject->GetPointCount();
     const Int32 polyCount = polyObject->GetPolygonCount();
-    if(!polyObject || !pointCount) {
+    if(pointCount <= 0 || polyCount <= 0) {
         LogWarn("ignoring mesh with zero vertices or faces");
         return nullptr;
     }
@@ -402,14 +414,14 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     BaseTag* tag = object->GetTag(Tnormal);
     NormalTag* normals_src = nullptr;
     if(tag) {
-        normals_src = dynamic_cast<NormalTag*>(tag);
+        normals_src = static_cast<NormalTag*>(tag);
         normals = mesh->mNormals = new aiVector3D[mesh->mNumVertices]();
     }
 
     tag = object->GetTag(Ttangent);
     TangentTag* tangents_src = nullptr;
     if(tag) {
-        tangents_src = dynamic_cast<TangentTag*>(tag);
+        tangents_src = static_cast<TangentTag*>(tag);
         tangents = mesh->mTangents = new aiVector3D[mesh->mNumVertices]();
         bitangents = mesh->mBitangents = new aiVector3D[mesh->mNumVertices]();
     }
@@ -417,8 +429,9 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     tag = object->GetTag(Tuvw);
     UVWTag* uvs_src = nullptr;
     if(tag) {
-        uvs_src = dynamic_cast<UVWTag*>(tag);
+        uvs_src = static_cast<UVWTag*>(tag);
         uvs = mesh->mTextureCoords[0] = new aiVector3D[mesh->mNumVertices]();
+        mesh->mNumUVComponents[0] = 2;
     }
 
     // copy vertices and extra channels over and populate faces
@@ -584,7 +597,7 @@ unsigned int C4DImporter::ResolveMaterial(PolygonObject* obj) {
         return mat_count;
     }
 
-    TextureTag& ttag = dynamic_cast<TextureTag&>(*tag);
+    TextureTag& ttag = static_cast<TextureTag&>(*tag);
 
     BaseMaterial* const mat = ttag.GetMaterial();
     ai_assert(mat != nullptr);
