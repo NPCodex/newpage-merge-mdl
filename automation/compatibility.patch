@@ -56,10 +56,10 @@ index fed7eaf..00e4ec5 100644
  
  # Layout (kept shallow):
 diff --git a/CMakePresets.json b/CMakePresets.json
-index 1e28e47..e79c7bd 100644
+index 1e28e47..762744d 100644
 --- a/CMakePresets.json
 +++ b/CMakePresets.json
-@@ -23,10 +23,20 @@
+@@ -23,10 +23,21 @@
        "displayName": "x64 Release",
        "inherits": "base",
        "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
@@ -70,7 +70,8 @@ index 1e28e47..e79c7bd 100644
 +      "inherits": "base",
 +      "cacheVariables": {
 +        "CMAKE_BUILD_TYPE": "MinSizeRel",
-+        "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON"
++        "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
++        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded"
 +      }
      }
    ],
