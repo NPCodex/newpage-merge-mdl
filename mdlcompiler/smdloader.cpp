@@ -313,6 +313,13 @@ struct TriState {
             auto eat = [&](uint32_t x) { h = (h ^ static_cast<uint64_t>(x)) * 1099511628211ULL; };
             eat(static_cast<uint32_t>(k.mat));
             eat(k.px); eat(k.py); eat(k.pz); eat(k.u); eat(k.v);
+            // Integer-grid float bits share low zero bits. MSVC masks hashes
+            // into power-of-two buckets, so mix high bits down before lookup.
+            h ^= h >> 30;
+            h *= 0xbf58476d1ce4e5b9ULL;
+            h ^= h >> 27;
+            h *= 0x94d049bb133111ebULL;
+            h ^= h >> 31;
             return static_cast<size_t>(h);
         }
     };

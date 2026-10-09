@@ -17,6 +17,7 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **材质与资源需完整。** 检查 QC 的材质路径、目标挂载和对应 VMT/VTF；通用场景的材质名称/颜色导入不代表自动生成完整 Source 着色材质。
 - **扩展有各自的使用条件。** C4D 需完整 Windows 包中的桥接程序；VRML 使用独立转换器。网格状态与 VRM 运行功能需安装配套 GMod Lua 模块，不会由普通 MDL 文件自动在所有游戏执行。详见 [额外格式](O5_FORMAT_IMPORTS.md)、[网格状态](MESH_STATE_WORKFLOW.md) 和 [VRM](VRM_RUNTIME.md)。
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
+- **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
 项目版本：**v1.2.23**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
@@ -35,6 +36,7 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 
 - 补齐 ++ 默认启动参数、Neko 条件模式、CE 权重策略、51 万级移动 flex、FBX 真正 bind pose 与通用动画采样；修复仅 hitbox/动画/低 LOD 使用骨被提前删除。
 - 新增中断后的多文件输出恢复、PMX 命名 morph、蒙皮 GPU 实例展开；`-importformats` 给出实际构建格式清单。
+- 修复 Windows 短目录名/大小写别名导致的输出恢复误报，以及 MSVC 下规则网格顶点哈希碰撞造成的处理迟缓；输出目录内的符号链接和目录联接仍明确拒绝。
 - 提供 [有限拓扑状态](MESH_STATE_WORKFLOW.md)、[VRM 表情/弹簧骨运行模块](VRM_RUNTIME.md)；新增 [M3D、USD、VRML 和 C4D 导入路径](O5_FORMAT_IMPORTS.md)。VRML 转换器独立按 GPL 分发，主程序保持现有许可。
 - 2013 参考环境已恢复；其实际容量与宣传的差异、CE replacemesh 缺有效语法的证据也已记录。验证结果见当前版本报告，不将参考未知信息算作已兼容。
 
@@ -344,7 +346,7 @@ NewPageMergeMDL-Decompiler.exe model.mdl -smdanimation
 python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMergeMDL.exe
 ```
 
-v1.2.23 通过 368 项兼容、20 项自动化、9 项挂载、9 项 Lua、7 项 C4D 和 5 项输出恢复测试。测试使用临时 SMD/QC 和自制场景，检查实际 MDL/VVD/VTX/FE 文件，并反编译动画验证位移、旋转和分支行为。当前生产验证使用未改动的 Plum 原始 QC/材质，得到 126 骨骼、572,277 顶点、18 个物理体、30 kg 一致质量和 65 个无缺失材质；当前结果与运行验证范围见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)及 [VALIDATION.md](VALIDATION.md)。
+v1.2.23 通过 369 项兼容、20 项自动化、9 项挂载、9 项 Lua、7 项 C4D 和 9 项输出恢复测试。测试使用临时 SMD/QC 和自制场景，检查实际 MDL/VVD/VTX/FE 文件，并反编译动画验证位移、旋转和分支行为。当前生产验证使用未改动的 Plum 原始 QC/材质，得到 126 骨骼、572,277 顶点、18 个物理体、30 kg 一致质量和 65 个无缺失材质；当前结果与运行验证范围见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)及 [VALIDATION.md](VALIDATION.md)。
 
 历史上已成功编译用户提供的 Alyx QC（113 根骨骼、27,571 个 VVD 顶点）。v1.2.4 另完成 GMod 几何、表情/眼睑与 LOD 验证。
 

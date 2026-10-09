@@ -20,6 +20,26 @@ def journal_text(entries, nonce='123456789'):
 
 
 class IntegrationWorkflowCases:
+    def test_output_windows_short_and_case_directory_aliases(self):
+        import ctypes
+        import os
+        from pathlib import Path
+        from ctypes import wintypes
+        if os.name!='nt':self.skipTest('Windows output directory aliases')
+        original=self.root;self.root=original/'Output directory with a long name';self.root.mkdir()
+        (self.root/'mesh.smd').write_bytes((original/'mesh.smd').read_bytes())
+        short_path=ctypes.WinDLL('kernel32',use_last_error=True).GetShortPathNameW
+        short_path.argtypes=[wintypes.LPCWSTR,wintypes.LPWSTR,wintypes.DWORD]
+        short_path.restype=wintypes.DWORD
+        buffer=ctypes.create_unicode_buffer(32768)
+        self.assertTrue(short_path(str(self.root),buffer,len(buffer)))
+        canonical=self.root
+        for directory in (canonical,Path(str(canonical).upper()),Path(buffer.value)):
+            with self.subTest(directory=directory):
+                self.root=directory
+                self.run_qc('$modelname nested/alias')
+                self.assertTrue(self.mdl('nested/alias').startswith(b'IDST'))
+
     def defaults_game(self, tools='', cfg=None):
         self.write('gameinfo.txt', 'GameInfo { game fixture Tools { studiomdl '
                    + json.dumps(tools) + ' } FileSystem { SteamAppId 220 '

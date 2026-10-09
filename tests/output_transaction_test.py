@@ -20,11 +20,13 @@ class OutputRecovery(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def run_tool(self, mode, crash=None, code=0):
+    def run_tool(self, mode, crash=None, code=0, root=None, folder=None):
         env=os.environ.copy()
         if crash:env['NPMDL_TEST_CRASH']=crash
         else:env.pop('NPMDL_TEST_CRASH',None)
-        p=subprocess.run([HARNESS,str(self.root),mode],env=env,capture_output=True,text=True)
+        args=[HARNESS,str(root or self.root),mode]
+        if folder is not None:args.append(str(folder))
+        p=subprocess.run(args,env=env,capture_output=True,text=True)
         self.assertEqual(p.returncode,code,p.stdout+p.stderr);return p.stdout+p.stderr
 
     def files(self):
@@ -68,6 +70,86 @@ class OutputRecovery(unittest.TestCase):
         self.assertIn('changed since transaction',self.run_tool('recover',code=1))
         self.assertEqual(target.read_bytes(),b'external edit')
         self.assertTrue(list(self.root.glob('*.backup')))
+
+    def test_new_nested_output_directory_and_escape_rejection(self):
+        folder='new directory/not created yet'
+        self.run_tool('old',folder=folder);old=self.files()
+        self.assertIn(str(Path(folder)/'fixture.mdl'),old)
+        self.run_tool('new',crash='install',code=86,folder=folder)
+        self.run_tool('recover',folder=folder);self.assertEqual(self.files(),old)
+        self.assertIn('unsafe output journal path',self.run_tool('new',code=1,folder='../outside'))
+        self.assertEqual(self.files(),old)
+
+    @unittest.skipUnless(os.name=='nt', 'Windows short-name and case aliases')
+    def test_windows_directory_aliases_share_recovery_and_locks(self):
+        import ctypes
+        from ctypes import wintypes
+        self.root=self.root/'Output directory with a long name';self.root.mkdir()
+        short_path=ctypes.WinDLL('kernel32',use_last_error=True).GetShortPathNameW
+        short_path.argtypes=[wintypes.LPCWSTR,wintypes.LPWSTR,wintypes.DWORD]
+        short_path.restype=wintypes.DWORD
+        buffer=ctypes.create_unicode_buffer(32768)
+        self.assertTrue(short_path(str(self.root),buffer,len(buffer)))
+        aliases={str(self.root).upper(),buffer.value}
+        for alias in aliases:
+            with self.subTest(alias=alias):
+                self.run_tool('old');old=self.files()
+                self.run_tool('new',crash='install',code=86,root=alias)
+                self.run_tool('recover');self.assertEqual(self.files(),old)
+                # Reverse the spellings for the next recovery.
+                self.run_tool('new',crash='mdl',code=86)
+                self.run_tool('recover',root=alias);self.assertEqual(self.files(),old)
+                child=subprocess.Popen([HARNESS,str(self.root),'hold'],stdout=subprocess.PIPE,text=True)
+                try:
+                    self.assertEqual(child.stdout.readline().strip(),'LOCKED')
+                    self.assertIn('locked by another compiler',self.run_tool('new',code=1,root=alias))
+                    self.assertEqual(self.files(),old)
+                finally:
+                    child.kill();child.wait(timeout=10);child.stdout.close()
+
+    @unittest.skipUnless(os.name=='nt', 'Windows short-name child directory aliases')
+    def test_windows_short_child_alias_uses_same_lock_and_journal(self):
+        import ctypes
+        from ctypes import wintypes
+        folder='Existing child with a long name'
+        (self.root/folder).mkdir()
+        short_path=ctypes.WinDLL('kernel32',use_last_error=True).GetShortPathNameW
+        short_path.argtypes=[wintypes.LPCWSTR,wintypes.LPWSTR,wintypes.DWORD]
+        short_path.restype=wintypes.DWORD
+        buffer=ctypes.create_unicode_buffer(32768)
+        self.assertTrue(short_path(str(self.root/folder),buffer,len(buffer)))
+        alias=Path(buffer.value).name
+        self.run_tool('old',folder=folder);old=self.files()
+        self.run_tool('new',crash='mdl',code=86,folder=alias)
+        self.run_tool('recover',folder=folder);self.assertEqual(self.files(),old)
+        child=subprocess.Popen([HARNESS,str(self.root),'hold',folder],stdout=subprocess.PIPE,text=True)
+        try:
+            self.assertEqual(child.stdout.readline().strip(),'LOCKED')
+            self.assertIn('locked by another compiler',self.run_tool('new',code=1,folder=alias))
+            self.assertEqual(self.files(),old)
+        finally:
+            child.kill();child.wait(timeout=10);child.stdout.close()
+
+    @unittest.skipUnless(os.name=='nt', 'Windows junction checks')
+    def test_windows_junctions_below_root_remain_rejected(self):
+        link=self.root/'collision'
+        outside=self.root.parent/(self.root.name+'-outside');outside.mkdir()
+        self.addCleanup(outside.rmdir)
+        marker=outside/'other.phy';marker.write_bytes(b'unrelated')
+        self.addCleanup(marker.unlink)
+        # Include a junction back to root: matching the nearest physical
+        # ancestor instead of the first would accidentally conceal this link.
+        for target in (outside,self.root):
+            with self.subTest(target=target):
+                result=subprocess.run(['cmd','/c','mklink','/J',str(link),str(target)],capture_output=True)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                try:
+                    text=self.run_tool('old',code=1,root=str(self.root).upper())
+                    self.assertTrue('reparse point' in text or 'symbolic link' in text,text)
+                    self.assertEqual(marker.read_bytes(),b'unrelated')
+                    self.assertFalse((self.root/'fixture.mdl').exists())
+                finally:
+                    link.rmdir()
 
 
 if __name__=='__main__':

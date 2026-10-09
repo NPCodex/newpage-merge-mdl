@@ -1119260,10 +1119260,10 @@ index b3c6ca1..ccabe1f 100644
  // dst may alias src - faces are rebuilt only after every mesh is simplified.
 diff --git a/mdlcompiler/outputfiles.cpp b/mdlcompiler/outputfiles.cpp
 new file mode 100644
-index 0000000..6d7b7a4
+index 0000000..02ec9ee
 --- /dev/null
 +++ b/mdlcompiler/outputfiles.cpp
-@@ -0,0 +1,267 @@
+@@ -0,0 +1,291 @@
 +#include "outputfiles.h"
 +#include <algorithm>
 +#include <chrono>
@@ -1119333,7 +1119333,31 @@ index 0000000..6d7b7a4
 +    return at;
 +}
 +fs::path Relative(const fs::path& root,const fs::path& p) {
-+    const auto absolute=fs::absolute(p).lexically_normal();auto relative=absolute.lexically_relative(root);
++    const auto absolute=fs::absolute(p).lexically_normal();
++    auto relative=absolute.lexically_relative(root);
++#ifdef _WIN32
++    // canonical(root) expands 8.3 names and restores on-disk casing under
++    // MSVC. The caller's path may still contain RUNNER~1 or different case.
++    // Find the first prefix naming the same directory, then validate every
++    // remaining component. Canonicalizing the whole input first would hide a
++    // junction/symlink below the output root, including one back to root.
++    fs::path prefix=absolute.root_path(),tail=absolute.relative_path();
++    bool matched=false;
++    for(auto it=tail.begin();;){
++        std::error_code ec;
++        if(fs::equivalent(prefix,root,ec)&&!ec){
++            relative.clear();for(;it!=tail.end();++it)relative/=*it;
++            matched=true;break;
++        }
++        if(it==tail.end())break;
++        prefix/=*it++;
++    }
++    if(!matched)throw std::runtime_error("unsafe output journal path");
++    const auto checked=Resolve(root,relative);
++    // Only after the reparse checks, normalize existing child aliases too,
++    // so short and long spellings take the same per-output process lock.
++    relative=fs::weakly_canonical(checked).lexically_relative(root);
++#endif
 +    Resolve(root,relative);return relative;
 +}
 +void SyncDirectory(const fs::path& path) {
@@ -1122971,7 +1122995,7 @@ index 0000000..42f1d4d
 +} // namespace newpage
 +#endif
 diff --git a/mdlcompiler/smdloader.cpp b/mdlcompiler/smdloader.cpp
-index 149ae76..843e532 100644
+index 149ae76..84b1260 100644
 --- a/mdlcompiler/smdloader.cpp
 +++ b/mdlcompiler/smdloader.cpp
 @@ -67,23 +67,24 @@ bool ReadAllLines(const std::string& path, LineReader& r, std::string* err) {
@@ -1123040,7 +1123064,21 @@ index 149ae76..843e532 100644
              if (startframe < 0) {
                  if (err) *err = "bone data before the first `time` in skeleton block";
                  return false;
-@@ -388,6 +405,13 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
+@@ -296,6 +313,13 @@ struct TriState {
+             auto eat = [&](uint32_t x) { h = (h ^ static_cast<uint64_t>(x)) * 1099511628211ULL; };
+             eat(static_cast<uint32_t>(k.mat));
+             eat(k.px); eat(k.py); eat(k.pz); eat(k.u); eat(k.v);
++            // Integer-grid float bits share low zero bits. MSVC masks hashes
++            // into power-of-two buckets, so mix high bits down before lookup.
++            h ^= h >> 30;
++            h *= 0xbf58476d1ce4e5b9ULL;
++            h ^= h >> 27;
++            h *= 0x94d049bb133111ebULL;
++            h ^= h >> 31;
+             return static_cast<size_t>(h);
+         }
+     };
+@@ -388,6 +412,13 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
          }
  
          pos.x *= scale; pos.y *= scale; pos.z *= scale;
@@ -1123054,7 +1123092,7 @@ index 149ae76..843e532 100644
  
          int iCount = 0;
          int bones[lim::kMaxSrcBoneWeights];
-@@ -399,10 +423,18 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
+@@ -399,10 +430,18 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
          if (*q && *q != '\n' && *q != '\r') {
              iCount = static_cast<int>(std::strtol(p, &end, 10));
              p = end;
@@ -1123074,7 +1123112,7 @@ index 149ae76..843e532 100644
              }
              // SMD v3 extra texcoords: parsed to advance, ignored (single UV).
              if (version >= 3) {
-@@ -761,6 +793,11 @@ bool GrabVertexAnimation(LineReader& r, float scale, std::vector<VtaFrame>& out,
+@@ -761,6 +800,11 @@ bool GrabVertexAnimation(LineReader& r, float scale, std::vector<VtaFrame>& out,
                  return false;
              }
              v.pos.x *= scale; v.pos.y *= scale; v.pos.z *= scale;
@@ -1123086,7 +1123124,7 @@ index 149ae76..843e532 100644
              out.back().verts.push_back({index, v});
              continue;
          }
-@@ -962,6 +999,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
+@@ -962,6 +1006,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
      const int count = static_cast<int>(morph.vanims.size());
      SrcFlexKey key;
      key.name = morph.name;
@@ -1123094,7 +1123132,7 @@ index 149ae76..843e532 100644
      key.target1 = position;
      out.flexkeys.push_back(std::move(key));
      out.morphs.push_back(std::move(morph));
-@@ -970,6 +1008,38 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
+@@ -970,6 +1015,38 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
  
  } // namespace
  
@@ -1123133,7 +1123171,7 @@ index 149ae76..843e532 100644
  bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                     const std::vector<VtaFlexOption>& opts, std::string* err) {
      VtaBind bind;
-@@ -996,13 +1066,14 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
+@@ -996,13 +1073,14 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                           opt.name.c_str(), opt.frame, path.c_str());
              continue;
          }
@@ -1123154,7 +1123192,7 @@ index 149ae76..843e532 100644
          std::printf("    flex %-32s frame %-4d %6d deltas  position %.3f decay %.3f\n",
                      opt.name.c_str(), opt.frame, deltas, opt.position, opt.decay);
      }
-@@ -1014,6 +1085,29 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
+@@ -1014,6 +1092,29 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
  // becomes flexdesc "f<i>" and ONE NWAY controller sweeps the whole run over
  // 0..1. Stock also emits a "default" flexkey on the basis; it is an empty morph
  // that only exists to make its indices line up, so we leave it out.

@@ -2,25 +2,25 @@
   "schema": 1,
   "version": "1.2.23",
   "build_platform": "Windows x64 Release; llvm-mingw 20260922 UCRT; static C++ runtime; C4D helper MSVC 14.44 static CRT",
-  "compiler_sha256": "9b9e1005bd520f089879443f6aaef794e6eaff035f79e55e68189c9cdfbaf801",
+  "compiler_sha256": "60d9d27861347b212a887487fb52ccea01d825d5e4981f5311db59ced52779f4",
   "source_kind": "maintained source tree; exact publication commit recorded in packaged manifest",
-  "source_base_commit": "9e181c769519d6d336f818975e1f8a76b0e62479",
-  "source_tree_sha256": "6eb715e3dc1f66343f50561b5a9e68783b6d1894163cdd6841a5cab87605431e",
+  "source_base_commit": "49fe8667876119b8db25feb9c863a4795cadd570",
+  "source_tree_sha256": "4d4b4b3da06f5511228aa3ed52daea8b36cf6c8d1e41fb2c987b72ce82435792",
   "suites": {
     "compatibility": {
-      "tests": 368,
+      "tests": 369,
       "passed": true,
-      "log_sha256": "c2bc70ef786153b944da92d3c2d91324a945610ffd4b5390de08963ffdca3e93"
+      "log_sha256": "c32cbae156a8c6d22501e74007f9ca581ca11a1004de89d2bff8cc651a27deac"
     },
     "automation": {
       "tests": 20,
       "passed": true,
-      "log_sha256": "5d11e34a01716298935bca3df9478d0d417b0db9ef8df0783d53c33c51aa3fd7"
+      "log_sha256": "e2f855ad87e0e5b8f79b509bdbc9a0d8bcf5886eea58bd5b2784e95c971f63e6"
     },
     "content_mounts": {
       "tests": 9,
       "passed": true,
-      "log_sha256": "f88a9fef8d13d95227b8566ea178623721e13f8e96b84839230c19d1ed0fb547"
+      "log_sha256": "9199089d1d8429eaadbb70b82089e8250f6a23fb4348ec8ea22f3cd8661e5f1e"
     },
     "lua_runtime": {
       "tests": 9,
@@ -30,12 +30,12 @@
     "c4d_bridge": {
       "tests": 7,
       "passed": true,
-      "log_sha256": "131799534ad987ecbf701702dd0ce1d7a9cf130a2462055aa1217001e5cf291c"
+      "log_sha256": "0aec7ba4e4046dfaed6807ec3491a929b171b17a43c893906d3fb58000f9006d"
     },
     "output_recovery": {
-      "tests": 5,
+      "tests": 9,
       "passed": true,
-      "log_sha256": "0712e8390091f9b04024a1bc6defd17a1eb3419d900dcdd947485b81756b0bb2"
+      "log_sha256": "16f33b6389b46224338590f978e4d51ff2fa42c4978a856a515dbce5f96afad4"
     }
   },
   "fixed_scope": {
@@ -141,7 +141,7 @@
     },
     "O4": {
       "status": "implemented_and_bounded",
-      "description": "输出事务持久 journal、每输出进程锁、hash保护、commit标记；下次编译在读旧序列前恢复中断。五项真实进程中断/并发验收。损坏日志或被外部修改的文件保留并报错；不保证任意硬盘损坏、断电重排序下绝对无损。"
+      "description": "输出事务持久 journal、每输出进程锁、hash保护、commit标记；下次编译在读旧序列前恢复中断。九项真实进程中断/并发/路径别名验收。损坏日志或被外部修改的文件保留并报错；不保证任意硬盘损坏、断电重排序下绝对无损。"
     },
     "O5": {
       "status": "implemented_and_bounded",
@@ -171,7 +171,7 @@
   "production": {
     "original_qc_unchanged": true,
     "qc_sha256": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783",
-    "compiler_sha256": "9b9e1005bd520f089879443f6aaef794e6eaff035f79e55e68189c9cdfbaf801",
+    "compiler_sha256": "60d9d27861347b212a887487fb52ccea01d825d5e4981f5311db59ced52779f4",
     "bones": 126,
     "vertices": 572277,
     "physics_bodies": 18,
@@ -182,7 +182,7 @@
     "missing_referenced_textures": [],
     "supplied_material_files": 249,
     "supplied_materials_unchanged": true,
-    "evidence_sha256": "b687178e0306cff53b5c6ca00e06bb9a01f308412481b4d7ec5eb312dc92790e"
+    "evidence_sha256": "30421712ba995cb02a14b073cc1e3e0c0cd9241bb7fecc8080c993c3676c62c1"
   },
   "runtime": {
     "schema": 1,
@@ -379,7 +379,151 @@
     "limits": [
       "Spring simulation is a bounded approximation, not Unity solver parity.",
       "These finite fixtures do not certify every model, game, shader or addon combination."
-    ]
+    ],
+    "post_runtime_recompile_equivalence": {
+      "schema": 1,
+      "scope": "Offline recompilation only; no game restart or installation",
+      "original_runtime_compiler": {
+        "path": "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+        "sha256": "9b9e1005bd520f089879443f6aaef794e6eaff035f79e55e68189c9cdfbaf801"
+      },
+      "recompile_compiler": {
+        "path": "D:\\newpage-merge-mdl\\build-local\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+        "sha256": "60d9d27861347b212a887487fb52ccea01d825d5e4981f5311db59ced52779f4"
+      },
+      "cause": "TriState::KeyHash mixed whole float32 words but retained their common low bits. MSVC unordered_map selects power-of-two buckets with a mask, producing very long collision chains for integer-grid coordinates.",
+      "repair": "Final 64-bit avalanche only; key equality, lookup, insertion order and first-match rules are unchanged.",
+      "distribution_note": "Analytical hash distribution on the exact single-material capacity fixture coordinates. Collision pairs describe final bucket occupancy, not a measured count of runtime comparisons.",
+      "distributions": [
+        {
+          "vertices": 32769,
+          "buckets": 65536,
+          "before": {
+            "occupied_buckets": 4,
+            "maximum_bucket_size": 19286,
+            "collision_pairs_at_final_bucket_count": 226045582
+          },
+          "after": {
+            "occupied_buckets": 25823,
+            "maximum_bucket_size": 6,
+            "collision_pairs_at_final_bucket_count": 8213
+          }
+        },
+        {
+          "vertices": 511451,
+          "buckets": 524288,
+          "before": {
+            "occupied_buckets": 32,
+            "maximum_bucket_size": 31887,
+            "collision_pairs_at_final_bucket_count": 5315488063
+          },
+          "after": {
+            "occupied_buckets": 326398,
+            "maximum_bucket_size": 8,
+            "collision_pairs_at_final_bucket_count": 249663
+          }
+        }
+      ],
+      "models": [
+        {
+          "model": "states",
+          "compile_seconds": 0.5925575000001118,
+          "files": [
+            {
+              "path": "models/npmdl_validation/v1223/states.dx80.vtx",
+              "runtime_tested_sha256": "b117676cb148628cae3d4cc389db707beb4f5af124fa8c74f115b763ef73c995",
+              "recompiled_sha256": "b117676cb148628cae3d4cc389db707beb4f5af124fa8c74f115b763ef73c995",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/states.dx90.vtx",
+              "runtime_tested_sha256": "2bf2ad2226ac899161640dae83495319f64077a9c9f4fb6c651332335eb44557",
+              "recompiled_sha256": "2bf2ad2226ac899161640dae83495319f64077a9c9f4fb6c651332335eb44557",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/states.mdl",
+              "runtime_tested_sha256": "0ee86689342e49e6d8e6d8f1963b4ba29936b298348a74f7a6035e84bab2d241",
+              "recompiled_sha256": "0ee86689342e49e6d8e6d8f1963b4ba29936b298348a74f7a6035e84bab2d241",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/states.vvd",
+              "runtime_tested_sha256": "f91dbfebf48f5043af6b3ad8bf0709322fa0673a5db8bc48b46919be800c4363",
+              "recompiled_sha256": "f91dbfebf48f5043af6b3ad8bf0709322fa0673a5db8bc48b46919be800c4363",
+              "identical": true
+            }
+          ]
+        },
+        {
+          "model": "avatar",
+          "compile_seconds": 0.0921981000010419,
+          "files": [
+            {
+              "path": "models/npmdl_validation/v1223/avatar.dx80.vtx",
+              "runtime_tested_sha256": "9da2dae6b662254df1bf6ed8b8a0b274b6bad21cce12cb425bfcb234b16ab4d5",
+              "recompiled_sha256": "9da2dae6b662254df1bf6ed8b8a0b274b6bad21cce12cb425bfcb234b16ab4d5",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/avatar.dx90.vtx",
+              "runtime_tested_sha256": "bfa14c8a5fbbba893fd11b593e535ad25a57e3a8f539203f3e927b74d7a780f1",
+              "recompiled_sha256": "bfa14c8a5fbbba893fd11b593e535ad25a57e3a8f539203f3e927b74d7a780f1",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/avatar.mdl",
+              "runtime_tested_sha256": "29a9a4d7a082587fd261f7fa05768c4a7a04f0385fa09c1df4790b793865b9ac",
+              "recompiled_sha256": "29a9a4d7a082587fd261f7fa05768c4a7a04f0385fa09c1df4790b793865b9ac",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/avatar.vvd",
+              "runtime_tested_sha256": "affdf11adc688d0f05239e7890b00c3f0ec8a1791348a659ff3030fd11e3b34f",
+              "recompiled_sha256": "affdf11adc688d0f05239e7890b00c3f0ec8a1791348a659ff3030fd11e3b34f",
+              "identical": true
+            }
+          ]
+        },
+        {
+          "model": "basic",
+          "compile_seconds": 0.09552350000012666,
+          "files": [
+            {
+              "path": "models/npmdl_validation/v1223/basic.dx80.vtx",
+              "runtime_tested_sha256": "b4652a2bd49aeba4981ca9e2fdbcb1a796a1a00703d665aee4f9271aaf9e2979",
+              "recompiled_sha256": "b4652a2bd49aeba4981ca9e2fdbcb1a796a1a00703d665aee4f9271aaf9e2979",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/basic.dx90.vtx",
+              "runtime_tested_sha256": "c3cf3f61a41473e0febf380b18825ae63cb17b75ebdd450a415085b6f5cc05b2",
+              "recompiled_sha256": "c3cf3f61a41473e0febf380b18825ae63cb17b75ebdd450a415085b6f5cc05b2",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/basic.mdl",
+              "runtime_tested_sha256": "05d95f19315b649932e66dd533028b8f4b153f3fb71ff1bc6767b157365e25be",
+              "recompiled_sha256": "05d95f19315b649932e66dd533028b8f4b153f3fb71ff1bc6767b157365e25be",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/basic.phy",
+              "runtime_tested_sha256": "e10252a44a2a1987d0aef9702e890626c17d46bb7faf7b79ecaeb9cd9758b2c3",
+              "recompiled_sha256": "e10252a44a2a1987d0aef9702e890626c17d46bb7faf7b79ecaeb9cd9758b2c3",
+              "identical": true
+            },
+            {
+              "path": "models/npmdl_validation/v1223/basic.vvd",
+              "runtime_tested_sha256": "93aaee21540f4b4d3ad43f04c54c434ea02a45cbed15b1d84bd1d5bc3f2d656d",
+              "recompiled_sha256": "93aaee21540f4b4d3ad43f04c54c434ea02a45cbed15b1d84bd1d5bc3f2d656d",
+              "identical": true
+            }
+          ]
+        }
+      ],
+      "all_model_files_identical": true
+    }
   },
   "performance": {
     "schema": 1,
@@ -1114,6 +1258,112 @@
       }
     ]
   },
+  "windows_output_alias_regression": {
+    "schema": 1,
+    "recorded_utc": "2026-10-09T05:04:34.137991+00:00",
+    "issue": "Windows MSVC canonical output root expands 8.3 names and on-disk casing, while the caller path retained its original spelling; lexical-only containment rejected the same directory.",
+    "ci_symptom": "unsafe output journal path with C:/Users/RUNNER~1/... temporary paths",
+    "fix": "Compare the first original path prefix by directory identity, validate root-relative components against symlinks/reparse points, then normalize existing child aliases and revalidate. Non-Windows path processing is unchanged.",
+    "reproduction": {
+      "model": "self-authored triangle, no game or user assets",
+      "compiler_artifact": "reference-msvc-main-before-fix.exe",
+      "cases": [
+        {
+          "path_spelling": "long directory name",
+          "exit": 0
+        },
+        {
+          "path_spelling": "GetShortPathNameW 8.3 alias",
+          "exit": 1,
+          "diagnostic": "unsafe output journal path"
+        },
+        {
+          "path_spelling": "uppercase directory name",
+          "exit": 1,
+          "diagnostic": "unsafe output journal path"
+        }
+      ],
+      "black_box_regression": {
+        "test": "test_output_windows_short_and_case_directory_aliases",
+        "tests": 1,
+        "failed_subtests": 2,
+        "exit": 1,
+        "log": "main-before.log"
+      }
+    },
+    "msvc_harness": {
+      "compiler": "Microsoft C/C++ 19.44.35229, x64",
+      "flags": [
+        "/std:c++17",
+        "/EHsc",
+        "/O2",
+        "/MT",
+        "/utf-8"
+      ],
+      "sdk": "10.0.26100.0",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "exit": 0,
+      "seconds": 1.475,
+      "build_log": "build-msvc.log",
+      "test_log": "tests-msvc.log",
+      "coverage": [
+        "process termination at journal/stage/backup/companion/MDL/commit boundaries",
+        "existing and fresh output sets, repeated recovery",
+        "external edits preserved and concurrent writer rejected",
+        "uppercase and 8.3 root aliases share recovery and locks",
+        "8.3 child-directory alias shares journal and lock",
+        "previously nonexistent nested output directories",
+        "parent traversal escape rejected",
+        "junction to outside rejected",
+        "junction back to root rejected"
+      ]
+    },
+    "main_validation": "Main compiler rebuilt after the fix; the parent task records the complete 369-test result separately.",
+    "artifacts": {
+      "mdlcompiler/outputfiles.cpp": {
+        "sha256": "545e90da8807710cab89d06a35b063cd8b6a9169513582a3b2196719a552d2c0",
+        "bytes": 16002
+      },
+      "tests/output_transaction_harness.cpp": {
+        "sha256": "8eb31b36d21bd35160193f189a39a24b137c2c64a2e7c8bc1578eaeec53aa4ed",
+        "bytes": 1300
+      },
+      "tests/output_transaction_test.py": {
+        "sha256": "ca27855805ba7c4066f02acfbd37ca781d8c6184fcc55fda97242e4f64141a42",
+        "bytes": 7973
+      },
+      "tests/integration_workflow_cases.py": {
+        "sha256": "3a33ac2d1e48cb9195b0898c1ae922a190b8103d6f75bc555d2594d1ad74e751",
+        "bytes": 6638
+      },
+      "output_transaction_harness-msvc.exe": {
+        "sha256": "1371a2b25449c55f73874f191f0c38804509f5c7f6355b659992db2255f5aa8a",
+        "bytes": 407552
+      },
+      "reference-msvc-main-before-fix.exe": {
+        "sha256": "3a5dbd35a67796188ff74247a6b2b96332c778c222a747f46221770eb9a9f6ab",
+        "bytes": 12803584
+      },
+      "local-llvm-main-after-fix.exe": {
+        "sha256": "60d9d27861347b212a887487fb52ccea01d825d5e4981f5311db59ced52779f4",
+        "bytes": 27856896
+      },
+      "build-msvc.log": {
+        "sha256": "ccec495e48c77f2cccacff97f58f6429534b89188995cf2f60fd5ef10d9316df",
+        "bytes": 32
+      },
+      "tests-msvc.log": {
+        "sha256": "16f33b6389b46224338590f978e4d51ff2fa42c4978a856a515dbce5f96afad4",
+        "bytes": 1431
+      },
+      "main-before.log": {
+        "sha256": "fb0d41d34319993a25ac95ddbf15c1268e7817e778e38fe567764de9a376bc2a",
+        "bytes": 4036
+      }
+    }
+  },
   "reference_evidence_sha256": {
     "integration-defaults-20261009/results.json": "9189dae937cdeda3d0f3972c26d07cb125feeffcf111ca908e0247996ce3fc11",
     "integration-reference-20261009/ce-replacemesh.json": "bb32196211fdff35835000a03cff26cf0932020ec8343cea3bb068079716bd9f",
@@ -1124,7 +1374,7 @@
   },
   "notes": [
     "NoBoneRealign comparison is bounded by each emitted MDL position/rotation quantization scale, with distinct raw/aligned behavior still required.",
-    "Final version-resource patch changes FILEVERSION to 1.2.23.0 only; earlier helper/recovery and performance evidence preserves actual tested hashes.",
+    "Earlier helper/recovery, runtime and performance evidence preserves actual tested binary hashes. Final native changes fix MSVC vertex hash bucket collisions and Windows short-name/case aliases in output recovery. Final runtime fixture recompilation is compared by output hashes against the files observed in games; this is not a new game run.",
     "Windows UTF8 manifest now embedded for MinGW; archive indexing preserves non-UTF8 VPK names without converting unrelated entries to Windows paths.",
     "Historical CSGO v1.2.22 game checks are not claimed as a new v1.2.23 run.",
     "Reference binaries, SDK files, original user models and raw game logs are not published."

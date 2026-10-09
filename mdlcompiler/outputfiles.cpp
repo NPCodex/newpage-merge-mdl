@@ -67,7 +67,31 @@ fs::path Resolve(const fs::path& root,const fs::path& relative) {
     return at;
 }
 fs::path Relative(const fs::path& root,const fs::path& p) {
-    const auto absolute=fs::absolute(p).lexically_normal();auto relative=absolute.lexically_relative(root);
+    const auto absolute=fs::absolute(p).lexically_normal();
+    auto relative=absolute.lexically_relative(root);
+#ifdef _WIN32
+    // canonical(root) expands 8.3 names and restores on-disk casing under
+    // MSVC. The caller's path may still contain RUNNER~1 or different case.
+    // Find the first prefix naming the same directory, then validate every
+    // remaining component. Canonicalizing the whole input first would hide a
+    // junction/symlink below the output root, including one back to root.
+    fs::path prefix=absolute.root_path(),tail=absolute.relative_path();
+    bool matched=false;
+    for(auto it=tail.begin();;){
+        std::error_code ec;
+        if(fs::equivalent(prefix,root,ec)&&!ec){
+            relative.clear();for(;it!=tail.end();++it)relative/=*it;
+            matched=true;break;
+        }
+        if(it==tail.end())break;
+        prefix/=*it++;
+    }
+    if(!matched)throw std::runtime_error("unsafe output journal path");
+    const auto checked=Resolve(root,relative);
+    // Only after the reparse checks, normalize existing child aliases too,
+    // so short and long spellings take the same per-output process lock.
+    relative=fs::weakly_canonical(checked).lexically_relative(root);
+#endif
     Resolve(root,relative);return relative;
 }
 void SyncDirectory(const fs::path& path) {

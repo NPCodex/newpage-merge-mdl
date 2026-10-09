@@ -15,6 +15,7 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Format budgets still apply, including at most 256 final bone indices (255 by default), three final weights per vertex and local mesh/index limits. FE cloth targets CSGO skeletal models with extended VTX. Use default offline SubD baking; explicit native SubD patches crash the tested CSGO legacy renderer. See the [capacity ledger](FIVE_COMPILER_COMPLETION.md) and [cloth guide](CSGO_CLOTH_AUTHORING.md).
 - [VRM](VRM_RUNTIME.md) and [finite mesh states](MESH_STATE_WORKFLOW.md) require their supplied GMod consumers for runtime behavior. VRML uses its separate converter. Direct C4D input requires the helper included in the complete local Windows package; automated CI packages omit it. See the [format guide](O5_FORMAT_IMPORTS.md).
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
+- Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
 **Project version: v1.2.23.** The compiler, decompiler and bundled tools share this
 version.
@@ -35,6 +36,7 @@ The [completion ledger](FIVE_COMPILER_COMPLETION.md) accounts for every R/E/V/S/
 
 - Adds ++ configured defaults, an explicit Neko condition mode, CE weight policy, large flex splitting, true FBX bind poses and authored scene animation sampling; fixes premature removal of hitbox-, animation- and lower-LOD-only bones.
 - Adds interrupted-output recovery, PMX named morphs, skinned GPU instances and a build-derived `-importformats` inventory.
+- Fixes false output-recovery errors from Windows short directory names/case aliases, and slow regular-grid vertex lookup from MSVC hash collisions. Symlinks and junctions below the output root remain rejected.
 - Includes [finite mesh states](MESH_STATE_WORKFLOW.md), an explicit [VRM runtime](VRM_RUNTIME.md), and [M3D/USD/VRML/C4D import workflows](O5_FORMAT_IMPORTS.md). The GPL VRML converter is a separate executable; the main program retains its existing license.
 - Restores the 2013 reference environment and records its measured limits. Unresolved CE replacemesh syntax and unspecified closed-source format details are documented as unknown, not claimed as parity.
 
@@ -346,7 +348,7 @@ python tests/compatibility.py out/build/x64-release/NewPageMergeMDL/NewPageMerge
 python -m unittest discover -s tests -p test_automation.py
 ```
 
-v1.2.23 passes 368 compatibility, 20 automation, 9 content-mount, 9 Lua, 7 C4D and 5 output-recovery tests. Temporary SMD/QC and synthetic scene fixtures inspect MDL/VVD/VTX/FE data and decompile animations to check positions, rotations and conditions. Current production validation uses unchanged original Plum QC/materials: 126 bones, 572,277 vertices, 18 physics bodies, matching 30 kg totals and 65 materials with none missing. See the [v1.2.23 ledger](FIVE_COMPILER_COMPLETION.md) and [VALIDATION.md](VALIDATION.md) for current results and runtime coverage.
+v1.2.23 passes 369 compatibility, 20 automation, 9 content-mount, 9 Lua, 7 C4D and 9 output-recovery tests. Temporary SMD/QC and synthetic scene fixtures inspect MDL/VVD/VTX/FE data and decompile animations to check positions, rotations and conditions. Current production validation uses unchanged original Plum QC/materials: 126 bones, 572,277 vertices, 18 physics bodies, matching 30 kg totals and 65 materials with none missing. See the [v1.2.23 ledger](FIVE_COMPILER_COMPLETION.md) and [VALIDATION.md](VALIDATION.md) for current results and runtime coverage.
 
 Historically, the user-provided Alyx QC compiled successfully with 113 bones and 27,571 VVD vertices; that compile check alone did not cover in-game loading or rendering.
 

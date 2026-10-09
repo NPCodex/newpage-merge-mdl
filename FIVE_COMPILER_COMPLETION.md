@@ -68,7 +68,7 @@ game 读取一次，不递归追随配置中的 `-game`。可用 `-nodefaultargs
 | O1 | 蒙皮 GPU 实例离线展开成独立骨/几何/动画，局部蒙皮组合固定为 `N*I*inverse(N)*J*inverseBind`。支持正的均匀实例缩放；非均匀缩放/剪切需先烘焙，不能用普通刚体骨轨道保留任意仿射动画。NoFastGltf 遇实例自动提示并改用原生展开，避免静默丢实例。 |
 | O2 | `tools/mesh_states.py` + GMod bodygroup 播放器：有限拓扑状态、blank、显式时间或fps、重复顺序与循环/末帧保持。见 [工作流](MESH_STATE_WORKFLOW.md)。 |
 | O3 | VRM 0/1 命名表情、binary/override、采样表情片段、独立材质适配、弹簧骨/球胶囊碰撞/center/父子传播客户端。见 [VRM_RUNTIME.md](VRM_RUNTIME.md)。有界物理近似、需要模组与匹配Source材质；不声称任意Unity/MToon运行时透明复现。 |
-| O4 | 输出事务持久 journal、每输出进程锁、hash保护、commit标记；下次编译在读旧序列前恢复中断。五项真实进程中断/并发验收。损坏日志或被外部修改的文件保留并报错；不保证任意硬盘损坏、断电重排序下绝对无损。 |
+| O4 | 输出事务持久 journal、每输出进程锁、hash保护、commit标记；下次编译在读旧序列前恢复中断。九项真实进程中断/并发/路径别名验收。损坏日志或被外部修改的文件保留并报错；不保证任意硬盘损坏、断电重排序下绝对无损。 |
 | O5 | M3D、USD内置；VRML独立GPL转换器；Windows C4D使用独立Cineware桥接。SDK仅在本地构建，不发布SDK示例或文档。依赖版本、许可证及各格式固定验收见 [O5_FORMAT_IMPORTS.md](O5_FORMAT_IMPORTS.md)。 |
 
 ## H：当前格式和引擎下的边界
