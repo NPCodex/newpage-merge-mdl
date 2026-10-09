@@ -39,8 +39,19 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - 修复 Windows 短目录名/大小写别名导致的输出恢复误报，以及 MSVC 下规则网格顶点哈希碰撞造成的处理迟缓；输出目录内的符号链接和目录联接仍明确拒绝。
 - 提供 [有限拓扑状态](MESH_STATE_WORKFLOW.md)、[VRM 表情/弹簧骨运行模块](VRM_RUNTIME.md)；新增 [M3D、USD、VRML 和 C4D 导入路径](O5_FORMAT_IMPORTS.md)。VRML 转换器独立按 GPL 分发，主程序保持现有许可。
 - 2013 参考环境已恢复；其实际容量与宣传的差异、CE replacemesh 缺有效语法的证据也已记录。验证结果见当前版本报告，不将参考未知信息算作已兼容。
+- 后续运行验证确认 L4D2 `2.2.4.3 build 10097` 的标准 `prop_dynamic` 能创建本工具模型并读取/切换 `mesh_state` bodygroup；同一路径的 `m_flexWeight` 不存在，因此不宣称 L4D2 标准实体支持顶点表情。CE `replacemesh` 仍缺可复现公开语法，Neko 已登记格式没有新的缺口；Insurgency 模型加载仍未认证。详见 [后续运行报告](tests/reports/v1.2.23-followup-runtime.json)。
 
 本次本地验证并打包的完整 Windows x64 发行包包含 `NewPageMergeMDL-C4D.exe`。自动 CI 的 Windows/Linux 包不获取专有 Cineware SDK，Windows CI 包因此不含该辅助程序；可从完整 Windows 包补充到主程序旁，Linux 使用预先转换的 GLB。普通 CMake 构建无需该 SDK。具体格式和重建条件见 [O5 导入说明](O5_FORMAT_IMPORTS.md)。
+
+## v1.2.23 后续运行时边界验证
+
+后续实测记录见 [运行时报告](tests/reports/v1.2.23-followup-runtime.json)，用于补充边界，不扩大五编译器固定清单：
+
+- **L4D2 2.2.4.3 build 10097**：标准 `prop_dynamic` 成功创建 `states/avatar/basic` 三个 mesh-state 模型；初始 `mesh_state` bodygroup 为 `1`，`SetBodygroup(0, 2)` 可切换为 `2`。这确认标准实体可以消费网格状态的 bodygroup 输出。
+- 同一批实体的 `NetProps.HasProp("m_flexWeight")` 均为 `false`。因此不能宣称标准 `prop_dynamic` 能消费顶点表情；需要 `CBaseFlex`、引擎扩展或游戏专用接口。
+- **CE `replacemesh`**：本轮仍未取得公开语法、源码实现、Issue 示例或发布资产，不能安全实现为 `replacemodel` 别名，继续标为证据不足。
+- **Neko**：固定二进制描述符提取的 64 个扩展名均已覆盖现有登记集合，未发现新的格式入口。
+- **Insurgency**：模型加载尚未取得可靠读回证据，仍不宣称游戏内模型兼容。
 
 ## v1.2.22 历史记录：完成固定的 11 项 CSGO 移植功能包
 
@@ -289,6 +300,7 @@ NvTriStrip 来源与移植说明见 `libs/nvtristrip/SOURCE.md`；六项课题�
 | 参考证据 | 提供的 CE 两个架构均拒绝所测 `replacemesh` 语法；E1 以缺少有效参考证据结账，不虚构别名。2013 环境及实际容量已测，Neko 未冻结的历史格式宣传不能变成逐格式等价承诺。详见 [结账表](FIVE_COMPILER_COMPLETION.md)。 |
 | 中断输出恢复 | 持久 journal、每输出进程锁、commit 标记和指纹检查已实现；进程被终止后，下次编译同模型会先恢复再读旧序列。损坏日志或外部改动保留并报错；不保证任意硬盘故障或断电重排序无损，也不提供读者视角的多文件瞬时原子替换。 |
 | 蒙皮实例与网格状态 | 蒙皮 `EXT_mesh_gpu_instancing` 展开为独立骨骼、几何和动画，支持正的均匀实例缩放；非均匀缩放/剪切须先烘焙。[有限拓扑状态](MESH_STATE_WORKFLOW.md)通过 bodygroup 和随附 GMod 播放器切换，需要显式客户端消费。 |
+| L4D2 运行时边界 | `2.2.4.3 build 10097` 的标准 `prop_dynamic` 已验证可创建 states/avatar/basic 三个模型并读取、切换 `mesh_state` bodygroup；三个实体均没有 `m_flexWeight`，所以标准实体路径不能直接消费顶点表情。需要 CBaseFlex、引擎扩展或游戏专用接口；这项证据不等于 GMod Lua 模块可在 L4D2 执行。 |
 | VRM 运行时 | 已提供 VRM 0/1 命名表情、binary/override、材质适配、弹簧骨及球/胶囊碰撞的[准备工具与 GMod 模块](VRM_RUNTIME.md)。它是有界适配，需要匹配的 Source 材质；不自动执行 Unity/MToon，也不承诺任意场景逐帧或零穿透等价。 |
 | 导入格式与插值 | FBX cluster bind、PMX 命名 morph、Assimp 关键帧/边界与 Collada STEP/LINEAR/BEZIER 已有固定验收；glTF STEP/CUBICSPLINE 保留。未能表达的切线需预烘焙。M3D/USD 内置，VRML 独立转换，C4D 限 Windows 辅助程序的可编辑多边形；见 [格式说明](O5_FORMAT_IMPORTS.md)。 |
 | 复杂 rig 与碰撞覆盖 | 已验收 CE 多骨/控制器重映射、硬边/自定义法线、corrective/眼睑组合、Neko 多 studio/LOD 和九类骨规则组合，以及既有 IK/jiggle/按骨 VHACD。固定样例不构成任意层级或模型的全量参考等价。单骨权重仍按显式首影响策略处理。 |

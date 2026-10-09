@@ -47,7 +47,7 @@ game 读取一次，不递归追随配置中的 `-game`。可用 `-nodefaultargs
 | V3 | 九类骨规则组合。发现并修正早期裁骨丢失仅用于低 LOD、显式 hitbox 和动画的骨；后续 force-collapse 策略继续生效。 |
 | V4 | PMX 蒙皮及命名 vertex/group morph（补齐 Assimp 未拷贝 morph 的缺口）；FBX 多 take/InNode/采样率/轴；通用边界；meshopt OCTAHEDRAL/QUATERNION/COLOR 及现有 EXPONENTIAL。 |
 | V5 | 碰撞改名、512 源骨、staticprop+blank、90000 顶点/30000 面、procedural 错误名顺序、无效动画错误及已有输出保留。 |
-| V6 | GMod 本轮6项客户端/2项服务端检查与画面通过，覆盖状态、VRM表情/材质/弹簧、LOD及双刚体；L4D2三模型在离线地图实体创建、模型名读回及画面通过。Insurgency仅进入contact，模型加载未认证；未安装HL2/CS:S/TF2/SFM未运行。历史CSGO/MCV证据不计作本轮；详情见发布验证报告。 |
+| V6 | GMod 本轮6项客户端/2项服务端检查与画面通过，覆盖状态、VRM表情/材质/弹簧、LOD及双刚体；L4D2三模型在离线地图创建，VScript bodygroup 读回与切换通过。标准 `prop_dynamic` 的 `m_flexWeight` 不存在，因此不宣称 L4D2 顶点表情消费。Insurgency仅进入contact，模型加载未认证；未安装HL2/CS:S/TF2/SFM未运行。历史CSGO/MCV证据不计作本轮；详情见发布验证报告和后续报告。 |
 | V7 | 原始 Plum 和自制 90000 顶点 SMD，成功配置各三次。Plum 本工具/CE 中位 1.713s/10.850s，峰值 628.6/696.1 MiB；大 SMD 0.224s/0.475s、80.7/211.4 MiB。Plum 最终骨分别126/104，不能宣称同等输出倍数。Neko Plum 缺 dmxconvert，++ Plum 拒 MaxVerts，++ 大 SMD 超限；Neko 大 SMD 虽 exit0，VTX 仅覆盖65536唯一局部顶点，尝试时间不作同等输出比较。记录对应测试二进制散列，未声称最终所有平台普遍更快。 |
 
 ## S：明确选择

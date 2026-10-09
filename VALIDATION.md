@@ -17,12 +17,16 @@
 | 本轮游戏 | 实测结果 |
 | --- | --- |
 | Garry's Mod，2026.10.08 | `gm_flatgrass` 离线：6 项客户端及 2 项服务端检查通过。bodygroup 读回序列 0/1/2/1/0，LOD 0/1、jiggle 骨矩阵、2 物理体/质量 10 及落地有限坐标通过。VRM flex 读回约 .8，独立材质 RGB=(1,.2,.1)、alpha=.7、UV=(1.25,1.5)，真实弹簧回调产生有限 tail；画面确认红色三角与蓝色模型，无缺失材质棋盘。 |
-| L4D2，2.2.4.3 / build 10097 | `c1m1_hotel` 离线：states/avatar/basic 三个自制模型均创建为 prop_dynamic，模型名读回正确；画面可见几何，无 ERROR/缺失材质棋盘。此项证明普通模型加载，不是 GMod Lua 模块在 L4D2 可执行的声明。 |
+| L4D2，2.2.4.3 / build 10097 | `c1m1_hotel` 离线：states/avatar/basic 三个自制模型均创建为 `prop_dynamic`，模型名读回正确；VScript 读取 `mesh_state` bodygroup 初值 1，并用 `SetBodygroup(0, 2)` 成功切到 2。三个标准实体的 `NetProps.HasProp("m_flexWeight")` 均为 false，因此 L4D2 的标准 `prop_dynamic` 路径不能直接消费顶点表情；这不是 GMod Lua 模块可在 L4D2 执行的声明。 |
 | Insurgency，build 9810 | 自有实例进入 `contact`，三模型已编译并临时安装，但 netconsole 指令无回显；并发用户输入及 Steam 启动弹窗阻挡进一步 UI 检查。模型加载/动画/材质/物理均未认证。 |
 | HL2 / CS:S / TF2 / SFM | 本轮未发现对应已安装应用清单，未运行；不记为通过。 |
 | CSGO / MCV | 沿用各历史章节所述证据，没有将它们计为本轮新执行。 |
 
 GMod 的 `GetSubMaterial` 在客户端读回服务器值，空字符串不代表客户端覆盖失败。材质模块返回实际克隆记录用于检查，并允许 `previousOverrides` 显式保存原客户端覆盖；这不是禁止客户端专用模型的理由。弹簧验收没有逐帧参考等价或零穿透保证。自有测试进程结束后，登记的临时文件与配置按清单清理/恢复，详情见报告。
+
+## 2026-10-09 后续验证
+
+后续运行记录见 [`tests/reports/v1.2.23-followup-runtime.json`](tests/reports/v1.2.23-followup-runtime.json)。L4D2 的 bodygroup 消费路径已确认；标准 `prop_dynamic` 没有 `m_flexWeight` 网络属性，所以不能把 GMod 的 VRM/顶点动画消费者直接移植为 L4D2 通用模块。需要 CBaseFlex 实体、引擎扩展或目标游戏提供的专用接口后，才有继续实现的条件。CE `replacemesh` 公开资料和 Neko 已提取格式描述符也完成复核，没有出现新的可移植入口。
 
 最后两项原生修复后，最终编译器离线重编 states/avatar/basic 三个实机样例，13 个 MDL/VVD/VTX/PHY 文件与之前真实安装的文件逐个 SHA256 相同。报告保留实机与复编两份编译器散列；这不是重新启动游戏的验收。
 

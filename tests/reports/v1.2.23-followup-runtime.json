@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "date": "2026-10-09",
+  "scope": "Follow-up runtime verification after v1.2.23 publication",
+  "compiler_sha256": "60d9d27861347b212a887487fb52ccea01d825d5e4981f5311db59ced52779f4",
+  "l4d2": {
+    "engine": "Left 4 Dead 2 2.2.4.3 build 10097",
+    "map": "c1m1_hotel",
+    "models": [
+      "models/npmdl_validation/v1223/states.mdl",
+      "models/npmdl_validation/v1223/avatar.mdl",
+      "models/npmdl_validation/v1223/basic.mdl"
+    ],
+    "model_creation": true,
+    "bodygroup": {
+      "states_group_name": "mesh_state",
+      "initial_value": 1,
+      "set_bodygroup_call": "SetBodygroup(0, 2)",
+      "result_value": 2
+    },
+    "standard_prop_dynamic_flex": {
+      "entities_checked": 3,
+      "netprop": "m_flexWeight",
+      "has_prop": false,
+      "conclusion": "The standard prop_dynamic path cannot consume vertex flex weights through this L4D2 VScript entity class."
+    },
+    "cleanup": "Task-owned models, materials, scripts and configuration were removed and game settings restored."
+  },
+  "insurgency": {
+    "status": "not_repeated",
+    "reason": "The prior isolated run reached contact but had no reliable model readback; this follow-up prioritized the actionable L4D2 consumer contract."
+  },
+  "ce_replacemesh": {
+    "status": "evidence_blocked",
+    "public_head": "a901817b8aacd55e5b399d4c40a22a762305f951",
+    "conclusion": "The changelog mention has no public syntax, source implementation, issue example or release asset. An alias would be invented compatibility."
+  },
+  "neko_formats": {
+    "status": "no_new_format_gap",
+    "embedded_descriptor_extensions": 64,
+    "uncovered_reference_candidates": []
+  },
+  "limits": [
+    "This proves L4D2 bodygroup consumption for mesh states, not a GMod Lua consumer or arbitrary flex playback.",
+    "A flex-capable CBaseFlex entity, an engine extension, or a different runtime consumer is required for L4D2 vertex animation playback."
+  ]
+}

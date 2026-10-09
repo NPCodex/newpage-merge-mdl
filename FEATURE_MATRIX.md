@@ -65,7 +65,7 @@
 | 输出路径/缓冲上限、pushd include/procedural | 已实现；采用动态缓冲而非固定预分配。 |
 | NvTriStrip 与全局分割 | 已实现；全局分割作用于统一 LOD 字典，非参考源文件预拆分逐字复现。 |
 | `$lod replacemodel ... reverse` | **v1.2.12 补齐**：静态控制流及三组 CE 输出确认，反转替换 LOD 绕序、保留法线、隔离共享源。 |
-| `$lod replacemesh` | **待确认**：日志列为修复，但提供的 0.3.0 二进制未识别本轮候选用法，x86/x64 均未找到命令字符串，x64 LOD 分支已反汇编核对。不能猜成 replacemodel 别名。现有 replacemodel/replacematerial 不受影响。 |
+| `$lod replacemesh` | **待确认**：日志列为修复，但提供的 0.3.0 二进制未识别本轮候选用法，x86/x64 均未找到命令字符串，x64 LOD 分支已反汇编核对；后续仍未发现公开语法、源码实现、Issue 示例或发布资产。不能猜成 replacemodel 别名。现有 replacemodel/replacematerial 不受影响。 |
 | `$DontDestroy` / `-DontDestroy` | **v1.2.8 接入**默认不清理输出策略；编译/预检失败保留既有输出。v1.2.9 增加检查写入及可处理故障回滚，目录冲突/Windows 文件锁回归通过；不保证断电或强制终止恢复。 |
 | 历史 VTA/DMX、分割、LOD、缩放缺陷修复 | 多 VTA、默认姿态、flex 重映射等有对应实现/回归；其余历史修复仍按具体输入核对，不仅检查开关存在。 |
 
@@ -84,6 +84,17 @@
 | OBJ 材质名、科学计数、大小写扩展名、中文路径 | 已有导入/数值/路径实现；各平台和格式的完整组合覆盖仍需扩充。 |
 | `$prefer_fbx`、`$forcecapsules`、旧 strip 参数 | **v1.2.8 补齐**：前两者按当前参考接受并警告，不改变导入/生成胶囊；`-usenvtristrip` 映射既有 NvTriStrip。 |
 | 历史 Blender/FBX SDK 切换与 DLL 配置 | 属于历史实现路线，不作为要求恢复的外部依赖；当前导入器直接编译源模型。 |
+
+## 运行时后续核验 / Runtime follow-up verification
+
+| 目标 / 项目 | 结果与边界 |
+| --- | --- |
+| L4D2 2.2.4.3 build 10097 网格状态 | 标准 `prop_dynamic` 可创建 `states/avatar/basic` 并消费 `mesh_state` bodygroup（初始 `1`，`SetBodygroup(0, 2)` 可切换到 `2`）。三个实体均无 `m_flexWeight`，因此不能宣称标准实体消费顶点表情；需要 `CBaseFlex`、引擎扩展或游戏专用接口。 |
+| CE `replacemesh` | 后续仍无公开语法、源码、Issue 示例或发布资产；继续证据不足，不能作为 `replacemodel` 别名。 |
+| Neko 固定二进制格式 | 提取的 64 个扩展名均已覆盖现有登记集合，未发现新的格式入口。 |
+| Insurgency 游戏内模型加载 | 仍无可靠读回证据，未认证；历史 QC 编译/结构检查不等于运行时兼容。 |
+
+详细记录见 [v1.2.23 后续运行时报告](tests/reports/v1.2.23-followup-runtime.json)。
 
 ## StudioMDL 2013：同一程序、不同依赖配置
 
