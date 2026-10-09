@@ -297,7 +297,7 @@ def prepare(args):
 
 def source_archive(args):
     source, destination = Path(args.source), Path(args.output)
-    with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(source.rglob('*')):
             relative = path.relative_to(source)
             if path.is_file() and not any(p in {'.git', '__pycache__', 'build', 'out', 'dist'} for p in relative.parts):
@@ -331,7 +331,7 @@ def package(args):
     for name in required:
         if not (dist / (name + extension)).is_file():
             raise ValueError('Missing required executable: ' + name)
-    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(dist.rglob('*')):
             if path.is_file():
                 name = (Path('NewPageMergeMDL') / path.relative_to(dist)).as_posix()
@@ -360,7 +360,16 @@ def package(args):
             if path.is_file():
                 archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())
 
-        for folder in ('tools', 'libs/assimp/contrib/pugixml', 'libs/tinyusdz'):
+        # tinyusdz is statically compiled into Assimp: its source and developer
+        # images are not runtime dependencies. Keep its complete binary notices,
+        # including the licenses otherwise embedded only inside source headers.
+        # The full source remains in Git and in automatic builds' source archive.
+        for name in ('LICENSE', 'LICENSE-APACHE-2.0', 'SOURCE.md', 'THIRD_PARTY_NOTICES.md'):
+            path = Path(args.source) / 'libs/tinyusdz' / name
+            archive.write(path, 'NewPageMergeMDL/libs/tinyusdz/' + name)
+        # The standalone GPL VRML converter's corresponding source and build
+        # files, including its pugixml dependency, must stay in the binary ZIP.
+        for folder in ('tools', 'libs/assimp/contrib/pugixml'):
             for path in sorted((Path(args.source) / folder).rglob('*')):
                 if path.is_file() and '__pycache__' not in path.parts and path.suffix != '.pyc':
                     archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())
@@ -371,7 +380,7 @@ def package(args):
                 archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())
     # Reopen after writing: Windows ZipInfo.from_file retains a backslash
     # orig_filename until the central directory is read back from disk.
-    with zipfile.ZipFile(output, 'a', zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(output, 'a', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         write_inventory(archive)
 
 

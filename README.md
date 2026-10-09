@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.25
+# NewPageMergeMDL v1.2.26
 
 [English](README.en.md) | 简体中文
 
@@ -19,7 +19,7 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
 - **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
-项目版本：**v1.2.25**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.26**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 ## 下载与安装：每个平台一个完整包
 
@@ -35,6 +35,12 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 支持 Windows x64 和 Linux 构建。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
+
+## v1.2.26：完整功能包进一步精简
+
+发布构建使用 `MinSizeRel` 与 IPO/LTO，缩小编译后的程序，保留全部导入器、编译选项和辅助工具。普通 `Release` 构建仍可用于开发。运行目录不再重复携带静态链接的 tinyusdz 源码和开发图片，保留 `libs/tinyusdz/` 中的 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`；USD 导入无需这些源码文件即可运行。
+
+独立 GPL VRML 转换器的完整对应源码及构建文件继续随包提供；自动上游包仍内嵌精确合并源码，手动维护版源码仍由发布标签提供。Windows 继续附带原先已验证的 C4D 桥接程序。Plum 与 viewarms 的本地模型输出已与上一版逐文件比较一致；最终包大小与验证范围见 [验证记录](VALIDATION.md)。
 
 ## v1.2.25：手臂 QC 兼容修复
 
@@ -342,20 +348,20 @@ v1.2.8 生产验证改用 Plum：原始 Hair QC 编译及文件结构检查通�
 Windows：在 Visual Studio 2022 的 x64 开发者终端中，准备 CMake 3.22+ 和 Ninja：
 
 ```powershell
-cmake --preset x64-release
-cmake --build --preset x64-release
+cmake --preset x64-compact
+cmake --build --preset x64-compact
 ```
 
-输出位于 `out/build/x64-release/NewPageMergeMDL/`。
+输出位于 `out/build/x64-compact/NewPageMergeMDL/`。此预设使用 `MinSizeRel` 和 IPO/LTO，要求编译器、静态库工具与链接器均支持并匹配 LTO；Visual Studio 2022 的完整 x64 开发工具链满足此要求。日常开发可将预设改为 `x64-release`，使用普通 Release 构建。
 
-Linux：准备 CMake 和 C/C++ 编译器：
+Linux：准备 CMake，以及支持 LTO 的 GCC 或 Clang 完整 C/C++ 工具链：
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
 cmake --build build -j2
 ```
 
-依赖库已包含在 `libs/`，无需额外包管理器。GitHub Actions 已同步新的名称和打包路径。
+依赖库已包含在完整项目源码的 `libs/` 中，无需额外包管理器；二进制安装包不是完整构建树。使用 GCC 时应具备匹配的 LTO 插件与归档工具，Clang 则需匹配的 LLVM 归档工具及支持 LLVM LTO 的链接器。无需 LTO 的开发构建可改用 `-DCMAKE_BUILD_TYPE=Release -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF`。
 
 ## 使用
 

@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.25
+# NewPageMergeMDL v1.2.26
 
 English | [简体中文](README.md)
 
@@ -17,7 +17,7 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
-**Project version: v1.2.25.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.26.** The compiler, decompiler and bundled tools share this
 version.
 
 ## Download and install: one complete archive per platform
@@ -35,6 +35,12 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.
+
+## v1.2.26: smaller complete packages
+
+Distribution builds use `MinSizeRel` with IPO/LTO to reduce executable size while retaining all importers, compiler options and tools. Ordinary `Release` remains available for development. The runtime directory no longer duplicates the statically linked tinyusdz source and developer images; `libs/tinyusdz/` retains `LICENSE`, `LICENSE-APACHE-2.0`, `SOURCE.md` and `THIRD_PARTY_NOTICES.md`. USD import works without those source files.
+
+The separate GPL VRML converter's complete corresponding source and build files remain bundled. Automatic upstream packages still embed the exact merged source; manual release source remains available at the release tag. Windows retains the previously verified C4D helper. Local Plum and viewarms model outputs have been compared file by file with the previous version and are identical; final archive sizes and validation scope are recorded in [VALIDATION.md](VALIDATION.md).
 
 ## v1.2.25: viewarms QC compatibility fixes
 
@@ -342,20 +348,20 @@ See [COMPATIBILITY.md](COMPATIBILITY.md) for syntax and differences, and [BINARY
 Windows: use a Visual Studio 2022 x64 developer terminal with CMake 3.22+ and Ninja.
 
 ```powershell
-cmake --preset x64-release
-cmake --build --preset x64-release
+cmake --preset x64-compact
+cmake --build --preset x64-compact
 ```
 
-Output: `out/build/x64-release/NewPageMergeMDL/`.
+Output: `out/build/x64-compact/NewPageMergeMDL/`. This preset uses `MinSizeRel` and IPO/LTO, requiring matching compiler, archiver and linker support for LTO. The complete Visual Studio 2022 x64 developer toolchain meets that requirement. Use the `x64-release` preset for ordinary Release development builds.
 
-Linux: install CMake and a C/C++ compiler, then run:
+Linux: install CMake and a complete GCC or Clang C/C++ toolchain with LTO support, then run:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
 cmake --build build -j2
 ```
 
-Dependencies are vendored in `libs/`; no additional package manager is required.
+Dependencies are vendored in the complete project source's `libs/`; no additional package manager is required. The binary installation archive is not a complete build tree. GCC needs matching LTO plugins and archive tools; Clang needs matching LLVM archive tools and a linker that supports LLVM LTO. For development without LTO, use `-DCMAKE_BUILD_TYPE=Release -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF`.
 
 ## Usage
 

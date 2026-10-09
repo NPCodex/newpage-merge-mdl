@@ -49,10 +49,10 @@ jobs:
 
       - name: Configure
         # no -G: use whatever toolchain the runner image ships
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
 
       - name: Build
-        run: cmake --build build --config Release --parallel 2
+        run: cmake --build build --config MinSizeRel --parallel 2
 
       - name: Test pinned helper staging
         run: python -m unittest discover -s tests -p test_windows_extras.py -v
@@ -69,7 +69,7 @@ jobs:
       - name: Package with maintained source provenance
         shell: bash
         run: |
-          python -c 'import json; json.dump({"project_version":"${{ needs.prepare.outputs.version }}","controller_sha":"${{ github.sha }}","release_tag":"${{ needs.prepare.outputs.tag }}","source_kind":"maintained checkout"},open("upstream-manifest.json","w"))'
+          python -c 'import json; json.dump({"project_version":"${{ needs.prepare.outputs.version }}","controller_sha":"${{ github.sha }}","release_tag":"${{ needs.prepare.outputs.tag }}","source_kind":"maintained checkout","build":"MinSizeRel with interprocedural optimization"},open("upstream-manifest.json","w"))'
           python .github/scripts/upstream_release.py package --source . --dist dist --platform ${{ matrix.plat }} --manifest upstream-manifest.json --output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip
 
       - name: Verify actual packaged binaries

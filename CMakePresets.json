@@ -23,10 +23,20 @@
       "displayName": "x64 Release",
       "inherits": "base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "x64-compact",
+      "displayName": "x64 compact distribution (LTO)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "MinSizeRel",
+        "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON"
+      }
     }
   ],
   "buildPresets": [
     { "name": "x64-debug", "displayName": "x64 Debug", "configurePreset": "x64-debug" },
-    { "name": "x64-release", "displayName": "x64 Release", "configurePreset": "x64-release" }
+    { "name": "x64-release", "displayName": "x64 Release", "configurePreset": "x64-release" },
+    { "name": "x64-compact", "displayName": "x64 compact distribution (LTO)", "configurePreset": "x64-compact" }
   ]
 }

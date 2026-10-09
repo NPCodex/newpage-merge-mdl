@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -150,13 +151,16 @@ class AutomationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             source = root / 'source'
-            for name in ('main.cpp', '.git/config', 'build/compiler.exe', '__pycache__/test.pyc', 'automation/compatibility.patch'):
+            for name in ('main.cpp', '.git/config', 'build/compiler.exe', '__pycache__/test.pyc', 'automation/compatibility.patch',
+                         'libs/tinyusdz/src/tinyusdz.cc', 'libs/tinyusdz/src/tydra/tydra.png'):
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('content')
             sync.source_archive(argparse.Namespace(source=source, output=root / 'source.zip'))
             with zipfile.ZipFile(root / 'source.zip') as archive:
-                self.assertEqual(set(archive.namelist()), {'NewPageMergeMDL/main.cpp', 'NewPageMergeMDL/automation/compatibility.patch'})
+                self.assertEqual(set(archive.namelist()), {'NewPageMergeMDL/main.cpp', 'NewPageMergeMDL/automation/compatibility.patch',
+                                                         'NewPageMergeMDL/libs/tinyusdz/src/tinyusdz.cc',
+                                                         'NewPageMergeMDL/libs/tinyusdz/src/tydra/tydra.png'})
 
     def test_package_requires_both_compiler_and_decompiler(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -191,6 +195,15 @@ class AutomationTests(unittest.TestCase):
             (source / 'libs/meshoptimizer').mkdir()
             for name in ('LICENSE.md', 'SOURCE.md'):
                 (source / 'libs/meshoptimizer' / name).write_text('meshopt provenance')
+            (source / 'libs/tinyusdz/src/tydra').mkdir(parents=True)
+            for name in ('LICENSE', 'LICENSE-APACHE-2.0', 'SOURCE.md', 'THIRD_PARTY_NOTICES.md'):
+                (source / 'libs/tinyusdz' / name).write_text('USD dependency notice: ' + name)
+            (source / 'libs/tinyusdz/src/tinyusdz.cc').write_text('development source')
+            (source / 'libs/tinyusdz/src/tydra/tydra.png').write_bytes(b'development image')
+            (source / 'tools/vrml_converter/meshlab').mkdir(parents=True)
+            (source / 'tools/vrml_converter/meshlab/Parser.cpp').write_text('GPL corresponding source')
+            (source / 'libs/assimp/contrib/pugixml/src').mkdir(parents=True)
+            (source / 'libs/assimp/contrib/pugixml/src/pugixml.cpp').write_text('converter dependency source')
             (root / 'manifest.json').write_text('{}')
             with zipfile.ZipFile(root / 'source.zip', 'w') as archive:
                 archive.writestr('NewPageMergeMDL/main.cpp', 'exact merged input')
@@ -217,6 +230,12 @@ class AutomationTests(unittest.TestCase):
                     self.assertIn('NewPageMergeMDL/libs/nvtristrip/' + name, archive.namelist())
                 for name in ('LICENSE.md', 'SOURCE.md'):
                     self.assertIn('NewPageMergeMDL/libs/meshoptimizer/' + name, archive.namelist())
+                for name in ('LICENSE', 'LICENSE-APACHE-2.0', 'SOURCE.md', 'THIRD_PARTY_NOTICES.md'):
+                    self.assertEqual(archive.read('NewPageMergeMDL/libs/tinyusdz/' + name),
+                                     ('USD dependency notice: ' + name).encode())
+                self.assertFalse(any(name.startswith('NewPageMergeMDL/libs/tinyusdz/src/') for name in archive.namelist()))
+                self.assertEqual(archive.read('NewPageMergeMDL/tools/vrml_converter/meshlab/Parser.cpp'), b'GPL corresponding source')
+                self.assertEqual(archive.read('NewPageMergeMDL/libs/assimp/contrib/pugixml/src/pugixml.cpp'), b'converter dependency source')
                 self.assertFalse(any('StudioMDL-CE' in name for name in archive.namelist()))
 
             for name in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D',
@@ -240,6 +259,27 @@ class AutomationTests(unittest.TestCase):
             self.assertEqual((root / 'SHA256SUMS.txt').read_text(), expected)
             sync.checksums(args)
             self.assertEqual((root / 'SHA256SUMS.txt').read_text(), expected)
+
+    def test_tinyusdz_binary_notices_preserve_inline_and_dependency_terms(self):
+        usd = ROOT / 'libs/tinyusdz'
+        notices = (usd / 'THIRD_PARTY_NOTICES.md').read_text(encoding='utf-8')
+        # These have no standalone license files. Removing src/ used to remove
+        # their sole copy of binary redistribution terms and attribution.
+        for name in ('stream-reader.hh', 'stream-writer.hh', 'texture-types.hh', 'external/half-edge.hh'):
+            original = (usd / 'src' / name).read_text(encoding='utf-8')
+            self.assertIn(re.search(r'/\*(.*?)\*/', original, re.S)[1].strip(), notices)
+        for name in ('external/stb_image.h', 'external/stb_image_write.h', 'external/stb_image_resize2.h'):
+            original = (usd / 'src' / name).read_text(encoding='utf-8')
+            mit = original[original.rfind('ALTERNATIVE A - MIT License'):].split('------------------------------------------------------------------------------')[0]
+            self.assertIn(mit.strip(), notices)
+        for name in ('lz4/LICENSE', 'external/fast_float/LICENSE-MIT', 'external/filesystem/LICENSE',
+                     'external/glob/LICENSE', 'external/dtoa_milo.LICENSE', 'external/jeaiii_to_text.LICENSE',
+                     'external/mapbox/earcut/LICENSE', 'external/mapbox/eternal/LICENSE.md'):
+            self.assertIn((usd / 'src' / name).read_text(encoding='utf-8').strip(), notices)
+        for attribution in ('Project Nayuki', 'Martin Moene', 'John Maddock', 'Denilson das Mercês Amorim',
+                            'Copyright 2016 Pixar', 'Copyright 2017 Pixar', 'Section 6. Trademarks.',
+                            'Alexey Chernov', 'ArangoDB GmbH', 'Georgi Gerganov'):
+            self.assertIn(attribution, notices)
 
 
 
@@ -266,6 +306,7 @@ class PackageValidationTests(unittest.TestCase):
                 'libs/assimp/contrib/pugixml/src/pugixml.cpp','libs/assimp/contrib/pugixml/src/pugixml.hpp',
                 'libs/assimp/contrib/pugixml/src/pugiconfig.hpp','libs/assimp/contrib/pugixml/LICENSE.md',
                 'libs/tinyusdz/LICENSE','libs/tinyusdz/LICENSE-APACHE-2.0',
+                'libs/tinyusdz/SOURCE.md','libs/tinyusdz/THIRD_PARTY_NOTICES.md',
             ):z.writestr('NewPageMergeMDL/'+name,'fixture')
             for name in ('NewPageMergeMDL','NewPageMergeMDL-Decompiler','NewPageVRMLtoX3D'):
                 z.writestr('NewPageMergeMDL/'+name+suffix,binary)

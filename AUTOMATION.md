@@ -16,7 +16,7 @@ GitHub 的调度可能延迟，长时间无活动的公开仓库可能被自动�
    记录资产 ID、大小、更新时间和下载校验值。这两项闭源项目不单独触发发布。
 4. 对最新 PulseModel 执行 `git apply --3way --index automation/compatibility.patch`，
    保留 NewPageMergeMDL 名称及已实现的兼容扩展。冲突即失败，不丢弃本地修改。
-5. Windows/Linux 都构建全部工具并运行自动化单元测试和模型兼容测试。
+5. Windows/Linux 都用 `MinSizeRel` 与 IPO/LTO 构建全部工具，并运行自动化单元测试和模型兼容测试。
 6. 两个平台均通过后，发布 GitHub **预发布版本**，每个平台只上传一个完整 ZIP。
    实际糅合源码 `sources/NewPageMergeMDL-source.zip`、根目录的 `upstream-manifest.json`
    与 `SHA256SUMS.txt`、`tests/reports/` 中的验证报告均放入平台包内，
@@ -65,6 +65,10 @@ v1.2.23 按 [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md)完成五�
 
 Windows x64 完整包还包含 `NewPageMergeMDL-C4D.exe`。CI 根据 `automation/windows-extras.json` 固定的来源和 SHA256 复用已按许可构建并测试的产品二进制，不下载/安装 Cineware SDK。主程序与其他开源工具仍由当前源码构建；Windows C4D helper 缺失或哈希不符时必须失败，不能把缺少 helper 的 CI 包作为第二个用户下载。Linux 导入 Windows 预转换的 GLB。SDK 的头文件、静态库、示例和文档均不进入源码包或二进制包。相关范围和独立构建方法见 [O5_FORMAT_IMPORTS.md](O5_FORMAT_IMPORTS.md)。
 
+v1.2.26 的两个发布工作流使用 `MinSizeRel` 与 `CMAKE_INTERPROCEDURAL_OPTIMIZATION=ON`；本地 `x64-compact` 预设采用相同策略。构建环境需提供相互匹配、支持 LTO 的编译器、归档工具和链接器，普通 Release 开发构建仍可选择。C4D 独立 helper 继续复用上述已验证二进制，不随此策略重建。
+
+平台包的运行目录不再重复附带 tinyusdz 源码与开发图片；USD 后端已静态编入程序。`libs/tinyusdz/` 中保留 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，包括原本嵌在源码中的第三方声明。独立 GPL VRML 转换器及 pugixml 的对应源码、构建文件和许可继续随包分发。自动包中的精确合并源码仍包含完整 tinyusdz，手动维护版仍从发布标签取得完整源码；精简仅针对运行目录的重复内容。
+
 
 ```powershell
 python -m unittest discover -s tests -p test_automation.py -v
@@ -79,7 +83,7 @@ v1.2.20 将 FE settings/吸引/弯曲/地面参数、零重力回退修复、默
 
 ## 项目版本与双语文档
 
-当前项目版本为 **v1.2.25**，程序和 Windows 文件版本统一采用该版本，独立于 PulseModel 上游版本号。本次仅调整单包分发方式，未修改编译器版本。
+当前项目版本为 **v1.2.26**，程序和 Windows 文件版本统一采用该版本，独立于 PulseModel 上游版本号。本次更新发布构建与打包策略，保留全部功能；各平台的体积及验证记录见 [VALIDATION.md](VALIDATION.md)。
 `CMakeLists.txt` 的项目版本与 `automation/upstreams.json` 的 `project_version` 应同步维护。
 自动发布标签采用 `v1.2.0`、`v1.2.1` 等语义版本。每次检测到新的上游或项目改动，补丁号递增；配置版本作为最低版本，可手动提高主/次版本。上游没有变化则跳过发布，强制重建同一内容沿用已发布的版本和标签。合并源码内的 CMake、发布配置和 README 会同步写入实际发布版本，并重新生成对应补丁。
 中文 `README.md` 与英文 `README.en.md` 都会包含在合并源码和二进制发布包中。

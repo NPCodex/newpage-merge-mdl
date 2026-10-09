@@ -64,6 +64,7 @@ def verify(archive, expected, destination):
             'libs/assimp/contrib/pugixml/src/pugixml.cpp', 'libs/assimp/contrib/pugixml/src/pugixml.hpp',
             'libs/assimp/contrib/pugixml/src/pugiconfig.hpp', 'libs/assimp/contrib/pugixml/LICENSE.md',
             'libs/tinyusdz/LICENSE', 'libs/tinyusdz/LICENSE-APACHE-2.0',
+            'libs/tinyusdz/SOURCE.md', 'libs/tinyusdz/THIRD_PARTY_NOTICES.md',
         ):
             package.getinfo('NewPageMergeMDL/' + name)
         # Content inspection also works when repacking a previously tested

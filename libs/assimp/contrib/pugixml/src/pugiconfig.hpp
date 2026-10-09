@@ -29,16 +29,17 @@
 // Uncomment this to disable exceptions
 // #define PUGIXML_NO_EXCEPTIONS
 
-// Set this to control attributes for public classes/functions, i.e.:
-#ifdef _WIN32
-#   define PUGIXML_API __declspec(dllexport) // to export all public symbols from DLL
-#else
-#  define PUGIXML_API __attribute__((visibility("default")))
-#endif // _WIN32
-#
-//define PUGIXML_CLASS __declspec(dllimport) // to import all classes from DLL
-//#define PUGIXML_FUNCTION __fastcall // to set calling conventions to all public functions to fastcall
+// Windows static builds use the empty default in pugixml.hpp. Exporting every
+// public symbol from an executable would keep otherwise unused parser code alive.
+// Shared-library users can explicitly define PUGIXML_API, PUGIXML_CLASS or
+// PUGIXML_FUNCTION in their build configuration, for example:
+// #define PUGIXML_API __declspec(dllexport) // to export all public symbols from DLL
+// #define PUGIXML_CLASS __declspec(dllimport) // to import all classes from DLL
+// #define PUGIXML_FUNCTION __fastcall // to set calling conventions to all public functions to fastcall
 // In absence of PUGIXML_CLASS/PUGIXML_FUNCTION definitions PUGIXML_API is used instead
+#if !defined(_WIN32) && !defined(PUGIXML_API)
+#  define PUGIXML_API __attribute__((visibility("default")))
+#endif
 
 // Tune these constants to adjust memory-related behavior
 // #define PUGIXML_MEMORY_PAGE_SIZE 32768

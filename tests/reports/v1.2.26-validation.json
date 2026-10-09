@@ -1,0 +1,261 @@
+{
+  "project_version": "1.2.26",
+  "build": "Windows x64 MinSizeRel -Os with Clang ThinLTO, llvm-mingw 20260922 UCRT; static runtime",
+  "binaries": {
+    "NewPageMergeMDL-C4D.exe": {
+      "old_release_bytes": 2643968,
+      "new_o3_bytes": 2643968,
+      "new_size_bytes": 2643968,
+      "sha256": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97",
+      "export_count": 0
+    },
+    "NewPageMergeMDL-Decompiler.exe": {
+      "old_release_bytes": 942080,
+      "new_o3_bytes": 942080,
+      "new_size_bytes": 730112,
+      "sha256": "c837770d338c1cdfd8241335d0f3bf97a4f8965b93a731ffafe7ef7a925c1587",
+      "export_count": 0
+    },
+    "NewPageMergeMDL.exe": {
+      "old_release_bytes": 16739840,
+      "new_o3_bytes": 16591872,
+      "new_size_bytes": 12794880,
+      "sha256": "ed7a649d44d3f1a0d9e68fcbf460c9767365014b6ea638a42a9a3ed5e7413cff",
+      "export_count": 0
+    },
+    "NewPageVRMLtoX3D.exe": {
+      "old_release_bytes": 755712,
+      "new_o3_bytes": 599040,
+      "new_size_bytes": 568832,
+      "sha256": "713363749c67102948bd624db0ac2d2cfdfe85942dffc51fe62c1ef75a9d0b3c",
+      "export_count": 0
+    },
+    "subtools/l4d_animswap.exe": {
+      "old_release_bytes": 492032,
+      "new_o3_bytes": 492032,
+      "new_size_bytes": 423936,
+      "sha256": "8d0a73fc63f94670cbd001b4304bc40bb75974ef8aa8d91005b8ba0a4ea4becc",
+      "export_count": 0
+    },
+    "subtools/meshtool.exe": {
+      "old_release_bytes": 655360,
+      "new_o3_bytes": 655360,
+      "new_size_bytes": 597504,
+      "sha256": "4d5e65ba31f57177d961fb7c5c7e5c352d158621aa071556809fe4f973362c56",
+      "export_count": 0
+    },
+    "subtools/vmd2valvebiped.exe": {
+      "old_release_bytes": 773120,
+      "new_o3_bytes": 773120,
+      "new_size_bytes": 698368,
+      "sha256": "74ddda2d3a6f25cb7b0190017d05172bf380549c8292718582bdba524854f6ea",
+      "export_count": 0
+    }
+  },
+  "compatibility": {
+    "tests": 377,
+    "passed": true,
+    "seconds": 30.644
+  },
+  "c4d": {
+    "tests": 7,
+    "passed": true,
+    "helper": "Unchanged previously validated distributable helper"
+  },
+  "vrml": {
+    "passed": true,
+    "checks": [
+      "Unicode paths",
+      "scene hierarchy and transform",
+      "triangle vertices",
+      "preserve prior output on parse failure"
+    ]
+  },
+  "plum_benchmark": {
+    "scope": "Original Plum QC; installed Garrys Mod gameinfo; isolated -OutDir outputs",
+    "method": "One unmeasured warmup per binary followed by three alternating runs per binary; perf_counter wall time includes process launch and output writing",
+    "compilers": {
+      "release_o3": {
+        "bytes": 16591872,
+        "sha256": "28faf39c1878a1624f560b3510fdb377e02d0523a0ea8e0d60238f54c136d265"
+      },
+      "size_os_thinlto": {
+        "bytes": 12794880,
+        "sha256": "ed7a649d44d3f1a0d9e68fcbf460c9767365014b6ea638a42a9a3ed5e7413cff"
+      }
+    },
+    "runs": [
+      {
+        "compiler": "release_o3",
+        "trial": 1,
+        "seconds": 2.3354927000000316,
+        "outputs_identical": true
+      },
+      {
+        "compiler": "size_os_thinlto",
+        "trial": 1,
+        "seconds": 2.4009996999993746,
+        "outputs_identical": true
+      },
+      {
+        "compiler": "release_o3",
+        "trial": 2,
+        "seconds": 2.3363804000000528,
+        "outputs_identical": true
+      },
+      {
+        "compiler": "size_os_thinlto",
+        "trial": 2,
+        "seconds": 2.3816235000012966,
+        "outputs_identical": true
+      },
+      {
+        "compiler": "release_o3",
+        "trial": 3,
+        "seconds": 2.4497267000006104,
+        "outputs_identical": true
+      },
+      {
+        "compiler": "size_os_thinlto",
+        "trial": 3,
+        "seconds": 2.350161999998818,
+        "outputs_identical": true
+      }
+    ],
+    "inputs_unchanged": true,
+    "input_files_checked": 161,
+    "output_sha256": {
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": "29752d5e7b545d99d92bfc28611e6eb7a29b9ce9dd6e4a342ea6af2032ce6686",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": "bdbe537eaa8f3728e43a1a3e6fd87b866024e922a033b87de1960f9e944c25bd",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": "4fd3e2a4110575026810c2e5658672b45e7924ee80c93ae603660b3576517c9d",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": "2153ed2803cfeaeddaa58ddcf756aedc3006114d9356841406a25881e9cea5f8",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": "60c6c3fa22567b33f1adf5769b7328d463c5aab357612c7befde7ac842c02a72"
+    },
+    "summary": {
+      "release_o3": {
+        "median_seconds": 2.3363804000000528,
+        "mean_seconds": 2.3738666000002318
+      },
+      "size_os_thinlto": {
+        "median_seconds": 2.3816235000012966,
+        "mean_seconds": 2.3775950666664962
+      }
+    },
+    "size_median_change_percent": 1.9364612030319472,
+    "input_manifest_sha256": "51e88f20e298150b6e9ec63aba34b8e684e891342eac92717758aebe33d66152"
+  },
+  "logs": {
+    "size-compatibility.log": "ef96615a48769bb306704dc524d3da20566e05bbfb3bfce55fb8fe241d341a8e",
+    "size-c4d.log": "69c96bf525bf3baafadbc378991e6bcd36c64612dc14765d46e0f40199d106ac",
+    "size-vrml.log": "484293c1dc75d0cdd476f03d98b6ea1a5962f11f99f6baad2b6118ad055fd146",
+    "benchmark.log": "6c8edad89842f6a830d04811e53b815cf43b789d11b332192561ebeba16bfbd5"
+  },
+  "schema": 1,
+  "scope": "v1.2.26 local Windows size-optimized binaries and single-package contents; platform CI binaries have their own build provenance",
+  "date": "2026-10-10",
+  "real_models": {
+    "matches_v1_2_25": {
+      "viewarms": true,
+      "plum": true
+    },
+    "inputs_unchanged": true,
+    "input_files_checked": 50,
+    "outputs": {
+      "viewarms": {
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx80.vtx": "71df36a98d24f2875e4f52f48a6cf905017cf5fbfe535ebf11eaba5958310683",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx90.vtx": "54a4e81536cb2c9917bb8786127cc169a724a968d4228a4b5f6a4c4252b33c3d",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.mdl": "ccdf9286b09c000e52e72ab895c139b30e17af66d05f7111ab7bea8f3b7a1e91",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.vvd": "a3b454414b6910aca2e49b7f42b57e285cd5531e54804b72b8a2c67862662f1a"
+      },
+      "plum": {
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": "29752d5e7b545d99d92bfc28611e6eb7a29b9ce9dd6e4a342ea6af2032ce6686",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": "bdbe537eaa8f3728e43a1a3e6fd87b866024e922a033b87de1960f9e944c25bd",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": "4fd3e2a4110575026810c2e5658672b45e7924ee80c93ae603660b3576517c9d",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": "2153ed2803cfeaeddaa58ddcf756aedc3006114d9356841406a25881e9cea5f8",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": "60c6c3fa22567b33f1adf5769b7328d463c5aab357612c7befde7ac842c02a72"
+      }
+    }
+  },
+  "xml_linkage": {
+    "old_forced_exports_per_executable": 406,
+    "new_forced_exports": 0,
+    "explicit_dllexport_supported": true
+  },
+  "packaging": {
+    "removed": "tinyusdz development source and images from the runtime package; source archives remain complete",
+    "retained": [
+      "All native tools and importers",
+      "Windows C4D helper",
+      "GPL VRML converter corresponding source",
+      "Tinyusdz main license, provenance and embedded dependency notices",
+      "Documentation, validation reports and SHA256 inventory"
+    ],
+    "zip_deflate_level": 9
+  },
+  "automation": {
+    "automation": {
+      "tests": 26,
+      "passed": true
+    },
+    "windows-extras": {
+      "tests": 10,
+      "passed": true
+    }
+  },
+  "c4d_experiment": {
+    "component": "NewPageMergeMDL-C4D.exe",
+    "decision": "Retain the existing released helper and pinned release source",
+    "adopted": false,
+    "reason": "Function/data section flags produced no size reduction. IPO saved only 40,960 bytes (1.55%) before compression and approximately 14,162 bytes after DEFLATE compression; this does not justify replacing the independently verified helper and updating its pinned distribution source.",
+    "compiler": "MSVC 19.44.35229.0, x64, Release /O2, static CRT",
+    "baseline": {
+      "size_bytes": 2643968,
+      "zlib_level9_bytes": 1201117,
+      "sha256": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97",
+      "dll_imports": [
+        "WINMM.dll",
+        "KERNEL32.dll",
+        "ole32.dll"
+      ]
+    },
+    "experiments": [
+      {
+        "flags": "/Gy /Gw, existing non-debug Release linker defaults /OPT:REF /OPT:ICF",
+        "build_seconds": 63.55,
+        "size_bytes": 2643968,
+        "saved_bytes": 0,
+        "zlib_level9_bytes": 1200997,
+        "c4d_contract_tests": {
+          "passed": 7,
+          "failed": 0
+        },
+        "new_dll_dependencies": false,
+        "evidence": "report.json; c4d-tests.log; build.log"
+      },
+      {
+        "flags": "/Gy /Gw and CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE=ON (/GL and /LTCG)",
+        "build_seconds": 40.28,
+        "size_bytes": 2603008,
+        "saved_bytes": 40960,
+        "zlib_level9_bytes": 1186955,
+        "saved_compressed_bytes": 14162,
+        "c4d_contract_tests": {
+          "passed": 7,
+          "failed": 0
+        },
+        "new_dll_dependencies": false,
+        "fixture_glb_equal_except_build_generator": true,
+        "fixture_difference": "Only the Assimp generator build commit changed, from 9e181c76 to c07e5c56; remaining JSON scene content and GLB binary chunk are identical.",
+        "evidence": "ipo-report.json; ipo-c4d-tests.log; ipo-build.log"
+      }
+    ],
+    "tracked_changes_retained": false,
+    "existing_helper_untouched": true,
+    "sdk_files_published": false
+  },
+  "limits": [
+    "Performance sample is one production model, three timed alternating runs per compiler; not a general speed guarantee.",
+    "No new in-game session; this validates compilation and emitted model files.",
+    "This report identifies local llvm-mingw binaries; Windows/MSVC and Linux release binaries are independently built and tested in CI."
+  ]
+}

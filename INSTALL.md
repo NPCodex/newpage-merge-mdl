@@ -14,6 +14,8 @@ Linux 使用 `./NewPageMergeMDL` 并换成实际 Linux 路径；若解压工具�
 
 包内根目录提供 `INSTALL.md`、`upstream-manifest.json` 和 `SHA256SUMS.txt`，验证报告在 `tests/reports/`。自动上游合并包的精确项目源码另存于 `sources/NewPageMergeMDL-source.zip`；手动维护版的完整项目源码由发布标签对应的仓库提供。独立 GPL 转换器的对应源码始终随包附带。
 
+v1.2.26 精简包保留所有工具和导入功能，Windows 继续附带原先已验证的 C4D helper。tinyusdz 已静态链接，运行目录仅保留它的 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，无需下载源码或开发图片来使用 USD 导入。上述完整项目源码与 GPL 转换器对应源码的获取方式不变。
+
 - **更新：** 解压到新目录并使用整套新工具，保留自己的模型和配置；不要只覆盖主程序或混用旧版辅助文件。模型发布也应整套替换匹配的 MDL/VVD/VTX/PHY/ANI，先在目标游戏验证。
 - **无需另找插件包：** Windows 直接 C4D 导入使用包内 helper；Linux 需要先在 Windows 将 C4D 转为 GLB。VRML 转换器保持独立程序及 GPL 许可，使用同一个 ZIP 不改变主程序许可。
 - **按需依赖：** 普通编译无需 Python。`tools/` 中的 Python 准备脚本需要自行安装 Python 3，安装包未内置 Python。网格状态和 VRM 运行功能需按各自指南安装 `integration/gmod/` 中的 Lua 消费端，并满足目标游戏条件；解压工具不会自动安装到游戏，也不保证所有游戏支持这些功能。
@@ -34,6 +36,8 @@ Linux 使用 `./NewPageMergeMDL` 并换成实际 Linux 路径；若解压工具�
 On Windows, use `NewPageMergeMDL.exe` and your Windows paths. On Linux, restore executable permission for the required programs if your extractor did not preserve it.
 
 `INSTALL.md`, `upstream-manifest.json` and `SHA256SUMS.txt` are at the package root; validation reports are in `tests/reports/`. Automatic upstream archives also contain the exact merged project source at `sources/NewPageMergeMDL-source.zip`. Complete project source for manual releases is available from the repository at the release tag. The separate GPL converter's corresponding source is always bundled.
+
+The smaller v1.2.26 packages retain all tools and import features, including the previously verified Windows C4D helper. tinyusdz is statically linked, so its runtime directory retains only `LICENSE`, `LICENSE-APACHE-2.0`, `SOURCE.md` and `THIRD_PARTY_NOTICES.md`; USD import needs no source or developer-image download. Complete project source and the GPL converter's corresponding source remain available as described above.
 
 - **Updates:** extract into a fresh directory and use the complete new tool set. Preserve your own inputs and configuration; do not mix older helpers with a new compiler. Deploy matching MDL/VVD/VTX/PHY/ANI files together after validation in the target game.
 - **Bundled helpers:** Windows C4D input uses the included helper; Linux requires GLB conversion on Windows first. The VRML converter remains a separate GPL program in the same archive; the main program retains its existing license.

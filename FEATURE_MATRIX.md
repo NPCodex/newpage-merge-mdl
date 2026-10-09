@@ -1,9 +1,11 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.25。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.26。
 
-发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化不改变 v1.2.25 编译器行为，也不扩展下表的游戏运行时认证范围。
+发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化与体积优化均不扩展下表的游戏运行时认证范围。
+
+v1.2.26 发布构建及 `x64-compact` 预设采用 `MinSizeRel` 与 IPO/LTO，保留全部导入器和工具。安装包运行目录中的 tinyusdz 仅保留 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，省去运行无需的源码与开发图片；完整项目源码的获取规则不变，GPL VRML 转换器对应源码继续随包附带。Windows C4D 使用原先已验证的 helper。Plum 与 viewarms 的本地模型输出逐文件一致，最终体积与验证范围见 [验证记录](VALIDATION.md)。
 
 v1.2.25 修复真实手臂 QC：VRD 短名父骨在折叠时同步解析并重算姿态；共用皮肤表的未使用基材质列警告后跳过，保留实际使用的替换与全部行。CE 会保留未使用的皮肤材质登记，本工具继续裁剪；详见 [验证记录](VALIDATION.md)。
 

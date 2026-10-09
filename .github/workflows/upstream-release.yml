@@ -109,9 +109,9 @@ jobs:
       - name: Extract source
         run: python -m zipfile -e prepared/NewPageMergeMDL-source.zip candidate
       - name: Configure
-        run: cmake -S candidate/NewPageMergeMDL -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist"
+        run: cmake -S candidate/NewPageMergeMDL -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist"
       - name: Build every tool
-        run: cmake --build build --config Release --parallel 2
+        run: cmake --build build --config MinSizeRel --parallel 2
       - name: Test pipeline helpers
         run: python -m unittest discover -s tests -p test_automation.py -v
       - name: Test pinned helper staging

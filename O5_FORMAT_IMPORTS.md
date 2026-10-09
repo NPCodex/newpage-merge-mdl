@@ -28,7 +28,9 @@ $body model triangle.a3d
 
 ## USD / USDA / USDC / USDZ
 
-内置启用 Assimp 的 tinyusdz 后端，固定版本为 `6050eef932f7d2788656d63297aa488fb0961ed1`。所需源码与许可证在 `libs/tinyusdz/`，配置和构建不访问网络。tinyusdz 主体采用 Apache-2.0，嵌入依赖保留各自许可证。
+内置启用 Assimp 的 tinyusdz 后端，固定版本为 `6050eef932f7d2788656d63297aa488fb0961ed1`。完整项目源码中的 `libs/tinyusdz/` 提供所需源码与许可证，配置和构建不访问网络。tinyusdz 主体采用 Apache-2.0，嵌入依赖保留各自许可证。
+
+v1.2.26 的安装包运行目录仅保留 tinyusdz 的 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，省去静态链接后运行无需的源码和开发图片；USD 导入功能完整保留。自动上游包内嵌的精确源码仍含完整 tinyusdz，手动维护版完整源码来自发布标签。独立 GPL VRML 转换器的对应源码不受此项精简影响。
 
 ```text
 $modelname example
@@ -70,6 +72,8 @@ cmake --build build-vrml --config Release
 Windows 的 C4D 导入使用独立的 Cineware 辅助程序，将场景中的显式可编辑多边形转换为 GLB，再使用共用场景导入路径。专有 SDK 本体留在本地构建环境，不放进源码仓库或通用源码包。Linux 可导入预先转换的 GLB。
 
 Windows x64 单包已经将 `NewPageMergeMDL-C4D.exe` 放在主程序旁，自动发布使用同样的完整打包要求。CI 从固定来源按哈希验证并复用已经许可和测试的产品二进制，不下载 Cineware SDK；缺失或校验不符会阻止发布完整 Windows 包。可用 `-importformats` 检查本次安装的桥接入口。
+
+v1.2.26 的体积优化继续使用原先已验证的 C4D helper，保持其功能、静态运行库和使用方式。
 
 保持 `NewPageMergeMDL-C4D.exe` 与主程序在同一目录，QC 中直接引用 `.c4d` 即可。主程序按原始 C4D 路径缓存，自动清理本次转换的临时 GLB，依赖清单保留原始文件。辅助程序也可单独调用：
 
