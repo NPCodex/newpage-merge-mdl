@@ -1,5 +1,7 @@
 # CSGO 布料作者接口
 
+**编译前务必通过 `-game` 指定实际 CSGO 游戏/模组中包含正确 `gameinfo.txt` 的目录。** 不要传入文件本身、`bin` 或其他游戏的目录；`-OutDir` 只控制输出，不能替代目标识别。MCV 虽使用扩展 VTX，也不支持本页的 CSGO FE 布料路径。通用注意事项见 [README 编译前必读](README.md#编译前必读)。
+
 本工具把 Source1/CSGO FE 约束写入 MDL。`$cloth proxy.dmx` 使用独立代理反算模型骨架；高级接口也可以直接把已有骨链编译成没有面代理的绳子。运行布料需要支持该 FE 格式的 CSGO 运行时；编译器不代替游戏提供世界碰撞体。
 
 `flex_borders`、`prerotate` 来自参考 QC。本文的 `advanced`、投影设置和可调拟合策略是本工具开放参考 FE 能力的扩展语法，不能原样交给 stock studiomdl。

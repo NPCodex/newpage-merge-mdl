@@ -2,6 +2,20 @@
 
 English | [简体中文](README.md)
 
+## Before compiling
+
+**For every target game, always pass `-game` with the directory containing that game's correct `gameinfo.txt`.** The argument is a directory, not the `gameinfo.txt` file, Steam library root or `bin` directory. Its AppID selects target behavior, including MDL/VTX layout; its search paths locate required resources. CSGO legacy (730) and Military Conflict: Vietnam (1012110) require their own correct game configuration; borrowing another game's `gameinfo.txt` or setting only `-vtxformat` is insufficient.
+
+```text
+NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/model"
+```
+
+- `-OutDir` controls output only and cannot replace `-game`. First compile into an isolated output directory while preserving original inputs and existing game models. When deploying, keep the matching MDL/VVD/VTX/PHY/ANI set together; mixing old sidecars can cause loading failures.
+- Supply the target game's Source VMT/VTF materials and required mounted resources. Importing a mesh does not convert its source application's shaders or textures into Source materials.
+- Format budgets still apply, including at most 256 final bone indices (255 by default), three final weights per vertex and local mesh/index limits. FE cloth targets CSGO skeletal models with extended VTX. Use default offline SubD baking; explicit native SubD patches crash the tested CSGO legacy renderer. See the [capacity ledger](FIVE_COMPILER_COMPLETION.md) and [cloth guide](CSGO_CLOTH_AUTHORING.md).
+- [VRM](VRM_RUNTIME.md) and [finite mesh states](MESH_STATE_WORKFLOW.md) require their supplied GMod consumers for runtime behavior. VRML uses its separate converter. Direct C4D input requires the helper included in the complete local Windows package; automated CI packages omit it. See the [format guide](O5_FORMAT_IMPORTS.md).
+- Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
+
 **Project version: v1.2.23.** The compiler, decompiler and bundled tools share this
 version.
 

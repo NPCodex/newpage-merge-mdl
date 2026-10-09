@@ -2,6 +2,22 @@
 
 [English](README.en.md) | 简体中文
 
+## 编译前必读
+
+**无论编译哪款游戏的模型，都请正确设置 `-game`，尤其是 CSGO 和 MCV。** 参数必须是目标游戏/模组中**包含正确 `gameinfo.txt` 的目录**，不是 `gameinfo.txt` 文件本身，也不是 Steam 根目录或 `bin` 目录。请使用目标游戏自己的文件，不要借用其他游戏的 `gameinfo.txt`。编译器根据其中的 AppID 和挂载配置选择目标布局、资源与默认参数；路径缺失或选错，即使产生了文件，也可能无法在目标游戏中正常加载。
+
+```powershell
+NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/model"
+```
+
+上例要求 `D:/Games/csgo legacy/csgo/gameinfo.txt` 实际存在。编译 MCV 或其他游戏时，将 `-game` 换成其对应目录；路径含空格时保留引号。
+
+- **游戏目录与输出目录分别设置。** `-OutDir` 只指定输出根目录，不替代 `-game` 的目标识别和挂载；`$modelname` 决定其下的模型路径。建议先输出到隔离目录，保留现有模型，再在目标游戏验证后整套替换匹配的 MDL/VVD/VTX/PHY/ANI，避免混用旧附属文件。
+- **选择正确目标不等于突破引擎限制。** CSGO（730）/MCV（1012110）的扩展 VTX 会按正确 AppID 自动选择，单设 `-vtxformat` 不能代替正确目标配置；FE 布料仍限 CSGO。最终骨预算默认255、每顶点最多3个最终权重等格式限制仍有效。SubD 建议使用默认离线烘焙；已测 CSGO legacy renderer 的原生 SubD 路径会崩溃。不要把一种游戏的产物直接当成另一种游戏的通用模型。
+- **材质与资源需完整。** 检查 QC 的材质路径、目标挂载和对应 VMT/VTF；通用场景的材质名称/颜色导入不代表自动生成完整 Source 着色材质。
+- **扩展有各自的使用条件。** C4D 需完整 Windows 包中的桥接程序；VRML 使用独立转换器。网格状态与 VRM 运行功能需安装配套 GMod Lua 模块，不会由普通 MDL 文件自动在所有游戏执行。详见 [额外格式](O5_FORMAT_IMPORTS.md)、[网格状态](MESH_STATE_WORKFLOW.md) 和 [VRM](VRM_RUNTIME.md)。
+- **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
+
 项目版本：**v1.2.23**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。

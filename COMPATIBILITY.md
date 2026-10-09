@@ -1,5 +1,7 @@
 # NewPageMergeMDL compatibility
 
+**Before every production compile, set `-game` to the target game/mod directory containing its correct `gameinfo.txt`.** Pass the directory, not the file, Steam root or `bin` directory. This is especially important for CSGO and MCV: AppID and mounts affect target layout, resources and defaults. Do not substitute another game's file. `-OutDir` controls output only and does not replace target selection. Keep existing assets and test isolated output in the intended game before replacing them. See the opening notes in [README.md](README.md) / [README.en.md](README.en.md) for format, material and runtime requirements.
+
 This fork uses PulseModel commit `52cf296a953fd6c2d072e34cfde5eb8eccc95564`
 as its base. It does not include StudioMDL-CE or Tools++ binaries or claim
 complete behavioral parity. Implementations use public documentation and the
