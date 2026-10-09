@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "source": {
+    "release_tag": "v1.2.23",
+    "url": "https://github.com/NPCodex/newpage-merge-mdl/releases/download/v1.2.23/NewPageMergeMDL-v1.2.23-win64.zip",
+    "api_url": "https://api.github.com/repos/NPCodex/newpage-merge-mdl/releases/assets/623962468",
+    "sha256": "1a1a03b989389fd4f13a13dc2d24b2aac8dc40bdf760a6d1b6044ea94c090676"
+  },
+  "files": [
+    {
+      "member": "NewPageMergeMDL/NewPageMergeMDL-C4D.exe",
+      "name": "NewPageMergeMDL-C4D.exe",
+      "sha256": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97"
+    }
+  ]
+}

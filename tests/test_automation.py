@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -39,10 +40,34 @@ class AutomationTests(unittest.TestCase):
             sync.release_version('invalid', None, 'new')
 
     def test_versioned_release_manifest_is_recognized(self):
-        for tag in ('v1.1-auto-abcdef', 'v1.2.0'):
+        for tag in ('v1.1-auto-abcdef', 'v1.2.0', 'v1.2.25-r1'):
             release = dict(draft=False, tag_name=tag, assets=[asset('upstream-manifest.json')])
             with patch.object(sync, 'api', return_value=[release]), patch.object(sync, 'fetch', return_value=b'{}'):
                 self.assertEqual(sync.published_manifest('o/r')['release_tag'], tag)
+
+    def test_single_package_embedded_manifest_drives_update_detection(self):
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, 'w') as archive:
+            archive.writestr('NewPageMergeMDL/upstream-manifest.json',
+                             json.dumps(dict(project_version='1.2.25', fingerprint='built')))
+        release = dict(draft=False, tag_name='v1.2.25-r1', assets=[
+            asset('newpage-v1.2.25-r1-win64.zip', 1), asset('newpage-v1.2.25-r1-linux64.zip', 2)])
+        with patch.object(sync, 'api', return_value=[release]), patch.object(sync, 'fetch', return_value=payload.getvalue()) as download:
+            manifest = sync.published_manifest('o/r')
+            self.assertEqual(manifest['fingerprint'], 'built')
+            self.assertEqual(sync.release_version('1.2.25', manifest, 'built'), ('1.2.25', 'v1.2.25-r1'))
+            download.assert_called_once_with(asset(identifier=2)['url'], accept='application/octet-stream')
+
+    def test_legacy_package_without_manifest_falls_back_to_older_release(self):
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, 'w') as archive:
+            archive.writestr('NewPageMergeMDL/README.md', 'legacy')
+        releases = [dict(draft=False, tag_name='v1.2.25-r1', published_at='2026-10-10',
+                         assets=[asset('old-win64.zip')]),
+                    dict(draft=False, tag_name='v1.2.24', published_at='2026-10-09',
+                         assets=[asset('upstream-manifest.json')])]
+        with patch.object(sync, 'api', return_value=releases), patch.object(sync, 'fetch', side_effect=[payload.getvalue(), b'{}']):
+            self.assertEqual(sync.published_manifest('o/r')['release_tag'], 'v1.2.24')
 
     def test_source_archive_versions_match_release(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -138,14 +163,25 @@ class AutomationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sync.package(argparse.Namespace(dist=folder, output=Path(folder) / 'out.zip', platform='win64'))
 
+    def test_windows_package_requires_c4d_helper(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D'):
+                (root / (name + '.exe')).write_bytes(b'MZfixture')
+            with self.assertRaisesRegex(ValueError, 'NewPageMergeMDL-C4D'):
+                sync.package(argparse.Namespace(dist=root, output=root / 'out.zip', platform='win64'))
+
     def test_binary_package_contains_provenance_and_licenses(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             dist, source = root / 'dist', root / 'source'
             dist.mkdir(); source.mkdir()
-            for name in ('NewPageMergeMDL.exe', 'NewPageMergeMDL-Decompiler.exe'):
+            for name in ('NewPageMergeMDL.exe', 'NewPageMergeMDL-Decompiler.exe', 'NewPageVRMLtoX3D.exe', 'NewPageMergeMDL-C4D.exe'):
                 (dist / name).write_bytes(b'binary')
-            for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
+            (dist / 'subtools').mkdir()
+            for name in ('l4d_animswap', 'meshtool', 'vmd2valvebiped'):
+                (dist / 'subtools' / (name + '.exe')).write_bytes(b'binary')
+            for name in ('LICENSE', 'README.md', 'README.en.md', 'INSTALL.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
                 (source / name).write_text(name)
             (source / 'libs/vendor').mkdir(parents=True)
             (source / 'libs/vendor/LICENSE').write_text('vendor notice')
@@ -156,12 +192,20 @@ class AutomationTests(unittest.TestCase):
             for name in ('LICENSE.md', 'SOURCE.md'):
                 (source / 'libs/meshoptimizer' / name).write_text('meshopt provenance')
             (root / 'manifest.json').write_text('{}')
+            with zipfile.ZipFile(root / 'source.zip', 'w') as archive:
+                archive.writestr('NewPageMergeMDL/main.cpp', 'exact merged input')
             (source / 'integration/gmod').mkdir(parents=True)
             (source / 'integration/gmod/newpage_vertexanim.lua').write_text('playback helper')
             (root / 'StudioMDL-CE.exe').write_text('reference only')
             sync.package(argparse.Namespace(dist=dist, source=source, output=root / 'out.zip',
-                                            platform='win64', manifest=root / 'manifest.json'))
+                                            platform='win64', manifest=root / 'manifest.json', source_archive=root / 'source.zip'))
             with zipfile.ZipFile(root / 'out.zip') as archive:
+                self.assertEqual(archive.read('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'), (root / 'source.zip').read_bytes())
+                self.assertIn('NewPageMergeMDL/INSTALL.md', archive.namelist())
+                inventory = dict(line.split('  ', 1)[::-1] for line in archive.read('NewPageMergeMDL/SHA256SUMS.txt').decode().splitlines())
+                self.assertEqual(set(inventory), {n.removeprefix('NewPageMergeMDL/') for n in archive.namelist()} - {'SHA256SUMS.txt'})
+                for name, digest in inventory.items():
+                    self.assertEqual(hashlib.sha256(archive.read('NewPageMergeMDL/' + name)).hexdigest(), digest)
                 self.assertIn('NewPageMergeMDL/upstream-manifest.json', archive.namelist())
                 self.assertIn('NewPageMergeMDL/BINARY_ANALYSIS.md', archive.namelist())
                 self.assertIn('NewPageMergeMDL/README.en.md', archive.namelist())
@@ -174,6 +218,17 @@ class AutomationTests(unittest.TestCase):
                 for name in ('LICENSE.md', 'SOURCE.md'):
                     self.assertIn('NewPageMergeMDL/libs/meshoptimizer/' + name, archive.namelist())
                 self.assertFalse(any('StudioMDL-CE' in name for name in archive.namelist()))
+
+            for name in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D',
+                         'subtools/l4d_animswap', 'subtools/meshtool', 'subtools/vmd2valvebiped'):
+                (dist / name).write_bytes(b'\x7fELFfixture')
+            sync.package(argparse.Namespace(dist=dist, source=source, output=root / 'linux.zip',
+                                            platform='linux64', manifest=root / 'manifest.json'))
+            with zipfile.ZipFile(root / 'linux.zip') as archive:
+                for name in ('NewPageMergeMDL', 'subtools/meshtool'):
+                    info = archive.getinfo('NewPageMergeMDL/' + name)
+                    self.assertEqual(info.create_system, 3)
+                    self.assertEqual((info.external_attr >> 16) & 0o777, 0o755)
 
     def test_checksums_verify_actual_artifacts_and_are_idempotent(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -199,7 +254,7 @@ class PackageValidationTests(unittest.TestCase):
             # magic-byte stubs and support files model the complete release
             # layout, including the standalone GPL converter's source.
             for name in (
-                'README.md','README.en.md','VALIDATION.md','IMPROVEMENTS.md',
+                'README.md','README.en.md','INSTALL.md','VALIDATION.md','IMPROVEMENTS.md',
                 'FIVE_COMPILER_COMPLETION.md','O5_FORMAT_IMPORTS.md','MESH_STATE_WORKFLOW.md','VRM_RUNTIME.md',
                 'integration/gmod/newpage_vertexanim.lua','integration/gmod/newpage_meshstates.lua',
                 'integration/gmod/newpage_vrm.lua','integration/gmod/newpage_vrm_materials.lua',
@@ -214,6 +269,10 @@ class PackageValidationTests(unittest.TestCase):
             ):z.writestr('NewPageMergeMDL/'+name,'fixture')
             for name in ('NewPageMergeMDL','NewPageMergeMDL-Decompiler','NewPageVRMLtoX3D'):
                 z.writestr('NewPageMergeMDL/'+name+suffix,binary)
+            if suffix:z.writestr('NewPageMergeMDL/NewPageMergeMDL-C4D.exe',binary)
+            for name in ('l4d_animswap', 'meshtool', 'vmd2valvebiped'):
+                z.writestr('NewPageMergeMDL/subtools/'+name+suffix,binary)
+            sync.write_inventory(z)
             if extra:z.writestr(extra,'unexpected')
         return archive
 
@@ -230,6 +289,21 @@ class PackageValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);archive=self.make_package(root,manifest={'project_version':'wrong'})
             with self.assertRaisesRegex(ValueError,'provenance'):self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted')
+
+    def test_unlisted_payload_is_rejected_before_extracting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);archive=self.make_package(root,extra='NewPageMergeMDL/unlisted.txt')
+            with self.assertRaisesRegex(ValueError,'cover'):self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted')
+            self.assertFalse((root/'extracted').exists())
+
+    def test_modified_payload_is_rejected_before_extracting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);original=self.make_package(root);changed=root/'changed.zip'
+            with zipfile.ZipFile(original) as source, zipfile.ZipFile(changed,'w') as output:
+                for entry in source.infolist():
+                    output.writestr(entry, b'changed' if entry.filename=='NewPageMergeMDL/README.md' else source.read(entry))
+            with self.assertRaisesRegex(ValueError,'checksum mismatch'):self.verifier().verify(changed,{'project_version':'1.2.6'},root/'extracted')
+            self.assertFalse((root/'extracted').exists())
 
     def test_package_traversal_is_rejected_before_extracting(self):
         with tempfile.TemporaryDirectory() as directory:

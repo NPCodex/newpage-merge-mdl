@@ -2,6 +2,8 @@
 
 本页关闭五编译器整合清单中 M3D、USD、VRML、C4D 的额外格式项目。导入结果仍须满足 MDL 的骨骼、材质、网格和动画表达限制；注册了格式解析器不等于完整复现对应制作软件。
 
+发行版按平台提供一个完整 ZIP，详见 [安装指南](INSTALL.md)。两个平台均已附带独立 VRML 转换器；Windows 另含 C4D 桥接程序。保持解压后的目录结构，无须再从其他附件拼装工具。Python 准备脚本需要自行安装 Python 3。
+
 ## 查看当前二进制的真实格式清单
 
 ```text
@@ -38,7 +40,7 @@ $body model scene.usda
 
 ## VRML97 / Classic VRML
 
-`.wrl` / `.x3dv` 通过独立的 `NewPageVRMLtoX3D` 程序转换，再由主编译器的 X3D importer 导入。转换程序使用 MeshLab 的 Parser/Scanner（固定 `ad55b47a9b0700e7b427db6db287bb3a39aa31e7`），采用 Assimp 的 Qt → pugixml 补丁。该程序按 GPL-3.0-or-later 单独分发；GPL 解析代码不链接进主编译器或 Assimp。
+`.wrl` / `.x3dv` 通过独立的 `NewPageVRMLtoX3D` 程序转换，再由主编译器的 X3D importer 导入。转换程序使用 MeshLab 的 Parser/Scanner（固定 `ad55b47a9b0700e7b427db6db287bb3a39aa31e7`），采用 Assimp 的 Qt → pugixml 补丁。该程序在同一个安装包内作为独立可执行文件按 GPL-3.0-or-later 分发，附带对应源码和许可；GPL 解析代码不链接进主编译器或 Assimp，主程序保持现有许可。
 
 只转换：
 
@@ -67,9 +69,9 @@ cmake --build build-vrml --config Release
 
 Windows 的 C4D 导入使用独立的 Cineware 辅助程序，将场景中的显式可编辑多边形转换为 GLB，再使用共用场景导入路径。专有 SDK 本体留在本地构建环境，不放进源码仓库或通用源码包。Linux 可导入预先转换的 GLB。
 
-本次本地构建并验证的完整 Windows x64 发行包包含 `NewPageMergeMDL-C4D.exe`。自动 CI 的 Windows/Linux 构建不下载 Cineware SDK，因此 Windows CI 包不含该程序；需要直接读取 C4D 时，将完整 Windows 包中的辅助程序放到主程序旁即可。可用 `-importformats` 检查本次安装是否具备桥接入口。
+Windows x64 单包已经将 `NewPageMergeMDL-C4D.exe` 放在主程序旁，自动发布使用同样的完整打包要求。CI 从固定来源按哈希验证并复用已经许可和测试的产品二进制，不下载 Cineware SDK；缺失或校验不符会阻止发布完整 Windows 包。可用 `-importformats` 检查本次安装的桥接入口。
 
-将 `NewPageMergeMDL-C4D.exe` 放在主程序旁，QC 中直接引用 `.c4d` 即可。主程序按原始 C4D 路径缓存，自动清理本次转换的临时 GLB，依赖清单保留原始文件。辅助程序也可单独调用：
+保持 `NewPageMergeMDL-C4D.exe` 与主程序在同一目录，QC 中直接引用 `.c4d` 即可。主程序按原始 C4D 路径缓存，自动清理本次转换的临时 GLB，依赖清单保留原始文件。辅助程序也可单独调用：
 
 ```text
 NewPageMergeMDL-C4D source.c4d converted.glb

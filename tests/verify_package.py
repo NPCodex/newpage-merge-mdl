@@ -3,8 +3,10 @@
 Usage: python tests/verify_package.py package.zip --manifest manifest.json
 """
 import argparse
+import hashlib
 import json
 import os
+import re
 from pathlib import Path, PurePosixPath
 import struct
 import subprocess
@@ -12,6 +14,29 @@ import sys
 import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
+
+
+def verify_inventory(package):
+    inventory = 'NewPageMergeMDL/SHA256SUMS.txt'
+    actual = {info.filename for info in package.infolist() if not info.is_dir()} - {inventory}
+    listed = {}
+    for line in package.read(inventory).decode('utf-8').splitlines():
+        if not re.fullmatch(r'[0-9a-f]{64}  .+', line):
+            raise ValueError('Invalid checksum inventory line')
+        digest, relative = line.split('  ', 1)
+        name = 'NewPageMergeMDL/' + relative
+        if name in listed:
+            raise ValueError('Duplicate checksum inventory entry')
+        listed[name] = digest
+    if set(listed) != actual:
+        raise ValueError('Checksum inventory does not cover the package contents')
+    for name, digest in listed.items():
+        actual_digest = hashlib.sha256()
+        with package.open(name) as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                actual_digest.update(chunk)
+        if actual_digest.hexdigest() != digest:
+            raise ValueError('Package checksum mismatch: ' + name)
 
 
 def verify(archive, expected, destination):
@@ -27,7 +52,7 @@ def verify(archive, expected, destination):
         if manifest != expected:
             raise ValueError('Packaged source provenance does not match preparation manifest')
         for name in (
-            'README.md', 'README.en.md', 'VALIDATION.md', 'IMPROVEMENTS.md',
+            'README.md', 'README.en.md', 'INSTALL.md', 'VALIDATION.md', 'IMPROVEMENTS.md',
             'FIVE_COMPILER_COMPLETION.md', 'O5_FORMAT_IMPORTS.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md',
             'integration/gmod/newpage_vertexanim.lua', 'integration/gmod/newpage_meshstates.lua',
             'integration/gmod/newpage_vrm.lua', 'integration/gmod/newpage_vrm_materials.lua',
@@ -41,11 +66,20 @@ def verify(archive, expected, destination):
             'libs/tinyusdz/LICENSE', 'libs/tinyusdz/LICENSE-APACHE-2.0',
         ):
             package.getinfo('NewPageMergeMDL/' + name)
-        suffix = '.exe' if os.name == 'nt' else ''
-        for tool in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D'):
+        # Content inspection also works when repacking a previously tested
+        # Linux release on Windows. Execution tests still run on its native OS.
+        suffix = '.exe' if 'NewPageMergeMDL/NewPageMergeMDL.exe' in names else ''
+        required = ['NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D']
+        if suffix:
+            required.append('NewPageMergeMDL-C4D')
+        required.extend('subtools/' + name for name in ('l4d_animswap', 'meshtool', 'vmd2valvebiped'))
+        for tool in required:
             binary = package.read('NewPageMergeMDL/' + tool + suffix)
-            if not binary.startswith(b'MZ' if os.name == 'nt' else b'\x7fELF'):
+            if not binary.startswith(b'MZ' if suffix else b'\x7fELF'):
                 raise ValueError('Invalid native executable: ' + tool)
+        if expected.get('fingerprint'):
+            package.getinfo('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip')
+        verify_inventory(package)
         package.extractall(destination)
     root = Path(destination) / 'NewPageMergeMDL'
     if os.name != 'nt':
@@ -99,7 +133,7 @@ def main():
             if c4d.read_bytes()[:2]!=b'MZ':raise ValueError('Invalid native C4D helper')
             subprocess.run([sys.executable,str(Path(__file__).with_name('c4d_bridge_test.py')),str(compiler)],check=True)
         else:
-            print('Optional Windows Cineware C4D helper is not included; C4D-specific checks skipped.',flush=True)
+            print('Linux package uses C4D-to-GLB conversion on Windows; native C4D checks do not apply.',flush=True)
         subprocess.run([sys.executable, str(Path(__file__).with_name('compatibility.py')), str(compiler)], check=True)
     print('Packaged binaries, version, provenance, runtime files and compatibility suite verified.')
 

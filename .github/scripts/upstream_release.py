@@ -7,6 +7,7 @@ All URLs come from configured official GitHub repositories, not release-body tex
 import argparse
 import datetime
 import hashlib
+import io
 import json
 import os
 import re
@@ -90,12 +91,25 @@ def published_manifest(repo):
     # API list order can differ from publication order when tags share an older target.
     for release in sorted(releases, key=lambda item: item.get('published_at') or '', reverse=True):
         if release['draft'] or not (release['tag_name'].startswith('newpage-auto-') or
-                                  re.fullmatch(r'v\d+\.\d+(?:\.\d+)?(?:-auto-[\w-]+)?', release['tag_name'])):
+                                  re.fullmatch(r'v\d+\.\d+(?:\.\d+)?(?:-auto-[\w-]+|-r\d+)?', release['tag_name'])):
             continue
         for asset in release['assets']:
             if asset['name'] == 'upstream-manifest.json':
                 # The API endpoint supports GITHUB_TOKEN for private repositories.
                 manifest = json.loads(fetch(asset['url'], accept='application/octet-stream'))
+                manifest.setdefault('release_tag', release['tag_name'])
+                return manifest
+        # New releases ship provenance inside the single platform package.
+        # Prefer Linux's smaller archive; keep the external format readable for
+        # historical releases and use the authenticated asset API for both.
+        packages = sorted((a for a in release['assets']
+                           if re.search(r'-(?:linux64|win64)\.zip$', a['name'], re.I)),
+                          key=lambda a: ('linux64' not in a['name'].lower(), a['name']))
+        for asset in packages:
+            with zipfile.ZipFile(io.BytesIO(fetch(asset['url'], accept='application/octet-stream'))) as archive:
+                if 'NewPageMergeMDL/upstream-manifest.json' not in archive.namelist():
+                    continue
+                manifest = json.loads(archive.read('NewPageMergeMDL/upstream-manifest.json'))
                 manifest.setdefault('release_tag', release['tag_name'])
                 return manifest
     return None
@@ -229,7 +243,7 @@ def prepare(args):
                 raise ValueError('Controller target escapes candidate')
             shutil.rmtree(target)
         shutil.copytree(ROOT / name, candidate / name, dirs_exist_ok=True)
-    for name in ('README.md', 'README.en.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md', 'AGENTS.md', '.gitignore'):
+    for name in ('README.md', 'README.en.md', 'INSTALL.md', 'UPSTREAM_README.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md', 'AGENTS.md', '.gitignore'):
         shutil.copy2(ROOT / name, candidate / name)
     stamp_version(candidate, base_version, state['project_version'])
     for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md',
@@ -268,11 +282,13 @@ def prepare(args):
         'It adds explicit QC/weight/FBX policies, true FBX bind poses, expanded flex capacity, '
         'scene interpolation, PMX morphs, skinned instancing, mesh-state/VRM consumers and '
         'journaled output recovery. M3D and pinned USD import are built in; VRML uses a '
-        'separate GPL converter with corresponding source. Automated packages omit the '
-        'optional proprietary-SDK C4D helper; a separately verified complete local Windows '
-        'package may include it. See O5_FORMAT_IMPORTS.md for format and license scope.\n\n'
+        'separate GPL converter with corresponding source. The complete Windows package '
+        'includes the validated C4D helper. See O5_FORMAT_IMPORTS.md for format and license scope.\n\n'
         'Both platform builds and compatibility tests must pass before publication. '
-        'The attached source archive is the actual merged build input; '
+        'Download one ZIP for your platform, extract the entire folder, then set -game '
+        'to the target game directory containing gameinfo.txt (including CSGO/MCV). '
+        'See INSTALL.md inside the package. Reports, provenance and file checksums are included. '
+        'sources/NewPageMergeMDL-source.zip inside each package is the actual merged build input; '
         'GitHub-generated source archives correspond to the controller commit.\n'
     )
     (work / 'release-notes.md').write_text(notes, encoding='utf-8')
@@ -285,40 +301,78 @@ def source_archive(args):
         for path in sorted(source.rglob('*')):
             relative = path.relative_to(source)
             if path.is_file() and not any(p in {'.git', '__pycache__', 'build', 'out', 'dist'} for p in relative.parts):
-                archive.write(path, Path('NewPageMergeMDL') / relative)
+                archive.write(path, (Path('NewPageMergeMDL') / relative).as_posix())
+
+
+def write_inventory(archive):
+    """Hash every payload entry; the inventory deliberately excludes itself."""
+    entries = archive.infolist()
+    if len({entry.filename for entry in entries}) != len(entries):
+        raise ValueError('Duplicate package entries')
+    lines = []
+    for entry in sorted(entries, key=lambda item: item.filename):
+        if entry.is_dir():
+            continue
+        digest = hashlib.sha256()
+        with archive.open(entry) as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(chunk)
+        lines.append(digest.hexdigest() + '  ' + entry.filename.removeprefix('NewPageMergeMDL/') + '\n')
+    archive.writestr('NewPageMergeMDL/SHA256SUMS.txt', ''.join(lines))
 
 
 def package(args):
     dist, output = Path(args.dist), Path(args.output)
     extension = '.exe' if args.platform == 'win64' else ''
-    for name in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler'):
+    required = ['NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D']
+    if args.platform == 'win64':
+        required.append('NewPageMergeMDL-C4D')
+    required.extend('subtools/' + name for name in ('l4d_animswap', 'meshtool', 'vmd2valvebiped'))
+    for name in required:
         if not (dist / (name + extension)).is_file():
             raise ValueError('Missing required executable: ' + name)
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(dist.rglob('*')):
             if path.is_file():
-                archive.write(path, Path('NewPageMergeMDL') / path.relative_to(dist))
-        for name in ('LICENSE', 'README.md', 'README.en.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
-            archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
+                name = (Path('NewPageMergeMDL') / path.relative_to(dist)).as_posix()
+                archive.write(path, name)
+                if args.platform == 'linux64':
+                    with path.open('rb') as stream:
+                        is_elf = stream.read(4) == b'\x7fELF'
+                    if is_elf:
+                        # Repacking a Linux release on Windows must retain
+                        # runnable Unix permissions in its central directory.
+                        info = archive.getinfo(name)
+                        info.create_system = 3
+                        info.external_attr = 0o100755 << 16
+        for name in ('LICENSE', 'README.md', 'README.en.md', 'INSTALL.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
+            archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
+        if getattr(args, 'source_archive', None):
+            archive.write(args.source_archive, 'NewPageMergeMDL/sources/NewPageMergeMDL-source.zip')
         for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md',
                      'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
             if (Path(args.source) / name).is_file():
-                archive.write(Path(args.source) / name, Path('NewPageMergeMDL') / name)
+                archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
         for path in sorted((Path(args.source) / 'tests/reports').glob('*-validation.json')):
-            archive.write(path, Path('NewPageMergeMDL/tests/reports') / path.name)
+            archive.write(path, 'NewPageMergeMDL/tests/reports/' + path.name)
         for path in sorted((Path(args.source) / 'integration').rglob('*')):
             if path.is_file():
-                archive.write(path, Path('NewPageMergeMDL') / path.relative_to(args.source))
+                archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())
+
         for folder in ('tools', 'libs/assimp/contrib/pugixml', 'libs/tinyusdz'):
             for path in sorted((Path(args.source) / folder).rglob('*')):
                 if path.is_file() and '__pycache__' not in path.parts and path.suffix != '.pyc':
-                    archive.write(path, Path('NewPageMergeMDL') / path.relative_to(args.source))
+                    archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())
         # Preserve bundled third-party license notices.
         for path in sorted((Path(args.source) / 'libs').rglob('*')):
             nv_notice = path.parent.name in {'nvtristrip', 'meshoptimizer'} and path.name in {'README.txt', 'SOURCE.md'}
             if path.is_file() and 'pugixml' not in path.parts and 'tinyusdz' not in path.parts and ('license' in path.name.lower() or 'copying' in path.name.lower() or nv_notice):
-                archive.write(path, Path('NewPageMergeMDL') / path.relative_to(args.source))
+                archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())
+    # Reopen after writing: Windows ZipInfo.from_file retains a backslash
+    # orig_filename until the central directory is read back from disk.
+    with zipfile.ZipFile(output, 'a', zipfile.ZIP_DEFLATED) as archive:
+        write_inventory(archive)
 
 
 def checksums(args):
@@ -335,6 +389,7 @@ if __name__ == '__main__':
     p = commands.add_parser('package'); p.add_argument('--source', required=True); p.add_argument('--dist', required=True)
     p.add_argument('--platform', choices=['win64', 'linux64'], required=True); p.add_argument('--output', required=True)
     p.add_argument('--manifest', required=True)
+    p.add_argument('--source-archive', help='Exact merged build input for automatic upstream releases')
     p = commands.add_parser('checksums'); p.add_argument('--folder', required=True)
     args = parser.parse_args()
     {'prepare': prepare, 'source-archive': source_archive, 'package': package, 'checksums': checksums}[args.command](args)

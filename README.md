@@ -21,6 +21,12 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 
 项目版本：**v1.2.25**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
+## 下载与安装：每个平台一个完整包
+
+从 [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) 选择当前版本的 **Windows x64 ZIP** 或 **Linux ZIP**，完整解压到一个新目录即可使用。Windows 包已经包含 C4D 桥接程序；两个平台包都包含编译器、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本、GMod Lua 模块、文档、许可、构建清单和包内校验文件，无须拼接其他附件。根目录的 `INSTALL.md`、`upstream-manifest.json`、`SHA256SUMS.txt` 提供安装说明、构建来源与文件校验；报告位于 `tests/reports/`。自动上游合并版还内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版的完整项目源码由发布标签对应的仓库提供。GitHub 自动显示的 **Source code** 链接供源码浏览，不是安装包。
+
+更新时解压到新目录并使用整套新文件，不要仅覆盖主程序或混用旧辅助程序。普通编译无需 Python；运行 `tools/` 中的 Python 准备脚本需要自行安装 Python 3。网格状态及 VRM 的 GMod Lua 模块按相应指南安装，不会因解压编译器而自动在游戏生效。详见 [安装指南](INSTALL.md)。
+
 自动更新及 GitHub Release 配置见 [AUTOMATION.md](AUTOMATION.md)。
 
 基于 [PulseModel](https://github.com/ToppiOfficial/PulseModel) 的 Source 模型编译工具，加入 StudioMDL-CE / StudioMDL++ / NekoMDL 兼容功能与自行实现的动画扩展。NekoMDL 对照依据为附带的中文版 v2.3.0 更新日志。
@@ -49,7 +55,7 @@ Release/MinSizeRel 构建默认剔除未使用的函数和数据；GNU/Clang 链
 - 2013 参考环境已恢复；其实际容量与宣传的差异、CE replacemesh 缺有效语法的证据也已记录。验证结果见当前版本报告，不将参考未知信息算作已兼容。
 - 后续运行验证确认 L4D2 `2.2.4.3 build 10097` 的标准 `prop_dynamic` 能创建本工具模型并读取/切换 `mesh_state` bodygroup；同一路径的 `m_flexWeight` 不存在，因此不宣称 L4D2 标准实体支持顶点表情。CE `replacemesh` 仍缺可复现公开语法，Neko 已登记格式没有新的缺口；Insurgency 模型加载仍未认证。详见 [后续运行报告](tests/reports/v1.2.23-followup-runtime.json)。
 
-本次本地验证并打包的完整 Windows x64 发行包包含 `NewPageMergeMDL-C4D.exe`。自动 CI 的 Windows/Linux 包不获取专有 Cineware SDK，Windows CI 包因此不含该辅助程序；可从完整 Windows 包补充到主程序旁，Linux 使用预先转换的 GLB。普通 CMake 构建无需该 SDK。具体格式和重建条件见 [O5 导入说明](O5_FORMAT_IMPORTS.md)。
+Windows x64 单包包含 `NewPageMergeMDL-C4D.exe`，解压后与主程序放在一起即可使用；Linux 使用预先在 Windows 转换的 GLB。自动发布同样提供完整 Windows 包，不再要求补装辅助程序。普通 CMake 构建无需 Cineware SDK；独立重建 C4D 桥接程序仍需另行取得 SDK 许可。具体格式和重建条件见 [O5 导入说明](O5_FORMAT_IMPORTS.md)。
 
 ## v1.2.23 后续运行时边界验证
 

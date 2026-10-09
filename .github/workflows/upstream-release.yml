@@ -8,6 +8,7 @@ on:
     paths:
       - 'README.md'
       - 'README.en.md'
+      - 'INSTALL.md'
       - 'RESEARCH.md'
       - 'IMPROVEMENTS.md'
       - 'VALIDATION.md'
@@ -15,6 +16,7 @@ on:
       - 'AUTOMATION.md'
       - 'automation/**'
       - '.github/scripts/upstream_release.py'
+      - '.github/scripts/fetch_windows_extras.py'
       - '.github/scripts/refresh_overlay.py'
       - '.github/workflows/upstream-release.yml'
       - 'tests/**'
@@ -107,15 +109,22 @@ jobs:
       - name: Extract source
         run: python -m zipfile -e prepared/NewPageMergeMDL-source.zip candidate
       - name: Configure
-        run: cmake -S candidate/NewPageMergeMDL -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist"
+        run: cmake -S candidate/NewPageMergeMDL -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist"
       - name: Build every tool
         run: cmake --build build --config Release --parallel 2
       - name: Test pipeline helpers
         run: python -m unittest discover -s tests -p test_automation.py -v
+      - name: Test pinned helper staging
+        run: python -m unittest discover -s tests -p test_windows_extras.py -v
+      - name: Stage verified Windows C4D helper
+        if: matrix.platform == 'win64'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/fetch_windows_extras.py --dist dist
       - name: Test emitted models and decompiled animations
         run: python candidate/NewPageMergeMDL/tests/compatibility.py dist/NewPageMergeMDL${{ matrix.ext }}
       - name: Package with source provenance
-        run: python .github/scripts/upstream_release.py package --source candidate/NewPageMergeMDL --dist dist --platform ${{ matrix.platform }} --manifest prepared/upstream-manifest.json --output newpage-merge-mdl-${{ matrix.platform }}.zip
+        run: python .github/scripts/upstream_release.py package --source candidate/NewPageMergeMDL --dist dist --platform ${{ matrix.platform }} --manifest prepared/upstream-manifest.json --source-archive prepared/NewPageMergeMDL-source.zip --output newpage-merge-mdl-${{ matrix.platform }}.zip
       - name: Verify packaged binaries before release
         run: python candidate/NewPageMergeMDL/tests/verify_package.py newpage-merge-mdl-${{ matrix.platform }}.zip --manifest prepared/upstream-manifest.json
       - uses: actions/upload-artifact@v7
@@ -138,14 +147,32 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: merged-source
-          path: release-files
+          path: prepared
       - uses: actions/download-artifact@v8
         with:
           pattern: tested-*
           merge-multiple: true
           path: release-files
-      - name: Generate checksums
-        run: python3 .github/scripts/upstream_release.py checksums --folder release-files
+      - name: Add single-package installation and ZIP checksums to release notes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          notes = Path('prepared/release-notes.md')
+          intro = ('Download one ZIP for your operating system and extract the entire folder. '
+                   'Windows includes the C4D and VRML converters; Linux includes the tools supported on Linux. '
+                   'Read INSTALL.md inside the package and always set -game to the directory containing '
+                   'the correct target gameinfo.txt before compiling. No separate source, update or helper '
+                   'download is needed: exact merged source, provenance, checksums and validation reports '
+                   'are included in each package.\n\n'
+                   '下载对应系统的一个 ZIP，完整解压即可使用；编译前务必设置正确的 gameinfo.txt 所在目录。'
+                   '安装说明、源码、校验清单和验证记录均在包内。\n\n')
+          checksums = '\n'.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}'
+                                for p in sorted(Path('release-files').glob('newpage-merge-mdl-*.zip')))
+          notes.write_text(intro + notes.read_text(encoding='utf-8') + '\n\nZIP SHA256:\n```text\n'
+                           + checksums + '\n```\n', encoding='utf-8')
+          PY
       - name: Publish complete tested release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -153,7 +180,28 @@ jobs:
         shell: bash
         run: |
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "NewPageMergeMDL $RELEASE_TAG" --notes-file release-files/release-notes.md --draft --prerelease
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "NewPageMergeMDL $RELEASE_TAG" --notes-file prepared/release-notes.md --draft --prerelease
           fi
-          gh release upload "$RELEASE_TAG" release-files/* --clobber
-          gh release edit "$RELEASE_TAG" --draft=false --prerelease --notes-file release-files/release-notes.md
+          gh release upload "$RELEASE_TAG" release-files/newpage-merge-mdl-win64.zip release-files/newpage-merge-mdl-linux64.zip --clobber
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          tag = os.environ['RELEASE_TAG']
+          release = json.loads(subprocess.check_output(
+              ['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/releases/tags/{tag}']))
+          keep = {'newpage-merge-mdl-win64.zip', 'newpage-merge-mdl-linux64.zip'}
+          for name in keep:
+              matches = [asset for asset in release['assets'] if asset['name'] == name]
+              expected = 'sha256:' + hashlib.sha256((Path('release-files') / name).read_bytes()).hexdigest()
+              if len(matches) != 1 or matches[0].get('digest') != expected:
+                  raise RuntimeError('Uploaded package digest mismatch: ' + name)
+          # A forced retry may target a release made by the older multi-asset flow.
+          # Remove superseded assets only after both complete ZIPs are verified.
+          for asset in release['assets']:
+              if asset['name'] not in keep:
+                  subprocess.run(['gh', 'release', 'delete-asset', tag, asset['name'], '--yes'], check=True)
+          PY
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease --notes-file prepared/release-notes.md

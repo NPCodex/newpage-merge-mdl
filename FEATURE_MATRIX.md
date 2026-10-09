@@ -3,6 +3,8 @@
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
 可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.25。
 
+发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化不改变 v1.2.25 编译器行为，也不扩展下表的游戏运行时认证范围。
+
 v1.2.25 修复真实手臂 QC：VRD 短名父骨在折叠时同步解析并重算姿态；共用皮肤表的未使用基材质列警告后跳过，保留实际使用的替换与全部行。CE 会保留未使用的皮肤材质登记，本工具继续裁剪；详见 [验证记录](VALIDATION.md)。
 
 v1.2.24 仅精简 Release 链接产物，保留五编译器固定功能范围及全部导入器；不改变下表中的功能状态和已知兼容边界。

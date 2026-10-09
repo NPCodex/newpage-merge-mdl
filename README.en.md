@@ -13,12 +13,18 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - `-OutDir` controls output only and cannot replace `-game`. First compile into an isolated output directory while preserving original inputs and existing game models. When deploying, keep the matching MDL/VVD/VTX/PHY/ANI set together; mixing old sidecars can cause loading failures.
 - Supply the target game's Source VMT/VTF materials and required mounted resources. Importing a mesh does not convert its source application's shaders or textures into Source materials.
 - Format budgets still apply, including at most 256 final bone indices (255 by default), three final weights per vertex and local mesh/index limits. FE cloth targets CSGO skeletal models with extended VTX. Use default offline SubD baking; explicit native SubD patches crash the tested CSGO legacy renderer. See the [capacity ledger](FIVE_COMPILER_COMPLETION.md) and [cloth guide](CSGO_CLOTH_AUTHORING.md).
-- [VRM](VRM_RUNTIME.md) and [finite mesh states](MESH_STATE_WORKFLOW.md) require their supplied GMod consumers for runtime behavior. VRML uses its separate converter. Direct C4D input requires the helper included in the complete local Windows package; automated CI packages omit it. See the [format guide](O5_FORMAT_IMPORTS.md).
+- [VRM](VRM_RUNTIME.md) and [finite mesh states](MESH_STATE_WORKFLOW.md) require their supplied GMod consumers for runtime behavior. VRML uses the bundled separate converter. Direct C4D input uses the helper included in the Windows package. Linux accepts a GLB converted beforehand on Windows. See the [format guide](O5_FORMAT_IMPORTS.md).
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
 **Project version: v1.2.25.** The compiler, decompiler and bundled tools share this
 version.
+
+## Download and install: one complete archive per platform
+
+Choose the current **Windows x64 ZIP** or **Linux ZIP** from [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) and extract the entire archive into a new directory. Each archive includes the compiler, decompiler, subtools, separate VRML converter with its corresponding source, preparation scripts, GMod Lua modules, documentation, licenses, build manifest and internal checksums. The Windows archive also includes the C4D helper. No additional release attachments need to be combined. `INSTALL.md`, `upstream-manifest.json` and `SHA256SUMS.txt` are at the package root; reports are in `tests/reports/`. Automatic upstream releases also embed `sources/NewPageMergeMDL-source.zip`; complete project source for manual releases is available from the repository at the release tag. GitHub's automatic **Source code** links are for source browsing, not installation.
+
+For updates, use a fresh directory and the complete new file set; do not overwrite only the compiler or mix helpers from older versions. Ordinary compilation does not require Python; the Python preparation scripts in `tools/` require a separately installed Python 3. Install the GMod Lua consumers according to their guides when using mesh states or VRM runtime features. See [INSTALL.md](INSTALL.md).
 
 A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/PulseModel),
 with independently implemented StudioMDL-CE / StudioMDL++ / NekoMDL compatibility extensions.
@@ -49,7 +55,7 @@ The [completion ledger](FIVE_COMPILER_COMPLETION.md) accounts for every R/E/V/S/
 - Restores the 2013 reference environment and records its measured limits. Unresolved CE replacemesh syntax and unspecified closed-source format details are documented as unknown, not claimed as parity.
 - Follow-up runtime verification confirms L4D2 `2.2.4.3 build 10097` standard `prop_dynamic` entities can create the tool's models and read/switch the `mesh_state` bodygroup; the same path has no `m_flexWeight`, so standard L4D2 entities are not claimed to consume vertex expressions. CE `replacemesh` still lacks reproducible public syntax, Neko's registered formats show no new gap, and Insurgency model loading remains unauthenticated. See the [follow-up runtime report](tests/reports/v1.2.23-followup-runtime.json).
 
-The complete, locally validated Windows x64 package includes `NewPageMergeMDL-C4D.exe`. Automated Windows/Linux CI builds do not acquire the proprietary Cineware SDK, so the Windows CI package omits this helper. It can be added beside the compiler from the complete Windows package; Linux imports a GLB converted beforehand. The ordinary CMake build needs no Cineware SDK. See the [O5 import guide](O5_FORMAT_IMPORTS.md) for format and rebuild requirements.
+The Windows x64 archive includes `NewPageMergeMDL-C4D.exe` beside the compiler, including in automated releases. Linux imports a GLB converted beforehand on Windows. The ordinary CMake build needs no Cineware SDK; rebuilding the C4D helper still requires a separately licensed SDK. See the [O5 import guide](O5_FORMAT_IMPORTS.md) for format and rebuild requirements.
 
 ## v1.2.23 follow-up runtime boundaries
 

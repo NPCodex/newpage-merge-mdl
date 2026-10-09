@@ -1,6 +1,6 @@
 name: Release
 
-# Manual only. Creates one DRAFT release containing every tool.
+# Manual only. Creates one DRAFT release with one complete ZIP per platform.
 on:
   workflow_dispatch:
 
@@ -44,12 +44,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Test packaging and update detection
+        run: python -m unittest discover -s tests -p test_automation.py -v
+
       - name: Configure
         # no -G: use whatever toolchain the runner image ships
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DPULSE_BUILD_MESHTOOL=OFF -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
 
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Test pinned helper staging
+        run: python -m unittest discover -s tests -p test_windows_extras.py -v
+
+      - name: Stage verified Windows C4D helper
+        if: matrix.plat == 'win64'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/fetch_windows_extras.py --dist dist
 
       - name: Test emitted models
         run: python tests/compatibility.py dist/NewPageMergeMDL${{ matrix.ext }}
@@ -67,6 +79,7 @@ jobs:
         with:
           name: release-${{ matrix.plat }}
           path: newpage-merge-mdl-*.zip
+          if-no-files-found: error
 
   publish:
     needs: [prepare, build]
@@ -86,6 +99,21 @@ jobs:
           prev=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
           [ -n "$prev" ] && range="$prev..HEAD" || range="HEAD"
           git log --reverse --pretty=format:%x00%B "$range" | python3 .github/scripts/release-notes.py > notes.txt
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          notes = Path('notes.txt')
+          intro = ('Download one ZIP for your operating system and extract the entire folder. '
+                   'Windows includes the C4D and VRML converters; Linux includes the tools supported on Linux. '
+                   'Read INSTALL.md inside the package and always set -game to the directory containing '
+                   'the correct target gameinfo.txt before compiling. No separate update or helper package is needed.\n\n'
+                   '下载对应系统的一个 ZIP，完整解压即可使用；编译前务必设置正确的 gameinfo.txt 所在目录。'
+                   '安装说明、校验清单和验证记录均在包内。\n\n')
+          checksums = '\n'.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}'
+                                for p in sorted(Path('.').glob('newpage-merge-mdl-*.zip')))
+          notes.write_text(intro + notes.read_text(encoding='utf-8') + '\n\nZIP SHA256:\n```text\n'
+                           + checksums + '\n```\n', encoding='utf-8')
+          PY
           cat notes.txt
 
       - name: Create draft release
@@ -93,4 +121,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ needs.prepare.outputs.tag }}" newpage-merge-mdl-*.zip --target "${{ github.sha }}" --title "${{ needs.prepare.outputs.tag }}" --notes-file notes.txt --draft
+          gh release create "${{ needs.prepare.outputs.tag }}" newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-win64.zip newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-linux64.zip --target "${{ github.sha }}" --title "${{ needs.prepare.outputs.tag }}" --notes-file notes.txt --draft
