@@ -257,5 +257,109 @@
     "Performance sample is one production model, three timed alternating runs per compiler; not a general speed guarantee.",
     "No new in-game session; this validates compilation and emitted model files.",
     "This report identifies local llvm-mingw binaries; Windows/MSVC and Linux release binaries are independently built and tested in CI."
-  ]
+  ],
+  "published_release": {
+    "tag": "v1.2.26-r1",
+    "url": "https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.26-r1",
+    "source_commit": "db90cac341c71dbd2cfd84d73763616ab75461e0",
+    "workflow_run": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/37973400445",
+    "workflow_conclusion": "success",
+    "packages": [
+      {
+        "name": "newpage-merge-mdl-v1.2.26-r1-linux64.zip",
+        "bytes": 4738544,
+        "unpacked_bytes": 12432069,
+        "files": 97,
+        "sha256": "052b7eea36d837856c80d3b23e41e709a5ef5c961cdbf9675c220db77e264201",
+        "native": [
+          {
+            "path": "NewPageMergeMDL/NewPageMergeMDL",
+            "bytes": 9881912,
+            "sha256": "b98a2a35c3c381880e1ac74b519f0ff10bb66568d788454ba7920c0dd8f26139"
+          },
+          {
+            "path": "NewPageMergeMDL/NewPageMergeMDL-Decompiler",
+            "bytes": 358888,
+            "sha256": "2b5c776fb85a0a47828e75d726a1255011249ffe5686d702767aa9d955c2c6a1"
+          },
+          {
+            "path": "NewPageMergeMDL/NewPageVRMLtoX3D",
+            "bytes": 92488,
+            "sha256": "bcab79c24bda43b56432bafa61374d6781074f20fc71b01b242ad789be065b1a"
+          },
+          {
+            "path": "NewPageMergeMDL/subtools/l4d_animswap",
+            "bytes": 141624,
+            "sha256": "99f29683f44d42103a10665a36cd40b171f60131c5f3d41c4eab3ab460c74632"
+          },
+          {
+            "path": "NewPageMergeMDL/subtools/meshtool",
+            "bytes": 145720,
+            "sha256": "caff1dbbc3099b4d51df6fc25f9db68d0680dadf5d67bea6c2963899201255ef"
+          },
+          {
+            "path": "NewPageMergeMDL/subtools/vmd2valvebiped",
+            "bytes": 215496,
+            "sha256": "42fe8195867444f08f6995e33b36e8037f0fe5daefd0e88e7a2ee3650d4a1140"
+          }
+        ]
+      },
+      {
+        "name": "newpage-merge-mdl-v1.2.26-r1-win64.zip",
+        "bytes": 7230469,
+        "unpacked_bytes": 17003566,
+        "files": 99,
+        "sha256": "01d4084661f39a275719090fd3ae2e7874202459fdfa068da0c7999eddc23587",
+        "native": [
+          {
+            "path": "NewPageMergeMDL/NewPageMergeMDL-C4D.exe",
+            "bytes": 2643968,
+            "sha256": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97"
+          },
+          {
+            "path": "NewPageMergeMDL/NewPageMergeMDL-Decompiler.exe",
+            "bytes": 725504,
+            "sha256": "cd6a0552f0d06e9946f22b85964c4814292cb28272a877d77bf726645742ba35"
+          },
+          {
+            "path": "NewPageMergeMDL/NewPageMergeMDL.exe",
+            "bytes": 10281472,
+            "sha256": "1e5564176e876d2cbea419f93398486e6311bf1103e61790bfc9875f467f84ad"
+          },
+          {
+            "path": "NewPageMergeMDL/NewPageVRMLtoX3D.exe",
+            "bytes": 378368,
+            "sha256": "67efbca45a432df7897d8d1a90b51f1034cba5e47ccb69ee922041934eae7986"
+          },
+          {
+            "path": "NewPageMergeMDL/subtools/l4d_animswap.exe",
+            "bytes": 373760,
+            "sha256": "ca1f4c86784355a3e602c7a5e5e82b0e392edfe643c3c20b3712764ccdcfc38f"
+          },
+          {
+            "path": "NewPageMergeMDL/subtools/meshtool.exe",
+            "bytes": 428544,
+            "sha256": "155e7671a30818014b8d61af05dcfd53387f16ae54cb2376157fd234162fb7f0"
+          },
+          {
+            "path": "NewPageMergeMDL/subtools/vmd2valvebiped.exe",
+            "bytes": 532992,
+            "sha256": "08e42e6f99b069fab7cdf911abe2db3cab75207b80920c349947c77ffe5b3273"
+          }
+        ],
+        "real_models": {
+          "viewarms": true,
+          "plum": true
+        }
+      }
+    ],
+    "windows_original_models": {
+      "matches_v1_2_25": {
+        "viewarms": true,
+        "plum": true
+      },
+      "inputs_unchanged": true,
+      "input_files_checked": 50
+    }
+  }
 }

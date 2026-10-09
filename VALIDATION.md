@@ -1,5 +1,14 @@
 # v1.2.26 当前验证
 
+正式发布 [v1.2.26-r1](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.26-r1) 的 Windows/MSVC 与 Linux 云端构建、模型回归和实际包验证均通过（[运行记录](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/37973400445)）。最终 Windows 包再次编译原始 Plum/viewarms，所有输出与 v1.2.25 逐字节一致，检查输入未变。
+
+| 完整包 | v1.2.25-r1 ZIP | v1.2.26-r1 ZIP | ZIP 减少 | 新版解压大小 |
+| --- | ---: | ---: | ---: | ---: |
+| Windows x64 | 13,830,563 | 7,230,469 | 47.7% | 17,003,566 |
+| Linux x64 | 13,043,397 | 4,738,544 | 63.7% | 12,432,069 |
+
+表中单位为字节。Windows 上版为 llvm-mingw、本版为 MSVC，发布包对比包含工具链差异；相同本地 llvm-mingw 工具链的整包为 13,830,563→7,952,979 字节（42.5%）。完整资产哈希、二进制哈希及云端来源已记录到本页末尾所链接的 v1.2.26 JSON。
+
 本轮精简保持全部导入器、编译/反编译功能、三个子工具、独立 VRML 转换器和 Windows C4D helper。运行包不再重复携带 tinyusdz 开发源码和图片；保留主许可证、来源及内嵌依赖版权声明，GPL 转换器的对应源码仍完整附带。自动上游包的精确源码归档仍保留全部构建输入。
 
 本地 Windows x64 llvm-mingw 实测主程序：v1.2.25 为 **16,739,840 字节**；修正 pugixml 静态库误导出后普通 Release 为 **16,591,872 字节**；采用 `MinSizeRel -Os + ThinLTO` 为 **12,794,880 字节**，相对原版减少 **23.6%**。VRML 转换器从 755,712 减到 568,832 字节。两者各 406 个多余导出已消除，显式共享库导出宏仍可使用。发布流程使用 MinSizeRel + IPO；普通 Release 开发构建保留。

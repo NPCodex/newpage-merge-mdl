@@ -38,6 +38,8 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 
 ## v1.2.26：完整功能包进一步精简
 
+正式完整包实测：Windows **13.83→7.23 MB**，Linux **13.04→4.74 MB**；所有工具保留，最终 Windows 包的原始 Plum/viewarms 输出与旧版逐字节一致。详细验证见 [VALIDATION.md](VALIDATION.md)。
+
 发布构建使用 `MinSizeRel` 与 IPO/LTO，缩小编译后的程序，保留全部导入器、编译选项和辅助工具。普通 `Release` 构建仍可用于开发。运行目录不再重复携带静态链接的 tinyusdz 源码和开发图片，保留 `libs/tinyusdz/` 中的 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`；USD 导入无需这些源码文件即可运行。
 
 独立 GPL VRML 转换器的完整对应源码及构建文件继续随包提供；自动上游包仍内嵌精确合并源码，手动维护版源码仍由发布标签提供。Windows 继续附带原先已验证的 C4D 桥接程序。Plum 与 viewarms 的本地模型输出已与上一版逐文件比较一致；最终包大小与验证范围见 [验证记录](VALIDATION.md)。

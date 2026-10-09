@@ -38,6 +38,8 @@ The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMD
 
 ## v1.2.26: smaller complete packages
 
+Published complete archives: Windows **13.83→7.23 MB**, Linux **13.04→4.74 MB**. All tools remain included; the final Windows package reproduces the original Plum/viewarms outputs byte for byte. See [VALIDATION.md](VALIDATION.md).
+
 Distribution builds use `MinSizeRel` with IPO/LTO to reduce executable size while retaining all importers, compiler options and tools. Ordinary `Release` remains available for development. The runtime directory no longer duplicates the statically linked tinyusdz source and developer images; `libs/tinyusdz/` retains `LICENSE`, `LICENSE-APACHE-2.0`, `SOURCE.md` and `THIRD_PARTY_NOTICES.md`. USD import works without those source files.
 
 The separate GPL VRML converter's complete corresponding source and build files remain bundled. Automatic upstream packages still embed the exact merged source; manual release source remains available at the release tag. Windows retains the previously verified C4D helper. Local Plum and viewarms model outputs have been compared file by file with the previous version and are identical; final archive sizes and validation scope are recorded in [VALIDATION.md](VALIDATION.md).
