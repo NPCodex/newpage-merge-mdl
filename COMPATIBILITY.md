@@ -15,9 +15,17 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current version: **v1.2.26**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+Current version: **v1.2.27**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
 
 Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Automatic upstream releases embed their exact merged project source at `sources/NewPageMergeMDL-source.zip`; manual releases use the repository source at the release tag. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
+
+## v1.2.27: default skin hierarchy retention
+
+Default QC and PulseQC compilation preserves weighted skeletal bones and their ancestors, including lower-LOD skin use. Local static clips cannot establish that those bones are unused by external animations or bonemerge. This fixes missing forearm/finger bones in the supplied GMod viewarms without editing the input. Non-skeletal mesh DAGs remain collapsible. Unused bones can still be removed, and final engine bone limits still apply.
+
+Explicit `$bonecullmethod aggressive|leafonly`, `$collapsebones` and `$collapsebonesaggressive` retain their previous requested collapse behavior in QC/PulseQC. `$CEBoneRules` retains weighted bones even with these explicit policies, unless `$AllowCollapseVertexBone` enables their collapse. Existing force/keep priority and `$bonecullmethod none` remain unchanged. These are compiler policies, not a claim of identical collapse heuristics across all reference compilers.
+
+Historical v1.2.25/26 compile and structure checks did not establish runtime arm-animation correctness. See [VALIDATION.md](VALIDATION.md) for the new differential and runtime results.
 
 ## v1.2.26: smaller distribution builds and runtime contents
 

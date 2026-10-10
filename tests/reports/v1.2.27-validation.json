@@ -1,0 +1,349 @@
+{
+  "project_version": "1.2.27",
+  "date": "2026-10-10",
+  "scope": "Fix default skeletal bone retention for externally animated/bonemerged viewarms; bounded regression and production-model comparisons.",
+  "build": {
+    "platform": "Windows x64",
+    "configuration": "MinSizeRel -Os with Clang ThinLTO; llvm-mingw 20260922 UCRT; static runtime",
+    "compiler": "NewPageMergeMDL.exe",
+    "bytes": 12794880,
+    "sha256": "143c6c37f0abb88b4d6f283dd6af97bb9c4baa0975f60983206ab9084b17624b"
+  },
+  "root_cause": {
+    "description": "The inherited default collapse pass treated static locally sampled bones as removable even when they carried vertex weights or parented weighted bones. The viewarms QC has a static idle and runtime-included weapon animation; folding its skin hierarchy removed 38 bones that CE retained.",
+    "before_bones": 17,
+    "ce_bones": 55,
+    "fixed_bones": 55,
+    "fix": "Default QC and PulseQC preserve weighted skeletal bones and their skeletal ancestors. Explicit aggressive/leaf-only policies retain prior behavior; CE force-collapse and AllowCollapseVertexBone rules retain their existing precedence. Non-skeletal mesh DAG handling remains separate.",
+    "bounded_claim": "This fixes the demonstrated bone-removal defect. Matching this model does not establish complete CE parity."
+  },
+  "tests": {
+    "compatibility": {
+      "tests": 381,
+      "passed": true,
+      "seconds": 33.158,
+      "log_sha256": "b5a7759c0a1d63ab858939f328d86a26cef7fd88319912e97e52fcffa58782e3"
+    },
+    "automation": {
+      "tests": 26,
+      "passed": true,
+      "seconds": 0.465,
+      "log_sha256": "c69548ca3c30db6a5cf859085a67fab7f26c1816aeba775af947942d6e42ea1e"
+    },
+    "new_regressions": [
+      "Static weighted hierarchy, parent indices and emitted VVD influence weights with no clip, static idle, and external IncludeModel",
+      "Explicit collapse, CE overrides, AllowCollapseVertexBone toggling, and force/keep priority",
+      "QC and PulseQC default/explicit policy consistency",
+      "Static non-skeletal mesh DAGs remain collapsible"
+    ],
+    "expanded_regression": "Keeper categories and LOD-only vertex influences checked under both default and CE rules",
+    "prior_release_reproduction": "v1.2.26 fails the added default weighted-hierarchy and expanded default LOD-retention checks."
+  },
+  "production_compiles": {
+    "game": "Installed Garrys Mod gameinfo.txt",
+    "gameinfo_sha256": "c616a6f675f69b6fe2d35d5950949a8379b49e4e26c6690ba40c3b33822a7df4",
+    "original_inputs_unchanged": true,
+    "checked_input_hash_count": 50,
+    "input_inventory_scope": "Both original QC files plus files under @qci and @viewarms_mesh; this is not a complete hash inventory of every Plum mesh asset.",
+    "input_sha256": {
+      "viewarms_compile.qc": "a3167734c7da15b072021f353fa92e0d7b97502689f23e1329c790e00413e15d",
+      "playermodel_f_compile2_hair.qc": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783",
+      "@qci/sequence_arms.qci": "a080d753df13bfdc81caef2f2bed3583e412a4436ad102fe0fa78e5dd5c11d3f",
+      "@qci/bonemerge_arms.qci": "62a2d2dbacd86abe8dec0710df33dc1c93c8ea088fbf25ff9083bd5c1ffde358",
+      "@qci/proceduralbones.vrd": "fa93f0e5e32fafe8a4d1b3740d4d7a7755edb2254a8496df60d61707da45fe51",
+      "@viewarms_mesh/arms.dmx": "f4ae96defdd616a7ba40532c2dfb99d9d4cbe38693a1febdea8d0182cd7d4b37",
+      "@viewarms_mesh/anims/idle.dmx": "d0cf135e76d49e0bddc8bd9cc70c17531e0a9e300cf9665abe4cb69e336b24de"
+    },
+    "output_structure_validation": "tests/validate_outputs.py passed on both emitted models; isolated -OutDir outputs; original source inputs unchanged.",
+    "viewarms": {
+      "seconds": 1.1893592000014905,
+      "files": {
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx80.vtx": "87b3721df1327259631394115a1ce2af6bb004770a728c56ccb1e4daee2f75ea",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx90.vtx": "ef379a7652cac4a9fdcf286158be1990c0189e86ef89dab8959dd3f35237618c",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.mdl": "28c27eea452da8f5a339016f6ea3f6c24d2741bd75f9739a11b525dde8a16bb5",
+        "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.vvd": "2f2f83934bc188dc0db8c4dbe3d13b47ccd1d188f0f98e3a805fc8f134af6d73"
+      },
+      "structure": {
+        "model": "plum_kisekae_p.mdl",
+        "bones": 55,
+        "vertices": 214697
+      }
+    },
+    "plum": {
+      "seconds": 3.328229499998997,
+      "files": {
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": "e6e164b79f642fed8a4e18d9cee045cd54d9b1a4b076ef82eee720acd4190760",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": "342c8e27d774f4822dcc8a1c545c5f7daad5b5b59bbf1585176ce74f280e14b3",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": "81da9b0de0ca56bc5987f3f06672a41113dfeb58499c94124b393d877be8f995",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": "b24cdf5b73acd0c52fa327cd0a34c4995e18d76841ddf96f30d9601ed9a6aec8",
+        "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": "b09d7bb5ca74769d92807dd208258398205c6111f4de802aa131c699231e2d85"
+      },
+      "structure": {
+        "model": "plum_dreaming_hair_p.mdl",
+        "bones": 131,
+        "vertices": 572277
+      }
+    },
+    "prior_output_bytes_preserved": {
+      "viewarms": false,
+      "plum": false
+    },
+    "output_change_reason": "Bone restoration intentionally changes both skeletons and the remapped vertex/animation indices; byte identity with the defective prior output is not an acceptance criterion."
+  },
+  "viewarms_ce_comparison": {
+    "ce_mdl_sha256": "8652250b4ae4884e17ec2464db6e24148e00a0d57965937d26961758362f6846",
+    "prior_mdl_sha256": "ccdf9286b09c000e52e72ab895c139b30e17af66d05f7111ab7bea8f3b7a1e91",
+    "fixed_mdl_sha256": "28c27eea452da8f5a339016f6ea3f6c24d2741bd75f9739a11b525dde8a16bb5",
+    "bones": {
+      "ce": 55,
+      "prior": 17,
+      "fixed": 55,
+      "missing": [],
+      "extra": [],
+      "matching_parent_names": 55,
+      "matching_flags": 55,
+      "maximum_absolute_error": {
+        "poseToBone_max_abs_error": 4.76837158203125e-05,
+        "position_max_abs_error": 4.482269287109375e-05,
+        "quaternion_max_abs_error": 2.8633512556552887e-06
+      }
+    },
+    "procedural": {
+      "quaternion_constraints": 4,
+      "triggers_per_constraint": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "types_drivers_and_trigger_counts_match": true,
+      "maximum_quaternion_record_error": 1.9073486328125e-06,
+      "jiggle_bones": 8,
+      "active_jiggle_values_maximum_absolute_error": 0.0,
+      "inactive_jiggle_storage_note": "Disabled jiggle parameter storage differs (up to 1000); active flags and parameter values match."
+    },
+    "vertices": {
+      "ce_count": 214697,
+      "candidate_count": 214697,
+      "matched_geometry": 214697,
+      "nontrivial_index_matches": 5402,
+      "position_epsilon": 0.001,
+      "normal_epsilon": 0.0001,
+      "uv_epsilon": 1e-06,
+      "weight_epsilon": 0.0002,
+      "max_geometry_error": 8.0108642578125e-05,
+      "max_named_weight_error": 0.0016922950744628906,
+      "mismatched_vertex_count": 8182,
+      "candidate_pruned_to_ce_0_001_max_error": 1.1754666062735453e-07,
+      "candidate_pruned_to_ce_0_001_mismatched_vertex_count": 0,
+      "unmatched_ce_count": 0,
+      "unmatched_candidate_count": 0
+    },
+    "weight_difference_explanation": "Native skinning retains sub-0.001 influences that CE prunes. Raw named weights are not identical: 8182 vertices exceed the 0.0002 comparison tolerance, with maximum error 0.0016922950744628906. Diagnostic pruning of candidate weights below 0.001 followed by renormalization reduces the maximum error to 1.1754666062735453e-07 and leaves zero mismatches. This comparison does not change compiler output.",
+    "prior_maximum_named_weight_error": 1.0,
+    "skeleton_matches_within_0_0001_pose_tolerance": true,
+    "raw_named_weights_match_within_0_0002": false
+  },
+  "plum_skeleton_change": {
+    "prior_bones": 126,
+    "fixed_bones": 131,
+    "restored": {
+      "LeftEye": {
+        "index": 17,
+        "parent_index": 6,
+        "flags": "0x400",
+        "vertices": 1683,
+        "parent": "ValveBiped.Bip01_Head1"
+      },
+      "RightEye": {
+        "index": 18,
+        "parent_index": 6,
+        "flags": "0x400",
+        "vertices": 1683,
+        "parent": "ValveBiped.Bip01_Head1"
+      },
+      "muffler_001": {
+        "index": 86,
+        "parent_index": 4,
+        "flags": "0x400",
+        "vertices": 9352,
+        "parent": "ValveBiped.Bip01_Spine4"
+      },
+      "leg_roll_L": {
+        "index": 127,
+        "parent_index": 92,
+        "flags": "0x400",
+        "vertices": 23178,
+        "parent": "ValveBiped.Bip01_L_Thigh"
+      },
+      "leg_roll_R": {
+        "index": 128,
+        "parent_index": 96,
+        "flags": "0x400",
+        "vertices": 20267,
+        "parent": "ValveBiped.Bip01_R_Thigh"
+      }
+    },
+    "missing": [],
+    "changed_parent": {
+      "muffler_002": {
+        "old": "ValveBiped.Bip01_Spine4",
+        "new": "muffler_001"
+      }
+    },
+    "interpretation": "The five restored bones have vertex influences. The muffler child again uses its authored parent; the production compile succeeds with 131 bones."
+  },
+  "runtime": {
+    "status": "passed",
+    "game": "Garrys Mod",
+    "engine": "2026.10.10",
+    "map": "gm_flatgrass",
+    "models": {
+      "faulty": {
+        "path": "D:\\newpage-merge-mdl\\local-build\\slim-release\\cloud\\viewarms\\models\\player\\dewobedil\\sodau\\plum\\c_arms\\plum_kisekae_p.mdl",
+        "bones": 17,
+        "sha256": "ccdf9286b09c000e52e72ab895c139b30e17af66d05f7111ab7bea8f3b7a1e91"
+      },
+      "fixed": {
+        "path": "D:\\newpage-merge-mdl\\local-build\\slim-release\\arms-fixed\\viewarms\\models\\player\\dewobedil\\sodau\\plum\\c_arms\\plum_kisekae_p.mdl",
+        "bones": 55,
+        "sha256": "28c27eea452da8f5a339016f6ea3f6c24d2741bd75f9739a11b525dde8a16bb5"
+      },
+      "ce": {
+        "path": "D:\\newpage-merge-mdl\\local-build\\viewarms-fix\\ce-actual\\models\\player\\dewobedil\\sodau\\plum\\c_arms\\plum_kisekae_p.mdl",
+        "bones": 55,
+        "sha256": "8652250b4ae4884e17ec2464db6e24148e00a0d57965937d26961758362f6846"
+      }
+    },
+    "summary": {
+      "faulty_max_skin": 56.79050827026367,
+      "fixed_max_bone_matrix": 1.1444091796875e-05,
+      "samples": 295,
+      "points_per_model": 295,
+      "fixed_max_skin": 0.005639275070279837,
+      "fixed_max_missing_points": 0
+    },
+    "checks": {
+      "all_weapon_families": true,
+      "fixed_matches_ce_weighted_samples": true,
+      "faulty_divergence_reproduced": true
+    },
+    "pose_cycles": [
+      0,
+      0.25,
+      0.5,
+      0.75,
+      0.99
+    ],
+    "sequence_inventory": {
+      "smg1": {
+        "0": "idle01",
+        "1": "fire01",
+        "2": "fire02",
+        "3": "fire03",
+        "4": "fire04",
+        "5": "altfire",
+        "6": "draw",
+        "7": "reload",
+        "8": "dryfire",
+        "9": "idletolow",
+        "10": "lowtoidle",
+        "11": "lowidle",
+        "12": "adjustment_cstrike",
+        "13": "adjustment_dod"
+      },
+      "crowbar": {
+        "0": "idle01",
+        "1": "draw",
+        "2": "misscenter1",
+        "3": "misscenter2",
+        "4": "hitcenter1",
+        "5": "hitcenter2",
+        "6": "hitcenter3",
+        "7": "hitkill1",
+        "8": "holster"
+      },
+      "included": {
+        "0": "idle",
+        "1": "reference",
+        "2": "seq_admire",
+        "3": "fists_draw",
+        "4": "fists_right",
+        "5": "fists_left",
+        "6": "fists_uppercut",
+        "7": "fists_holster",
+        "8": "fists_idle_01",
+        "9": "fists_idle_02"
+      },
+      "shotgun": {
+        "0": "idle01",
+        "1": "fire01",
+        "2": "altfire",
+        "3": "draw",
+        "4": "holster",
+        "5": "reload1",
+        "6": "reload2",
+        "7": "reload3",
+        "8": "pump",
+        "9": "dryfire",
+        "10": "lowered",
+        "11": "lowered_to_idle",
+        "12": "idle_to_lowered",
+        "13": "sprint_idle",
+        "14": "fire"
+      },
+      "pistol": {
+        "0": "idle01",
+        "1": "idle01empty",
+        "2": "fire",
+        "3": "fire1",
+        "4": "fire2",
+        "5": "fire3",
+        "6": "fireempty",
+        "7": "draw",
+        "8": "drawempty",
+        "9": "reload",
+        "10": "holster",
+        "11": "holsterempty",
+        "12": "idletolow",
+        "13": "lowtoidle",
+        "14": "lowidle",
+        "15": "adjustment"
+      }
+    },
+    "comparison": "Same original bind positions, engine bone matrices and named VVD influences; 295 sampled poses and 295 weighted points per pose. All 30 finger bones and both arms are represented.",
+    "visual_observation": "In-engine three-panel SMG1 fire01 mid-cycle view: old compiler visibly deforms the arms; fixed compiler matches the CE shape. Solid override material isolates geometry.",
+    "limitations": [
+      "Independent sleeve jiggle motion excluded from numeric skin samples.",
+      "Not every mesh vertex or every third-party weapon was sampled.",
+      "Small CE/native differences remain from weight-threshold and numeric policies."
+    ],
+    "evidence_sha256": {
+      "client.json": "91c65239d69bc65cceb75537aa0cae006f621b3b6461c894485bdb7a51d1b225",
+      "crowbar_comparison.png": "512784d3f20d25b781b6c2e436074a97e230522a844d927d34f078ffaca914bb",
+      "final_comparison.png": "b0df2b0e903e413151194f4f6188c7d4a61e28923ad8fc8e7a7d7564a2665035",
+      "pistol_comparison.png": "c4fadbda48480a0f9c1dabe44231ba9a4bb2e8da1ccbc4dd3199873858f5f727",
+      "server.json": "581b2e6db550e79c3f2c433e599acd395499b7e2fb9bfe1ea6181d2444a9617b",
+      "shotgun_comparison.png": "dd1f18cbf92810d57d73f64ffce0ba5b9e74659336aa2b69f0e069a425e114d3",
+      "smg1_comparison.png": "f1db6a56a0f503b73a8913ae0b2c473272b1ac8892ee309e8ecc2d666abe5c5a"
+    },
+    "cleanup": {
+      "addon_absent": true,
+      "data_absent": true,
+      "configs_restored": 22,
+      "created_configs_preserved": [],
+      "restored_hashes_match": true
+    }
+  },
+  "evidence": {
+    "local-build/slim-release/arms-fixed-models.json": "750f162e117b8491ba2757e505c5fb3469be453b72f0442dd09d34394cb4c20b",
+    "local-build/arms-animation-fix/ce-fixed-comparison.json": "d9c4619f3db61e83118dbc6c2417f276474663f141698ffcb4dc4b6e7c485d3a",
+    "local-build/arms-animation-fix/ce-old-geometric-comparison.json": "e40792f6ef02ca4f56596211f830bf9d0bb255ca04abafb1a70cc766186e5889",
+    "local-build/arms-animation-fix/plum-skeleton-difference.json": "b0b3caa24676d8b3b3a5f8209b7b04258319d2745d7bb86d12f9ab39b9772b16"
+  },
+  "distribution_scope": "Only this summary and self-authored regression fixtures are tracked. User model sources, compiled user models, and reference compiler binaries remain local and are not included in releases.",
+  "overlay": {
+    "verified": true,
+    "sha256": "d12f8dbdd72439e22442029a6a0aaa81270ad696687661c8c93775d1c693e119"
+  }
+}

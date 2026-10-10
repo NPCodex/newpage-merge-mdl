@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.26
+# NewPageMergeMDL v1.2.27
 
 [English](README.en.md) | 简体中文
 
@@ -19,7 +19,7 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
 - **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
-项目版本：**v1.2.26**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.27**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 ## 下载与安装：每个平台一个完整包
 
@@ -35,6 +35,12 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 支持 Windows x64 和 Linux 构建。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
+
+## v1.2.27：修复外部动画驱动的手臂骨骼丢失
+
+默认保留有蒙皮权重的骨骼及其父骨链，避免仅因本地 idle 静止就删除由武器动画、`$includemodel` 或 bonemerge 驱动的前臂和手指骨。原始手臂 QC 无须添加兼容开关或修改源文件。显式折叠策略仍可用于主动缩减骨架；保留骨数仍受目标引擎预算限制。具体选项和验证证据见 [兼容说明](COMPATIBILITY.md) 与 [验证记录](VALIDATION.md)。
+
+此前 v1.2.25/26 的编译成功、结构合法及新旧产物相同，只证明当时所测范围，没有发现此运行时缺陷。请使用本版重新编译，并整套更新模型文件。
 
 ## v1.2.26：完整功能包进一步精简
 

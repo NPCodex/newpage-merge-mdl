@@ -11,6 +11,74 @@ from scene_fixtures import scene_bytes
 
 
 class IntegrationRigCases:
+    def static_skin_hierarchy(self):
+        names=['root','shoulder','hand','finger','unused']
+        mesh=skeletal_smd(names,[-1,0,1,2,0],[(0,0,0)]*5,[(0,0,0)]*5)
+        head,triangles=mesh.split('triangles\n')
+        lines=triangles.splitlines()
+        # Each vertex has two distinct authored influences despite the local
+        # idle being static; a runtime animation must retain both influences.
+        lines[1:4]=[line+' 2 3 .75 2 .25' for line in lines[1:4]]
+        self.write('skin.smd',head+'triangles\n'+'\n'.join(lines)+'\n')
+        return names
+
+    def test_default_static_skin_hierarchy_and_vertex_influences_survive(self):
+        names=self.static_skin_hierarchy()
+        for animation in ('', '$sequence idle skin.smd\n',
+                          '$sequence idle skin.smd\n$includemodel weapons/c_arms_animations.mdl\n'):
+            with self.subTest(animation=animation):
+                self.scene_qc('$modelname skin\n$body m skin.smd\n'+animation)
+                data,bones=self.csgo_bone_table('skin')
+                self.assertEqual(set(bones),set(names)-{'unused'})
+                for child,parent in [('shoulder','root'),('hand','shoulder'),('finger','hand')]:
+                    self.assertEqual(struct.unpack_from('<i',data,bones[child][1]+4)[0],bones[parent][0])
+                vvd=(self.root/'models/skin.vvd').read_bytes()
+                start=struct.unpack_from('<i',vvd,56)[0]
+                for i in range(struct.unpack_from('<i',vvd,16)[0]):
+                    vertex=start+48*i
+                    self.assertEqual(vvd[vertex+15],2)
+                    weights=struct.unpack_from('<3f',vvd,vertex)
+                    actual={vvd[vertex+12+j]:weights[j] for j in range(2)}
+                    self.assertEqual(actual,{bones['finger'][0]:.75,bones['hand'][0]:.25})
+
+    def test_explicit_cull_and_ce_overrides_keep_their_vertex_policy(self):
+        names=self.static_skin_hierarchy()
+        cases=[('$bonecullmethod aggressive\n',{'root'}),
+               ('$bonecullmethod leafonly\n',{'root'}),
+               ('$collapsebones\n',{'root'}),
+               ('$collapsebonesaggressive\n',{'root'}),
+               ('$AllowCollapseVertexBone\n',{'root'}),
+               ('$AllowCollapseVertexBone\n$AllowCollapseVertexBone\n',set(names)-{'unused'}),
+               ('$bonecullmethod aggressive\n$CEBoneRules\n',set(names)-{'unused'}),
+               ('$CEBoneRules\n$collapsebonesaggressive\n',set(names)-{'unused'}),
+               ('$alwayscollapse finger\n',{'root','shoulder','hand'}),
+               ('$alwayscollapse finger\n$donotcollapse finger\n',set(names)-{'unused'})]
+        for options,expected in cases:
+            with self.subTest(options=options):
+                self.scene_qc('$modelname skin\n$body m skin.smd\n$donotcollapse root\n'+options)
+                _,bones=self.csgo_bone_table('skin')
+                self.assertEqual(set(bones),expected)
+
+    def test_pulseqc_skin_cull_uses_the_same_safe_default(self):
+        names=self.static_skin_hierarchy()
+        for options,expected in [('',set(names)-{'unused'}),
+                                 ('$bonecullmethod aggressive\n',{'root'}),
+                                 ('$bonecullmethod none\n',set(names))]:
+            with self.subTest(options=options):
+                self.scene_qc('$modelname skin\n$body m skin.smd\n$donotcollapse root\n'+options,
+                              script_file='scene.pulseqc')
+                _,bones=self.csgo_bone_table('skin')
+                self.assertEqual(set(bones),expected)
+
+    def test_default_skin_preservation_does_not_keep_static_mesh_dags(self):
+        doc=json.loads(scene_bytes())
+        doc['animations']=[]
+        self.write('scene.gltf',json.dumps(doc))
+        self.scene_qc('$modelname dags\n$body m scene.gltf\n')
+        _,bones=self.csgo_bone_table('dags')
+        self.assertNotIn('MeshA',bones)
+        self.assertNotIn('MeshB',bones)
+
     def test_integration_bbox_diagnostic_locates_bone_frame_and_source(self):
         nodes='0 "root" -1\n1 "far" 0\n'
         pose='0 0 0 0 0 0 0\n1 0 0 0 0 0 0\n'
@@ -131,13 +199,16 @@ class IntegrationRigCases:
         triangle=lambda bone:f'triangles\nmaterial\n{bone} 0 0 0 0 0 1 0 0\n{bone} 1 0 0 0 0 1 1 0\n{bone} 0 1 0 0 0 1 0 1\nend\n'
         self.write('keep.smd',head+triangle(1));self.write('low.smd',head+triangle(2))
         self.write('move.smd','version 1\nnodes\n'+nodes+'end\nskeleton\ntime 0\n'+pose+'time 1\n'+pose.replace('5 0 0 0','5 0 1 0')+'end\n')
-        self.scene_qc('$modelname retention\n$CEBoneRules\n$body m keep.smd\n$lod 20 { replacemodel keep.smd low.smd }\n'
+        qc=('$modelname retention\n$body m keep.smd\n$lod 20 { replacemodel keep.smd low.smd }\n'
                       '$hbox 0 hitbox -1 -1 -1 1 1 1\n$definebone root "" 0 0 0 0 0 0 0 0 0 0 0 0\n'
                       '$definebone defined root 0 0 0 0 0 0 0 0 0 0 0 0\n'
                       '$jigglebone procedural { is_flexible { length 2 tip_mass 1 } }\n'
                       '$ikchain leg ik_end\n$attachment socket attachment 0 0 0\n$bonemerge bonemerge\n$sequence move move.smd\n')
-        _,bones=self.csgo_bone_table('retention')
-        self.assertEqual(set(bones),set(names)-{'unused'})
+        for policy in ('','$CEBoneRules\n'):
+            with self.subTest(policy=policy):
+                self.scene_qc(policy+qc)
+                _,bones=self.csgo_bone_table('retention')
+                self.assertEqual(set(bones),set(names)-{'unused'})
 
     def test_integration_alwayscollapse_overrides_vertex_animation_defined_keep(self):
         text=(self.root/'mesh.smd').read_text().replace('unused_child','forced')

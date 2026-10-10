@@ -5576,8 +5576,9 @@ void FinishAttachments(Ctx& c) {
 // ---------------------------------------------------------------------------
 
 // $bonecullmethod <name> - bone_cull_type. Replaces QC's $nocollapsebones
-// (= none) and its "onlyweights" variant, and names the default so it can be
-// written down explicitly. $alwayscollapse overrules "none" per bone.
+// (= none) and its "onlyweights" variant. Explicit aggressive/leafonly opt into
+// folding static vertex bones; the default protects skinning dependencies.
+// $alwayscollapse overrules "none" per bone.
 bool CmdBoneCullMethod(Ctx& c, const Token& cmd) {
     std::string m;
     if (!c.Want("a cull method name", cmd, m))
@@ -5591,6 +5592,7 @@ bool CmdBoneCullMethod(Ctx& c, const Token& cmd) {
     else
         return c.Fail(cmd.line, "unknown $bonecullmethod \"" + m +
                                 "\" (expected aggressive/leafonly/none)");
+    c.in.boneCullExplicit = true;
     return true;
 }
 
@@ -9729,7 +9731,7 @@ bool CmdCeOption(Ctx& c, const Token& cmd) {
     if(name=="ignoreeyeballscaling") { c.in.ce.ignoreEyeScale=!c.in.ce.ignoreEyeScale; return true; }
     if(name=="ignoreeyeballirisscale") { c.in.ce.ignoreIrisScale=!c.in.ce.ignoreIrisScale; return true; }
     if(name=="collisionbindtoonebone") { c.in.ce.collisionOneBone=!c.in.ce.collisionOneBone; return true; }
-    if(name=="allowcollapsevertexbone") { c.in.ce.allowCollapseVertex=!c.in.ce.allowCollapseVertex; c.in.ce.boneRules=true; c.in.boneCullType=cm::BoneCullType::Aggressive; return true; }
+    if(name=="allowcollapsevertexbone") { c.in.ce.allowCollapseVertex=!c.in.ce.allowCollapseVertex; c.in.ce.boneRules=true; c.in.boneCullType=cm::BoneCullType::Aggressive; c.in.boneCullExplicit=true; return true; }
     if(name=="hboxignorechild") { c.in.ce.hboxIgnoreChild=!c.in.ce.hboxIgnoreChild; return true; }
     if(name=="remapflextoglobal") { c.in.ce.remapFlexGlobal=!c.in.ce.remapFlexGlobal; return true; }
     if(name=="cebonerules") { c.in.ce.boneRules=true; return true; }
@@ -9825,6 +9827,7 @@ bool CmdCsgo(Ctx& c, const Token& cmd) {
     if(name=="$erroronsequenceremappingfailure") { o.errorOnRemapFailure=true; return true; }
     if(name=="$collapsebones" || name=="$collapsebonesaggressive") {
         c.in.boneCullType=name=="$collapsebones" ? cm::BoneCullType::LeafOnly : cm::BoneCullType::Aggressive;
+        c.in.boneCullExplicit=true;
         return true;
     }
     if(name=="$externaltextures") {

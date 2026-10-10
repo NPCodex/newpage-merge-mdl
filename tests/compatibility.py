@@ -144,8 +144,8 @@ class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,
             self.scene_qc('$modelname bad\n$body m scene.gltf\n',success=False)
             self.assertFalse((self.root/'models/bad.mdl').exists())
 
-    def scene_qc(self,text,*args,success=True):
-        qc=self.write('scene.qc',text)
+    def scene_qc(self,text,*args,success=True,script_file='scene.qc'):
+        qc=self.write(script_file,text)
         result=subprocess.run([COMPILER,str(qc),'-game',str(self.root),*args],capture_output=True,text=True,errors='replace')
         self.assertEqual(result.returncode==0,success,result.stdout+result.stderr)
         if success:

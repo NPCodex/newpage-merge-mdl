@@ -344,10 +344,9 @@ struct ConstraintBone {
 };
 
 // bone_cull_type: how hard the skeleton is pruned of bones nothing references.
-// A bone is "referenced" when something other than plain vertex weighting needs
-// it - animation, IK, an attachment, bonemerge, a flex driver, $donotcollapse.
-// Skinning alone never saves a bone: a skin-only bone folds its weights into
-// its parent.
+// Weighted skeletal bones and their ancestors survive by default, including
+// when their animation comes from another model at runtime. An explicit cull
+// policy can also fold skin-only bones into their parent (CE rules excepted).
 enum class BoneCullType {
     Aggressive = 0, // drop every unreferenced bone, reparenting its children
     LeafOnly = 1,   // drop unreferenced bones only while they have no children
@@ -1335,6 +1334,7 @@ struct CompileInput {
     std::vector<ForcedHierarchy> forcedHierarchy;
     // bonemarkuplist container properties
     BoneCullType boneCullType = BoneCullType::Aggressive; // bone_cull_type
+    bool boneCullExplicit = false; // authored policy may collapse weighted bones
     // $root: the bone motion extraction, $alignto and $angle work from.
     // Unset (or unresolvable) means bone 0.
     std::string primaryRootBone;

@@ -1977,7 +1977,15 @@ void CollapseBones(Ctx& ctx) {
         for (int k = 0; k < static_cast<int>(m.bones.size()); k++) {
             const bool always = BoneIsAlwaysCollapse(ctx, m.bones[k].name.c_str());
             if (m.bones[k].bDontCollapse && !(ctx.in->ce.boneRules && always)) continue;
-            if(ctx.in->ce.boneRules && !ctx.in->ce.allowCollapseVertex && !always &&
+            // Static local clips do not imply a static skeleton: included
+            // animations and bonemerge can drive these bones at runtime.
+            // BuildGlobalBonetable propagates vertex flags to their ancestors,
+            // preserving the complete skin hierarchy. Explicit cull policies
+            // retain PulseModel's opt-in weight folding; CE keeps its existing
+            // AllowCollapseVertexBone override. Mesh dags remain collapsible.
+            const bool keepVertex = ctx.in->ce.boneRules ||
+                (!ctx.in->boneCullExplicit && !m.bones[k].isNonSkeletal);
+            if(keepVertex && !ctx.in->ce.allowCollapseVertex && !always &&
                 (m.bones[k].flags & BONE_USED_BY_VERTEX_MASK)) continue;
 
             // "none" keeps every bone the script authored. Non-skeletal bones

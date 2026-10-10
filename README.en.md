@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.26
+# NewPageMergeMDL v1.2.27
 
 English | [简体中文](README.md)
 
@@ -17,7 +17,7 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
-**Project version: v1.2.26.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.27.** The compiler, decompiler and bundled tools share this
 version.
 
 ## Download and install: one complete archive per platform
@@ -35,6 +35,12 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.
+
+## v1.2.27: retain externally animated arm bones
+
+Weighted skeletal bones and their ancestors now survive by default. A static local idle no longer removes forearm and finger bones needed by weapon animations, `$includemodel` or bonemerge. The original arm QC requires no compatibility switch or source edits. Explicit collapse policies remain available; the target engine's final bone budget still applies. See [compatibility details](COMPATIBILITY.md) and [validation evidence](VALIDATION.md).
+
+The v1.2.25/26 compile, structural and byte-equality checks did not detect this runtime defect. Recompile with this version and replace the matching model files together.
 
 ## v1.2.26: smaller complete packages
 

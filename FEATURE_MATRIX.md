@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.26。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.27。
 
 发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化与体积优化均不扩展下表的游戏运行时认证范围。
 
@@ -55,7 +55,7 @@ v1.2.24 仅精简 Release 链接产物，保留五编译器固定功能范围及
 | 选择网格计算 bbox、大位移边界框 | 已实现；v1.2.23 增加首个越界骨/零基帧/位置和有适用条件的 skipboneinbbox 提示，触发当前世界坐标范围裁剪。 |
 | cmdlist 容量检查、缺失 weightlist 骨骼警告 | 动态命令列表及语法校验已实现；不复刻参考固定数组上限。 |
 | 源骨骼、扩展名省略、权重阈值 | 源容量保护、碰撞/LOD 扩展名解析已实现；新增显式 $boneweightpolicy native|neko|ce，见固定总账 S1。 |
-| 强制折叠和各类依赖骨骼保留 | 已实现 `$CEBoneRules` 显式策略；默认保留 PulseModel 策略，复杂骨骼组合仍需模型对照。 |
+| 强制折叠和各类依赖骨骼保留 | v1.2.27 默认保留有权重的骨骼及父骨链，修复外部驱动手臂的前臂/手指误删；显式折叠模式和 `$CEBoneRules` 的优先级语义保留。证据范围见 VALIDATION.md。 |
 | 骨骼重命名/碰撞、空身体组、超量网格等修复 | v1.2.23 按固定 V5 六类输入验收；不以有限用例宣称任意历史崩溃均等价。 |
 
 ## StudioMDL-CE：命令与算法
