@@ -345,5 +345,74 @@
   "overlay": {
     "verified": true,
     "sha256": "d12f8dbdd72439e22442029a6a0aaa81270ad696687661c8c93775d1c693e119"
+  },
+  "release": {
+    "release_url": "https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.27-r1",
+    "source_commit": "3a48c703d55e4a5251b7f398f547f121c0c02f2b",
+    "workflow_url": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/38036357921",
+    "assets": {
+      "newpage-merge-mdl-v1.2.27-r1-linux64.zip": {
+        "bytes": 4748043,
+        "unpacked_bytes": 12461815,
+        "sha256": "634b881658bc86c65b2c82c9af92088047dc0bb9510f996bf4de01252f8da7ad",
+        "compiler_bytes": 9886008,
+        "compiler_sha256": "0783a8d4523bcc10549d92065c5c5ac28be440ab8f6131b135a4c4d430e37dd3",
+        "verified_inventory_and_provenance": true
+      },
+      "newpage-merge-mdl-v1.2.27-r1-win64.zip": {
+        "bytes": 7239882,
+        "unpacked_bytes": 17029714,
+        "sha256": "0b62657ad6028d7371f573b904e60fc343ff4287ce7d11d7fc109ea7f1da3e3a",
+        "compiler_bytes": 10281472,
+        "compiler_sha256": "0c64060b39d23c2417be34931a6f88dff5fedb94226a5ed4991d2b8fa8da750d",
+        "verified_inventory_and_provenance": true
+      }
+    },
+    "downloaded_windows_production_validation": {
+      "inputs_unchanged": true,
+      "byte_equal_to_locally_game_tested_build": {
+        "viewarms": true,
+        "plum": true
+      },
+      "runs": {
+        "viewarms": {
+          "seconds": 1.0763958999996248,
+          "files": {
+            "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx80.vtx": "87b3721df1327259631394115a1ce2af6bb004770a728c56ccb1e4daee2f75ea",
+            "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx90.vtx": "ef379a7652cac4a9fdcf286158be1990c0189e86ef89dab8959dd3f35237618c",
+            "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.mdl": "28c27eea452da8f5a339016f6ea3f6c24d2741bd75f9739a11b525dde8a16bb5",
+            "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.vvd": "2f2f83934bc188dc0db8c4dbe3d13b47ccd1d188f0f98e3a805fc8f134af6d73"
+          },
+          "structure": {
+            "model": "plum_kisekae_p.mdl",
+            "bones": 55,
+            "vertices": 214697
+          }
+        },
+        "plum": {
+          "seconds": 2.505280200002744,
+          "files": {
+            "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": "e6e164b79f642fed8a4e18d9cee045cd54d9b1a4b076ef82eee720acd4190760",
+            "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": "342c8e27d774f4822dcc8a1c545c5f7daad5b5b59bbf1585176ce74f280e14b3",
+            "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": "81da9b0de0ca56bc5987f3f06672a41113dfeb58499c94124b393d877be8f995",
+            "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": "b24cdf5b73acd0c52fa327cd0a34c4995e18d76841ddf96f30d9601ed9a6aec8",
+            "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": "b09d7bb5ca74769d92807dd208258398205c6111f4de802aa131c699231e2d85"
+          },
+          "structure": {
+            "model": "plum_dreaming_hair_p.mdl",
+            "bones": 131,
+            "vertices": 572277
+          }
+        }
+      },
+      "evidence_sha256": "eccc9de03bc8d576b63c99563b2e0df73bcffcaca4c39edac9b2ddaad5270988"
+    },
+    "published_at": "2026-10-10T08:13:31Z",
+    "draft": false,
+    "separate_automatic_upstream_sync": {
+      "status": "blocked_by_existing_upstream_merge_conflicts",
+      "run": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/38036346351",
+      "note": "The automatic new-upstream merge is separate from the successful maintained-checkout release; it was already conflicted before this arm fix."
+    }
   }
 }
