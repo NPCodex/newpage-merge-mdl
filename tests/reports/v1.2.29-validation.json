@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "status": "local_validation_passed",
+  "status": "windows_package_validation_passed",
   "scope": "Preserve authored ragdoll bodies on procedural bones and compute collision-only bone transforms.",
   "reproduction": {
     "fixture": "Synthetic tetrahedra with a root, optional intermediate bone and collision-only hair joint. No external assets are needed.",
@@ -208,5 +208,55 @@
     "checked_files": 131,
     "changed": [],
     "verified_material_files": 249
+  },
+  "distribution_validation": {
+    "platform": "win64",
+    "configuration": "MinSizeRel + ThinLTO",
+    "toolchain": "llvm-mingw 20260922 UCRT x86_64",
+    "compiler_sha256": "8bcf346db308e8398f2a32ab12452f6285700a512667e89c28bf84be089c7c57",
+    "compiler_bytes": 12813824,
+    "package_compatibility_tests": 394,
+    "package_c4d_tests": 7,
+    "package_vrml_conversion_and_compile": "passed",
+    "package_ag2_startup_and_version": "passed",
+    "package_inventory_and_provenance": "passed",
+    "runtime_plum_output_byte_identical": [
+      "MDL",
+      "VVD",
+      "DX80 VTX",
+      "DX90 VTX",
+      "PHY"
+    ],
+    "viewarms_output_byte_identical_to_v1_2_28": [
+      "MDL",
+      "VVD",
+      "DX80 VTX",
+      "DX90 VTX"
+    ],
+    "input_integrity": {
+      "checked_count": 131,
+      "changed_after": []
+    },
+    "binaries": {
+      "NewPageMergeMDL-C4D.exe": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97",
+      "NewPageMergeMDL-Decompiler.exe": "46f963495674a4932f9a98bbb93867e94d400bb9c984ccbcb8b65058e078497e",
+      "NewPageMergeMDL.exe": "8bcf346db308e8398f2a32ab12452f6285700a512667e89c28bf84be089c7c57",
+      "NewPageVRMLtoX3D.exe": "9e878fe2926ca9a74713a0c79fb71c00c92b53cc5061eb7c03cbe9cef7a4a1f9",
+      "subtools/ag2proportions.exe": "379719cd92d4219e953e89ca788604ed9b806683189438881aa691e048a9e905",
+      "subtools/l4d_animswap.exe": "fbfdad9c2f13b18759bbf48a568ace6af52ab2b4dd1f23d31bf454a1b83eb9e8",
+      "subtools/meshtool.exe": "3be3c7f7196be67f574c0a04a76683d458d84e9e733e33658dff511e5083263f",
+      "subtools/vmd2valvebiped.exe": "26700600899d001f429a7ec7f91bd6479d92fbd9ae91d778547c4babd5de648f"
+    },
+    "c4d_helper": "Reused pinned and verified v1.2.23 bridge; not rebuilt",
+    "evidence_sha256": {
+      "package-verification.log": "1c00cf9be6feac5c35cafbd5ab2d6e94dd0ccd707e2d2d2199a8be74eb17b937",
+      "validation.json": "0dc96139a30fc162276b52cfc7e299ca1aa540b9736b4ab587fb53e131fd2187"
+    }
+  },
+  "hosted_ci": {
+    "status": "jobs_not_started",
+    "reason": "GitHub account billing/spending limit restriction",
+    "run": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/38269374215",
+    "linux_1_2_29": "not_built_or_published"
   }
 }

@@ -21,6 +21,8 @@ Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). B
 
 ## v1.2.29: procedural ragdoll bodies and physics bone retention
 
+Distribution validation is Windows-only for this release: the local MinSizeRel + ThinLTO package passes 394 compatibility cases, 7 C4D cases, VRML conversion/compilation, and AG2 startup/version checks. GitHub Actions jobs did not start because of an account billing restriction; no v1.2.29 Linux binary has been built or verified. Earlier Linux validation does not cover this change.
+
 Procedural bones with collision geometry can own independent bodies; `$jigglebone` alone no longer merges that geometry into the parent. Explicit physics references participate in initial bone retention, including merge destinations, while physics bones and their ancestor chains receive `BONE_USED_BY_ATTACHMENT` setup flags. This allows engine bone setup to compute collision-only transforms before ragdoll creation. Explicit joint merges, skips and forced bone collapse remain authoritative, and static/simple props do not regain discarded skeletal joints.
 
 When a joint has no body and falls back to an ancestor, it only fills axes without an explicit definition on that ancestor. Direct definitions win regardless of QC order; fallback-only axes retain their existing ordering. The production model's 20 named constraints now match the CE 0.2 retained-bone control, including Head1's original limits.

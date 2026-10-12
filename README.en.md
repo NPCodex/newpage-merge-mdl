@@ -22,6 +22,8 @@ version.
 
 ## Download and install: one complete archive per platform
 
+**v1.2.29 platform status:** the complete Windows archive is built locally with MinSizeRel + ThinLTO, verified using its packaged executables, and includes the exact committed source. GitHub Actions jobs could not start because of an account billing restriction. No verified Linux archive is available for this version; previous Linux archives do not contain this fix. See [current validation](VALIDATION.md).
+
 Choose the current **Windows x64 ZIP** or **Linux ZIP** from [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) and extract the entire archive into a new directory. Each archive includes the compiler, decompiler, subtools, separate VRML converter with its corresponding source, preparation scripts, GMod Lua modules, documentation, licenses, build manifest and internal checksums. The Windows archive also includes the C4D helper. No additional release attachments need to be combined. `INSTALL.md`, `upstream-manifest.json` and `SHA256SUMS.txt` are at the package root; reports are in `tests/reports/`. Automatic upstream releases also embed `sources/NewPageMergeMDL-source.zip`; complete project source for manual releases is available from the repository at the release tag. GitHub's automatic **Source code** links are for source browsing, not installation.
 
 For updates, use a fresh directory and the complete new file set; do not overwrite only the compiler or mix helpers from older versions. Ordinary compilation does not require Python; the Python preparation scripts in `tools/` require a separately installed Python 3. Install the GMod Lua consumers according to their guides when using mesh states or VRM runtime features. See [INSTALL.md](INSTALL.md).
@@ -30,8 +32,9 @@ A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/
 with independently implemented StudioMDL-CE / StudioMDL++ / NekoMDL compatibility extensions.
 NekoMDL integration follows its supplied Chinese v2.3.0 changelog.
 The compiler is `NewPageMergeMDL.exe`; the decompiler is
-`NewPageMergeMDL-Decompiler.exe`. Windows x64 and Linux builds are verified by
-GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
+`NewPageMergeMDL-Decompiler.exe`. Windows x64 and Linux builds are supported;
+consult each release's validation record for the platforms actually tested.
+See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.

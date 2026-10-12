@@ -23,6 +23,8 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 
 ## 下载与安装：每个平台一个完整包
 
+**v1.2.29 平台状态：** Windows 完整包使用本机 MinSizeRel + ThinLTO 构建并通过包内程序验证，含精确提交源码。GitHub Actions 因账户计费限制未启动，本版本尚无经过验证的 Linux 包；请勿将旧版 Linux 包视为包含本次修复。详见 [当前验证](VALIDATION.md)。
+
 从 [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) 选择当前版本的 **Windows x64 ZIP** 或 **Linux ZIP**，完整解压到一个新目录即可使用。Windows 包已经包含 C4D 桥接程序；两个平台包都包含编译器、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本、GMod Lua 模块、文档、许可、构建清单和包内校验文件，无须拼接其他附件。根目录的 `INSTALL.md`、`upstream-manifest.json`、`SHA256SUMS.txt` 提供安装说明、构建来源与文件校验；报告位于 `tests/reports/`。自动上游合并版还内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版的完整项目源码由发布标签对应的仓库提供。GitHub 自动显示的 **Source code** 链接供源码浏览，不是安装包。
 
 更新时解压到新目录并使用整套新文件，不要仅覆盖主程序或混用旧辅助程序。普通编译无需 Python；运行 `tools/` 中的 Python 准备脚本需要自行安装 Python 3。网格状态及 VRM 的 GMod Lua 模块按相应指南安装，不会因解压编译器而自动在游戏生效。详见 [安装指南](INSTALL.md)。
@@ -32,7 +34,7 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 基于 [PulseModel](https://github.com/ToppiOfficial/PulseModel) 的 Source 模型编译工具，加入 StudioMDL-CE / StudioMDL++ / NekoMDL 兼容功能与自行实现的动画扩展。NekoMDL 对照依据为附带的中文版 v2.3.0 更新日志。
 
 编译器：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
-支持 Windows x64 和 Linux 构建。Windows 和 Linux 构建由 GitHub Actions 验证。
+支持 Windows x64 和 Linux 构建；各版本实际验证的平台以上述发布状态及验证记录为准。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
 
