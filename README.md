@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.28
+# NewPageMergeMDL v1.2.29
 
 [English](README.en.md) | 简体中文
 
@@ -19,7 +19,7 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
 - **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
-项目版本：**v1.2.28**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.29**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 ## 下载与安装：每个平台一个完整包
 
@@ -35,6 +35,16 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 支持 Windows x64 和 Linux 构建。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
+
+## v1.2.29：修复头发程序骨的独立碰撞体
+
+不再仅因骨骼是 `$jigglebone` 就把其碰撞几何并入父骨。显式物理约束、质量设置和合并目标引用的骨骼会保留；物理骨及其父链补齐运行时骨骼计算标志，避免创建 ragdoll 时使用未计算的变换。显式 `$jointmerge`、`$jointskip` 和强制骨骼折叠仍有效。
+
+刚体自身定义的关节限制优先，缺失子体的回退约束不再覆盖头部等父体的显式轴设置。
+
+用户原始 Plum `playermodel_f_compile2_hair.qc` 无须修改即可生成 **21 个刚体**，恢复 `hair_0_1/2/3` 的独立碰撞体与约束。GMod `gm_flatgrass` 中直接创建 ragdoll 及 NPC 死亡生成 ragdoll 各观察 20 秒，未记录异常，最终最大速度均为 0；本地 **394 项兼容回归通过**。范围及证据见 [验证记录](VALIDATION.md)。
+
+CE 0.2 对同一原始 QC 会先裁掉未使用的头发骨而生成 18 个刚体；在副本显式保留这些骨后才生成 21 个刚体。本修复保留用户明确声明的物理依赖，并不宣称与 CE 默认输出完全一致。参考 CE 主分支程序的 `0.3.0 (Preview)` 是预览构建标识，不是正式发布标签。
 
 ## v1.2.28：合并 PulseModel 上游更新
 

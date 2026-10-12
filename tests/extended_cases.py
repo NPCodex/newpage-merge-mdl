@@ -716,23 +716,106 @@ class ExtendedCases:
    self.assertAlmostEqual(frames[0][0],expected,delta=.01)
    self.assertAlmostEqual(frames[-1][0],20 if value else 0,delta=.01)
 
- def test_ragdoll_procedural_joint_geometry_merges_into_physical_parent(self):
+ def ragdoll_procedural_fixture(self):
   header='version 1\nnodes\n0 "root" -1\n1 "hair" 0\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\n1 3 0 0 0 0 0\nend\ntriangles\n'
   points=[(0,0,0),(1,0,0),(0,1,0),(0,0,1)];mesh=header
   for bone in (0,1):
    for face in [(0,2,1),(0,1,3),(0,3,2),(1,2,3)]:
     mesh+='material\n'+''.join(f'{bone} {points[v][0]+bone*3} {points[v][1]} {points[v][2]} 0 0 1 0 0\n' for v in face)
   self.write('rig.smd',mesh+'end\n')
-  base='$modelname ragmask\n$bonecullmethod none\n$body m rig.smd\n$sequence idle rig.smd\n'
+  return '$modelname ragmask\n$bonecullmethod none\n$body m rig.smd\n$sequence idle rig.smd\n'
+
+ def test_ragdoll_procedural_joint_geometry_retains_own_body(self):
+  base=self.ragdoll_procedural_fixture()
   self.scene_qc(base+'$collisionjoints rig.smd { $mass 10 }\n')
   self.assertEqual(struct.unpack_from('<i',(self.root/'models/ragmask.phy').read_bytes(),8)[0],2)
   self.scene_qc(base+'$jigglebone hair { is_flexible { length 3 tip_mass 1 } }\n$collisionjoints rig.smd { $mass 10 }\n')
+  phy=(self.root/'models/ragmask.phy').read_bytes();self.assertEqual(struct.unpack_from('<i',phy,8)[0],2)
+  self.assertIn(b'"name" "root"',phy);self.assertIn(b'"name" "hair"',phy)
+  data,bones=self.csgo_bone_table('ragmask')
+  self.assertEqual(struct.unpack_from('<i',data,bones['hair'][1]+164)[0],5)
+  self.assertNotEqual(struct.unpack_from('<i',data,bones['root'][1]+172)[0],struct.unpack_from('<i',data,bones['hair'][1]+172)[0])
+
+ def test_ragdoll_collision_only_joint_and_ancestor_receive_setup_masks(self):
+  # Hair is absent from the render mesh and from all animation channels. Its
+  # explicit physics declaration must keep it even without a jiggle definition.
+  header='version 1\nnodes\n0 "root" -1\n1 "bridge" 0\n2 "hair" 1\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\n1 3 0 0 0 0 0\n2 3 0 0 0 0 0\nend\ntriangles\n'
+  points=[(0,0,0),(1,0,0),(0,1,0),(0,0,1)]
+  def mesh(bones):
+   text=header
+   for bone in bones:
+    for face in [(0,2,1),(0,1,3),(0,3,2),(1,2,3)]:
+     text+='material\n'+''.join(f'{bone} {points[v][0]+bone*3} {points[v][1]} {points[v][2]} 0 0 1 0 0\n' for v in face)
+   return text+'end\n'
+  self.write('visible.smd',mesh((0,)));self.write('physical.smd',mesh((0,2)))
+  for policy in ('','$bonecullmethod none\n'):
+   for jiggle in ('','$jigglebone hair { is_flexible { length 3 tip_mass 1 } }\n'):
+    self.scene_qc('$modelname ragmask\n'+policy+'$body m visible.smd\n$sequence idle visible.smd\n'+jiggle+'$collisionjoints physical.smd { $mass 10 $jointmassbias hair 2 $jointconstrain hair x limit -20 35 0 }\n')
+    phy=(self.root/'models/ragmask.phy').read_bytes();self.assertEqual(struct.unpack_from('<i',phy,8)[0],2)
+    self.assertIn(b'"name" "hair"',phy);self.assertIn(b'"xmin" "-20.000000"',phy);self.assertIn(b'"xmax" "35.000000"',phy)
+    data,bones=self.csgo_bone_table('ragmask');self.assertIn('hair',bones)
+    self.assertEqual(struct.unpack_from('<i',data,bones['hair'][1]+164)[0],5 if jiggle else 0)
+    by_index={index:(name,offset) for name,(index,offset) in bones.items()}
+    index=bones['hair'][0]
+    while index>=0:
+     name,offset=by_index[index];self.assertTrue(struct.unpack_from('<i',data,offset+160)[0]&0x200,name)
+     index=struct.unpack_from('<i',data,offset+4)[0]
+    if policy:self.assertIn('bridge',bones)
+
+ def test_ragdoll_explicit_skip_merge_and_force_collapse_override_procedural_body(self):
+  base=self.ragdoll_procedural_fixture()+'$jigglebone hair { is_flexible { length 3 tip_mass 1 } }\n'
+  for directive in ('$jointmerge root hair','$jointskip hair'):
+   self.scene_qc(base+'$collisionjoints rig.smd { '+directive+' }\n')
+   phy=(self.root/'models/ragmask.phy').read_bytes();self.assertEqual(struct.unpack_from('<i',phy,8)[0],1)
+   self.assertNotIn(b'"name" "hair"',phy)
+  self.scene_qc(base+'$alwayscollapse hair\n$collisionjoints rig.smd { $jointmassbias hair 2 }\n')
   phy=(self.root/'models/ragmask.phy').read_bytes();self.assertEqual(struct.unpack_from('<i',phy,8)[0],1)
-  self.assertIn(b'"name" "root"',phy);self.assertNotIn(b'"name" "hair"',phy)
-  self.assertIn(b'hair\0',self.mdl('ragmask'))
+  self.assertNotIn('hair',self.csgo_bone_table('ragmask')[1])
   old=self.mdl('ragmask')
   text=self.scene_qc(base+'$collisionjoints rig.smd { $jointmerge root hair $jointmerge hair root }\n',success=False)
   self.assertIn('cyclic collision joint merge',text);self.assertEqual(self.mdl('ragmask'),old)
+
+ def test_ragdoll_merge_retains_collision_only_target_without_recreating_skipped_bodies(self):
+  base=self.ragdoll_procedural_fixture().replace('$bonecullmethod none\n','').replace('$body m rig.smd','$body m mesh.smd').replace('$sequence idle rig.smd','$sequence idle mesh.smd')
+  rig=(self.root/'rig.smd').read_text().replace('1 "hair" 0','1 "receiver" 0\n2 "hair" 1').replace('1 3 0 0 0 0 0','1 2 0 0 0 0 0\n2 1 0 0 0 0 0')
+  header,triangles=rig.split('triangles\n');triangles='\n'.join('2'+row[1:] if row.startswith('1 ') else row for row in triangles.split('\n'))
+  self.write('rig.smd',header+'triangles\n'+triangles)
+  self.scene_qc(base+'$collisionjoints rig.smd { $jointmerge receiver hair }\n')
+  phy=(self.root/'models/ragmask.phy').read_bytes();self.assertEqual(struct.unpack_from('<i',phy,8)[0],2)
+  self.assertIn(b'"name" "receiver"',phy);self.assertNotIn(b'"name" "hair"',phy)
+  data,bones=self.csgo_bone_table('ragmask');self.assertTrue(struct.unpack_from('<i',data,bones['receiver'][1]+160)[0]&0x200)
+  self.scene_qc(base+'$collisionjoints rig.smd { $jointskip hair }\n')
+  phy=(self.root/'models/ragmask.phy').read_bytes();self.assertEqual(struct.unpack_from('<i',phy,8)[0],1)
+  self.assertNotIn(b'"name" "hair"',phy);self.assertNotIn('hair',self.csgo_bone_table('ragmask')[1])
+
+ def test_physics_joint_markup_does_not_restore_static_or_simple_prop_bones(self):
+  base=self.ragdoll_procedural_fixture().replace('$bonecullmethod none\n','')
+  for archetype,root in (('$staticprop','static_prop'),('$simpleprop','prop_root')):
+   self.scene_qc(base+archetype+'\n$collisionmodel rig.smd { $mass 10 $jointmassbias hair 2 }\n')
+   self.assertEqual(set(self.csgo_bone_table('ragmask')[1]),{root})
+   self.assertEqual(struct.unpack_from('<i',(self.root/'models/ragmask.phy').read_bytes(),8)[0],1)
+
+ def test_ragdoll_direct_joint_axes_take_priority_over_missing_child_fallback(self):
+  import re
+  base=self.ragdoll_procedural_fixture()
+  rig=(self.root/'rig.smd').read_text().replace('1 "hair" 0','1 "hair" 0\n2 "helper" 1\n3 "helper2" 1').replace('1 3 0 0 0 0 0\nend','1 3 0 0 0 0 0\n2 1 0 0 0 0 0\n3 2 0 0 0 0 0\nend')
+  self.write('rig.smd',rig)
+  fallback='$jointconstrain helper x limit -30 30 1 $jointconstrain helper y limit -31 31 2 $jointconstrain helper z limit -32 32 3\n'
+  for direct,expected in [
+   ('$jointconstrain hair x limit -50 50 4\n',(-50,50,4,-31,31,2,-32,32,3)),
+   ('$jointconstrain hair x limit -50 50 4 $jointconstrain hair y limit -20 20 5 $jointconstrain hair z limit -26 30 6\n',(-50,50,4,-20,20,5,-26,30,6)),
+  ]:
+   for definitions in (direct+fallback,fallback+direct):
+    output=self.scene_qc(base+'$collisionjoints rig.smd { '+definitions+' }\n')
+    self.assertIn('constraint on bone "helper" moved to "hair"',output)
+    phy=(self.root/'models/ragmask.phy').read_bytes()
+    constraints=re.findall(rb'ragdollconstraint\s*\{(.*?)\}',phy,re.S);self.assertEqual(len(constraints),1)
+    values=dict(re.findall(rb'"([^\"]+)"\s*"([^\"]+)"',constraints[0]))
+    self.assertEqual(tuple(float(values[(axis+suffix).encode()]) for axis in 'xyz' for suffix in ('min','max','friction')),expected)
+  # With no direct parent definition, the established last fallback wins.
+  self.scene_qc(base+'$collisionjoints rig.smd { '+fallback+'$jointconstrain helper2 x limit -7 9 8 }\n')
+  phy=(self.root/'models/ragmask.phy').read_bytes();constraint=re.findall(rb'ragdollconstraint\s*\{(.*?)\}',phy,re.S)[0]
+  values=dict(re.findall(rb'"([^\"]+)"\s*"([^\"]+)"',constraint));self.assertEqual(tuple(float(values[k]) for k in (b'xmin',b'xmax',b'xfriction')),(-7,9,8))
 
  def test_fbx_hierarchy_bakes_nonuniform_scale_and_generates_normals(self):
   self.write('hierarchy.fbx',(Path(__file__).parent/'fixtures/hierarchy.fbx').read_text())

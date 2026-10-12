@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.28。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.29。
 
 发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化与体积优化均不扩展下表的游戏运行时认证范围。
 
@@ -12,6 +12,8 @@ v1.2.25 修复真实手臂 QC：VRD 短名父骨在折叠时同步解析并重�
 v1.2.24 仅精简 Release 链接产物，保留五编译器固定功能范围及全部导入器；不改变下表中的功能状态和已知兼容边界。
 
 v1.2.28 合并 PulseModel `52cf296..578e86e` 的 18 个提交：默认按骨骼顶点盒计算序列包围盒，提供 `-legacysequencebounds` 回退；接入 DMX 物理图元、内联 `$physicsshape primitive`、DMX attachment 继承及共享 DMX/KV3/zstd 库。新增的 `ag2proportions` 是实验性 CS2 AnimGraph2 辅助工具，不属于普通 Source1 MDL 编译或 GMod/CSGO 手臂修复。新版本的验证证据以 [VALIDATION.md](VALIDATION.md) 为准，下方历史检查结果不自动适用于本次合并。
+
+v1.2.29 修复程序骨物理：具有碰撞几何的 jiggle 骨可保留独立刚体；显式物理依赖参与骨骼保留，物理骨及父链补齐引擎计算标志。原始 Plum `playermodel_f_compile2_hair.qc` 无须编辑即恢复 21 个刚体与 3 个独立头发刚体。显式 joint merge/skip 和强制折叠仍有效；父体显式约束不被子体回退覆盖。CE 0.2 原 QC 为 18 个刚体，保留头发骨的对照副本为 21 个；本工具主动保留显式物理引用，不宣称默认输出完全一致。394 项本地兼容回归及 GMod prop/NPC ragdoll 各 20 秒观察通过，范围见 [VALIDATION.md](VALIDATION.md)。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
@@ -27,7 +29,7 @@ v1.2.28 合并 PulseModel `52cf296..578e86e` 的 18 个提交：默认按骨骼�
 | 来源 | 核对依据 |
 | --- | --- |
 | PulseModel | 固定基线 `578e86e38fde086ccfb701d96688817a77e718de` 的源码及 UPSTREAM_README.md；持续通过维护补丁合并更新。 |
-| StudioMDL-CE | 用户提供的 0.3.0 命令指南、changelog 和参考程序；见 COMPATIBILITY.md 与 BINARY_ANALYSIS.md。 |
+| StudioMDL-CE | 主分支命令指南、changelog 和 banner 为 `0.3.0 (Preview)` 的参考程序；该标识不是正式发布标签。v1.2.29 另以官方 `0.2` 标签（作者标注 unstable）进行物理对照；见 COMPATIBILITY.md 与 VALIDATION.md。 |
 | NekoMDL | 用户提供的中文版 ChangeLog.txt v2.3.0、NewCommands.qci 和参考程序。历史版本条目按当前行为复核，不能假定旧实现仍有效。 |
 | StudioMDL 2013 | [Cra0 原始页面](https://cra0.net/blog/posts/archived/2014/studiomdl-2013/)。2012 libs / 2013 两包的 EXE SHA256 相同，作为同一来源；不同依赖配置单独记录。 |
 | StudioMDL++ | [Tools 页面中 StudioMDL++ 的专属 Changelog](https://ficool2.github.io/HammerPlusPlus-Website/tools.html)，以及用户提供的 Oct 3 2026 参考程序。其他工具的条目不能算作 StudioMDL++ 需求。 |
@@ -44,7 +46,7 @@ v1.2.28 合并 PulseModel `52cf296..578e86e` 的 18 个提交：默认按骨骼�
 | 序列包围盒优化 | 默认逐帧变换骨骼顶点盒，可能比逐顶点蒙皮更宽；`-legacysequencebounds` 保留旧算法。本项目的顶点动画、范围诊断和 QC 策略保留。 |
 | DMX 物理图元与 attachment 继承 | `$datamodelphysics` 读取物理图元并按骨骼 merge 分组生成凸包；`$physicsmodel` 内的 `$physicsshape primitive box\|sphere\|capsule` 支持骨空间尺寸、缩放及 ragdoll origin；`$attachment inherit` 支持已加载的 DMX attachment。 |
 | 共享 DMX/KV3/zstd 库 | 已接入编译器、反编译器及需要它们的辅助工具；保留 SubD DMX 往返扩展和已有输入校验。共享库不代表新增任意 DMX 算子兼容。 |
-| 实验性 CS2 AnimGraph2 比例工具 | Windows/Linux 包提供 `subtools/ag2proportions`，项目版本统一为 1.2.28；用法、CS2/Workshop Tools 条件和原位修改注意事项见 [INSTALL.md](INSTALL.md)。许可在 `subtools/licenses/zstd.txt` 与 `subtools/licenses/ValveResourceFormat.txt`。不扩大五编译器 Source1 固定清单，不宣称 CS2 实机已认证。 |
+| 实验性 CS2 AnimGraph2 比例工具 | Windows/Linux 包提供 `subtools/ag2proportions`，使用当前项目版本号；用法、CS2/Workshop Tools 条件和原位修改注意事项见 [INSTALL.md](INSTALL.md)。许可在 `subtools/licenses/zstd.txt` 与 `subtools/licenses/ValveResourceFormat.txt`。不扩大五编译器 Source1 固定清单，不宣称 CS2 实机已认证。 |
 
 ## StudioMDL++：按公开模型编译日志核对
 
@@ -79,7 +81,7 @@ v1.2.28 合并 PulseModel `52cf296..578e86e` 的 18 个提交：默认按骨骼�
 | 输出路径/缓冲上限、pushd include/procedural | 已实现；采用动态缓冲而非固定预分配。 |
 | NvTriStrip 与全局分割 | 已实现；全局分割作用于统一 LOD 字典，非参考源文件预拆分逐字复现。 |
 | `$lod replacemodel ... reverse` | **v1.2.12 补齐**：静态控制流及三组 CE 输出确认，反转替换 LOD 绕序、保留法线、隔离共享源。 |
-| `$lod replacemesh` | **待确认**：日志列为修复，但提供的 0.3.0 二进制未识别本轮候选用法，x86/x64 均未找到命令字符串，x64 LOD 分支已反汇编核对；后续仍未发现公开语法、源码实现、Issue 示例或发布资产。不能猜成 replacemodel 别名。现有 replacemodel/replacematerial 不受影响。 |
+| `$lod replacemesh` | **待确认**：日志列为修复，但提供的 `0.3.0 (Preview)` 二进制未识别本轮候选用法，x86/x64 均未找到命令字符串，x64 LOD 分支已反汇编核对；后续仍未发现公开语法、源码实现、Issue 示例或发布资产。不能猜成 replacemodel 别名。现有 replacemodel/replacematerial 不受影响。 |
 | `$DontDestroy` / `-DontDestroy` | **v1.2.8 接入**默认不清理输出策略；编译/预检失败保留既有输出。v1.2.9 增加检查写入及可处理故障回滚，目录冲突/Windows 文件锁回归通过；不保证断电或强制终止恢复。 |
 | 历史 VTA/DMX、分割、LOD、缩放缺陷修复 | 多 VTA、默认姿态、flex 重映射等有对应实现/回归；其余历史修复仍按具体输入核对，不仅检查开关存在。 |
 

@@ -1,0 +1,212 @@
+{
+  "schema": 1,
+  "status": "local_validation_passed",
+  "scope": "Preserve authored ragdoll bodies on procedural bones and compute collision-only bone transforms.",
+  "reproduction": {
+    "fixture": "Synthetic tetrahedra with a root, optional intermediate bone and collision-only hair joint. No external assets are needed.",
+    "regressions": [
+      "Procedural collision geometry retains a separate rigid body and physicsbone index.",
+      "Explicit collision-only joints survive initial bone union with or without jiggle.",
+      "Each physical bone and its surviving ancestors have the BONE_USED_BY_ATTACHMENT setup bit.",
+      "Joint skip, merge and force-collapse retain their explicit semantics; cyclic merges fail without replacing prior output.",
+      "Collision-only merge targets survive.",
+      "Static and simple props remain single-root models despite obsolete per-joint markups.",
+      "Directly authored joint axes take precedence over missing-child fallback, independent of declaration order; unspecified axes retain fallback behavior."
+    ]
+  },
+  "automated_checks": {
+    "initial_targeted": {
+      "ragdoll": 4,
+      "collision": 11,
+      "mass": 11,
+      "status": "passed"
+    },
+    "review_targeted": {
+      "status": "passed",
+      "ragdoll": 5,
+      "static_simple_physics_markup": 1
+    },
+    "full_compatibility": {
+      "status": "passed",
+      "count": 394
+    },
+    "production_structural": {
+      "status": "passed",
+      "bones": 131,
+      "vertices": 572277
+    },
+    "previous_viewarms_regression": {
+      "status": "passed",
+      "baseline": "v1.2.28",
+      "candidate": "v1.2.29",
+      "bones": 55,
+      "vertices": 214697,
+      "unchanged_input": true,
+      "byte_identical_files": [
+        "MDL",
+        "VVD",
+        "DX80 VTX",
+        "DX90 VTX"
+      ],
+      "procedural_helpers_preserved": true
+    },
+    "automation": {
+      "status": "passed",
+      "count": 30
+    },
+    "windows_helpers": {
+      "status": "passed",
+      "count": 10
+    }
+  },
+  "production_output": {
+    "original_input_unchanged": true,
+    "distribution_contains_user_assets": false,
+    "bodies_before": 18,
+    "bodies_after": 21,
+    "head_volume_cubic_inches_before": 1174.147583,
+    "head_volume_cubic_inches_after": 459.116486,
+    "separate_hair_bodies": 3,
+    "hair_body_volumes_cubic_inches": [
+      16.17602,
+      16.030846,
+      16.176006
+    ],
+    "geometry_note": "The separated hulls remain at their authored positions. Bodies whose geometry is absent are not synthesized.",
+    "file_hashes": {
+      "fixed_original.dx80.vtx": "a0ce49e2ea39c527822f820d97b96fe56014416bda7a17238f992aa0f6f048cd",
+      "fixed_original.dx90.vtx": "8a823c29e7bbb68465c923f591bf5951a8969c1ce8cd2c1fbb4727950bdc5e21",
+      "fixed_original.mdl": "467058670e7f31cfffd39c434b206d7c00db989d593a58aff96c3f36835ae08f",
+      "fixed_original.phy": "2b8be73e1be2fb13eee5a2f8bb075da6a7d51b31055d59372973dbe0f0e4a0c7",
+      "fixed_original.vvd": "4cf9a365ddc8fc8f822e1f4ca4a7374a5fc50afa6f76a0f5cf8cb1cd8394e79f"
+    }
+  },
+  "reference_limitations": [
+    "The unmodified local CE input also culls the collision-only hair bones and produces 18 bodies. This does not establish that procedural bones must always merge into their parents.",
+    "Engine source computes ragdoll initialization matrices through BONE_USED_BY_ANYTHING. Older separated hair bodies had only BONE_ALWAYS_PROCEDURAL and were excluded by that mask. This is a concrete missing setup dependency; runtime validation is recorded separately."
+  ],
+  "runtime": {
+    "status": "passed",
+    "engine": "2026.10.10",
+    "map": "gm_flatgrass",
+    "observation_seconds_per_case": 20,
+    "errors": [],
+    "scenarios": [
+      {
+        "label": "ce",
+        "body_count": 21,
+        "max_final_speed": 0,
+        "max_horizontal_drift": 36.68288040161133
+      },
+      {
+        "label": "current",
+        "body_count": 18,
+        "max_final_speed": 0,
+        "max_horizontal_drift": 40.01768112182617
+      },
+      {
+        "label": "fixed",
+        "body_count": 21,
+        "max_final_speed": 0,
+        "max_horizontal_drift": 35.49097442626953
+      },
+      {
+        "label": "npc_ce",
+        "body_count": 21,
+        "max_final_speed": 0,
+        "max_horizontal_drift": 81.92425537109375
+      },
+      {
+        "label": "npc_current",
+        "body_count": 18,
+        "max_final_speed": 0,
+        "max_horizontal_drift": 35.47983932495117
+      },
+      {
+        "label": "npc_fixed",
+        "body_count": 21,
+        "max_final_speed": 0,
+        "max_horizontal_drift": 74.3179702758789
+      }
+    ],
+    "candidate_input": "Original compile2_hair QC; only output model name changed for isolation. No extra bone-retention directives.",
+    "reference_input": "CE 0.2 using the same QC with explicit bonemerge retention of hair_0_0..4; unmodified CE source result is separately recorded as 18 bodies.",
+    "frozen_comparison": {
+      "viewports": 3,
+      "phase": "frozen_aligned",
+      "source": "server PhysObj:GetMeshConvexes geometry plus recorded body poses",
+      "cases": {
+        "fixed": {
+          "edges": 654,
+          "head_hulls": 1,
+          "hair_bodies": 3,
+          "triangles": 218
+        },
+        "ce": {
+          "edges": 648,
+          "head_hulls": 1,
+          "hair_bodies": 3,
+          "triangles": 216
+        },
+        "current": {
+          "edges": 444,
+          "head_hulls": 1,
+          "hair_bodies": 0,
+          "triangles": 148
+        }
+      },
+      "height": 900,
+      "width": 1280
+    },
+    "evidence_sha256": {
+      "frozen.png": "9cd46070d572b19fe97122b9d968c44e65b611cb883f9a15c232765355ff6229",
+      "frozen_render.json": "dc4771bf955fc46796466582ccef4e66e451ba0fd54450067395d12be3a360fc",
+      "server.json": "1ef3b7c978ee1aadbe25abc0c1d3afd457bbd57ff21822b776c94640679c5796",
+      "settled.png": "3fc713c6beb3175ae288871e044d749e96d42e9d0feeec04b425435178ce3995",
+      "settled_render.json": "f1786bdff4924e7626d35b1296b50701c4a53462d4c14079704ebd9db1821c9a",
+      "summary.json": "94c7e25580e64dcbcdeccbd97f13e3727f9012ff984b87f1cb8c0946f05940f7"
+    },
+    "task_cleanup": {
+      "addon_removed": true,
+      "configs_restored": true
+    }
+  },
+  "limitations": [
+    "This targeted correction is not a claim of complete CE or engine parity.",
+    "Reference executables and production model assets remain outside the source and release packages."
+  ],
+  "project_version": "1.2.29",
+  "checked_utc": "2026-10-12T15:16:36.659031+00:00",
+  "local_build": {
+    "toolchain": "llvm-mingw 20260922 UCRT x86_64",
+    "configuration": "Release",
+    "compiler_sha256": "5992caf57261f092abf04d6e7d7b6931d73b4e9ed31a8c9c9d732dfee6231006"
+  },
+  "reference_comparison": {
+    "tag": "0.2",
+    "commit": "3149dcb72228abfcf338954857ca4f1aa73dc4af",
+    "source": "https://github.com/DeadZoneLuna/StudioMDL-CE/tree/0.2",
+    "unmodified_input_bodies": 18,
+    "retained_bone_control_bodies": 21,
+    "named_constraints_equal": true,
+    "constraint_count": 20
+  },
+  "viewarms_regression": {
+    "status": "passed",
+    "input_qc_sha256_unchanged": "a3167734c7da15b072021f353fa92e0d7b97502689f23e1329c790e00413e15d",
+    "files_byte_identical": {
+      "models\\player\\dewobedil\\sodau\\plum\\c_arms\\plum_kisekae_p.dx80.vtx": true,
+      "models\\player\\dewobedil\\sodau\\plum\\c_arms\\plum_kisekae_p.dx90.vtx": true,
+      "models\\player\\dewobedil\\sodau\\plum\\c_arms\\plum_kisekae_p.mdl": true,
+      "models\\player\\dewobedil\\sodau\\plum\\c_arms\\plum_kisekae_p.vvd": true
+    },
+    "named_skeletons_equal": true,
+    "bones": 55,
+    "vertices": 214697
+  },
+  "input_integrity": {
+    "checked_files": 131,
+    "changed": [],
+    "verified_material_files": 249
+  }
+}

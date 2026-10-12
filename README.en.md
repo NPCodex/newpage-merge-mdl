@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.28
+# NewPageMergeMDL v1.2.29
 
 English | [简体中文](README.md)
 
@@ -17,7 +17,7 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
-**Project version: v1.2.28.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.29.** The compiler, decompiler and bundled tools share this
 version.
 
 ## Download and install: one complete archive per platform
@@ -35,6 +35,16 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.
+
+## v1.2.29: retain independent collision bodies on procedural hair bones
+
+A `$jigglebone` no longer has its collision geometry merged into its parent solely because it is procedural. Explicit physics constraints, mass settings and merge targets retain their referenced bones. Physics bones and their ancestors receive runtime setup flags so ragdoll creation uses computed bone transforms. Explicit `$jointmerge`, `$jointskip` and forced bone collapse remain effective.
+
+Directly authored joint axes take priority: constraints falling back from missing child bodies no longer overwrite the parent's own limits.
+
+The original Plum `playermodel_f_compile2_hair.qc` now produces **21 bodies** without source edits, restoring the independent `hair_0_1/2/3` bodies and constraints. In GMod `gm_flatgrass`, directly spawned ragdolls and NPC death ragdolls were each observed for 20 seconds with no recorded errors and zero final maximum speed. **394 local compatibility tests passed.** See [validation](VALIDATION.md) for scope and evidence.
+
+CE 0.2 produces 18 bodies from the same original QC because it first removes unused hair bones; an isolated control that explicitly retains those bones produces 21. This fix preserves explicit physics dependencies and does not claim identical default CE output. The reference CE main-branch binary identifies itself as `0.3.0 (Preview)`; that banner is not a formal release tag.
 
 ## v1.2.28: merge PulseModel upstream updates
 

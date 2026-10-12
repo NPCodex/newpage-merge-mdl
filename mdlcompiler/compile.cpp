@@ -436,22 +436,22 @@ bool BoneIsAlwaysCollapse(const Ctx& ctx, const char* pname) {
     return false;
 }
 
-// A bone a physics body will be built on must survive the collapse pass, or the
-// body would end up bound to some surviving ancestor instead. Only the bones
-// named explicitly by the script count here - the collision geometry's own
-// bones are not known until BuildCollisionModel runs, which is deliberately
-// after collapse (it needs final global-pose vertices).
+// Explicit physics references must survive both the initial global union and
+// the collapse pass. Collision-only geometry does not mark render vertex use;
+// its surviving bone receives a setup mask when its body is built.
 bool BoneIsPhysics(const Ctx& ctx, const char* pname) {
     if (_stricmp(ctx.in->physRootBone.c_str(), pname) == 0 && !ctx.in->physRootBone.empty())
         return true;
     for (const PhysicsJoint& j : ctx.in->physJoints)
         if (_stricmp(j.bonename.c_str(), pname) == 0)
             return true;
-    // a markup child names a body too, whether or not it also has a constraint
+    // Markups name bodies without constraints too. A merge destination must
+    // survive so geometry is not silently redirected to a different ancestor.
     for (const PhysicsMarkup& mk : ctx.in->physMarkups) {
         if (mk.skip)
             continue;
-        if (_stricmp(mk.bonename.c_str(), pname) == 0)
+        if (_stricmp(mk.bonename.c_str(), pname) == 0 ||
+            (!mk.mergeInto.empty() && _stricmp(mk.mergeInto.c_str(), pname) == 0))
             return true;
     }
     // either side of a collision pair names a body too
@@ -1541,6 +1541,20 @@ void TagUsedBones(Ctx& ctx) {
                 for (int j = 0; j < psource->numbones; ++j)
                     if (_stricmp(box.bonename.c_str(), psource->localBone[j].name.c_str()) == 0)
                         psource->boneflags[j] |= BONE_USED_BY_HITBOX;
+
+        // A ragdoll joint is also a runtime bone dependency.  The collision
+        // source is often a DMX that is not a render source, so its weighted
+        // bones do not contribute vertex flags to the global table.  Preserve
+        // explicitly constrained bones (and their ancestors through boneref)
+        // and give them a normal setup mask.  Without this, a retained jiggle
+        // bone can have a physics solid but be skipped by BuildTransformations
+        // because its MDL flags contain only BONE_ALWAYS_PROCEDURAL.
+        // Static/simple props have already rebound their geometry to one
+        // root; old per-joint names must not resurrect their discarded rig.
+        if (ctx.in->archetype == Archetype::General)
+            for (int j = 0; j < psource->numbones; ++j)
+                if (BoneIsPhysics(ctx, psource->localBone[j].name.c_str()))
+                    psource->boneflags[j] |= BONE_USED_BY_ATTACHMENT;
 
         // Local hierarchy references must survive the initial unused-bone cull.
         for (const Anim& anim : ctx.out->anims) for (const AnimCmd& cmd : anim.cmds)
@@ -4835,8 +4849,14 @@ void AssignPhysicsBones(CompiledModel& m) {
         b.physicsbone = -1;
     for (size_t i = 0; i < m.physSolids.size(); i++) {
         int bi = m.FindBone(m.physSolids[i].name.c_str());
-        if (bi >= 0)
+        if (bi >= 0) {
             m.bones[bi].physicsbone = static_cast<int>(i);
+            // SetupBones(BONE_USED_BY_ANYTHING) must compute the entire chain
+            // before ragdoll creation, including collision-only jiggle bones.
+            // The ragdoll subsequently overrides their procedural transform.
+            for (int ancestor = bi; ancestor >= 0; ancestor = m.bones[ancestor].parent)
+                m.bones[ancestor].flags |= BONE_USED_BY_ATTACHMENT;
+        }
     }
     for (size_t i = 0; i < m.bones.size(); i++) {
         if (m.bones[i].physicsbone >= 0)
@@ -5267,14 +5287,8 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
         // bonemap[i] == i means "build a body here"; -1 is skipped, anything
         // else folds this bone's geometry into that bone's body.
         std::vector<int> bonemap(numLocalBones);
-        for (int i = 0; i < numLocalBones; i++) {
+        for (int i = 0; i < numLocalBones; i++)
             bonemap[i] = i;
-            const int global=ResolveLocalBoneToGlobal(ps,i,nullptr);
-            // A procedurally simulated joint cannot independently drive a
-            // ragdoll body. Fold its geometry into the nearest physical ancestor.
-            if(global>=0 && (m.bones[global].flags & BONE_ALWAYS_PROCEDURAL))
-                bonemap[i]=ps->localBone[i].parent;
-        }
         for (const PhysicsMarkup& mk : in.physMarkups) {
             if (!mk.skip && mk.mergeInto.empty())
                 continue;
@@ -5613,6 +5627,17 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
         std::printf("WARNING: $rootbone \"%s\" has no collision body - the hull meant for it "
                     "is weighted to some other bone\n", in.physRootBone.c_str());
     }
+    // A missing child's constraint may fill an unspecified ancestor axis,
+    // but must not replace limits authored on the ancestor itself. Collect
+    // direct axes first so this precedence is independent of script order.
+    std::vector<unsigned char> directAxes(m.physSolids.size(), 0);
+    for (const PhysicsJoint& j : in.physJoints) {
+        const int gb = FindGlobalBone(m, j.bonename);
+        const int idx = gb >= 0 ? FindSolidByName(m.physSolids, m.bones[gb].name) : -1;
+        if (idx >= 0)
+            for (const PhysicsJointAxis& a : j.axes)
+                directAxes[idx] |= static_cast<unsigned char>(1u << a.axis);
+    }
     for (const PhysicsJoint& j : in.physJoints) {
         int gb = FindGlobalBone(m, j.bonename);
         if (gb < 0) {
@@ -5622,6 +5647,7 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
         }
         std::string name = m.bones[gb].name;
         int idx = FindSolidByName(m.physSolids, name);
+        const bool fallback = idx < 0;
         if (idx < 0) {
             // the bone collapsed or was skipped - the constraint slides up to
             // whichever ancestor kept a body, as the reference does
@@ -5646,6 +5672,8 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
             return false;
         }
         for (const PhysicsJointAxis& a : j.axes) {
+            if (fallback && (directAxes[idx] & (1u << a.axis)))
+                continue;
             switch (a.type) {
             case 1: // limit
                 solid.axisMin[a.axis] = a.min;
