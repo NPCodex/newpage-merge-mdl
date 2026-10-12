@@ -1,0 +1,183 @@
+{
+  "project_version": "1.2.28",
+  "date": "2026-10-12",
+  "scope": "Merge 18 PulseModel commits through 578e86e, preserving maintained compatibility and weighted-bone fixes.",
+  "pulse_base": "578e86e38fde086ccfb701d96688817a77e718de",
+  "previous_pulse_base": "52cf296",
+  "build": {
+    "platform": "Windows x64",
+    "configuration": "MinSizeRel -Os, ThinLTO, static llvm-mingw 20260922 UCRT",
+    "tools": {
+      "NewPageMergeMDL-C4D.exe": {
+        "bytes": 2643968,
+        "sha256": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97"
+      },
+      "NewPageMergeMDL-Decompiler.exe": {
+        "bytes": 971264,
+        "sha256": "7c074edc6bac10a4585f990bfa916bf6778d1030dbcbe7144a60412f547c52bf"
+      },
+      "NewPageMergeMDL.exe": {
+        "bytes": 12813824,
+        "sha256": "273af5d25e1c8b1b01e3eb0c5159a7ce5d3ad6b13ad80c63aecfcf328a4961e2"
+      },
+      "NewPageVRMLtoX3D.exe": {
+        "bytes": 568832,
+        "sha256": "ae4bdcf01763c116845f5f6c01a9b88680294758d30b106e91c2da5e105e4cfe"
+      },
+      "subtools/ag2proportions.exe": {
+        "bytes": 1004032,
+        "sha256": "3e0eefeeadacc90346596420b00645c2b5be769cacd43269cd0cddc138fd8806"
+      },
+      "subtools/l4d_animswap.exe": {
+        "bytes": 669696,
+        "sha256": "4d0ea1521c69d79a7630edfebb45e1ce6205b1e8de047ee4e91643e67ff93f77"
+      },
+      "subtools/meshtool.exe": {
+        "bytes": 597504,
+        "sha256": "5d734efc15624505889a2001627583aab0684fd59d03717322c997a4ddfe3f75"
+      },
+      "subtools/vmd2valvebiped.exe": {
+        "bytes": 740864,
+        "sha256": "865952c5efac45083a04e45514c9a4c8d09ca02124bd16ff23fd606d263fd574"
+      }
+    },
+    "c4d": "Previously verified pinned helper; not rebuilt."
+  },
+  "tests": {
+    "compatibility": {
+      "passed": true,
+      "tests": 389,
+      "log_sha256": "3ac763562da9e682c0457fa21b7059597bafb79286e89f8dc197e13847400ed5"
+    },
+    "automation": {
+      "passed": true,
+      "tests": 30,
+      "log_sha256": "361238d2610bc81674282eb234a7f413e68e3db5227ea71efa8e03be20ff2250"
+    },
+    "windows_helper_staging": {
+      "passed": true,
+      "tests": 10,
+      "log_sha256": "c6701aeffa818b5b6a97de97f4a6d8e46585445f150803bf2b3a0a81dbff4e12"
+    },
+    "package": {
+      "passed": true,
+      "compatibility_tests": 389,
+      "c4d_tests": 7,
+      "ag2_help_version": true,
+      "vrml": true,
+      "log_sha256": "7af8fc38bd572e4be08479b9107628356b45ca8b4c1f486fd4239991d3f6f1bc"
+    }
+  },
+  "new_regressions": [
+    "Fast and legacy weighted-animation bounds enclose independent skinning samples",
+    "$bboxonlyverts uses exact vertices and excludes hitboxes",
+    "DMX primitive hull merge, spheres/capsules/rotated boxes",
+    "QC primitive scale/origin and ragdoll bone-local geometry",
+    "DMX attachments through transformed ancestors",
+    "Binary and text SubD DMX retain quads, control points, normals and UVs"
+  ],
+  "integration_fixes": [
+    "$bboxonlyverts selects exact skinning rather than an empty fast-path bound",
+    "SubD decompiler adapted to shared DMX Builder and Guid API",
+    "MinGW Unicode entry point and static tool runtimes",
+    "AG2 project version, licensing, Linux executable permission and package gates"
+  ],
+  "production": {
+    "input_hash_count": 50,
+    "original_inputs_unchanged": true,
+    "gameinfo_sha256": "c616a6f675f69b6fe2d35d5950949a8379b49e4e26c6690ba40c3b33822a7df4",
+    "compiler_sha256": "273af5d25e1c8b1b01e3eb0c5159a7ce5d3ad6b13ad80c63aecfcf328a4961e2",
+    "fast_bounds_enclose_legacy": true,
+    "runs": {
+      "viewarms-fast": {
+        "files": {
+          "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx80.vtx": "d8dce95f3b3d3e65e7c5663e5f26ce38d49eb73dc5c858888defc2ff628bd247",
+          "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx90.vtx": "13e935894ea8a8a13d323b69875727adb211ebf0cce62810ef8196365a9c35fd",
+          "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.mdl": "20e45b75a025e29773a4db675ef823cea179ee13e403ee2f5829c54e0a3ea324",
+          "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.vvd": "3a7da1307ae053d8e36148c26befbaa4d797e9e2febddda19d181def7d54ef48"
+        },
+        "structure": {
+          "model": "plum_kisekae_p.mdl",
+          "bones": 55,
+          "vertices": 214697
+        },
+        "bones": 55,
+        "vertices": 214697,
+        "v127_skeleton_procedures_geometry_named_weights_equal": true
+      },
+      "viewarms-legacy": {
+        "files": {
+          "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx80.vtx": "87b3721df1327259631394115a1ce2af6bb004770a728c56ccb1e4daee2f75ea",
+          "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.dx90.vtx": "ef379a7652cac4a9fdcf286158be1990c0189e86ef89dab8959dd3f35237618c",
+          "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.mdl": "28c27eea452da8f5a339016f6ea3f6c24d2741bd75f9739a11b525dde8a16bb5",
+          "models/player/dewobedil/sodau/plum/c_arms/plum_kisekae_p.vvd": "2f2f83934bc188dc0db8c4dbe3d13b47ccd1d188f0f98e3a805fc8f134af6d73"
+        },
+        "structure": {
+          "model": "plum_kisekae_p.mdl",
+          "bones": 55,
+          "vertices": 214697
+        },
+        "bones": 55,
+        "vertices": 214697,
+        "v127_skeleton_procedures_geometry_named_weights_equal": true
+      },
+      "plum-fast": {
+        "files": {
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": "3abb789811a44279beac5aaa0eee00c9f58a36edcacfc3f3c7cbc470c74f9a93",
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": "b462dbaac3ef846a17ec282ee7ca6c266744c8a71c301b2bc94b8aebcca8d935",
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": "bfd453621be27c695cfec893ede1a3bce20ea358f8041574b3a342c7d08d8f69",
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": "2cf4dc260488ef5a1feb629bb24c0c0bf863620d546634a982a32edaf8ff8948",
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": "d425b9e9f1ff72c2b85ea0ce6b6bc5324a8c751cec0b77735b4a782dd4cf839a"
+        },
+        "structure": {
+          "model": "plum_dreaming_hair_p.mdl",
+          "bones": 131,
+          "vertices": 572277
+        },
+        "bones": 131,
+        "vertices": 572277,
+        "v127_skeleton_procedures_geometry_named_weights_equal": true
+      },
+      "plum-legacy": {
+        "files": {
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": "e6e164b79f642fed8a4e18d9cee045cd54d9b1a4b076ef82eee720acd4190760",
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": "342c8e27d774f4822dcc8a1c545c5f7daad5b5b59bbf1585176ce74f280e14b3",
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": "81da9b0de0ca56bc5987f3f06672a41113dfeb58499c94124b393d877be8f995",
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": "b24cdf5b73acd0c52fa327cd0a34c4995e18d76841ddf96f30d9601ed9a6aec8",
+          "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": "b09d7bb5ca74769d92807dd208258398205c6111f4de802aa131c699231e2d85"
+        },
+        "structure": {
+          "model": "plum_dreaming_hair_p.mdl",
+          "bones": 131,
+          "vertices": 572277
+        },
+        "bones": 131,
+        "vertices": 572277,
+        "v127_skeleton_procedures_geometry_named_weights_equal": true
+      }
+    }
+  },
+  "ag2proportions": {
+    "status": "experimental CS2 AnimGraph2 tool",
+    "help_and_version": "passed",
+    "full_cs2_resource_compiler_workflow": "not tested",
+    "license_files": [
+      "subtools/licenses/zstd.txt",
+      "subtools/licenses/ValveResourceFormat.txt"
+    ]
+  },
+  "limits": [
+    "No new in-game run in this merge. v1.2.27 runtime observations remain historical.",
+    "Production comparison covers skeleton/procedures/geometry/named skin weights; new sequence bounds may differ.",
+    "No general speed claim from this limited model sample.",
+    "Local Windows validation does not establish MSVC/Linux success; final artifacts must pass their own CI gates."
+  ],
+  "overlay": {
+    "verified": true,
+    "sha256": "34f4e02d69c8dc38a2cf4cdfe81ee79eddd84cdc5ef7cd4e20f0b699eacbdda2"
+  },
+  "upstream_prepare": {
+    "passed": true,
+    "manifest_sha256": "b95ca9313864141723333d62ca15a183fa600154897bd0094f94fdda7993f315"
+  }
+}

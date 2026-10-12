@@ -1,9 +1,14 @@
 cmake_minimum_required(VERSION 3.22)
 # Distributed tools share the NewPageMergeMDL project version.
 # Upstream TOOL_VERSION declarations remain as merge context only.
-# C is enabled only for the vendored ufbx single-file reader; all of our own
-# code is C++.
-project(NewPageMergeMDL VERSION 1.2.27 LANGUAGES CXX C)
+# C is enabled only for vendored dependencies; toolkit code is C++.
+project(NewPageMergeMDL VERSION 1.2.28 LANGUAGES CXX C)
+
+# Keep all Windows tools portable, including helpers without Assimp's runtime
+# link settings. MSVC distribution builds select MultiThreaded in their preset.
+if(MINGW)
+    add_link_options(-static)
+endif()
 
 # Keep every importer, but omit unused code and development symbols from release
 # executables. Debug/RelWithDebInfo and compilation optimization levels stay intact.

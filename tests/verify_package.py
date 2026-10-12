@@ -73,19 +73,26 @@ def verify(archive, expected, destination):
         required = ['NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D']
         if suffix:
             required.append('NewPageMergeMDL-C4D')
-        required.extend('subtools/' + name for name in ('l4d_animswap', 'meshtool', 'vmd2valvebiped'))
+        required.extend('subtools/' + name for name in ('ag2proportions', 'l4d_animswap', 'meshtool', 'vmd2valvebiped'))
         for tool in required:
             binary = package.read('NewPageMergeMDL/' + tool + suffix)
             if not binary.startswith(b'MZ' if suffix else b'\x7fELF'):
                 raise ValueError('Invalid native executable: ' + tool)
+        for name in ('subtools/licenses/zstd.txt', 'subtools/licenses/ValveResourceFormat.txt'):
+            member = 'NewPageMergeMDL/' + name
+            if member not in names or package.getinfo(member).file_size == 0:
+                raise ValueError('Missing or empty required ag2proportions license: ' + name)
         if expected.get('fingerprint'):
             package.getinfo('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip')
         verify_inventory(package)
         package.extractall(destination)
     root = Path(destination) / 'NewPageMergeMDL'
     if os.name != 'nt':
-        for binary in root.iterdir():
-            if binary.is_file() and binary.read_bytes()[:4] == b'\x7fELF':
+        for tool in required:
+            binary = root / (tool + suffix)
+            with binary.open('rb') as stream:
+                is_elf = stream.read(4) == b'\x7fELF'
+            if is_elf:
                 binary.chmod(0o755)
     return root / ('NewPageMergeMDL' + suffix)
 
@@ -117,6 +124,20 @@ Transform { translation 2 3 4 children [ Shape { geometry IndexedFaceSet {
         raise ValueError('Packaged VRML converter replaced output for an invalid source')
 
 
+def exercise_packaged_ag2proportions(compiler, expected_version):
+    """Check that the separately shipped experimental CS2 helper starts."""
+    tool = compiler.parent / 'subtools' / ('ag2proportions' + compiler.suffix)
+    help_result = subprocess.run([str(tool), '--help'], capture_output=True, text=True,
+                                 errors='replace', check=True)
+    if 'Usage:' not in help_result.stdout or 'CS2 AnimGraph2 proportion wrapper' not in help_result.stdout:
+        raise ValueError('Packaged ag2proportions help output is incomplete')
+    version_result = subprocess.run([str(tool), '--version'], capture_output=True, text=True,
+                                     errors='replace', check=True)
+    versions = re.findall(r'^ag2proportions (\d+\.\d+\.\d+)\r?$', version_result.stdout, re.MULTILINE)
+    if versions != [expected_version]:
+        raise ValueError('Packaged ag2proportions version does not match packaged source version')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive')
@@ -128,6 +149,7 @@ def main():
         banner = subprocess.run([str(compiler), '-version'], capture_output=True, text=True, errors='replace')
         if 'v' + expected['project_version'] not in banner.stdout:
             raise ValueError('Executable version does not match packaged source version')
+        exercise_packaged_ag2proportions(compiler, expected['project_version'])
         exercise_packaged_vrml(compiler,folder)
         c4d=compiler.with_name('NewPageMergeMDL-C4D.exe')
         if os.name=='nt' and c4d.is_file():

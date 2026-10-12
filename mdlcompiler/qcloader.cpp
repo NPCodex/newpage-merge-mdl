@@ -286,6 +286,9 @@ struct Ctx {
         pm::Vector3 origin{};
         pm::Vector3 anglesDeg{};
         bool hasAngles = false;
+        pm::matrix3x4 inheritedLocal;
+        bool hasInheritedLocal = false;
+        bool hasOriginOverride = false;
         int type = 0;  // kAttachIs* bits
         int flags = 0; // kAttachFlag* bits, written to disk
         bool filled = true; // false = $declareattachment slot awaiting its definition
@@ -5407,11 +5410,28 @@ bool CmdAttachment(Ctx& c, const Token& cmd) {
                                        return p.filled &&
                                               _stricmp(p.name.c_str(), src.c_str()) == 0;
                                    });
-            if (it == c.attachments.end())
-                return c.Fail(t.line, "$attachment \"" + a.name +
-                                      "\": inherit source \"" + src + "\" not defined above");
             std::string keep = std::move(a.name);
-            a = *it;
+            if (it != c.attachments.end()) {
+                a = *it;
+            } else {
+                auto source = std::find_if(c.in.attachments.begin(), c.in.attachments.end(),
+                                          [&](const cm::Attachment& p) {
+                                              return _stricmp(p.name.c_str(), src.c_str()) == 0;
+                                          });
+                if (source == c.in.attachments.end())
+                    return c.Fail(t.line, "$attachment \"" + keep +
+                                          "\": inherit source \"" + src + "\" not defined above");
+                a = Ctx::PendingAttachment{};
+                a.bone = source->bonename;
+                a.type = source->type & ~(cm::kAttachIsFromSource | cm::kAttachIsDeclared);
+                a.flags = source->flags;
+                a.inheritedLocal = source->local;
+                a.hasInheritedLocal = true;
+                a.anglesDeg = pm::MatrixAnglesDeg(source->local);
+                a.flexgroups = source->flexgroups;
+                a.flexmorphs = source->flexmorphs;
+                a.materials = source->materials;
+            }
             a.name = std::move(keep);
         } else if (!t.quoted && _stricmp(t.text.c_str(), "bone") == 0) {
             if (!c.Want("a bone name", sub, a.bone))
@@ -5422,10 +5442,11 @@ bool CmdAttachment(Ctx& c, const Token& cmd) {
                 !c.WantFloat("a Y offset", sub, a.origin.y) ||
                 !c.WantFloat("a Z offset", sub, a.origin.z))
                 return false;
+            a.hasOriginOverride = true;
         } else if (!t.quoted && (_stricmp(t.text.c_str(), "angles") == 0 ||
                                  _stricmp(t.text.c_str(), "rotate") == 0)) {
-            // reference reads up to 3 values, breaking early; omitted
-            // components keep their 0 default (anglesDeg{}).
+            // Read up to 3 values; omitted components keep their inherited
+            // angles or the zero default.
             for (float* d : {&a.anglesDeg.x, &a.anglesDeg.y, &a.anglesDeg.z}) {
                 if (c.AtCommand())
                     break;
@@ -5550,7 +5571,9 @@ void FinishAttachments(Ctx& c) {
         att.flexmorphs = p.flexmorphs;
         att.materials = p.materials;
 
-        if (att.type & cm::kAttachIsAbsolute)
+        if (p.hasInheritedLocal)
+            att.local = p.inheritedLocal;
+        else if (att.type & cm::kAttachIsAbsolute)
             pm::AngleIMatrix(defaultRot, att.local);
         if (p.hasAngles)
             pm::AngleMatrixDeg(p.anglesDeg, att.local);
@@ -5558,10 +5581,16 @@ void FinishAttachments(Ctx& c) {
         // position is scaled like a vertex, and goes in after the rotation.
         // With selectors this is the offset from the vertex average, not the
         // final position (GenerateVertexAveragedAttachments adds the average).
-        const float s = p.noscale ? 1.0f : c.in.scale;
-        att.local.m[0][3] = p.origin.x * s;
-        att.local.m[1][3] = p.origin.y * s;
-        att.local.m[2][3] = p.origin.z * s;
+        if (p.hasInheritedLocal && !p.hasOriginOverride) {
+            att.local.m[0][3] = p.inheritedLocal.m[0][3];
+            att.local.m[1][3] = p.inheritedLocal.m[1][3];
+            att.local.m[2][3] = p.inheritedLocal.m[2][3];
+        } else {
+            const float s = p.noscale ? 1.0f : c.in.scale;
+            att.local.m[0][3] = p.origin.x * s;
+            att.local.m[1][3] = p.origin.y * s;
+            att.local.m[2][3] = p.origin.z * s;
+        }
 
         scripted.push_back(std::move(att));
     }
@@ -8041,6 +8070,62 @@ bool AtNumber(Ctx& c) {
     }
 }
 
+// $physicsshape primitive <type> <bone> ... - the physicsPrimitiveList shapes,
+// one convex hull each, values in bone space and scaled by $scale:
+//   box <mins xyz> <maxs xyz> [orientation xyz]   sphere <center xyz> <radius> [segments]
+//   capsule <point0 xyz> <point1 xyz> <radius0> <radius1> [segments]
+bool ParsePhysPrimitive(Ctx& c, const Token& cmd, cm::PhysicsShape& sh) {
+    std::string type;
+    if (!c.Want("box, sphere or capsule", cmd, type) ||
+        !c.Want("a bone name", cmd, sh.parentBone))
+        return false;
+    type = Lower(type);
+    const std::string where = "$physicsshape primitive " + type;
+    const Token sub{where, cmd.line, false};
+    auto trailing = [&]() { return AtNumber(c) && c.Cur().line == cmd.line; };
+    sh.name = sh.parentBone;
+
+    std::vector<pm::Vector3>& pts = sh.primitivePoints;
+    int segments = 6;
+    if (type == "box") {
+        pm::Vector3 mins, maxs, angles{};
+        if (!WantVec3(c, sub, mins) || !WantVec3(c, sub, maxs))
+            return false;
+        if (trailing() && !WantVec3(c, sub, angles))
+            return false;
+        if (mins.x == maxs.x || mins.y == maxs.y || mins.z == maxs.z)
+            return c.Fail(cmd.line, where + ": box is flat");
+        source::TessellateBox(mins, maxs, angles, pts);
+    } else if (type == "sphere") {
+        pm::Vector3 center;
+        float radius = 0.0f;
+        if (!WantVec3(c, sub, center) || !c.WantFloat("a radius", sub, radius))
+            return false;
+        if (trailing() && !c.WantInt("a segment count", sub, segments))
+            return false;
+        if (!(radius > 0.0f))
+            return c.Fail(cmd.line, where + ": radius must be greater than 0");
+        source::TessellateSphere(center, radius, segments, pts);
+    } else if (type == "capsule") {
+        pm::Vector3 p0, p1;
+        float r0 = 0.0f, r1 = 0.0f;
+        if (!WantVec3(c, sub, p0) || !WantVec3(c, sub, p1) ||
+            !c.WantFloat("a radius0", sub, r0) || !c.WantFloat("a radius1", sub, r1))
+            return false;
+        if (trailing() && !c.WantInt("a segment count", sub, segments))
+            return false;
+        if (!(r0 > 0.0f) && !(r1 > 0.0f))
+            return c.Fail(cmd.line, where + ": needs a radius greater than 0");
+        source::TessellateCapsule(p0, p1, r0, r1, segments, pts);
+    } else {
+        return c.Fail(cmd.line, "$physicsshape primitive: expected box, sphere or capsule, "
+                                "got \"" + type + "\"");
+    }
+    for (pm::Vector3& p : pts)
+        p = {p.x * c.in.scale, p.y * c.in.scale, p.z * c.in.scale};
+    return true;
+}
+
 // $physicsjoint <bone> { x limit <min> <max> [friction] / y free / z fixed }
 // Friction is the optional trailing NUMBER on an axis, not a keyword. Omitting
 // it means 1, not 0 - write an explicit 0 for a frictionless joint.
@@ -8177,12 +8262,23 @@ bool CmdPhysicsModel(Ctx& c, const Token& cmd) {
 
         if (o == "$physicsshape") {
             std::string mode;
-            if (!c.Want("fromfile, fromrendermesh or fromrender", sub, mode))
+            if (!c.Want("fromfile, fromrendermesh, fromrender or primitive", sub, mode))
                 return false;
             mode = Lower(mode);
+            if (mode == "primitive") {
+                cm::PhysicsShape sh;
+                sh.kind = cm::PhysicsShapeKind::Primitive;
+                if (!ParsePhysPrimitive(c, sub, sh))
+                    return false;
+                c.in.physShapes.push_back(std::move(sh));
+                if (c.in.physShapes.size() > static_cast<size_t>(pulse::limits::kMaxPhysShapes))
+                    return c.Fail(t.line, "too many physics shapes (max " +
+                                          std::to_string(pulse::limits::kMaxPhysShapes) + ")");
+                continue;
+            }
             if (mode != "fromfile" && mode != "fromrendermesh" && mode != "fromrender")
-                return c.Fail(t.line, "$physicsshape: expected fromfile, fromrendermesh "
-                                      "or fromrender, got \"" + mode + "\"");
+                return c.Fail(t.line, "$physicsshape: expected fromfile, fromrendermesh, "
+                                      "fromrender or primitive, got \"" + mode + "\"");
             // the geometry reference rides on the command line, not inside the
             // block - fromrender has nothing to name, it takes the whole model
             std::string ref;
@@ -8602,7 +8698,8 @@ bool CmdCollisionJoints(Ctx& c, const Token& cmd) {
 }
 
 // $datamodelphysics <file> - the DmePhysicsShape dags of a model DMX, each one
-// rigid on its most-weighted bone. Joints and mass stay in $physicsmodel.
+// rigid on its most-weighted bone, plus its physicsPrimitiveList capsules/boxes
+// hulled per bone. Joints and mass stay in $physicsmodel.
 bool CmdDataModelPhysics(Ctx& c, const Token& cmd) {
     std::string file;
     if (!c.Want("a source filename", cmd, file))
@@ -8623,7 +8720,8 @@ bool CmdDataModelPhysics(Ctx& c, const Token& cmd) {
                                /*physicsShapes=*/true))
         return c.Fail(cmd.line, "$datamodelphysics \"" + file + "\": " + err);
     if (src->face.empty())
-        return c.Fail(cmd.line, "$datamodelphysics \"" + file + "\" has no DmePhysicsShape");
+        return c.Fail(cmd.line, "$datamodelphysics \"" + file + "\" has no DmePhysicsShape "
+                                "or physics primitive");
 
     // concave: each shape is its own island, so it gets its own hull even when
     // several shapes share a bone

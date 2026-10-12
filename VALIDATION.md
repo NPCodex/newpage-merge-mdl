@@ -1,4 +1,16 @@
-# v1.2.27 当前验证
+# v1.2.28 当前验证
+
+合并 PulseModel 从 `52cf296` 到 `578e86e38fde086ccfb701d96688817a77e718de` 的 18 个提交：序列包围盒优化及 `-legacysequencebounds` 回退、DMX/QC 物理图元、attachment 继承、共享 DMX/KV3/zstd 库和实验性 CS2 `ag2proportions`。保留维护版的骨骼保留策略、CSGO 范围诊断、顶点动画边界和 SubD 往返支持。
+
+- 本地 Windows x64 llvm-mingw 的 MinSizeRel + ThinLTO 静态构建通过 **389 项兼容回归、30 项自动化、10 项固定 helper 分发测试**。新增测试检查实际包围盒、物理 hull 几何/体积、attachment 矩阵及二进制/文本 SubD 的四边形、控制点、法线和 UV。
+- 修复合并时 `$bboxonlyverts` 与快速算法组合产生空范围的问题：该选项自动使用精确顶点计算。普通快速算法产生保守范围，可能比传统算法更大；可用 `-legacysequencebounds` 对照。范围诊断和烘焙顶点动画边界回归通过。
+- 原始 `viewarms_compile.qc` 与 Plum `playermodel_f_compile2_hair.qc` 使用正确 GMod gameinfo、隔离输出分别执行快速/传统两种路径。手臂 **55 骨、214,697 顶点**，Plum **131 骨、572,277 顶点**；与 v1.2.27 的骨层级、flags、bind pose、程序骨参数、几何及具名权重逐值相同，快速序列范围包住传统范围。50 个登记输入散列未变；这不是所有资源文件的完整清单，也不据小样本宣称普遍加速。
+- `ag2proportions --help` / `--version` 独立启动通过，版本为 **1.2.28**；补齐 MinGW Unicode 入口、静态运行库、包内许可和 Linux 子工具执行权限检查。它仅为实验性 **CS2 AnimGraph2** 工具；本轮没有执行完整 CS2 Workshop Resource Compiler 工作流，不能视为 GMod/CSGO 手臂修复功能。
+- 本地完整 Windows ZIP 解压后，包内二进制再次通过 **389 项兼容回归、7 项 C4D 测试**，VRML 转换/编译、AG2 启动/版本、包清单与许可验证通过。刷新后的 overlay 通过一致性检查；`prepare --force` 从新上游重建的 **2,661 个构建源码文件**与维护仓库一致。
+
+本轮没有新增游戏内验证，v1.2.27 实机证据仍为历史记录。C4D helper 沿用已验证的固定发行文件。Windows/MSVC 与 Linux 最终包由各自 GitHub Actions 构建及实际包回归门槛验证，不套用本地二进制散列。机器可读证据见 [v1.2.28-validation.json](tests/reports/v1.2.28-validation.json)。
+
+## v1.2.27 历史验证
 
 正式发布 [v1.2.27-r1](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.27-r1) 的 Windows/MSVC 与 Linux 云端构建、381 项模型回归及实际包验证通过（[运行记录](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/38036357921)）。下载的 Windows 正式包再次编译原始手臂及 Plum，产物与完成下述游戏验证的本地构建逐文件 SHA256 相同，输入未变。完整 ZIP 为 Windows **7,239,882 字节**、Linux **4,748,043 字节**；全部工具保留，包内清单及来源哈希已验证。
 

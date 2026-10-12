@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.27
+# NewPageMergeMDL v1.2.28
 
 [English](README.en.md) | 简体中文
 
@@ -19,7 +19,7 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
 - **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
-项目版本：**v1.2.27**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.28**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 ## 下载与安装：每个平台一个完整包
 
@@ -35,6 +35,15 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 支持 Windows x64 和 Linux 构建。Windows 和 Linux 构建由 GitHub Actions 验证。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
+
+## v1.2.28：合并 PulseModel 上游更新
+
+合并上游 `52cf296` 至 [`578e86e`](https://github.com/ToppiOfficial/PulseModel/compare/52cf296a953fd6c2d072e34cfde5eb8eccc95564...578e86e38fde086ccfb701d96688817a77e718de) 的 18 个提交，保留本项目的兼容扩展和默认蒙皮骨链保留策略。
+
+- **动画包围盒：** 默认预计算各骨骼的顶点包围盒并逐帧变换，减少逐顶点蒙皮计算；结果可能更宽。需要旧算法对照时添加 `-legacysequencebounds`。保留本项目的顶点动画边界、CSGO 范围诊断及相关 QC 策略，实际验证范围见 [VALIDATION.md](VALIDATION.md)。
+- **DMX 与碰撞：** `$datamodelphysics` 读取 `physicsPrimitiveList` 中的物理图元；`$physicsmodel` 内可用 `$physicsshape primitive box|sphere|capsule` 直接定义绑定骨骼的凸包，支持 `$scale` 和 ragdoll `$origin`。`$attachment inherit` 可继承已载入 DMX attachment 的骨骼、标志和局部变换。具体语法见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+- **共享基础库：** 编译器、反编译器和新工具共用 DMX 库，新增 KV3/zstd 支持；运行所需库静态链接，保留相应第三方许可。
+- **实验性 CS2 辅助工具：** 两个平台包新增 `subtools/ag2proportions`（Windows 为 `.exe`），用于 CS2 AnimGraph2 比例适配；它不是普通 Source1 MDL 编译功能，也不是 GMod/CSGO 手臂修复。使用 `--help` 查看参数，安装条件、原位修改行为与许可路径见 [INSTALL.md](INSTALL.md)。程序能构建或显示帮助不代表已完成 CS2 ModelDoc 或游戏内验证。
 
 ## v1.2.27：修复外部动画驱动的手臂骨骼丢失
 
@@ -227,7 +236,7 @@ v1.2.7 时为 **146 项兼容回归、20 项自动化测试**。参数、实测�
 
 ## 相比原版 PulseModel 新增的功能
 
-以下对比基于当前合并基线 `52cf296a953fd6c2d072e34cfde5eb8eccc95564`。这里列出已实现的功能及兼容修复；闭源参考编译器的命令由本项目自行实现，不代表完整行为一致。详细参数与差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+以下对比基于当前合并基线 `578e86e38fde086ccfb701d96688817a77e718de`。这里列出已实现的功能及兼容修复；闭源参考编译器的命令由本项目自行实现，不代表完整行为一致。详细参数与差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ### QC、动画与 StudioMDL++ 兼容扩展
 
@@ -393,5 +402,6 @@ v1.2.23 通过 369 项兼容、20 项自动化、9 项挂载、9 项 Lua、7 项
 ## 来源与许可
 
 原项目作者：Toppi。保留原 [MIT LICENSE](LICENSE) 与第三方库版权声明。
+`ag2proportions` 随包保留 `subtools/licenses/zstd.txt` 和 `subtools/licenses/ValveResourceFormat.txt`；源码声明位于 `libs/zstd/LICENSE` 和 `libs/keyvalues3/ValveResourceFormat.LICENSE`。
 [UPSTREAM_README.md](UPSTREAM_README.md) 保存上游说明，含旧程序名称和旧下载地址，仅供参考。
 本项目没有包含 StudioMDL-CE 或 Tools++ 的闭源二进制或源码。

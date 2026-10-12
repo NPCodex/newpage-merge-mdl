@@ -21,6 +21,21 @@ v1.2.26 精简包保留所有工具和导入功能，Windows 继续附带原先�
 - **按需依赖：** 普通编译无需 Python。`tools/` 中的 Python 准备脚本需要自行安装 Python 3，安装包未内置 Python。网格状态和 VRM 运行功能需按各自指南安装 `integration/gmod/` 中的 Lua 消费端，并满足目标游戏条件；解压工具不会自动安装到游戏，也不保证所有游戏支持这些功能。
 - **资源：** 游戏、用户模型和 Source VMT/VTF 材质由使用者准备。源场景中的着色器不会自动变成 Source 材质。
 
+### v1.2.28 新增：实验性 CS2 AnimGraph2 工具
+
+完整包包含 `subtools/ag2proportions.exe`（Windows）或 `subtools/ag2proportions`（Linux），使用本项目版本号。它用于 CS2 AnimGraph2 比例适配；主编译器的 Source1 `-game` 配置不能替代其 CS2 数据与工具要求，也不能用它修复 GMod/CSGO 的 MDL 手臂动画。
+
+```powershell
+.\subtools\ag2proportions.exe --help
+.\subtools\ag2proportions.exe --version
+```
+
+Linux 对应使用 `./subtools/ag2proportions`。工具需要已安装的 CS2 数据；生成后编译资源还需要兼容的 CS2 Workshop Tools Resource Compiler，Linux 可按帮助使用 `--compiler-runner wine`。`--generate-only` 只跳过资源编译，仍需读取 CS2 数据。
+
+**在输入模型的副本上操作。** 直接传入 `.vmdl` 会原位编辑，并仅保留首次 `<model>.vmdl.bak`；输出资源写入模型旁的同名文件夹。KV3 job 的 `write_model` 默认是 `false`。`--generate-only` 不会关闭已请求的原位修改。工具生成的 setup 说明会列出骨骼、attachment 和第一人称手臂注意事项；比例 clip 只改变平移，不会修复骨轴或重做蒙皮。请在 ModelDoc 编译并验证实际武器动作、重载、蹲伏、移动及第一人称手臂。本工具仍属实验性；帮助/版本检查不等于 CS2 实机验证。
+
+随包许可位于 `subtools/licenses/zstd.txt` 和 `subtools/licenses/ValveResourceFormat.txt`；源码许可位于 `libs/zstd/LICENSE` 和 `libs/keyvalues3/ValveResourceFormat.LICENSE`。无需下载独立辅助包。
+
 详细说明：[编译前必读](README.md#编译前必读)、[格式导入](O5_FORMAT_IMPORTS.md)、[网格状态](MESH_STATE_WORKFLOW.md)、[VRM](VRM_RUNTIME.md)、[兼容边界](COMPATIBILITY.md)。
 
 ## English
@@ -43,5 +58,20 @@ The smaller v1.2.26 packages retain all tools and import features, including the
 - **Bundled helpers:** Windows C4D input uses the included helper; Linux requires GLB conversion on Windows first. The VRML converter remains a separate GPL program in the same archive; the main program retains its existing license.
 - **Optional dependencies:** ordinary compilation needs no Python. Python preparation scripts in `tools/` require separately installed Python 3; Python is not bundled. Install the `integration/gmod/` Lua consumers as described in the mesh-state and VRM guides when using those runtime features. Extraction does not install them into a game, and support is game-specific.
 - **Assets:** supply the target game, your models and Source VMT/VTF materials. Source-application shaders are not automatically converted into Source materials.
+
+### Added in v1.2.28: experimental CS2 AnimGraph2 helper
+
+The complete archive includes `subtools/ag2proportions.exe` (Windows) or `subtools/ag2proportions` (Linux), using the project version. It adapts CS2 AnimGraph2 proportions. The Source1 compiler's `-game` option does not replace this helper's CS2 data/tool requirements; this is not a GMod/CSGO MDL arms-animation repair tool.
+
+```sh
+./subtools/ag2proportions --help
+./subtools/ag2proportions --version
+```
+
+Use the `.exe` on Windows. Installed CS2 data is required. Compiling the generated resources also requires compatible CS2 Workshop Tools Resource Compiler binaries; Linux can use `--compiler-runner wine` as documented by `--help`. `--generate-only` skips resource compilation but still reads CS2 data.
+
+**Work on a copy of the input model.** Passing a `.vmdl` directly edits it in place and keeps only the first `<model>.vmdl.bak`; assets are written beside it in a folder named after the model. KV3 jobs default to `write_model=false`. `--generate-only` does not disable requested model editing. Read the generated setup notes for skeleton, attachment and first-person guidance. The proportion clip changes translations; it does not repair bind axes or re-rig the mesh. Compile in ModelDoc and verify actual weapon actions, reloads, crouching, movement and first-person arms. The helper remains experimental; help/version checks do not establish CS2 runtime validation.
+
+Bundled notices are at `subtools/licenses/zstd.txt` and `subtools/licenses/ValveResourceFormat.txt`; source notices are at `libs/zstd/LICENSE` and `libs/keyvalues3/ValveResourceFormat.LICENSE`. No separate helper archive is required.
 
 See [Before compiling](README.en.md#before-compiling), [format imports](O5_FORMAT_IMPORTS.md), [mesh states](MESH_STATE_WORKFLOW.md), [VRM](VRM_RUNTIME.md) and [compatibility](COMPATIBILITY.md).

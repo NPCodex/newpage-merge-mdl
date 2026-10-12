@@ -175,6 +175,41 @@ class AutomationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'NewPageMergeMDL-C4D'):
                 sync.package(argparse.Namespace(dist=root, output=root / 'out.zip', platform='win64'))
 
+    def test_package_requires_ag2proportions(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D',
+                         'NewPageMergeMDL-C4D'):
+                (root / (name + '.exe')).write_bytes(b'MZfixture')
+            (root / 'subtools').mkdir()
+            for name in ('l4d_animswap', 'meshtool', 'vmd2valvebiped'):
+                (root / 'subtools' / (name + '.exe')).write_bytes(b'MZfixture')
+            with self.assertRaisesRegex(ValueError, 'subtools/ag2proportions'):
+                sync.package(argparse.Namespace(dist=root, output=root / 'out.zip', platform='win64'))
+
+    def test_package_requires_nonempty_ag2proportions_licenses(self):
+        for platform in ('win64', 'linux64'):
+            for missing in ('zstd.txt', 'ValveResourceFormat.txt'):
+                for empty in (False, True):
+                    with self.subTest(platform=platform, license=missing, empty=empty), tempfile.TemporaryDirectory() as folder:
+                        root = Path(folder)
+                        extension = '.exe' if platform == 'win64' else ''
+                        (root / 'subtools/licenses').mkdir(parents=True)
+                        for name in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D',
+                                     'NewPageMergeMDL-C4D', 'subtools/ag2proportions', 'subtools/l4d_animswap',
+                                     'subtools/meshtool', 'subtools/vmd2valvebiped'):
+                            (root / (name + extension)).write_bytes(b'fixture')
+                        for name in ('zstd.txt', 'ValveResourceFormat.txt'):
+                            if name != missing:
+                                (root / 'subtools/licenses' / name).write_text('third-party notice')
+                            elif empty:
+                                (root / 'subtools/licenses' / name).write_bytes(b'')
+                        archive = root / 'out.zip'
+                        archive.write_bytes(b'previous package')
+                        with self.assertRaisesRegex(ValueError, re.escape(missing)):
+                            sync.package(argparse.Namespace(dist=root, output=archive, platform=platform))
+                        self.assertEqual(archive.read_bytes(), b'previous package')
+
     def test_binary_package_contains_provenance_and_licenses(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -183,8 +218,11 @@ class AutomationTests(unittest.TestCase):
             for name in ('NewPageMergeMDL.exe', 'NewPageMergeMDL-Decompiler.exe', 'NewPageVRMLtoX3D.exe', 'NewPageMergeMDL-C4D.exe'):
                 (dist / name).write_bytes(b'binary')
             (dist / 'subtools').mkdir()
-            for name in ('l4d_animswap', 'meshtool', 'vmd2valvebiped'):
+            for name in ('ag2proportions', 'l4d_animswap', 'meshtool', 'vmd2valvebiped'):
                 (dist / 'subtools' / (name + '.exe')).write_bytes(b'binary')
+            (dist / 'subtools/licenses').mkdir()
+            for name in ('zstd.txt', 'ValveResourceFormat.txt'):
+                (dist / 'subtools/licenses' / name).write_text('AG2 dependency notice: ' + name)
             for name in ('LICENSE', 'README.md', 'README.en.md', 'INSTALL.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
                 (source / name).write_text(name)
             (source / 'libs/vendor').mkdir(parents=True)
@@ -226,6 +264,9 @@ class AutomationTests(unittest.TestCase):
                 self.assertIn('NewPageMergeMDL/FEATURE_MATRIX.md', archive.namelist())
                 self.assertIn('NewPageMergeMDL/integration/gmod/newpage_vertexanim.lua', archive.namelist())
                 self.assertIn('NewPageMergeMDL/libs/vendor/LICENSE', archive.namelist())
+                for name in ('zstd.txt', 'ValveResourceFormat.txt'):
+                    self.assertEqual(archive.read('NewPageMergeMDL/subtools/licenses/' + name),
+                                     ('AG2 dependency notice: ' + name).encode())
                 for name in ('README.txt', 'SOURCE.md'):
                     self.assertIn('NewPageMergeMDL/libs/nvtristrip/' + name, archive.namelist())
                 for name in ('LICENSE.md', 'SOURCE.md'):
@@ -239,15 +280,18 @@ class AutomationTests(unittest.TestCase):
                 self.assertFalse(any('StudioMDL-CE' in name for name in archive.namelist()))
 
             for name in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D',
-                         'subtools/l4d_animswap', 'subtools/meshtool', 'subtools/vmd2valvebiped'):
+                         'subtools/ag2proportions', 'subtools/l4d_animswap', 'subtools/meshtool', 'subtools/vmd2valvebiped'):
                 (dist / name).write_bytes(b'\x7fELFfixture')
             sync.package(argparse.Namespace(dist=dist, source=source, output=root / 'linux.zip',
                                             platform='linux64', manifest=root / 'manifest.json'))
             with zipfile.ZipFile(root / 'linux.zip') as archive:
-                for name in ('NewPageMergeMDL', 'subtools/meshtool'):
+                for name in ('NewPageMergeMDL', 'subtools/ag2proportions', 'subtools/meshtool'):
                     info = archive.getinfo('NewPageMergeMDL/' + name)
                     self.assertEqual(info.create_system, 3)
                     self.assertEqual((info.external_attr >> 16) & 0o777, 0o755)
+                for name in ('zstd.txt', 'ValveResourceFormat.txt'):
+                    self.assertEqual(archive.read('NewPageMergeMDL/subtools/licenses/' + name),
+                                     ('AG2 dependency notice: ' + name).encode())
 
     def test_checksums_verify_actual_artifacts_and_are_idempotent(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -284,7 +328,7 @@ class AutomationTests(unittest.TestCase):
 
 
 class PackageValidationTests(unittest.TestCase):
-    def make_package(self, root, extra=None, manifest=None):
+    def make_package(self, root, extra=None, manifest=None, omit=None, empty=None):
         suffix='.exe' if os.name=='nt' else ''
         binary=b'MZfixture' if os.name=='nt' else b'\x7fELFfixture'
         archive=root/'package.zip'
@@ -307,11 +351,14 @@ class PackageValidationTests(unittest.TestCase):
                 'libs/assimp/contrib/pugixml/src/pugiconfig.hpp','libs/assimp/contrib/pugixml/LICENSE.md',
                 'libs/tinyusdz/LICENSE','libs/tinyusdz/LICENSE-APACHE-2.0',
                 'libs/tinyusdz/SOURCE.md','libs/tinyusdz/THIRD_PARTY_NOTICES.md',
-            ):z.writestr('NewPageMergeMDL/'+name,'fixture')
+                'subtools/licenses/zstd.txt','subtools/licenses/ValveResourceFormat.txt',
+            ):
+                if name != omit:
+                    z.writestr('NewPageMergeMDL/'+name, '' if name == empty else 'fixture')
             for name in ('NewPageMergeMDL','NewPageMergeMDL-Decompiler','NewPageVRMLtoX3D'):
                 z.writestr('NewPageMergeMDL/'+name+suffix,binary)
             if suffix:z.writestr('NewPageMergeMDL/NewPageMergeMDL-C4D.exe',binary)
-            for name in ('l4d_animswap', 'meshtool', 'vmd2valvebiped'):
+            for name in ('ag2proportions', 'l4d_animswap', 'meshtool', 'vmd2valvebiped'):
                 z.writestr('NewPageMergeMDL/subtools/'+name+suffix,binary)
             sync.write_inventory(z)
             if extra:z.writestr(extra,'unexpected')
@@ -324,7 +371,45 @@ class PackageValidationTests(unittest.TestCase):
     def test_packaged_provenance_and_runtime_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);archive=self.make_package(root)
-            self.assertTrue(self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted').exists())
+            compiler = self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted')
+            self.assertTrue(compiler.exists())
+            if os.name != 'nt':
+                self.assertEqual((compiler.parent/'subtools/ag2proportions').stat().st_mode & 0o777, 0o755)
+
+    def test_missing_or_empty_ag2_licenses_fail_before_extracting(self):
+        for name in ('subtools/licenses/zstd.txt', 'subtools/licenses/ValveResourceFormat.txt'):
+            for mode in ('omit', 'empty'):
+                with self.subTest(license=name, mode=mode), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    archive = self.make_package(root, **{mode: name})
+                    # The inventory is correct for the incomplete archive, so
+                    # only the required-license gate can reject it.
+                    with zipfile.ZipFile(archive) as package:
+                        self.verifier().verify_inventory(package)
+                    with self.assertRaisesRegex(ValueError, re.escape(name)):
+                        self.verifier().verify(archive, {'project_version': '1.2.6'}, root/'extracted')
+                    self.assertFalse((root/'extracted').exists())
+
+    def test_ag2_version_must_equal_manifest_version(self):
+        verifier = self.verifier()
+        compiler = Path('fixture') / ('NewPageMergeMDL.exe' if os.name == 'nt' else 'NewPageMergeMDL')
+        for version in ('1.2.28', '0.3.7', '1.2.280', '1.2.28-extra', 'unknown'):
+            with self.subTest(version=version):
+                banner = ('-------------------------------\n'
+                          'NewPageMergeMDL [AG2 Proportions]\n'
+                          'version:   ' + version + '\n'
+                          'developer: ToppiOfficial\n'
+                          '-------------------------------\n')
+                responses = [argparse.Namespace(stdout='CS2 AnimGraph2 proportion wrapper (experimental)\nUsage:\n'),
+                             argparse.Namespace(stdout=banner + 'ag2proportions ' + version + '\n')]
+                with patch.object(verifier.subprocess, 'run', side_effect=responses) as run:
+                    if version == '1.2.28':
+                        verifier.exercise_packaged_ag2proportions(compiler, '1.2.28')
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'version does not match'):
+                            verifier.exercise_packaged_ag2proportions(compiler, '1.2.28')
+                self.assertEqual(run.call_args_list[0].args[0][-1], '--help')
+                self.assertEqual(run.call_args_list[1].args[0][-1], '--version')
 
     def test_tampered_manifest_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

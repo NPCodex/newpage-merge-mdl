@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.27。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.28。
 
 发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化与体积优化均不扩展下表的游戏运行时认证范围。
 
@@ -10,6 +10,8 @@ v1.2.26 发布构建及 `x64-compact` 预设采用 `MinSizeRel` 与 IPO/LTO，�
 v1.2.25 修复真实手臂 QC：VRD 短名父骨在折叠时同步解析并重算姿态；共用皮肤表的未使用基材质列警告后跳过，保留实际使用的替换与全部行。CE 会保留未使用的皮肤材质登记，本工具继续裁剪；详见 [验证记录](VALIDATION.md)。
 
 v1.2.24 仅精简 Release 链接产物，保留五编译器固定功能范围及全部导入器；不改变下表中的功能状态和已知兼容边界。
+
+v1.2.28 合并 PulseModel `52cf296..578e86e` 的 18 个提交：默认按骨骼顶点盒计算序列包围盒，提供 `-legacysequencebounds` 回退；接入 DMX 物理图元、内联 `$physicsshape primitive`、DMX attachment 继承及共享 DMX/KV3/zstd 库。新增的 `ag2proportions` 是实验性 CS2 AnimGraph2 辅助工具，不属于普通 Source1 MDL 编译或 GMod/CSGO 手臂修复。新版本的验证证据以 [VALIDATION.md](VALIDATION.md) 为准，下方历史检查结果不自动适用于本次合并。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
@@ -24,7 +26,7 @@ v1.2.24 仅精简 Release 链接产物，保留五编译器固定功能范围及
 
 | 来源 | 核对依据 |
 | --- | --- |
-| PulseModel | 固定基线 `52cf296a953fd6c2d072e34cfde5eb8eccc95564` 的源码及 UPSTREAM_README.md；持续通过维护补丁合并更新。 |
+| PulseModel | 固定基线 `578e86e38fde086ccfb701d96688817a77e718de` 的源码及 UPSTREAM_README.md；持续通过维护补丁合并更新。 |
 | StudioMDL-CE | 用户提供的 0.3.0 命令指南、changelog 和参考程序；见 COMPATIBILITY.md 与 BINARY_ANALYSIS.md。 |
 | NekoMDL | 用户提供的中文版 ChangeLog.txt v2.3.0、NewCommands.qci 和参考程序。历史版本条目按当前行为复核，不能假定旧实现仍有效。 |
 | StudioMDL 2013 | [Cra0 原始页面](https://cra0.net/blog/posts/archived/2014/studiomdl-2013/)。2012 libs / 2013 两包的 EXE SHA256 相同，作为同一来源；不同依赖配置单独记录。 |
@@ -39,6 +41,10 @@ v1.2.24 仅精简 Release 链接产物，保留五编译器固定功能范围及
 | flex、眼球/眼睑、procedural、IK、LOD、碰撞 | 已保留并扩展；对应 compile/write 路径及兼容回归。 |
 | meshoptimizer、自动网格分割、动态输出缓冲 | 已保留；CE/Neko 选项复用同一编译管线，不调用外部参考编译器。 |
 | 反编译器和附属工具 | 随项目保留；不能用附属工具数量代替主编译器功能整合。 |
+| 序列包围盒优化 | 默认逐帧变换骨骼顶点盒，可能比逐顶点蒙皮更宽；`-legacysequencebounds` 保留旧算法。本项目的顶点动画、范围诊断和 QC 策略保留。 |
+| DMX 物理图元与 attachment 继承 | `$datamodelphysics` 读取物理图元并按骨骼 merge 分组生成凸包；`$physicsmodel` 内的 `$physicsshape primitive box\|sphere\|capsule` 支持骨空间尺寸、缩放及 ragdoll origin；`$attachment inherit` 支持已加载的 DMX attachment。 |
+| 共享 DMX/KV3/zstd 库 | 已接入编译器、反编译器及需要它们的辅助工具；保留 SubD DMX 往返扩展和已有输入校验。共享库不代表新增任意 DMX 算子兼容。 |
+| 实验性 CS2 AnimGraph2 比例工具 | Windows/Linux 包提供 `subtools/ag2proportions`，项目版本统一为 1.2.28；用法、CS2/Workshop Tools 条件和原位修改注意事项见 [INSTALL.md](INSTALL.md)。许可在 `subtools/licenses/zstd.txt` 与 `subtools/licenses/ValveResourceFormat.txt`。不扩大五编译器 Source1 固定清单，不宣称 CS2 实机已认证。 |
 
 ## StudioMDL++：按公开模型编译日志核对
 

@@ -7,6 +7,6 @@
     "tools++_windows.zip",
     "tools++_linux.tar.gz"
   ],
-  "pulse_base": "52cf296a953fd6c2d072e34cfde5eb8eccc95564",
-  "project_version": "1.2.26"
+  "pulse_base": "578e86e38fde086ccfb701d96688817a77e718de",
+  "project_version": "1.2.28"
 }

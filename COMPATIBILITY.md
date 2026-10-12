@@ -2,7 +2,7 @@
 
 **Before every production compile, set `-game` to the target game/mod directory containing its correct `gameinfo.txt`.** Pass the directory, not the file, Steam root or `bin` directory. This is especially important for CSGO and MCV: AppID and mounts affect target layout, resources and defaults. Do not substitute another game's file. `-OutDir` controls output only and does not replace target selection. Keep existing assets and test isolated output in the intended game before replacing them. See the opening notes in [README.md](README.md) / [README.en.md](README.en.md) for format, material and runtime requirements.
 
-This fork uses PulseModel commit `52cf296a953fd6c2d072e34cfde5eb8eccc95564`
+This fork uses PulseModel commit `578e86e38fde086ccfb701d96688817a77e718de`
 as its base. It does not include StudioMDL-CE or Tools++ binaries or claim
 complete behavioral parity. Implementations use public documentation and the
 StudioMDL++ changelog supplied by the user on 2026-10-06, plus analysis and
@@ -15,9 +15,41 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current version: **v1.2.27**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+Current version: **v1.2.28**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
 
 Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Automatic upstream releases embed their exact merged project source at `sources/NewPageMergeMDL-source.zip`; manual releases use the repository source at the release tag. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
+
+## v1.2.28: PulseModel merge through 578e86e
+
+This merge incorporates 18 upstream commits after `52cf296`. It retains this project's skin hierarchy policy, CSGO diagnostics, vertex-animation bounds and SubD DMX round-trip support. Completed checks and their limits are recorded in [VALIDATION.md](VALIDATION.md); older test counts and game observations below remain historical.
+
+### Sequence bounding boxes
+
+By default, the compiler collects vertices into every influencing bone's local bounding box and transforms those boxes per animation frame. This avoids per-frame skinning of every vertex and can produce wider bounds. `-legacysequencebounds` selects the previous per-frame vertex-skinning path. Geometry and animation are not intentionally changed by that option, but bounds need not match between algorithms. The project's `$bboxonlyverts`, `$clampworldspace` and baked vertex-animation policies remain applicable; no general speedup ratio or whole-model binary equivalence is implied.
+
+### Physics primitives and source attachments
+
+`$datamodelphysics` reads the root DMX `physicsPrimitiveList.primitives`, including bone-bound boxes, capsules and spheres. Primitives with `merge=true` share a convex hull per bone; each `merge=false` primitive produces a separate hull. These are tessellated collision hulls, not native analytic runtime shapes or FE cloth colliders.
+
+Within `$physicsmodel`, the following `$physicsshape` forms each generate one convex hull. Coordinates are in the named bone's local space, scaled by `$scale`; ragdoll placement honors `$origin`. Optional numeric fields belong on the same line as the command.
+
+```text
+$physicsshape primitive box "bone" minx miny minz maxx maxy maxz [angle_x angle_y angle_z]
+$physicsshape primitive sphere "bone" centerx centery centerz radius [segments]
+$physicsshape primitive capsule "bone" x0 y0 z0 x1 y1 z1 radius0 radius1 [segments]
+```
+
+The default segment count is 6. These shapes can coexist with other physics shapes, including `$datamodelphysics` input. Radius, bone and degenerate-hull validation still applies; a successful hull build alone is not evidence of runtime physics equivalence.
+
+`$attachment "new_name" inherit "source_name"` now also finds attachments imported from DMX before that declaration. It preserves the source bone, flags and local transform; place `inherit` before subsequent clauses intended to override inherited values. Inheritance from earlier QC attachments remains available.
+
+### Shared DMX/KV3 support and experimental CS2 tool
+
+Compiler and decompiler use the shared `libs/dmx/` library. `libs/keyvalues3/` and the zstd decompressor support the new `subtools/ag2proportions` helper. All bundled tools use project version `1.2.28`; source-library consolidation does not expand supported Source1 DMX operators or remove their documented rejection rules.
+
+`ag2proportions` adapts CS2 AnimGraph2 proportions and remains experimental. It generates skeleton, held-pose DMX and graph assets; its clip changes translations and does not repair bind axes or re-rig meshes. It is outside the fixed five-compiler Source1 integration scope and is not a fix for GMod/CSGO arms. Direct `.vmdl` input edits the model in place and preserves its first `.vmdl.bak`; a KV3 job defaults to `write_model=false`. `--generate-only` skips resource compilation, not model editing when requested. The installed CS2 data is still required; compiling generated resources also needs compatible Workshop Tools binaries (or the documented Wine runner on Linux). See [INSTALL.md](INSTALL.md), `subtools/ag2proportions --help`, and generated setup notes. Building, packaging and help/version smoke checks do not certify a real CS2 model or game session.
+
+Packages retain `subtools/licenses/zstd.txt` and `subtools/licenses/ValveResourceFormat.txt`; source notices are in `libs/zstd/LICENSE` and `libs/keyvalues3/ValveResourceFormat.LICENSE`.
 
 ## v1.2.27: default skin hierarchy retention
 

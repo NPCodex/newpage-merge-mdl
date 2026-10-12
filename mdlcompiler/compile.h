@@ -798,6 +798,7 @@ struct BoneFlexDriver {
 enum class PhysicsShapeKind {
     FromFile,   // "PhysicsShapeFromFile"   - an authored collision mesh
     FromRender, // "PhysicsShapeFromRender" - hulls generated off the render mesh
+    Primitive,  // $physicsshape primitive - one box/sphere/capsule hull on parentBone
 };
 
 // How a `PhysicsShapeFromFile` maps its source's skinning onto the model.
@@ -865,6 +866,9 @@ struct PhysicsShape {
     // an exclusion list, so by default every body's render geometry is used
     std::vector<std::string> exceptionMeshNames;
     std::vector<const source::Source*> exceptionSources;
+
+    // ---- Primitive --------------------------------------------------------
+    std::vector<Vector3> primitivePoints; // tessellated, scaled, in parentBone space
 };
 
 // one axis of a `PhysicsJoint` constraint
@@ -1226,6 +1230,7 @@ struct CompileInput {
     Archetype archetype = Archetype::General;
     bool autoCenter = false; // $autocenter
     bool forceWriteVertexData = false; // $forcewritevertexdata
+    bool legacySequenceBounds = false; // -legacysequencebounds: skin vertices per frame
     // -dumpprocedural: Compile() returns once the procedural bones are final,
     // before any geometry, animation or physics work
     bool stopAfterProcedural = false;

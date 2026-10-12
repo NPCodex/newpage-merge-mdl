@@ -34,6 +34,8 @@ GitHub 的调度可能延迟，长时间无活动的公开仓库可能被自动�
 以后修改源码后，必须更新补丁，否则自动上游构建仍会使用旧实现。
 工作流会检查补丁与当前维护源码一致；发现遗漏更新时会停止发布。
 
+v1.2.28 将基线从 `52cf296a953fd6c2d072e34cfde5eb8eccc95564` 更新到 `578e86e38fde086ccfb701d96688817a77e718de`，合并期间解决包围盒、DMX/反编译器和构建文件的重叠修改。对应维护补丁必须相对新基线重新生成，并通过 `refresh_overlay.py --check` 和自动准备流程验证。更新基线或下载成功本身不代表兼容回归、发布包或游戏运行验证通过，结果以 [VALIDATION.md](VALIDATION.md) 与本次 Actions 日志为准。
+
 在网络可用且工作区有 Git 的环境运行：
 
 ```powershell
@@ -69,6 +71,8 @@ v1.2.26 的两个发布工作流使用 `MinSizeRel` 与 `CMAKE_INTERPROCEDURAL_O
 
 平台包的运行目录不再重复附带 tinyusdz 源码与开发图片；USD 后端已静态编入程序。`libs/tinyusdz/` 中保留 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，包括原本嵌在源码中的第三方声明。独立 GPL VRML 转换器及 pugixml 的对应源码、构建文件和许可继续随包分发。自动包中的精确合并源码仍包含完整 tinyusdz，手动维护版仍从发布标签取得完整源码；精简仅针对运行目录的重复内容。
 
+v1.2.28 的 Windows/Linux 包还包含实验性 `subtools/ag2proportions`（Windows 为 `.exe`）。构建并静态链接共享 DMX/KV3/zstd 支持，打包必须保留 `subtools/licenses/zstd.txt` 和 `subtools/licenses/ValveResourceFormat.txt`，验证器检查新工具的存在、`--help` 和项目版本。该工具的 CS2 数据与 Workshop Tools 由使用者自行准备，不能放入安装包。CI 的构建及烟雾检查不代表真实 VMDL、ModelDoc 或 CS2 游戏内验证；使用条件与原位修改注意事项见 [INSTALL.md](INSTALL.md)。
+
 
 ```powershell
 python -m unittest discover -s tests -p test_automation.py -v
@@ -83,7 +87,7 @@ v1.2.20 将 FE settings/吸引/弯曲/地面参数、零重力回退修复、默
 
 ## 项目版本与双语文档
 
-当前项目版本为 **v1.2.26**，程序和 Windows 文件版本统一采用该版本，独立于 PulseModel 上游版本号。本次更新发布构建与打包策略，保留全部功能；各平台的体积及验证记录见 [VALIDATION.md](VALIDATION.md)。
+当前项目版本为 **v1.2.28**，程序和 Windows 文件版本统一采用该版本（含 `ag2proportions`），独立于 PulseModel 上游版本号。本次合并上游序列包围盒、物理图元、attachment 继承、共享库与实验性 CS2 工具；各平台的构建及验证记录见 [VALIDATION.md](VALIDATION.md)。
 `CMakeLists.txt` 的项目版本与 `automation/upstreams.json` 的 `project_version` 应同步维护。
 自动发布标签采用 `v1.2.0`、`v1.2.1` 等语义版本。每次检测到新的上游或项目改动，补丁号递增；配置版本作为最低版本，可手动提高主/次版本。上游没有变化则跳过发布，强制重建同一内容沿用已发布的版本和标签。合并源码内的 CMake、发布配置和 README 会同步写入实际发布版本，并重新生成对应补丁。
 中文 `README.md` 与英文 `README.en.md` 都会包含在合并源码和二进制发布包中。

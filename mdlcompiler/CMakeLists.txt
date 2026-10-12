@@ -5,7 +5,7 @@ add_executable(mdlcompiler main.cpp dmxloader.cpp dmxrig.cpp smdloader.cpp
                flexreg.cpp qcloader.cpp writemdl.cpp outputfiles.cpp writevtx.cpp writephy.cpp
                surfaceproperties.cpp cloth.cpp clothadvanced.cpp clothprojection.cpp subd.cpp dmxeval.cpp)
 # Each tool owns its own version; there is no project-wide one.
-set(TOOL_VERSION 0.34.0)
+set(TOOL_VERSION 0.36.1)
 string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
 target_compile_definitions(mdlcompiler PRIVATE PULSEMODEL_VERSION="${PROJECT_VERSION}")
 

@@ -109,7 +109,7 @@ jobs:
       - name: Extract source
         run: python -m zipfile -e prepared/NewPageMergeMDL-source.zip candidate
       - name: Configure
-        run: cmake -S candidate/NewPageMergeMDL -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist"
+        run: cmake -S candidate/NewPageMergeMDL -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist"
       - name: Build every tool
         run: cmake --build build --config MinSizeRel --parallel 2
       - name: Test pipeline helpers

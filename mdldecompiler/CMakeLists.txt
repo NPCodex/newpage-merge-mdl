@@ -3,7 +3,7 @@
 add_executable(mdldecompiler main.cpp dmxwrite.cpp animwrite.cpp flexrig.cpp goldsrc.cpp)
 target_include_directories(mdldecompiler PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # Each tool owns its own version; there is no project-wide one.
-set(TOOL_VERSION 0.18.1)
+set(TOOL_VERSION 0.18.2)
 set_target_properties(mdldecompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL-Decompiler")
 string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
 target_compile_definitions(mdldecompiler PRIVATE PULSEMODEL_VERSION="${PROJECT_VERSION}")
@@ -14,4 +14,4 @@ if(WIN32)
     target_sources(mdldecompiler PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
                                          "${CMAKE_SOURCE_DIR}/utf8.manifest")
 endif()
-target_link_libraries(mdldecompiler PRIVATE pulse_libs pulse_math)
+target_link_libraries(mdldecompiler PRIVATE pulse_libs pulse_math pulse_dmx)

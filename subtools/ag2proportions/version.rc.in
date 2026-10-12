@@ -1,0 +1,25 @@
+// Win32 version resource - generated from the maintained project version.
+1 VERSIONINFO
+FILEVERSION    @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+FILEOS         0x4L        // VOS__WINDOWS32
+FILETYPE       0x1L        // VFT_APP
+{
+    BLOCK "StringFileInfo"
+    {
+        BLOCK "040904B0"   // US English, Unicode
+        {
+            VALUE "FileDescription",  "CS2 AG2 proportion graph and clip generator"
+            VALUE "FileVersion",      "@PROJECT_VERSION@"
+            VALUE "InternalName",     "ag2proportions"
+            VALUE "LegalCopyright",   "Copyright (c) 2026 ToppiOfficial"
+            VALUE "OriginalFilename", "ag2proportions.exe"
+            VALUE "ProductName",      "NewPageMergeMDL"
+            VALUE "ProductVersion",   "@PROJECT_VERSION@"
+        }
+    }
+    BLOCK "VarFileInfo"
+    {
+        VALUE "Translation", 0x409, 1200
+    }
+}

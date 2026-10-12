@@ -288,20 +288,35 @@ class SubdCases:
         self.assertEqual(sum(len(g['patches']) for g in self.subd_read()),9)
 
     def test_subd_decompiler_preserves_control_quads_on_roundtrip(self):
+        self.subd_decompiler_roundtrip('keyvalues2')
+
+    def test_subd_decompiler_binary_dmx_preserves_control_quads_on_roundtrip(self):
+        self.subd_decompiler_roundtrip('binary')
+
+    def subd_decompiler_roundtrip(self,encoding):
         self.subd_compile(*grid_quads(3),seams=True)
         before=self.subd_read()
+        def control_points():
+            data=(self.root/'models/subd.vvd').read_bytes()
+            count=struct.unpack_from('<i',data,16)[0];at=struct.unpack_from('<i',data,56)[0]
+            # Vertex order can change across import; compare position, normal
+            # and corner UV together so seams cannot disappear unnoticed.
+            return sorted(set(tuple(round(v,4) for v in struct.unpack_from('<8f',data,at+i*48+16))
+                              for i in range(count)))
+        authored=control_points()
         compiler=Path(sys.modules[type(self).__module__].COMPILER)
         decompiler=compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix)
         output=self.root/'decompiled'
         result=subprocess.run([str(decompiler),str(self.root/'models/subd.mdl'),'-pulseqc',
-            '-dmxencoding','keyvalues2','-outdir',str(output)],capture_output=True,text=True,errors='replace')
+            '-dmxencoding',encoding,'-outdir',str(output)],capture_output=True,text=True,errors='replace')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         meshes=list(output.rglob('meshes/*.dmx'));self.assertTrue(meshes)
-        self.assertTrue(any('subdivisionSurface' in p.read_text() for p in meshes))
+        self.assertTrue(any(b'subdivisionSurface' in p.read_bytes() for p in meshes))
         qc=next(output.rglob('*.pulseqc'))
         qc.write_text('$subd native\n'+qc.read_text())
         result=subprocess.run([str(compiler),str(qc),'-game',str(self.root)],capture_output=True,text=True,errors='replace')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         after=self.subd_read()
+        self.assertEqual(control_points(),authored)
         self.assertEqual([len(g['patches']) for g in before],[len(g['patches']) for g in after])
         self.assertEqual(sum(p[0]==2 for g in after for p in g['patches']),1)

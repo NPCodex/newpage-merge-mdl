@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.27
+# NewPageMergeMDL v1.2.28
 
 English | [简体中文](README.md)
 
@@ -17,7 +17,7 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
-**Project version: v1.2.27.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.28.** The compiler, decompiler and bundled tools share this
 version.
 
 ## Download and install: one complete archive per platform
@@ -35,6 +35,15 @@ GitHub Actions. See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integr
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.
+
+## v1.2.28: merge PulseModel upstream updates
+
+Merges 18 upstream commits from `52cf296` through [`578e86e`](https://github.com/ToppiOfficial/PulseModel/compare/52cf296a953fd6c2d072e34cfde5eb8eccc95564...578e86e38fde086ccfb701d96688817a77e718de), retaining this project's compatibility extensions and default skin hierarchy retention.
+
+- **Sequence bounds:** the default precomputes per-bone vertex boxes and transforms them per frame to reduce vertex skinning work; bounds may be wider. Add `-legacysequencebounds` to compare with the previous algorithm. Project vertex-animation bounds, CSGO world-range diagnostics and related QC policies are retained. See [VALIDATION.md](VALIDATION.md) for measured coverage.
+- **DMX and collision:** `$datamodelphysics` reads `physicsPrimitiveList` shapes. `$physicsshape primitive box|sphere|capsule` inside `$physicsmodel` defines bone-bound convex hulls, including `$scale` and ragdoll `$origin`. `$attachment inherit` can reuse an already loaded DMX attachment's bone, flags and local transform. Syntax is in [COMPATIBILITY.md](COMPATIBILITY.md).
+- **Shared libraries:** compiler, decompiler and the new tool share DMX support; KV3/zstd support is added. Runtime dependencies are statically linked and retain their third-party notices.
+- **Experimental CS2 helper:** both platform packages add `subtools/ag2proportions` (`.exe` on Windows) for CS2 AnimGraph2 proportion adaptation. It is not ordinary Source1 MDL compilation or a GMod/CSGO arms fix. Run `--help`; [INSTALL.md](INSTALL.md) describes requirements, in-place editing and license paths. Successful building or help output does not establish CS2 ModelDoc or in-game validation.
 
 ## v1.2.27: retain externally animated arm bones
 
@@ -227,7 +236,7 @@ SMD / DMX / FBX compilation, model decompilation and utility tools are retained.
 
 ## Additions compared with original PulseModel
 
-This comparison uses merge baseline `52cf296a953fd6c2d072e34cfde5eb8eccc95564`. The following features and compatibility fixes are implemented independently; they do not certify full parity with the closed-source reference compilers. See [COMPATIBILITY.md](COMPATIBILITY.md) for arguments and behavioral differences.
+This comparison uses merge baseline `578e86e38fde086ccfb701d96688817a77e718de`. The following features and compatibility fixes are implemented independently; they do not certify full parity with the closed-source reference compilers. See [COMPATIBILITY.md](COMPATIBILITY.md) for arguments and behavioral differences.
 
 ### QC, animation and StudioMDL++ compatibility
 
@@ -395,7 +404,10 @@ Historically, the user-provided Alyx QC compiled successfully with 113 bones and
 ## Credits and license
 
 Original project: Toppi. The original [MIT LICENSE](LICENSE) and third-party
-notices are preserved. [UPSTREAM_README.md](UPSTREAM_README.md) keeps upstream
+notices are preserved. `ag2proportions` ships `subtools/licenses/zstd.txt` and
+`subtools/licenses/ValveResourceFormat.txt`; source notices are in
+`libs/zstd/LICENSE` and `libs/keyvalues3/ValveResourceFormat.LICENSE`.
+[UPSTREAM_README.md](UPSTREAM_README.md) keeps upstream
 information, including old program names and download links, for reference.
 StudioMDL-CE / Tools++ closed-source executables and recovered source are not
 included in this project.

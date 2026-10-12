@@ -5102,6 +5102,41 @@ bool GenerateRenderShapes(const CompiledModel& m, const CompileInput& in,
     return true;
 }
 
+// Each $physicsshape primitive becomes one generated hull, posed off its bone
+// into the same space the render-generated hulls use.
+bool GeneratePrimitiveShapes(const CompiledModel& m, const CompileInput& in,
+                             const RadianEuler& defaultRotation,
+                             std::vector<GeneratedShape>& out, std::string* err) {
+    // the inverse of the ragdoll path's pose -> bone space, $origin included
+    matrix3x4 modelXform;
+    pm::AngleMatrix(defaultRotation, modelXform);
+    MatrixSetColumn(pm::VectorRotate({-in.adjust.x, -in.adjust.y, -in.adjust.z}, modelXform),
+                    3, modelXform);
+    for (const PhysicsShape& shape : in.physShapes) {
+        if (shape.kind != PhysicsShapeKind::Primitive)
+            continue;
+        const int globalBone = FindGlobalBone(m, shape.parentBone);
+        if (globalBone < 0) {
+            if (err) *err = "$physicsshape primitive names bone \"" + shape.parentBone +
+                            "\" which is not in the compiled model";
+            return false;
+        }
+        const matrix3x4 boneToPose =
+            pm::ConcatTransforms(modelXform, m.bones[globalBone].boneToPose);
+        GeneratedShape gen;
+        gen.globalBone = globalBone;
+        gen.name = shape.name;
+        gen.maxConvex = shape.maxConvex;
+        gen.hulls.emplace_back();
+        for (const Vector3& p : shape.primitivePoints) {
+            const Vector3 w = pm::VectorTransform(p, boneToPose);
+            gen.hulls.back().push_back({w.x, w.y, w.z});
+        }
+        out.push_back(std::move(gen));
+    }
+    return true;
+}
+
 // Turn a generated shape's point clouds into convexes, optionally moving them
 // out of global pose space into a bone's own space first (the ragdoll case).
 bool ConvexesFromGenerated(const GeneratedShape& gen, const matrix3x4* poseToBoneSpace,
@@ -5688,7 +5723,8 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
     // Generated shapes run first: their hulls decide bones too, so the single
     // body vs ragdoll call below has to see them.
     std::vector<GeneratedShape> generated;
-    if (!GenerateRenderShapes(m, in, ctx.defaultRotation, generated, err))
+    if (!GenerateRenderShapes(m, in, ctx.defaultRotation, generated, err) ||
+        !GeneratePrimitiveShapes(m, in, ctx.defaultRotation, generated, err))
         return false;
 
     // ---- resolve the physics bone set ------------------------------------
@@ -9640,6 +9676,9 @@ void CompressIKErrors(Ctx& ctx) {
 // CalcSequenceBoundingBoxes
 void CalcSequenceBoundingBoxes(Ctx& ctx) {
     CompiledModel& m = *ctx.out;
+    // $bboxonlyverts excludes hitboxes and bone origins, so it must sample
+    // skinned vertices even when the conservative fast path is the default.
+    const bool legacy = ctx.in->legacySequenceBounds || ctx.in->csgo.bboxOnlyVerts;
 
     // SetupFullBoneRenderBounds: bone vertex bounds + hitboxes
     std::vector<Vector3> boundsMin(m.bones.size()), boundsMax(m.bones.size());
@@ -9659,6 +9698,21 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
     std::vector<matrix3x4> poseToBone(m.bones.size());
     for (size_t k = 0; k < m.bones.size(); k++)
         poseToBone[k] = pm::MatrixInvert(m.bones[k].boneToPose);
+
+    // Each influencing bone contains the vertex in its local space. Their
+    // transformed boxes enclose normalized, nonnegative weighted skinning.
+    if (!legacy) {
+        for (const Model& model : m.models) {
+            for (const LodVertex& v : model.vertices) {
+                for (int n = 0; n < v.boneweight.numbones; ++n) {
+                    const int bone = v.boneweight.bone[n];
+                    const Vector3 p = pm::VectorTransform(v.position, poseToBone[bone]);
+                    boundsMin[bone] = VecMin(p, boundsMin[bone]);
+                    boundsMax[bone] = VecMax(p, boundsMax[bone]);
+                }
+            }
+        }
+    }
 
     // Vertex-cache clips can move far beyond the bind mesh. Include every
     // sampled target in bone-local render bounds so engine frustum culling
@@ -9705,7 +9759,7 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
         }
     };
     std::vector<SkinVert> skinVerts;
-    {
+    if (legacy) {
         std::unordered_set<SkinVert, SkinVertHash, SkinVertEq> seen;
         for (const Model& model : m.models) {
             for (const LodVertex& v : model.vertices) {
@@ -9737,19 +9791,22 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                p.x > worldMax.x || p.y > worldMax.y || p.z > worldMax.z;
     };
 
-    // Cost is frames x vertices, so animations run in parallel; min/max is
-    // order-independent, so the boxes match a serial run bit for bit.
+    // Animations run in parallel with shared, read-only geometry bounds.
+    // Fast mode visits bone boxes per frame; legacy mode also skins vertices.
+    // Min/max is order-independent and matches a serial run bit for bit.
     auto calcAnim = [&](Anim& panim) {
         Vector3 bmin{FLT_MAX, FLT_MAX, FLT_MAX};
         Vector3 bmax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
         BoundsViolation& violation = violations[&panim - m.anims.data()];
 
         std::vector<matrix3x4> bonetransform;
-        std::vector<matrix3x4> posetransform(m.bones.size());
+        std::vector<matrix3x4> posetransform(legacy ? m.bones.size() : 0);
         for (int j = 0; j < panim.numframes; j++) {
             CalcBoneTransforms(ctx, panim, j, bonetransform);
-            for (size_t k = 0; k < m.bones.size(); k++)
-                posetransform[k] = pm::ConcatTransforms(bonetransform[k], poseToBone[k]);
+            if (legacy) {
+                for (size_t k = 0; k < m.bones.size(); k++)
+                    posetransform[k] = pm::ConcatTransforms(bonetransform[k], poseToBone[k]);
+            }
 
             // include hitboxes / bone render bounds
             for (size_t k = 0; !ctx.in->csgo.bboxOnlyVerts && k < m.bones.size(); k++) {

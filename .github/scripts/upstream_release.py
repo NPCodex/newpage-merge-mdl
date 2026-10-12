@@ -263,6 +263,18 @@ def prepare(args):
         'StudioMDL-CE and StudioMDL++ were downloaded for version tracking only; '
         'their new closed-source functionality is not automatically integrated. '
         'Their binaries are not included in this release.\n\n'
+        'The v1.2.28 merge adds faster per-bone sequence bounds with '
+        '-legacysequencebounds for the previous vertex-skinning algorithm; default bounds may be wider. '
+        'It includes DMX physics primitives, inline $physicsshape primitive box/sphere/capsule, '
+        'ragdoll $origin support and inheritance from DMX attachments. Shared DMX/KV3/zstd '
+        'libraries retain project compatibility extensions, SubD round trips and default skin hierarchy retention. '
+        'See VALIDATION.md for completed checks and their limits.\n\n'
+        'Both platform archives now include subtools/ag2proportions, an experimental CS2 AnimGraph2 '
+        'proportion helper using the project version. It is not ordinary Source1 MDL compilation '
+        'or a GMod/CSGO arms fix. Installed CS2 data is required; compiling generated resources '
+        'also requires compatible Workshop Tools. Direct VMDL input edits the model in place; '
+        'read INSTALL.md and --help before use. Help/version smoke checks do not certify '
+        'CS2 ModelDoc or in-game behavior. Its third-party notices are bundled under subtools/licenses/.\n\n'
         'Includes independently implemented NekoMDL compatibility based on the supplied Chinese v2.3.0 changelog: '
         'scene import, Neko model/driver syntax, jiggle options and QC extensions. '
         'Neko binaries are not redistributed; reference updates are reviewed manually. '
@@ -327,10 +339,14 @@ def package(args):
     required = ['NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D']
     if args.platform == 'win64':
         required.append('NewPageMergeMDL-C4D')
-    required.extend('subtools/' + name for name in ('l4d_animswap', 'meshtool', 'vmd2valvebiped'))
+    required.extend('subtools/' + name for name in ('ag2proportions', 'l4d_animswap', 'meshtool', 'vmd2valvebiped'))
     for name in required:
         if not (dist / (name + extension)).is_file():
             raise ValueError('Missing required executable: ' + name)
+    for name in ('subtools/licenses/zstd.txt', 'subtools/licenses/ValveResourceFormat.txt'):
+        notice = dist / name
+        if not notice.is_file() or notice.stat().st_size == 0:
+            raise ValueError('Missing or empty required ag2proportions license: ' + name)
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(dist.rglob('*')):
             if path.is_file():
