@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 # Distributed tools share the NewPageMergeMDL project version.
 # Upstream TOOL_VERSION declarations remain as merge context only.
 # C is enabled only for vendored dependencies; toolkit code is C++.
-project(NewPageMergeMDL VERSION 1.2.30 LANGUAGES CXX C)
+project(NewPageMergeMDL VERSION 1.2.31 LANGUAGES CXX C)
 
 # Keep all Windows tools portable, including helpers without Assimp's runtime
 # link settings. MSVC distribution builds select MultiThreaded in their preset.
@@ -58,7 +58,7 @@ endif()
 #   libs/           - C++ libraries (pulselimits.h lives here), vendored OSS
 #   mdlcompiler/    - the app: .pulseqc loader, compile stage, writers, main()
 #   mdldecompiler/  - the reverse tool: .mdl -> .pulseqc
-#   subtools/       - standalone helpers (importqc: stock .qc -> .pulseqc)
+#   subtools/       - standalone helpers
 add_subdirectory(libs)
 add_subdirectory(subtools)
 add_subdirectory(mdlcompiler)

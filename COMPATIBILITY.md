@@ -2,7 +2,7 @@
 
 **Before every production compile, set `-game` to the target game/mod directory containing its correct `gameinfo.txt`.** Pass the directory, not the file, Steam root or `bin` directory. This is especially important for CSGO and MCV: AppID and mounts affect target layout, resources and defaults. Do not substitute another game's file. `-OutDir` controls output only and does not replace target selection. Keep existing assets and test isolated output in the intended game before replacing them. See the opening notes in [README.md](README.md) / [README.en.md](README.en.md) for format, material and runtime requirements.
 
-This fork uses PulseModel commit `4fe14de0f9b0533699dc81380d9510b024d8deeb`
+This fork uses PulseModel commit `174f8c0ea337f33505bd52c41bd254d3ba0128ab`
 as its base. It does not include StudioMDL-CE or Tools++ binaries or claim
 complete behavioral parity. Implementations use public documentation and the
 StudioMDL++ changelog supplied by the user on 2026-10-06, plus analysis and
@@ -15,9 +15,15 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current version: **v1.2.30**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+Current version: **v1.2.31**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
 
 Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Automatic upstream releases embed their exact merged project source at `sources/NewPageMergeMDL-source.zip`; manual releases use the repository source at the release tag. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
+
+## v1.2.31: deprecated-code cleanup with meshtool retained
+
+PulseModel `174f8c0` removes the deprecated `importqc` and `meshtool` subtools. This project incorporates the `importqc` removal, its commented-out build entry and stale-comment cleanup. `importqc` was not built or shipped, so its removal does not remove a packaged feature. `meshtool` remains an intentional NewPage extension: its source, enabled build target and packaged executable are retained in the maintenance overlay against the new upstream baseline.
+
+Model-compilation algorithms and the NewPage icon resources are unchanged. This maintenance update does not expand format support or runtime certification. Windows release builds use local MinSizeRel + ThinLTO; the latest hosted jobs were blocked by account billing restrictions and no v1.2.31 Linux package has been built. Completed checks are recorded in [VALIDATION.md](VALIDATION.md).
 
 ## v1.2.30: application icons and version metadata
 

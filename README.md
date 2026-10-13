@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.30
+# NewPageMergeMDL v1.2.31
 
 <p>
 <img src=".github/images/newpage-compiler.png" width="80" alt="NewPage compiler">
@@ -24,11 +24,11 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
 - **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
-项目版本：**v1.2.30**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.31**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 ## 下载与安装：每个平台一个完整包
 
-**v1.2.30 平台状态：** Windows 完整包使用本机 MinSizeRel + ThinLTO 构建并通过包内程序验证，含精确提交源码。GitHub Actions 因账户计费限制未启动，本版本尚无经过验证的 Linux 包；请勿将旧版 Linux 包视为包含本次更新。详见 [当前验证](VALIDATION.md)。
+**v1.2.31 平台状态：** Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，附带精确提交源码；本轮完成的构建与包内程序检查见 [当前验证](VALIDATION.md)。最近的 GitHub Actions 任务因账户计费限制未启动，本版本尚无经过验证的 Linux 包；请勿将旧版 Linux 包视为包含本次更新。
 
 从 [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) 选择当前版本的 **Windows x64 ZIP** 或 **Linux ZIP**，完整解压到一个新目录即可使用。Windows 包已经包含 C4D 桥接程序；两个平台包都包含编译器、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本、GMod Lua 模块、文档、许可、构建清单和包内校验文件，无须拼接其他附件。根目录的 `INSTALL.md`、`upstream-manifest.json`、`SHA256SUMS.txt` 提供安装说明、构建来源与文件校验；报告位于 `tests/reports/`。自动上游合并版还内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版的完整项目源码由发布标签对应的仓库提供。GitHub 自动显示的 **Source code** 链接供源码浏览，不是安装包。
 
@@ -42,6 +42,12 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 支持 Windows x64 和 Linux 构建；各版本实际验证的平台以上述发布状态及验证记录为准。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
+
+## v1.2.31：合并 PulseModel 弃用代码清理
+
+合入 PulseModel [`174f8c0`](https://github.com/ToppiOfficial/PulseModel/commit/174f8c0ea337f33505bd52c41bd254d3ba0128ab)：移除一直未参与本项目构建和发行的弃用 `importqc` 源码及其注释状态的构建入口，并同步清理过时注释。上游同时删除的 `meshtool` 在本项目继续作为维护扩展保留，仍构建并随完整包提供，现有使用流程不受影响。
+
+本轮没有模型编译算法改动，保留 NewPage 自有图标及此前的手臂骨链、独立头发碰撞体修复。构建、包内工具和生产模型的实际验证范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## v1.2.30：NewPage 自有程序图标
 
@@ -257,7 +263,7 @@ v1.2.7 时为 **146 项兼容回归、20 项自动化测试**。参数、实测�
 
 ## 相比原版 PulseModel 新增的功能
 
-以下对比基于当前合并基线 `4fe14de0f9b0533699dc81380d9510b024d8deeb`。这里列出已实现的功能及兼容修复；闭源参考编译器的命令由本项目自行实现，不代表完整行为一致。详细参数与差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+以下对比基于当前合并基线 `174f8c0ea337f33505bd52c41bd254d3ba0128ab`。这里列出已实现的功能及兼容修复；闭源参考编译器的命令由本项目自行实现，不代表完整行为一致。详细参数与差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ### QC、动画与 StudioMDL++ 兼容扩展
 

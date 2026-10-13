@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.30
+# NewPageMergeMDL v1.2.31
 
 <p>
 <img src=".github/images/newpage-compiler.png" width="80" alt="NewPage compiler">
@@ -22,12 +22,12 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
-**Project version: v1.2.30.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.31.** The compiler, decompiler and bundled tools share this
 version.
 
 ## Download and install: one complete archive per platform
 
-**v1.2.30 platform status:** the complete Windows archive is built locally with MinSizeRel + ThinLTO, verified using its packaged executables, and includes the exact committed source. GitHub Actions jobs could not start because of an account billing restriction. No verified Linux archive is available for this version; previous Linux archives do not contain this update. See [current validation](VALIDATION.md).
+**v1.2.31 platform status:** the complete Windows archive uses the local MinSizeRel + ThinLTO build process and includes the exact committed source. See [current validation](VALIDATION.md) for completed build and packaged-executable checks. The most recent GitHub Actions jobs could not start because of an account billing restriction. No verified Linux archive is available for this version; previous Linux archives do not contain this update.
 
 Choose the current **Windows x64 ZIP** or **Linux ZIP** from [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) and extract the entire archive into a new directory. Each archive includes the compiler, decompiler, subtools, separate VRML converter with its corresponding source, preparation scripts, GMod Lua modules, documentation, licenses, build manifest and internal checksums. The Windows archive also includes the C4D helper. No additional release attachments need to be combined. `INSTALL.md`, `upstream-manifest.json` and `SHA256SUMS.txt` are at the package root; reports are in `tests/reports/`. Automatic upstream releases also embed `sources/NewPageMergeMDL-source.zip`; complete project source for manual releases is available from the repository at the release tag. GitHub's automatic **Source code** links are for source browsing, not installation.
 
@@ -43,6 +43,12 @@ See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.
+
+## v1.2.31: merge PulseModel deprecated-code cleanup
+
+Integrates PulseModel [`174f8c0`](https://github.com/ToppiOfficial/PulseModel/commit/174f8c0ea337f33505bd52c41bd254d3ba0128ab): removes deprecated `importqc` source, which was never built or shipped by this project, along with its commented-out build entry, and removes stale comments. Although upstream also deleted `meshtool`, this project retains it as a maintained extension, including its build target and packaged executable, preserving existing workflows.
+
+No model-compilation algorithms change. NewPage application icons and the existing arm hierarchy and independent hair collision fixes remain. See [VALIDATION.md](VALIDATION.md) for the actual build, packaged-tool and production-model validation scope.
 
 ## v1.2.30: NewPage application icons
 
@@ -258,7 +264,7 @@ SMD / DMX / FBX compilation, model decompilation and utility tools are retained.
 
 ## Additions compared with original PulseModel
 
-This comparison uses merge baseline `4fe14de0f9b0533699dc81380d9510b024d8deeb`. The following features and compatibility fixes are implemented independently; they do not certify full parity with the closed-source reference compilers. See [COMPATIBILITY.md](COMPATIBILITY.md) for arguments and behavioral differences.
+This comparison uses merge baseline `174f8c0ea337f33505bd52c41bd254d3ba0128ab`. The following features and compatibility fixes are implemented independently; they do not certify full parity with the closed-source reference compilers. See [COMPATIBILITY.md](COMPATIBILITY.md) for arguments and behavioral differences.
 
 ### QC, animation and StudioMDL++ compatibility
 

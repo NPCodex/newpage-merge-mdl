@@ -87,7 +87,7 @@ v1.2.20 将 FE settings/吸引/弯曲/地面参数、零重力回退修复、默
 
 ## 项目版本与双语文档
 
-当前项目版本为 **v1.2.28**，程序和 Windows 文件版本统一采用该版本（含 `ag2proportions`），独立于 PulseModel 上游版本号。本次合并上游序列包围盒、物理图元、attachment 继承、共享库与实验性 CS2 工具；各平台的构建及验证记录见 [VALIDATION.md](VALIDATION.md)。
+当前项目版本为 **v1.2.31**，程序和 Windows 文件版本统一采用该版本（含 `ag2proportions`），独立于 PulseModel 上游版本号。本次合并弃用代码清理，保留已发行的 `meshtool` 与 NewPage 图标；各平台的构建及验证记录见 [VALIDATION.md](VALIDATION.md)。
 `CMakeLists.txt` 的项目版本与 `automation/upstreams.json` 的 `project_version` 应同步维护。
 自动发布标签采用 `v1.2.0`、`v1.2.1` 等语义版本。每次检测到新的上游或项目改动，补丁号递增；配置版本作为最低版本，可手动提高主/次版本。上游没有变化则跳过发布，强制重建同一内容沿用已发布的版本和标签。合并源码内的 CMake、发布配置和 README 会同步写入实际发布版本，并重新生成对应补丁。
 中文 `README.md` 与英文 `README.en.md` 都会包含在合并源码和二进制发布包中。
@@ -105,3 +105,5 @@ v1.2.21 将绑定 sphere/capsule、稀疏布料/自由锚点/杆面、AxisInterp
 v1.2.30 将固定基线推进到 `4fe14de0f9b0533699dc81380d9510b024d8deeb`，采用上游的 Windows 图标资源支持，嵌入项目所有者提供的 NewPage 自有图标，并重新生成维护补丁。项目仍使用统一版本号，不直接采用上游两个工具的独立版本号。
 
 自动准备流程保留 `assets/branding` 中的 NewPage 原图与生成脚本；安装包携带 README 图标预览和品牌源文件。发布完成时使用正式版本标记；只有版本号不低于当前 Latest 时才将它设为 Latest，旧版本重试不会覆盖较新的 Latest。
+
+v1.2.31 将固定基线从 `4fe14de` 推进到 `174f8c0ea337f33505bd52c41bd254d3ba0128ab`，移除未构建、未发行的 `importqc` 与过时注释。上游同时删除的 `meshtool` 由 NewPage 继续维护，源码、启用的构建入口和包内程序都必须保留，并记录在相对新基线重新生成的维护补丁中。新基线的自动准备与补丁一致性检查仍须通过；本次同步没有模型编译算法或自有图标变化。

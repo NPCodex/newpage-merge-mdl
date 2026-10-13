@@ -2546,7 +2546,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
             float x, y, z;
             if (!c.Want("a material name", t, mat) || !c.WantFloat("x", t, x) ||
                 !c.WantFloat("y", t, y) || !c.WantFloat("z", t, z))
-                return false; // consumed and ignored (matches importqc)
+                return false; // consumed and ignored
             continue;
         }
 
