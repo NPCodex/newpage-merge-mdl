@@ -17,6 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('upstream_release', ROOT / '.github/scripts/upstream_release.py')
 sync = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sync)
+spec = importlib.util.spec_from_file_location('publish_release', ROOT / '.github/scripts/publish_release.py')
+publisher = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(publisher)
 
 
 def asset(name='tools.zip', identifier=1):
@@ -225,6 +228,13 @@ class AutomationTests(unittest.TestCase):
                 (dist / 'subtools/licenses' / name).write_text('AG2 dependency notice: ' + name)
             for name in ('LICENSE', 'README.md', 'README.en.md', 'INSTALL.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
                 (source / name).write_text(name)
+            branding = ('.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
+                        'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
+                        'assets/branding/README.md')
+            for name in branding:
+                path = source / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(('brand fixture: ' + name).encode())
             (source / 'libs/vendor').mkdir(parents=True)
             (source / 'libs/vendor/LICENSE').write_text('vendor notice')
             (source / 'libs/nvtristrip').mkdir()
@@ -252,6 +262,8 @@ class AutomationTests(unittest.TestCase):
                                             platform='win64', manifest=root / 'manifest.json', source_archive=root / 'source.zip'))
             with zipfile.ZipFile(root / 'out.zip') as archive:
                 self.assertEqual(archive.read('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'), (root / 'source.zip').read_bytes())
+                for name in branding:
+                    self.assertEqual(archive.read('NewPageMergeMDL/' + name), (source / name).read_bytes())
                 self.assertIn('NewPageMergeMDL/INSTALL.md', archive.namelist())
                 inventory = dict(line.split('  ', 1)[::-1] for line in archive.read('NewPageMergeMDL/SHA256SUMS.txt').decode().splitlines())
                 self.assertEqual(set(inventory), {n.removeprefix('NewPageMergeMDL/') for n in archive.namelist()} - {'SHA256SUMS.txt'})
@@ -285,6 +297,8 @@ class AutomationTests(unittest.TestCase):
             sync.package(argparse.Namespace(dist=dist, source=source, output=root / 'linux.zip',
                                             platform='linux64', manifest=root / 'manifest.json'))
             with zipfile.ZipFile(root / 'linux.zip') as archive:
+                for name in branding:
+                    self.assertEqual(archive.read('NewPageMergeMDL/' + name), (source / name).read_bytes())
                 for name in ('NewPageMergeMDL', 'subtools/ag2proportions', 'subtools/meshtool'):
                     info = archive.getinfo('NewPageMergeMDL/' + name)
                     self.assertEqual(info.create_system, 3)
@@ -327,6 +341,150 @@ class AutomationTests(unittest.TestCase):
 
 
 
+class ReleasePublishingTests(unittest.TestCase):
+    @staticmethod
+    def api_response(data, status=200):
+        return argparse.Namespace(returncode=0 if status == 200 else 1,
+                                  stdout=f'HTTP/2.0 {status} Status\r\nContent-Type: application/json\r\n\r\n' + json.dumps(data))
+
+    @classmethod
+    def response(cls, status=200, tag='v1.2.30', **fields):
+        data = dict(id=123, tag_name=tag, draft=False, prerelease=False)
+        data.update(fields)
+        return cls.api_response(data, status)
+
+    def test_new_release_without_latest_publishes_stable_and_latest(self):
+        with patch.object(publisher.subprocess, 'run', side_effect=[
+                self.response(draft=True), self.response(status=404), None]) as run:
+            publisher.publish('owner/repo', 'v1.2.30', 'notes.md')
+        self.assertEqual(run.call_args_list[-1].args[0], [
+            'gh', 'release', 'edit', 'v1.2.30', '--repo', 'owner/repo',
+            '--draft=false', '--prerelease=false', '--latest=true', '--notes-file', 'notes.md'])
+
+    def test_same_tag_retry_never_downgrades_stable_release(self):
+        for prerelease in (False, True):
+            with self.subTest(prerelease=prerelease), patch.object(publisher.subprocess, 'run', side_effect=[
+                    self.response(prerelease=prerelease), self.response(), None]) as run:
+                publisher.publish('owner/repo', 'v1.2.30', 'notes.md')
+            command = run.call_args_list[-1].args[0]
+            self.assertIn('--prerelease=false', command)
+            self.assertIn('--latest=true', command)
+
+    def test_latest_uses_numeric_project_version_and_revision_order(self):
+        for tag, latest, promote in (
+                ('v1.2.9', 'v1.2.30', False),
+                ('v1.2.30', 'v1.3.0', False),
+                ('v1.2.30', 'v2.0.0', False),
+                ('v1.2.30', 'v1.2.30-r1', False),
+                ('v1.2.30-r2', 'v1.2.30-r10', False),
+                ('v1.2.30-r1', 'v1.2.30', True),
+                ('v1.2.30-r10', 'v1.2.30-r2', True),
+                ('v1.2.31', 'v1.2.30-r100', True)):
+            with self.subTest(tag=tag, latest=latest), patch.object(publisher.subprocess, 'run', side_effect=[
+                    self.response(tag=tag), self.response(tag=latest), None]) as run:
+                publisher.publish('owner/repo', tag, 'notes.md')
+            command = run.call_args_list[-1].args[0]
+            self.assertIn('--latest=' + str(promote).lower(), command)
+            self.assertIn('--prerelease=false', command)
+
+    def test_latest_query_errors_stop_before_any_release_edit(self):
+        failures = [self.response(status=code) for code in (401, 403, 429, 500, 503)]
+        failures.extend([
+            argparse.Namespace(returncode=1, stdout='', stderr='network failure'),
+            argparse.Namespace(returncode=1, stdout='{"status":"404"}', stderr='no HTTP response'),
+            argparse.Namespace(returncode=0, stdout='HTTP/2.0 200 OK\n\nnot JSON'),
+            argparse.Namespace(returncode=0, stdout='HTTP/2.0 200 OK\n\n{}'),
+            self.api_response(None)])
+        for failed in failures:
+            with self.subTest(response=failed.stdout), patch.object(publisher.subprocess, 'run', side_effect=[
+                    self.response(), failed]) as run:
+                with self.assertRaises((ValueError, RuntimeError)):
+                    publisher.publish('owner/repo', 'v1.2.30', 'notes.md')
+                self.assertEqual(run.call_count, 2)
+                self.assertTrue(all(call.args[0][1] == 'api' for call in run.call_args_list))
+
+    def test_unknown_tags_fail_without_guessing_latest(self):
+        for tag in ('1.2.30', 'v1.2', 'v1.2.30-preview', 'v1.2.30-r', 'newpage-auto-old'):
+            with self.subTest(tag=tag), patch.object(publisher.subprocess, 'run') as run:
+                with self.assertRaises(ValueError):
+                    publisher.publish('owner/repo', tag, 'notes.md')
+                run.assert_not_called()
+        with patch.object(publisher.subprocess, 'run', side_effect=[
+                self.response(), self.response(tag='unrecognized-latest')]) as run:
+            with self.assertRaises(ValueError):
+                publisher.publish('owner/repo', 'v1.2.30', 'notes.md')
+            self.assertEqual(run.call_count, 2)
+
+    def test_draft_creation_is_not_prerelease_and_retries_do_not_edit(self):
+        with patch.object(publisher.subprocess, 'run', side_effect=[
+                self.response(status=404), self.api_response([]), None]) as run:
+            publisher.create_draft('owner/repo', 'v1.2.30', 'commit', 'notes.md')
+        command = run.call_args_list[-1].args[0]
+        self.assertIn('--draft', command)
+        self.assertFalse(any(value.startswith('--prerelease') for value in command))
+        for draft in (False, True):
+            with self.subTest(draft=draft), patch.object(publisher.subprocess, 'run', return_value=self.response(draft=draft)) as run:
+                publisher.create_draft('owner/repo', 'v1.2.30', 'commit', 'notes.md')
+                self.assertEqual(run.call_count, 1)
+        with patch.object(publisher.subprocess, 'run', return_value=self.response(status=403)) as run:
+            with self.assertRaises(RuntimeError):
+                publisher.create_draft('owner/repo', 'v1.2.30', 'commit', 'notes.md')
+            self.assertEqual(run.call_count, 1)
+
+    def test_missing_or_mismatched_target_cannot_publish(self):
+        for responses in ([self.response(status=404), self.api_response([])],
+                          [self.response(tag='v1.2.29')]):
+            with patch.object(publisher.subprocess, 'run', side_effect=responses) as run:
+                with self.assertRaises((ValueError, RuntimeError)):
+                    publisher.publish('owner/repo', 'v1.2.30', 'notes.md')
+                self.assertEqual(run.call_count, len(responses))
+
+    def test_draft_tag_404_falls_back_to_paginated_list_and_verified_id(self):
+        first_page = [dict(id=index + 1, tag_name='v1.2.29-r' + str(index)) for index in range(100)]
+        draft = dict(id=410761664, tag_name='v1.2.30', draft=True, prerelease=False)
+        responses = [self.response(status=404), self.api_response(first_page),
+                     self.api_response([draft]), self.api_response(draft)]
+        with patch.object(publisher.subprocess, 'run', side_effect=responses) as run:
+            publisher.create_draft('owner/repo', 'v1.2.30', 'commit', 'notes.md')
+        self.assertEqual([call.args[0][-1] for call in run.call_args_list], [
+            'repos/owner/repo/releases/tags/v1.2.30',
+            'repos/owner/repo/releases?per_page=100&page=1',
+            'repos/owner/repo/releases?per_page=100&page=2',
+            'repos/owner/repo/releases/410761664'])
+        with patch.object(publisher.subprocess, 'run', side_effect=responses + [
+                self.response(tag='v1.2.29'), None]) as run:
+            publisher.publish('owner/repo', 'v1.2.30', 'notes.md')
+        self.assertIn('--draft=false', run.call_args_list[-1].args[0])
+        self.assertIn('--prerelease=false', run.call_args_list[-1].args[0])
+        self.assertIn('--latest=true', run.call_args_list[-1].args[0])
+
+    def test_draft_lookup_failures_stop_before_creating_or_publishing(self):
+        draft = dict(id=123, tag_name='v1.2.30')
+        invalid_lookups = [
+            [self.response(status=403)],
+            [self.api_response(None)],
+            [self.api_response({})],
+            [self.api_response([{}])],
+            [self.api_response([dict(draft, id='123')])],
+            [self.api_response([dict(draft, id=True)])],
+            [self.api_response([dict(draft, id=-1)])],
+            [self.api_response([draft]), self.response(status=404)],
+            [self.api_response([draft]), self.response(id=456)],
+            [self.api_response([draft]), self.response(tag='v1.2.29')]]
+        for operation in ('draft', 'publish'):
+            for lookup in invalid_lookups:
+                responses = [self.response(status=404)] + lookup
+                with self.subTest(operation=operation, responses=responses), patch.object(
+                        publisher.subprocess, 'run', side_effect=responses) as run:
+                    with self.assertRaises((ValueError, RuntimeError)):
+                        if operation == 'draft':
+                            publisher.create_draft('owner/repo', 'v1.2.30', 'commit', 'notes.md')
+                        else:
+                            publisher.publish('owner/repo', 'v1.2.30', 'notes.md')
+                    self.assertEqual(run.call_count, len(responses))
+                    self.assertTrue(all(call.args[0][1] == 'api' for call in run.call_args_list))
+
+
 class PackageValidationTests(unittest.TestCase):
     def make_package(self, root, extra=None, manifest=None, omit=None, empty=None):
         suffix='.exe' if os.name=='nt' else ''
@@ -339,6 +497,8 @@ class PackageValidationTests(unittest.TestCase):
             # layout, including the standalone GPL converter's source.
             for name in (
                 'README.md','README.en.md','INSTALL.md','VALIDATION.md','IMPROVEMENTS.md',
+                '.github/images/newpage-compiler.png','.github/images/newpage-decompiler.png',
+                'assets/branding/NewPage-logo.png','assets/branding/generate_icons.py','assets/branding/README.md',
                 'FIVE_COMPILER_COMPLETION.md','O5_FORMAT_IMPORTS.md','MESH_STATE_WORKFLOW.md','VRM_RUNTIME.md',
                 'integration/gmod/newpage_vertexanim.lua','integration/gmod/newpage_meshstates.lua',
                 'integration/gmod/newpage_vrm.lua','integration/gmod/newpage_vrm_materials.lua',
@@ -376,14 +536,17 @@ class PackageValidationTests(unittest.TestCase):
             if os.name != 'nt':
                 self.assertEqual((compiler.parent/'subtools/ag2proportions').stat().st_mode & 0o777, 0o755)
 
-    def test_missing_or_empty_ag2_licenses_fail_before_extracting(self):
-        for name in ('subtools/licenses/zstd.txt', 'subtools/licenses/ValveResourceFormat.txt'):
+    def test_missing_or_empty_support_files_fail_before_extracting(self):
+        for name in ('subtools/licenses/zstd.txt', 'subtools/licenses/ValveResourceFormat.txt',
+                     '.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
+                     'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
+                     'assets/branding/README.md'):
             for mode in ('omit', 'empty'):
-                with self.subTest(license=name, mode=mode), tempfile.TemporaryDirectory() as directory:
+                with self.subTest(file=name, mode=mode), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     archive = self.make_package(root, **{mode: name})
                     # The inventory is correct for the incomplete archive, so
-                    # only the required-license gate can reject it.
+                    # only the required-file gate can reject it.
                     with zipfile.ZipFile(archive) as package:
                         self.verifier().verify_inventory(package)
                     with self.assertRaisesRegex(ValueError, re.escape(name)):

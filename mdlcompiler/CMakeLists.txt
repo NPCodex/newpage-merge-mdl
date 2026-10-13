@@ -5,11 +5,11 @@ add_executable(mdlcompiler main.cpp dmxloader.cpp dmxrig.cpp smdloader.cpp
                flexreg.cpp qcloader.cpp writemdl.cpp outputfiles.cpp writevtx.cpp writephy.cpp
                surfaceproperties.cpp cloth.cpp clothadvanced.cpp clothprojection.cpp subd.cpp dmxeval.cpp)
 # Each tool owns its own version; there is no project-wide one.
-set(TOOL_VERSION 0.36.1)
+set(TOOL_VERSION 0.36.2)
 string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
 target_compile_definitions(mdlcompiler PRIVATE PULSEMODEL_VERSION="${PROJECT_VERSION}")
 
-# Explorer's Details tab (file description, product name/version, copyright).
+# App icon plus Explorer's Details tab (description, product name/version, copyright).
 if(WIN32)
     target_link_libraries(mdlcompiler PRIVATE user32 advapi32 psapi)
     set(MDL_UTF8_MANIFEST_RESOURCE "")
@@ -18,6 +18,8 @@ if(WIN32)
         set(MDL_UTF8_MANIFEST_RESOURCE "1 24 \"${CMAKE_SOURCE_DIR}/utf8.manifest\"")
     endif()
     configure_file(version.rc.in "${CMAKE_CURRENT_BINARY_DIR}/version.rc" @ONLY)
+    set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/version.rc" APPEND PROPERTY
+                 OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/app.ico")
     target_sources(mdlcompiler PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc")
     if(NOT MINGW)
         target_sources(mdlcompiler PRIVATE "${CMAKE_SOURCE_DIR}/utf8.manifest")

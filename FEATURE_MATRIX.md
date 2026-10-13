@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.29。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.30。
 
 发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化与体积优化均不扩展下表的游戏运行时认证范围。
 
@@ -16,7 +16,9 @@ v1.2.28 合并 PulseModel `52cf296..578e86e` 的 18 个提交：默认按骨骼�
 v1.2.29 修复程序骨物理：具有碰撞几何的 jiggle 骨可保留独立刚体；显式物理依赖参与骨骼保留，物理骨及父链补齐引擎计算标志。原始 Plum `playermodel_f_compile2_hair.qc` 无须编辑即恢复 21 个刚体与 3 个独立头发刚体。显式 joint merge/skip 和强制折叠仍有效；父体显式约束不被子体回退覆盖。CE 0.2 原 QC 为 18 个刚体，保留头发骨的对照副本为 21 个；本工具主动保留显式物理引用，不宣称默认输出完全一致。394 项本地兼容回归及 GMod prop/NPC ragdoll 各 20 秒观察通过，范围见 [VALIDATION.md](VALIDATION.md)。
 
 这份表按需求来源追踪功能，不以测试数量或基础设施数量代表整合完成度。
-v1.2.29 发行验证限 Windows 本地 MinSizeRel + ThinLTO 完整包；GitHub Actions 因账户计费限制未启动，本版 Linux 包尚未构建或验证。
+v1.2.30 同步上游图标资源支持，使用项目所有者提供的 NewPage 标志制作自有编译器/反编译器图标；修正版本元数据，不新增模型处理功能。当前发行验证范围见 [VALIDATION.md](VALIDATION.md)。
+
+v1.2.29 历史发行验证限 Windows 本地 MinSizeRel + ThinLTO 完整包；GitHub Actions 因账户计费限制未启动，本版 Linux 包尚未构建或验证。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
 “待确认”表示资料不足或参考程序未复现。未列出的历史缺陷不能自动算作已修复。
 兼容性测试通过也不等于所有格式、模型、游戏均通过。
@@ -29,7 +31,7 @@ v1.2.29 发行验证限 Windows 本地 MinSizeRel + ThinLTO 完整包；GitHub A
 
 | 来源 | 核对依据 |
 | --- | --- |
-| PulseModel | 固定基线 `578e86e38fde086ccfb701d96688817a77e718de` 的源码及 UPSTREAM_README.md；持续通过维护补丁合并更新。 |
+| PulseModel | 固定基线 `4fe14de0f9b0533699dc81380d9510b024d8deeb` 的源码及 UPSTREAM_README.md；持续通过维护补丁合并更新。 |
 | StudioMDL-CE | 主分支命令指南、changelog 和 banner 为 `0.3.0 (Preview)` 的参考程序；该标识不是正式发布标签。v1.2.29 另以官方 `0.2` 标签（作者标注 unstable）进行物理对照；见 COMPATIBILITY.md 与 VALIDATION.md。 |
 | NekoMDL | 用户提供的中文版 ChangeLog.txt v2.3.0、NewCommands.qci 和参考程序。历史版本条目按当前行为复核，不能假定旧实现仍有效。 |
 | StudioMDL 2013 | [Cra0 原始页面](https://cra0.net/blog/posts/archived/2014/studiomdl-2013/)。2012 libs / 2013 两包的 EXE SHA256 相同，作为同一来源；不同依赖配置单独记录。 |

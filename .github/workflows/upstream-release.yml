@@ -18,7 +18,10 @@ on:
       - '.github/scripts/upstream_release.py'
       - '.github/scripts/fetch_windows_extras.py'
       - '.github/scripts/refresh_overlay.py'
+      - '.github/scripts/publish_release.py'
       - '.github/workflows/upstream-release.yml'
+      - '.github/images/newpage-*.png'
+      - 'assets/branding/**'
       - 'tests/**'
       - 'libs/**'
       - 'mdlcompiler/**'
@@ -179,19 +182,18 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         shell: bash
         run: |
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "NewPageMergeMDL $RELEASE_TAG" --notes-file prepared/release-notes.md --draft --prerelease
-          fi
+          python3 .github/scripts/publish_release.py draft --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --target "$GITHUB_SHA" --notes-file prepared/release-notes.md
           gh release upload "$RELEASE_TAG" release-files/newpage-merge-mdl-win64.zip release-files/newpage-merge-mdl-linux64.zip --clobber
           python3 - <<'PY'
           import hashlib
-          import json
           import os
           from pathlib import Path
           import subprocess
+          import sys
+          sys.path.insert(0, str(Path('.github/scripts').resolve()))
+          from publish_release import find_release
           tag = os.environ['RELEASE_TAG']
-          release = json.loads(subprocess.check_output(
-              ['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/releases/tags/{tag}']))
+          release = find_release(os.environ['GITHUB_REPOSITORY'], tag)
           keep = {'newpage-merge-mdl-win64.zip', 'newpage-merge-mdl-linux64.zip'}
           for name in keep:
               matches = [asset for asset in release['assets'] if asset['name'] == name]
@@ -204,4 +206,4 @@ jobs:
               if asset['name'] not in keep:
                   subprocess.run(['gh', 'release', 'delete-asset', tag, asset['name'], '--yes'], check=True)
           PY
-          gh release edit "$RELEASE_TAG" --draft=false --prerelease --notes-file prepared/release-notes.md
+          python3 .github/scripts/publish_release.py publish --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --notes-file prepared/release-notes.md

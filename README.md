@@ -1,4 +1,9 @@
-# NewPageMergeMDL v1.2.29
+# NewPageMergeMDL v1.2.30
+
+<p>
+<img src=".github/images/newpage-compiler.png" width="80" alt="NewPage compiler">
+<img src=".github/images/newpage-decompiler.png" width="80" alt="NewPage decompiler">
+</p>
 
 [English](README.en.md) | 简体中文
 
@@ -19,11 +24,11 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
 - **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
-项目版本：**v1.2.29**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.30**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 ## 下载与安装：每个平台一个完整包
 
-**v1.2.29 平台状态：** Windows 完整包使用本机 MinSizeRel + ThinLTO 构建并通过包内程序验证，含精确提交源码。GitHub Actions 因账户计费限制未启动，本版本尚无经过验证的 Linux 包；请勿将旧版 Linux 包视为包含本次修复。详见 [当前验证](VALIDATION.md)。
+**v1.2.30 平台状态：** Windows 完整包使用本机 MinSizeRel + ThinLTO 构建并通过包内程序验证，含精确提交源码。GitHub Actions 因账户计费限制未启动，本版本尚无经过验证的 Linux 包；请勿将旧版 Linux 包视为包含本次更新。详见 [当前验证](VALIDATION.md)。
 
 从 [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) 选择当前版本的 **Windows x64 ZIP** 或 **Linux ZIP**，完整解压到一个新目录即可使用。Windows 包已经包含 C4D 桥接程序；两个平台包都包含编译器、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本、GMod Lua 模块、文档、许可、构建清单和包内校验文件，无须拼接其他附件。根目录的 `INSTALL.md`、`upstream-manifest.json`、`SHA256SUMS.txt` 提供安装说明、构建来源与文件校验；报告位于 `tests/reports/`。自动上游合并版还内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版的完整项目源码由发布标签对应的仓库提供。GitHub 自动显示的 **Source code** 链接供源码浏览，不是安装包。
 
@@ -37,6 +42,10 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 支持 Windows x64 和 Linux 构建；各版本实际验证的平台以上述发布状态及验证记录为准。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
+
+## v1.2.30：NewPage 自有程序图标
+
+合入 PulseModel [`4fe14de`](https://github.com/ToppiOfficial/PulseModel/commit/4fe14de0f9b0533699dc81380d9510b024d8deeb)：采用上游 Windows 图标资源支持，按项目所有者提供的 NewPage 标志制作自有图标。编译器使用青绿立方体角标，反编译器使用紫色分层角标，均保留深蓝底与白色 NP 字形，提供 16～256 像素多尺寸；项目程序版本统一为 1.2.30，并修正反编译器 Windows 数字版本缺失补丁号的问题。本轮没有模型处理算法改动，保留 v1.2.29 的头发碰撞修复。实际验证及平台范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## v1.2.29：修复头发程序骨的独立碰撞体
 
@@ -248,7 +257,7 @@ v1.2.7 时为 **146 项兼容回归、20 项自动化测试**。参数、实测�
 
 ## 相比原版 PulseModel 新增的功能
 
-以下对比基于当前合并基线 `578e86e38fde086ccfb701d96688817a77e718de`。这里列出已实现的功能及兼容修复；闭源参考编译器的命令由本项目自行实现，不代表完整行为一致。详细参数与差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+以下对比基于当前合并基线 `4fe14de0f9b0533699dc81380d9510b024d8deeb`。这里列出已实现的功能及兼容修复；闭源参考编译器的命令由本项目自行实现，不代表完整行为一致。详细参数与差异见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ### QC、动画与 StudioMDL++ 兼容扩展
 

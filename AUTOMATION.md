@@ -17,7 +17,7 @@ GitHub 的调度可能延迟，长时间无活动的公开仓库可能被自动�
 4. 对最新 PulseModel 执行 `git apply --3way --index automation/compatibility.patch`，
    保留 NewPageMergeMDL 名称及已实现的兼容扩展。冲突即失败，不丢弃本地修改。
 5. Windows/Linux 都用 `MinSizeRel` 与 IPO/LTO 构建全部工具，并运行自动化单元测试和模型兼容测试。
-6. 两个平台均通过后，发布 GitHub **预发布版本**，每个平台只上传一个完整 ZIP。
+6. 两个平台均通过后，发布 GitHub **正式版本**，每个平台只上传一个完整 ZIP。
    实际糅合源码 `sources/NewPageMergeMDL-source.zip`、根目录的 `upstream-manifest.json`
    与 `SHA256SUMS.txt`、`tests/reports/` 中的验证报告均放入平台包内，
    不再作为独立附件；发布说明列出平台包及其 SHA256。上传和校验完成前保持草稿。
@@ -100,3 +100,8 @@ v1.2.20 将 FE settings/吸引/弯曲/地面参数、零重力回退修复、默
 v1.2.21 将绑定 sphere/capsule、稀疏布料/自由锚点/杆面、AxisInterp/Twist 和 DMX 曲线/压缩日志纳入相同源码补丁与兼容回归。CSGO 1.38.8.1 / 8802 离线 `de_dust2` 已补充 7 个 cloth21 样例的加载/多骨变形/移动、4 个零重力同壳 sphere/capsule `contact_on/off` 响应对照、原生 AxisInterp NP/stock 的 0.5/1 秒名义相位视觉对照，以及正向/inverse Twist 的正负方向播放检查。地图重载后，7 个布料、4 个接触对照及 4 个程序骨样例均重新载入。它们是有界的人工运行证据，不代替逐帧接触、全点无穿透、精确游戏骨角或 stock 全量等价验证。本轮未改编译器，版本仍为 v1.2.21。
 
 原版编译器数值对照、安装游戏中的运行验证和 Plum 原资产检查保留在本地诊断及本版验证报告，不把游戏或用户资产装入发布包。本地打包不表示已推送或在线发布。
+
+
+v1.2.30 将固定基线推进到 `4fe14de0f9b0533699dc81380d9510b024d8deeb`，采用上游的 Windows 图标资源支持，嵌入项目所有者提供的 NewPage 自有图标，并重新生成维护补丁。项目仍使用统一版本号，不直接采用上游两个工具的独立版本号。
+
+自动准备流程保留 `assets/branding` 中的 NewPage 原图与生成脚本；安装包携带 README 图标预览和品牌源文件。发布完成时使用正式版本标记；只有版本号不低于当前 Latest 时才将它设为 Latest，旧版本重试不会覆盖较新的 Latest。

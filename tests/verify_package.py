@@ -65,8 +65,16 @@ def verify(archive, expected, destination):
             'libs/assimp/contrib/pugixml/src/pugiconfig.hpp', 'libs/assimp/contrib/pugixml/LICENSE.md',
             'libs/tinyusdz/LICENSE', 'libs/tinyusdz/LICENSE-APACHE-2.0',
             'libs/tinyusdz/SOURCE.md', 'libs/tinyusdz/THIRD_PARTY_NOTICES.md',
+            '.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
+            'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
+            'assets/branding/README.md',
         ):
-            package.getinfo('NewPageMergeMDL/' + name)
+            try:
+                info = package.getinfo('NewPageMergeMDL/' + name)
+            except KeyError as exc:
+                raise ValueError('Missing required package file: ' + name) from exc
+            if info.is_dir() or info.file_size == 0:
+                raise ValueError('Empty required package file: ' + name)
         # Content inspection also works when repacking a previously tested
         # Linux release on Windows. Execution tests still run on its native OS.
         suffix = '.exe' if 'NewPageMergeMDL/NewPageMergeMDL.exe' in names else ''

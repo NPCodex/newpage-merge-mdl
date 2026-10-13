@@ -236,7 +236,7 @@ def prepare(args):
     candidate = work / 'candidate'
     create_source(candidate, config['pulsemodel'], state['pulsemodel']['sha'], config['pulse_base'], overlay)
     # Ship the controller's automation, tests and user documentation, never upstream workflows.
-    for name in ('.github', 'automation', 'tests', 'integration', 'tools'):
+    for name in ('.github', 'automation', 'tests', 'integration', 'tools', 'assets/branding'):
         target = candidate / name
         if target.exists():
             if candidate.resolve() not in target.resolve().parents:
@@ -369,6 +369,14 @@ def package(args):
         for name in ('LICENSE', 'README.md', 'README.en.md', 'INSTALL.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
             archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
+        # Keep README previews usable after extraction and retain the editable
+        # brand source. Do not bundle workflow files with the runtime tools.
+        for name in ('.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
+                     'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
+                     'assets/branding/README.md'):
+            path = Path(args.source) / name
+            if path.is_file():
+                archive.write(path, 'NewPageMergeMDL/' + name)
         if getattr(args, 'source_archive', None):
             archive.write(args.source_archive, 'NewPageMergeMDL/sources/NewPageMergeMDL-source.zip')
         for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md',
