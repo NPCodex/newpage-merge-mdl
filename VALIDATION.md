@@ -1,4 +1,17 @@
-# v1.2.31 当前验证
+# v1.2.32 当前验证
+
+修复 `flexfile` / `eyelid` 源名省略扩展名时无法找到实际 VTA 的错误。精确匹配内存 `$fakevta` 源后，无扩展名的磁盘源补 `.vta`；显式后缀、`$pushd` 和 `-filesearchdir` 保持原有语义。PulseModel 基线仍为 `174f8c0ea337f33505bd52c41bd254d3ba0128ab`。
+
+- **Luluka 原始输入：** 原始 `playermodel_f_compile.qc` 使用目标 GMod 中包含正确 `gameinfo.txt` 的 `-game` 目录和隔离输出，成功生成 123 骨、63,426 顶点、19 个物理刚体。59 份登记输入散列未变。五个 MDL/VVD/VTX/PHY 文件与 v1.2.31 编译隔离副本、仅将四处 eyelid 和一处 flexfile 引用补齐 `.vta` 后的结果逐字节一致。这是旧版显式扩展名对照，没有进行本轮 CE 产物比较或游戏运行验证。
+- **缺陷回归：** 新增 5 项测试，检查实际表情顶点增量及眼球绑定、同名 SMD、嵌套 QCI、搜索路径、显式自定义后缀、缺失 `.vta` 诊断、已有输出保护和无扩展名 `$fakevta` 精确匹配优先级。v1.2.31 在其中 4 项测试的 6 个子场景失败；修复后全部通过。
+- **实际 Windows 完整包：** llvm-mingw 20260922 UCRT x86_64、MinSizeRel + ThinLTO 全工具构建；解压并运行包内程序，通过 **399 项兼容回归、7 项 C4D 测试**，以及 VRML 转换/编译、无效输入保护和 AG2 启动/版本检查。固定 C4D helper 沿用已验证文件，未重新编译。
+- **既有生产回归：** 原始 Plum 的 5 个模型文件、手臂的 4 个模型文件与 v1.2.31 逐字节一致，131 份登记源文件未变。Plum 为 131 骨、572,277 顶点、21 个物理体；手臂为 55 骨、214,697 顶点。没有新增游戏运行。
+- **资源与自动化：** 两个主程序的 NewPage 图标各 9 个尺寸与 ICO 一致，数字版本为 1.2.32.0，编译器 UTF-8 manifest 未变。**39 项自动化、10 项固定 helper 分发测试**通过；维护补丁与源码一致性检查通过。
+- **平台范围：** 最近已核实的 [GitHub Actions 运行](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/38354180954) 因账户付款/额度限制未启动。本版仅提供本地验证的 Windows 完整包，Linux v1.2.32 未构建或发布。包内附精确提交源码和校验清单，不含用户模型或参考程序。
+
+机器可读证据和程序散列见 [v1.2.32-validation.json](tests/reports/v1.2.32-validation.json)。
+
+## v1.2.31 历史验证
 
 固定 PulseModel 基线推进至 `174f8c0ea337f33505bd52c41bd254d3ba0128ab`，删除从未构建/发行的 `importqc` 和过时注释；上游删除的 `meshtool` 继续作为 NewPage 维护扩展构建并随完整包提供。本轮没有模型编译算法变更。
 

@@ -830,6 +830,102 @@ class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,
         self.run_qc('$modelname face\n'+global_options+'\n$model face mesh.smd {\n'+block+'\n}\n',*args)
         return self.ce_data()
 
+    def test_vta_extensionless_flexfile_matches_explicit_file_beside_same_named_mesh(self):
+        block=self.ce_fixture()
+        vta=(self.root/'face.vta').read_text()
+        self.write('head.vta',vta)
+        self.write('head.morph',vta)
+        self.write('head.morph.vta','wrong file: an explicit suffix must be preserved\n')
+        self.write('head.smd',(self.root/'mesh.smd').read_text())
+        baseline=None
+        for filename in ('head.vta','head.morph','head'):
+            with self.subTest(filename=filename):
+                # A nested QCI still resolves mesh and flex sources from the QC directory.
+                self.write('inc/face.qci','$model face head {\n'+
+                           block.replace('face.vta','"'+filename+'"')+'}\n')
+                self.scene_qc('$modelname face\n$include inc/face.qci\n')
+                result=self.ce_data()
+                self.assertEqual([key['name'] for key in result[1]],['smile'])
+                self.assertTrue(any(v[2][2] for v in result[1][0]['vertices']))
+                if baseline is None:baseline=result
+                else:self.assertEqual(result,baseline)
+
+    def test_vta_extensionless_eyelid_matches_explicit_file_and_eye_binding(self):
+        self.ce_fixture()
+        vta=(self.root/'face.vta').read_text()
+        self.write('head.vta',vta)
+        self.write('head.morph',vta)
+        self.write('head.morph.vta','wrong file: an explicit suffix must be preserved\n')
+        self.write('head.smd',(self.root/'mesh.smd').read_text())
+        baseline=None
+        for filename in ('head.vta','head.morph','head'):
+            with self.subTest(filename=filename):
+                block=('eyeball eye root 0 0 0 material 2 0 iris .5\n'
+                       'eyelid upper "'+filename+'" lowerer 1 -.2 neutral 0 0 raiser 2 .2 split 0 eyeball eye\n'
+                       'flexcontroller eyelid range -1 1 lid\n%upper = lid\n')
+                result=self.ce_compile('',block)
+                self.assertEqual([key['name'] for key in result[1]],['upper','upper'])
+                self.assertNotEqual(result[1][0]['vertices'],result[1][1]['vertices'])
+                d=self.mdl('face');model=result[4][0]
+                eye=model+struct.unpack_from('<i',d,model+104)[0]
+                binding=d[eye+64:eye+124]
+                if baseline is None:baseline=(result,binding)
+                else:self.assertEqual((result,binding),baseline)
+
+    def test_vta_extensionless_sources_honor_pushd_and_filesearchdir(self):
+        block=self.ce_fixture()
+        vta=(self.root/'face.vta').read_text()
+        self.write('head.smd',(self.root/'mesh.smd').read_text())
+        self.write('source.with.dot/head.vta',vta)
+        model=(self.root/'mesh.smd').as_posix()
+        baseline=None
+        for mode in ('pushd','filesearchdir'):
+            for filename in ('head.vta','head'):
+                with self.subTest(mode=mode,filename=filename):
+                    options=block.replace('face.vta','"'+filename+'"')
+                    options+=('eyeball eye root 0 0 0 material 2 0 iris .5\n'
+                              'eyelid upper "'+filename+'" lowerer 1 -.2 neutral 0 0 raiser 2 .2 split 0 eyeball eye\n'
+                              'flexcontroller eyelid range -1 1 lid\n%upper = lid\n')
+                    text='$modelname face\n$model face "'+model+'" {\n'+options+'}\n'
+                    args=[]
+                    if mode=='pushd':text='$pushd source.with.dot\n'+text+'$popd\n'
+                    else:args=['-filesearchdir',str(self.root/'source.with.dot')]
+                    self.scene_qc(text,*args)
+                    result=self.ce_data()
+                    self.assertGreater(len(result[1]),1)
+                    if baseline is None:baseline=result
+                    else:self.assertEqual(result,baseline)
+
+    def test_vta_extensionless_missing_diagnostic_names_vta_and_preserves_existing_output(self):
+        self.ce_compile()
+        before=self.mdl('face')
+        self.write('missing.smd',(self.root/'mesh.smd').read_text())
+        for option in ('flexfile missing {\nflex absent frame 1\n}\n',
+                       'eyeball eye root 0 0 0 material 2 0 iris .5\n'
+                       'eyelid upper missing lowerer 1 -.2 neutral 0 0 raiser 2 .2 split 0 eyeball eye\n'):
+            with self.subTest(option=option.split()[0]):
+                text=self.run_qc('$modelname face\n$model face mesh.smd {\n'+option+'}\n',success=False)
+                self.assertIn('cannot find "missing.vta"',text)
+                self.assertNotIn('missing.smd',text)
+                self.assertEqual(self.mdl('face'),before)
+
+    def test_vta_extensionless_synthetic_name_is_resolved_before_disk_default(self):
+        obj='v 0 0 0\nv 1 0 0\nv 0 0 -1\nvn 0 1 0\nf 1//1 2//1 3//1\n'
+        self.write('basis.obj',obj)
+        self.write('raised.obj',obj.replace('v 1 0 0','v 1 .5 0'))
+        self.write('virtual.vta','wrong disk file: the named synthetic source must win\n')
+        baseline=None
+        for name in ('virtual.vta','virtual'):
+            with self.subTest(name=name):
+                self.scene_qc('$modelname face\n$fakevta '+name+
+                              ' { appendvta basis.obj 0 appendvta raised.obj 1 }\n'
+                              '$model face mesh.smd {\nflexfile '+name+'\nflex shared frame 1\n'
+                              'flexcontroller test range 0 1 strength\n%shared = strength\n}\n')
+                result=self.ce_data()
+                self.assertTrue(result[1][0]['vertices'])
+                if baseline is None:baseline=result
+                else:self.assertEqual(result,baseline)
+
     def test_ce_controller_override_and_duplicate_tables(self):
         block=self.ce_fixture().replace('flexcontroller test range 0 1 strength',
                     'flexcontroller old range 0 1 strength\nflexcontroller new range -1 2 strength')

@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "project_version": "1.2.32",
+  "status": "windows_package_validation_passed",
+  "scope": "Resolve extensionless flexfile and eyelid source names as .vta after exact synthetic VTA alias lookup.",
+  "pulsemodel_base": "174f8c0ea337f33505bd52c41bd254d3ba0128ab",
+  "previous_maintained_commit": "8b4f58fb5cdf8e2db73cfaaa26a943129357222f",
+  "compiler_changes": {
+    "default_vta_extension": true,
+    "shared_flexfile_and_eyelid_resolution": true,
+    "same_name_mesh_does_not_override_vta": true,
+    "explicit_extensions_and_synthetic_aliases_preserved": true,
+    "source_search_order_preserved": true
+  },
+  "automated_checks": {
+    "packaged_compatibility": {
+      "status": "passed",
+      "count": 399,
+      "new_vta_regressions": 5
+    },
+    "packaged_c4d_bridge": {
+      "status": "passed",
+      "count": 7
+    },
+    "packaged_vrml_conversion_and_compile": {
+      "status": "passed",
+      "invalid_input_preserves_output": true
+    },
+    "packaged_ag2_help_and_version": {
+      "status": "passed",
+      "version": "1.2.32"
+    },
+    "automation": {
+      "status": "passed",
+      "count": 39
+    },
+    "windows_helpers": {
+      "status": "passed",
+      "count": 10
+    },
+    "compatibility_overlay": {
+      "status": "passed"
+    }
+  },
+  "build": {
+    "platform": "win64",
+    "configuration": "MinSizeRel",
+    "lto": "ThinLTO",
+    "toolchain": "llvm-mingw 20260922 UCRT x86_64",
+    "cmake": "4.4.4",
+    "binaries": {
+      "NewPageMergeMDL-C4D.exe": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97",
+      "NewPageMergeMDL-Decompiler.exe": "7f2c3bb9c50496d47eaee55cd6c811a4b94a962dba4941f5b07700f7024472e5",
+      "NewPageMergeMDL.exe": "e33e7465e7d9d12fa43a74115db7deeb2ffe9840728d175843fc2a579f408ebb",
+      "NewPageVRMLtoX3D.exe": "9e878fe2926ca9a74713a0c79fb71c00c92b53cc5061eb7c03cbe9cef7a4a1f9",
+      "subtools/ag2proportions.exe": "b42a6d168d0ab53909edfa037f2146e3df2dc793b4d1b7aefbf64833b44850ca",
+      "subtools/l4d_animswap.exe": "82d1d0d90dec32cc36203e588d93ee11cafad94596350440c8241041d55d4625",
+      "subtools/meshtool.exe": "92366316a39eecc1fc19b3f1568351c85b95dd54a5caedd2e8b67c9ce2d9dd91",
+      "subtools/vmd2valvebiped.exe": "f42c9fc989a2fb3233667e6aa4c0eaccc263c3fae54372d868cd596db1c576c7"
+    },
+    "c4d_helper": "Pinned previously validated helper; not rebuilt in this update."
+  },
+  "icons": {
+    "source": "Project owner supplied NewPage NP mark",
+    "sizes": [
+      16,
+      20,
+      24,
+      32,
+      40,
+      48,
+      64,
+      128,
+      256
+    ],
+    "embedded_resource_checks": {
+      "mdlcompiler": {
+        "exe_sha256": "e33e7465e7d9d12fa43a74115db7deeb2ffe9840728d175843fc2a579f408ebb",
+        "icon_sha256": "3444aa7dfd7c4b53c0539cb2b8f92c9f3f4d2773dee2f2f2afb623926d84d0a9",
+        "embedded_images_equal_newpage_ico": 9,
+        "numeric_file_and_product_version": "1.2.32.0"
+      },
+      "mdldecompiler": {
+        "exe_sha256": "7f2c3bb9c50496d47eaee55cd6c811a4b94a962dba4941f5b07700f7024472e5",
+        "icon_sha256": "f4210dd84bf47ba95abd95759a276a25a1bf436684e0dbddb507fed872968ea7",
+        "embedded_images_equal_newpage_ico": 9,
+        "numeric_file_and_product_version": "1.2.32.0"
+      }
+    },
+    "branding_sha256": {
+      "assets/branding/NewPage-logo.png": "53080721aec350fc3d9ca496050eaf19d70b6670113d8bfbd4b6a7633fd084bb",
+      "assets/branding/generate_icons.py": "dc04e761712e9b68db1f962bc2e9b45207b42986974caaa21119f2c56289653c",
+      "assets/branding/README.md": "d2dad599dab48ee8e3b1e2ca6459310a5f6bd48cdb3b5c5fb2a526524317b15c",
+      ".github/images/newpage-compiler.png": "1b650e6ff746a52959e6c7dee589e6fa1ae503493fffc9eeab30b5b14692d7d3",
+      ".github/images/newpage-decompiler.png": "f3ea0446e22e11af449e3450735179caca90c18798c739af937e7f2dd0dc44e6",
+      "mdlcompiler/app.ico": "3444aa7dfd7c4b53c0539cb2b8f92c9f3f4d2773dee2f2f2afb623926d84d0a9",
+      "mdldecompiler/app.ico": "f4210dd84bf47ba95abd95759a276a25a1bf436684e0dbddb507fed872968ea7"
+    },
+    "compiler_utf8_manifest_identical_to_v1_2_30": true
+  },
+  "production": {
+    "correct_target_gameinfo": true,
+    "isolated_output": true,
+    "registered_inputs_checked": 59,
+    "changed_inputs": 0,
+    "original_qc_sha256": "bf16e191d0f14166616d7c9a6e85515b0430cf1fa838553f0621161f5509d8a1",
+    "original_v1_2_31_result": "Failed while resolving extensionless head VTA source.",
+    "fixed_original_qc_result": "passed",
+    "structure": {
+      "bones": 123,
+      "vertices": 63426,
+      "physics_bodies": 19
+    },
+    "output_file_count": 5,
+    "output_sha256": {
+      "luluka_p.dx80.vtx": "90360dc710da0f0b0034721f1e0496a1818c7f3c08a878e0a86e83c1eb4e0fe0",
+      "luluka_p.dx90.vtx": "386ee33f7646b68d4971225ea7c3379ad9cc11166adf9e95bd809f2962cfb1d1",
+      "luluka_p.mdl": "f00d935c25ec32ba4e64837356be52d12c2c832a84539e4c329cebebf359cd7f",
+      "luluka_p.phy": "94bca69c1b588e377a34338c47a2026176be8a7ee7639e28497b9d57f965cb75",
+      "luluka_p.vvd": "8b1ccc95bb165eaf8610e1f5ea8bdc445dba9dea289662ed21d981745ad829e8"
+    },
+    "all_output_files_byte_identical_to_v1_2_31_explicit_vta_control": true,
+    "control_scope": "Old v1.2.31 compiler with only five head references changed to head.vta in an isolated source copy. Original user inputs were not edited.",
+    "ce_comparison": false
+  },
+  "production_regression": {
+    "baseline": "v1.2.31",
+    "correct_target_gameinfo": true,
+    "isolated_output": true,
+    "registered_inputs_checked": 131,
+    "changed_inputs": 0,
+    "models": {
+      "plum-original": {
+        "structure": {
+          "bones": 131,
+          "vertices": 572277,
+          "physics_bodies": 21
+        },
+        "input_qc_sha256": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783",
+        "output_file_count": 5,
+        "all_output_files_byte_identical_to_v1_2_31": true,
+        "output_sha256": {
+          "plum_dreaming_hair_p.dx80.vtx": "6f7adb7762e05fe6328eca1b9fac43c01ea843b983797e9651045561b21820b8",
+          "plum_dreaming_hair_p.dx90.vtx": "97db7d983f332d66e06c5cd37194c09825ff9d7730158e89070c474523581215",
+          "plum_dreaming_hair_p.mdl": "e7cc4f4ca8232360d137e286d5c37aa3f4689401912e910e757f4274c09230b9",
+          "plum_dreaming_hair_p.phy": "771db442051ae673033ff2bee15ccd43321cbd035b380c4f189d348f97e4476b",
+          "plum_dreaming_hair_p.vvd": "c0cfc9d0b12832359439e41d0a6d86de43788e0580a35537b0a73faebd32b6f8"
+        }
+      },
+      "arms-original": {
+        "structure": {
+          "bones": 55,
+          "vertices": 214697
+        },
+        "input_qc_sha256": "a3167734c7da15b072021f353fa92e0d7b97502689f23e1329c790e00413e15d",
+        "output_file_count": 4,
+        "all_output_files_byte_identical_to_v1_2_31": true,
+        "output_sha256": {
+          "plum_kisekae_p.dx80.vtx": "d8dce95f3b3d3e65e7c5663e5f26ce38d49eb73dc5c858888defc2ff628bd247",
+          "plum_kisekae_p.dx90.vtx": "13e935894ea8a8a13d323b69875727adb211ebf0cce62810ef8196365a9c35fd",
+          "plum_kisekae_p.mdl": "20e45b75a025e29773a4db675ef823cea179ee13e403ee2f5829c54e0a3ea324",
+          "plum_kisekae_p.vvd": "3a7da1307ae053d8e36148c26befbaa4d797e9e2febddda19d181def7d54ef48"
+        }
+      }
+    }
+  },
+  "runtime": {
+    "new_game_session": false,
+    "scope": "Compilation and serialized output validation only; no new CE comparison or game runtime test."
+  },
+  "distribution": {
+    "layout": "One complete Windows ZIP with all helpers, licenses, branding and exact maintained source",
+    "contains_user_model_assets_or_reference_binaries": false
+  },
+  "ci": {
+    "status": "previous_hosted_jobs_not_started",
+    "reason": "GitHub account billing/spending limit restriction",
+    "evidence_run": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/38354180954",
+    "linux_1_2_32": "not_built_or_published"
+  }
+}

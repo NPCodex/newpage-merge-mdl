@@ -15,9 +15,15 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current version: **v1.2.31**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+Current version: **v1.2.32**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
 
 Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Automatic upstream releases embed their exact merged project source at `sources/NewPageMergeMDL-source.zip`; manual releases use the repository source at the release tag. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
+
+## v1.2.32: default VTA extensions for flexfile and eyelid
+
+Legacy `flexfile "head"` and `eyelid ... "head" ...` source references now search for `head.vta`. Resolution first checks the exact in-memory `$fakevta` name; only a non-synthetic source without an extension receives `.vta`. Explicit suffixes are preserved. The existing source search handles `$pushd` and `-filesearchdir`; a same-named SMD or DMX mesh is not used as the VTA source. A missing source diagnostic includes the resolved `.vta` filename and attempted paths.
+
+The original Luluka `playermodel_f_compile.qc` compiles unchanged with the correct GMod `-game` directory, producing 123 bones, 63,426 vertices and 19 physics bodies. All 59 original input hashes remain unchanged. Its five output files (MDL, VVD, two VTX variants and PHY) match byte for byte against v1.2.31 compiling a separate copy with explicit `.vta` on the four eyelid and one flexfile references. This is a previous-version control, not a CE binary comparison or game runtime certification. Current build and regression evidence is recorded in [VALIDATION.md](VALIDATION.md); the PulseModel baseline remains `174f8c0`.
 
 ## v1.2.31: deprecated-code cleanup with meshtool retained
 

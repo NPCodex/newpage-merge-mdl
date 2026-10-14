@@ -1,7 +1,9 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.31。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.32。
+
+**每次生产编译都必须将 `-game` 指向目标游戏/模组中包含正确 `gameinfo.txt` 的目录。** `-OutDir` 只设置输出，不替代目标识别或资源挂载；请保留原始输入，并隔离输出进行验证。详细条件见 [编译前必读](README.md#编译前必读)。
 
 发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化与体积优化均不扩展下表的游戏运行时认证范围。
 
@@ -20,7 +22,9 @@ v1.2.30 同步上游图标资源支持，使用项目所有者提供的 NewPage 
 
 v1.2.31 合并 PulseModel `174f8c0` 的弃用代码清理：删除从未构建或发行的 `importqc` 源码与注释状态的构建入口，清理过时注释。上游删除的 `meshtool` 作为 NewPage 维护扩展保留源码、构建和发行，不减少现有工具；本轮没有模型编译算法变化，NewPage 图标继续保留。
 
-v1.2.31 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完成的检查见 [VALIDATION.md](VALIDATION.md)。最近的 GitHub Actions 任务因账户计费限制未启动，本版 Linux 包尚未构建或验证；历史平台结果不能代替本版验证。
+v1.2.32 修复 `flexfile` / `eyelid` 省略扩展名的源文件查找：先保留 `$fakevta` 完整名称匹配，其余无扩展名引用默认补 `.vta`，不误选同名网格。原始 Luluka QC 无须修改即可生成 123 骨、63,426 顶点、19 个物理体，59 份原始输入哈希不变；五份产物与 v1.2.31 编译显式 `.vta` 的隔离副本逐字节一致。本轮未据此扩大 CE 字节等价或游戏运行认证范围。
+
+v1.2.32 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完成的检查见 [VALIDATION.md](VALIDATION.md)。最近的 GitHub Actions 任务因账户计费限制未启动，本版 Linux 包尚未构建或验证；历史平台结果不能代替本版验证。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
 “待确认”表示资料不足或参考程序未复现。未列出的历史缺陷不能自动算作已修复。
 兼容性测试通过也不等于所有格式、模型、游戏均通过。
@@ -45,7 +49,7 @@ v1.2.31 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 | 功能组 | 整合状态与入口 |
 | --- | --- |
 | QC、SMD、DMX、FBX，骨骼与动画编译 | 已保留；qcloader、smdloader、dmxloader、fbxloader、compile。 |
-| flex、眼球/眼睑、procedural、IK、LOD、碰撞 | 已保留并扩展；对应 compile/write 路径及兼容回归。 |
+| flex、眼球/眼睑、procedural、IK、LOD、碰撞 | 已保留并扩展；对应 compile/write 路径及兼容回归。v1.2.32 补齐 `flexfile` / `eyelid` 的默认 `.vta` 扩展名，保留显式后缀与 `$fakevta` 完整名称匹配。 |
 | meshoptimizer、自动网格分割、动态输出缓冲 | 已保留；CE/Neko 选项复用同一编译管线，不调用外部参考编译器。 |
 | 反编译器和附属工具 | 随项目保留；上游已删除的 `meshtool` 继续由本项目构建、维护和打包。从未发行的 `importqc` 已清理。不能用附属工具数量代替主编译器功能整合。 |
 | 序列包围盒优化 | 默认逐帧变换骨骼顶点盒，可能比逐顶点蒙皮更宽；`-legacysequencebounds` 保留旧算法。本项目的顶点动画、范围诊断和 QC 策略保留。 |

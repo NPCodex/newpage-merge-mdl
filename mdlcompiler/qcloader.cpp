@@ -2568,9 +2568,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
             if(!source::LoadSyntheticVtaMorphs(fake->second,*src,importScale,kv.second,&error))return c.Fail(vtaLine,error);
             continue;
         }
-        const fs::path full = FindSourceFile(c, kv.first, &tried);
+        // Legacy flexfile/eyelid references default to VTA, independently of
+        // the same-named SMD/DMX mesh. Keep synthetic VTA names exact above.
+        const std::string vtaFile = HasExtension(kv.first) ? kv.first : kv.first + ".vta";
+        const fs::path full = FindSourceFile(c, vtaFile, &tried);
         if (full.empty())
-            return c.Fail(vtaLine, "cannot find \"" + kv.first + "\" - looked in:" + LookedIn(tried));
+            return c.Fail(vtaLine, "cannot find \"" + vtaFile + "\" - looked in:" + LookedIn(tried));
         std::string err;
         if (!source::LoadVtaMorphs(full.string(), *src, importScale, kv.second, &err))
             return c.Fail(vtaLine, "cannot load \"" + full.string() + "\": " + err);

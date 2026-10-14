@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.31
+# NewPageMergeMDL v1.2.32
 
 <p>
 <img src=".github/images/newpage-compiler.png" width="80" alt="NewPage compiler">
@@ -22,12 +22,12 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
-**Project version: v1.2.31.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.32.** The compiler, decompiler and bundled tools share this
 version.
 
 ## Download and install: one complete archive per platform
 
-**v1.2.31 platform status:** the complete Windows archive uses the local MinSizeRel + ThinLTO build process and includes the exact committed source. See [current validation](VALIDATION.md) for completed build and packaged-executable checks. The most recent GitHub Actions jobs could not start because of an account billing restriction. No verified Linux archive is available for this version; previous Linux archives do not contain this update.
+**v1.2.32 platform status:** the complete Windows archive uses the local MinSizeRel + ThinLTO build process and includes the exact committed source. See [current validation](VALIDATION.md) for completed build and packaged-executable checks. The most recent GitHub Actions jobs could not start because of an account billing restriction. No verified Linux archive is available for this version; previous Linux archives do not contain this update.
 
 Choose the current **Windows x64 ZIP** or **Linux ZIP** from [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) and extract the entire archive into a new directory. Each archive includes the compiler, decompiler, subtools, separate VRML converter with its corresponding source, preparation scripts, GMod Lua modules, documentation, licenses, build manifest and internal checksums. The Windows archive also includes the C4D helper. No additional release attachments need to be combined. `INSTALL.md`, `upstream-manifest.json` and `SHA256SUMS.txt` are at the package root; reports are in `tests/reports/`. Automatic upstream releases also embed `sources/NewPageMergeMDL-source.zip`; complete project source for manual releases is available from the repository at the release tag. GitHub's automatic **Source code** links are for source browsing, not installation.
 
@@ -43,6 +43,12 @@ See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.
+
+## v1.2.32: resolve extensionless flex and eyelid VTA references
+
+`flexfile "head"` and `eyelid ... "head" ...` now resolve to `head.vta`, including when a same-named `head.smd` mesh exists. Explicit extensions remain unchanged, and in-memory `$fakevta` sources still take priority through exact-name matching. Existing `$pushd` and source search paths remain effective.
+
+The unchanged original Luluka `playermodel_f_compile.qc` compiles and passes output structure checks: **123 bones, 63,426 vertices and 19 physics bodies**, with all 59 original input hashes unchanged. All five generated MDL/VVD/VTX/PHY files are byte-identical to v1.2.31 compiling an isolated copy with `.vta` explicitly added to the five references. This compares two input spellings across this project's versions; no CE output byte comparison or game runtime test was performed for this fix. See [VALIDATION.md](VALIDATION.md) for the full validation scope.
 
 ## v1.2.31: merge PulseModel deprecated-code cleanup
 
@@ -275,7 +281,7 @@ This comparison uses merge baseline `174f8c0ea337f33505bd52c41bd254d3ba0128ab`. 
 | Animation extensions | `copy reference [pos] [rot]`, `match reference [pos] [rot]`, and nested animation `if / else if / else`, with this project's documented semantics. |
 | Animation culling / rendering | `-cullanims` forces unreferenced-animation culling while honoring `nocull`; `-MostlyOpaque` overrides QC render settings. |
 | Sequence ordering / UTC flag | Preserves order from existing v48/v49 models by default; `-noremap` selects QC order. `$sequence gmtime` survives decompilation; UTC synchronization needs mod support. |
-| VTA compatibility fix | Repeated `flex` / `flexpair` names preserve independent frame deltas and weight ramps. |
+| VTA compatibility fix | Repeated `flex` / `flexpair` names preserve independent frame deltas and weight ramps. Extensionless `flexfile` / `eyelid` references default to `.vta`, preserving explicit extensions and exact `$fakevta` names. |
 
 ### StudioMDL-CE face, bone and output extensions
 
