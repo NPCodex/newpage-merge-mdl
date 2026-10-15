@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.32。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.33。
 
 **每次生产编译都必须将 `-game` 指向目标游戏/模组中包含正确 `gameinfo.txt` 的目录。** `-OutDir` 只设置输出，不替代目标识别或资源挂载；请保留原始输入，并隔离输出进行验证。详细条件见 [编译前必读](README.md#编译前必读)。
 
@@ -24,7 +24,9 @@ v1.2.31 合并 PulseModel `174f8c0` 的弃用代码清理：删除从未构建�
 
 v1.2.32 修复 `flexfile` / `eyelid` 省略扩展名的源文件查找：先保留 `$fakevta` 完整名称匹配，其余无扩展名引用默认补 `.vta`，不误选同名网格。原始 Luluka QC 无须修改即可生成 123 骨、63,426 顶点、19 个物理体，59 份原始输入哈希不变；五份产物与 v1.2.31 编译显式 `.vta` 的隔离副本逐字节一致。本轮未据此扩大 CE 字节等价或游戏运行认证范围。
 
-v1.2.32 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完成的检查见 [VALIDATION.md](VALIDATION.md)。最近的 GitHub Actions 任务因账户计费限制未启动，本版 Linux 包尚未构建或验证；历史平台结果不能代替本版验证。
+v1.2.33 合并 PulseModel `0396e3d`：单帧主序列的 autolayer 周期换算避免除零，不再写入 NaN/Inf；多帧周期及姿态参数单位保留。回归直接检查输出字段，没有新增游戏运行认证。
+
+v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完成的检查见 [VALIDATION.md](VALIDATION.md)。最近的 GitHub Actions 任务因账户计费限制未启动，本版 Linux 包尚未构建或验证；历史平台结果不能代替本版验证。
 “已实现”指存在实际编译路径；“有差异”表示实现策略或默认值不同；
 “待确认”表示资料不足或参考程序未复现。未列出的历史缺陷不能自动算作已修复。
 兼容性测试通过也不等于所有格式、模型、游戏均通过。
@@ -37,7 +39,7 @@ v1.2.32 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 
 | 来源 | 核对依据 |
 | --- | --- |
-| PulseModel | 固定基线 `174f8c0ea337f33505bd52c41bd254d3ba0128ab` 的源码及 UPSTREAM_README.md；持续通过维护补丁合并更新，`meshtool` 作为本项目扩展保留。 |
+| PulseModel | 固定基线 `0396e3d2263945896de7d3d4f457e5f47dfe0378` 的源码及 UPSTREAM_README.md；持续通过维护补丁合并更新，`meshtool` 作为本项目扩展保留。 |
 | StudioMDL-CE | 主分支命令指南、changelog 和 banner 为 `0.3.0 (Preview)` 的参考程序；该标识不是正式发布标签。v1.2.29 另以官方 `0.2` 标签（作者标注 unstable）进行物理对照；见 COMPATIBILITY.md 与 VALIDATION.md。 |
 | NekoMDL | 用户提供的中文版 ChangeLog.txt v2.3.0、NewCommands.qci 和参考程序。历史版本条目按当前行为复核，不能假定旧实现仍有效。 |
 | StudioMDL 2013 | [Cra0 原始页面](https://cra0.net/blog/posts/archived/2014/studiomdl-2013/)。2012 libs / 2013 两包的 EXE SHA256 相同，作为同一来源；不同依赖配置单独记录。 |

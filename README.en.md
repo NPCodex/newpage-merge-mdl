@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.32
+# NewPageMergeMDL v1.2.33
 
 <p>
 <img src=".github/images/newpage-compiler.png" width="80" alt="NewPage compiler">
@@ -22,12 +22,12 @@ NewPageMergeMDL model.qc -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/mod
 - Launch argument priority is gameinfo, `cfg/commandline.cfg`, then explicit CLI. Use `-nodefaultargs` to disable configuration defaults; CE/Neko differences use explicit compatibility options. See the [default-argument contract](FIVE_COMPILER_COMPLETION.md) and [compatibility notes](COMPATIBILITY.md).
 - Preserve `.npmdl-*` journals, staging files and backups after an interrupted compile; the next compile attempts recovery of the model set. If recovery reports a damaged journal or externally changed output, back up the output directory and investigate the error. Do not run multiple compilers against the same output set.
 
-**Project version: v1.2.32.** The compiler, decompiler and bundled tools share this
+**Project version: v1.2.33.** The compiler, decompiler and bundled tools share this
 version.
 
 ## Download and install: one complete archive per platform
 
-**v1.2.32 platform status:** the complete Windows archive uses the local MinSizeRel + ThinLTO build process and includes the exact committed source. See [current validation](VALIDATION.md) for completed build and packaged-executable checks. The most recent GitHub Actions jobs could not start because of an account billing restriction. No verified Linux archive is available for this version; previous Linux archives do not contain this update.
+**v1.2.33 platform status:** the complete Windows archive uses the local MinSizeRel + ThinLTO build process and includes the exact committed source. See [current validation](VALIDATION.md) for completed build and packaged-executable checks. The most recent GitHub Actions jobs could not start because of an account billing restriction. No verified Linux archive is available for this version; previous Linux archives do not contain this update.
 
 Choose the current **Windows x64 ZIP** or **Linux ZIP** from [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) and extract the entire archive into a new directory. Each archive includes the compiler, decompiler, subtools, separate VRML converter with its corresponding source, preparation scripts, GMod Lua modules, documentation, licenses, build manifest and internal checksums. The Windows archive also includes the C4D helper. No additional release attachments need to be combined. `INSTALL.md`, `upstream-manifest.json` and `SHA256SUMS.txt` are at the package root; reports are in `tests/reports/`. Automatic upstream releases also embed `sources/NewPageMergeMDL-source.zip`; complete project source for manual releases is available from the repository at the release tag. GitHub's automatic **Source code** links are for source browsing, not installation.
 
@@ -43,6 +43,12 @@ See [AUTOMATION.md](AUTOMATION.md) for automatic upstream integration
 and GitHub Release configuration.
 
 The objective is one PulseModel-based compiler integrating CE, NekoMDL, StudioMDL 2013 and StudioMDL++ model compilation features. See the [five-compiler feature checklist](FEATURE_MATRIX.md) for source-by-source status and the [v1.2.23 completion ledger](FIVE_COMPILER_COMPLETION.md) for the fixed scope's final conclusions.
+
+## v1.2.33: finite autolayer cycles for one-frame sequences
+
+Integrates PulseModel [`0396e3d`](https://github.com/ToppiOfficial/PulseModel/commit/0396e3d2263945896de7d3d4f457e5f47dfe0378). `addlayer` / `blendlayer` on a one-frame owning sequence now divide frame values by 1, avoiding NaN/Inf in the MDL. Multi-frame layers still normalize by the owning sequence duration; pose-parameter layers retain authored pose units.
+
+New regressions read the emitted autolayer fields directly: two single-frame cases reproduce NaN and NaN/Inf with v1.2.32 and produce the expected finite values with this fix. See [VALIDATION.md](VALIDATION.md) for model regressions and scope. No new in-game or CE comparison was performed.
 
 ## v1.2.32: resolve extensionless flex and eyelid VTA references
 
@@ -270,7 +276,7 @@ SMD / DMX / FBX compilation, model decompilation and utility tools are retained.
 
 ## Additions compared with original PulseModel
 
-This comparison uses merge baseline `174f8c0ea337f33505bd52c41bd254d3ba0128ab`. The following features and compatibility fixes are implemented independently; they do not certify full parity with the closed-source reference compilers. See [COMPATIBILITY.md](COMPATIBILITY.md) for arguments and behavioral differences.
+This comparison uses merge baseline `0396e3d2263945896de7d3d4f457e5f47dfe0378`. The following features and compatibility fixes are implemented independently; they do not certify full parity with the closed-source reference compilers. See [COMPATIBILITY.md](COMPATIBILITY.md) for arguments and behavioral differences.
 
 ### QC, animation and StudioMDL++ compatibility
 

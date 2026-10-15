@@ -1,4 +1,4 @@
-"""Black-box regressions for the PulseModel 578e86e merge."""
+"""Black-box regressions for integrated PulseModel updates."""
 import math
 import struct
 
@@ -23,6 +23,52 @@ def primitive_document(primitives):
 
 
 class PulseUpdateCases:
+    def pulse_autolayer_cycles(self, frames, options, pose=False):
+        def motion(name, count):
+            self.write(name, 'version 1\nnodes\n0 "root" -1\nend\nskeleton\n' +
+                       ''.join(f'time {i}\n0 {i} 0 0 0 0 0\n' for i in range(count)) + 'end\n')
+        motion('owner.smd', frames)
+        motion('layer.smd', 7)
+        self.run_qc('$modelname layered\n' + ('$poseparameter amount -20 20\n' if pose else '') +
+                    '$sequence layer layer.smd\n$sequence owner owner.smd {\n' + options + '\n}\n')
+        data = self.mdl('layered')
+        sequences = {name: (i, offset) for i, (name, _, offset) in enumerate(self.sequences('layered'))}
+        owner = sequences['owner'][1]
+        count, index = struct.unpack_from('<2i', data, owner + 148)
+        self.assertEqual(count, 1)
+        layer = owner + index
+        self.assertEqual(struct.unpack_from('<h', data, layer)[0], sequences['layer'][0])
+        flags = struct.unpack_from('<i', data, layer + 4)[0]
+        self.assertEqual(bool(flags & 0x4000), pose)
+        if pose:
+            self.assertEqual(struct.unpack_from('<h', data, layer + 2)[0], 0)
+        # Verify actual owning animation frame count, independent of layer length.
+        anim_index = owner + struct.unpack_from('<i', data, owner + 60)[0]
+        anim_id = struct.unpack_from('<h', data, anim_index)[0]
+        anim_table = struct.unpack_from('<i', data, 184)[0]
+        self.assertEqual(struct.unpack_from('<i', data, anim_table + anim_id * 100 + 16)[0], frames)
+        return struct.unpack_from('<4f', data, layer + 8)
+
+    def test_pulse_autolayer_cycles_single_frame_are_finite(self):
+        for options, expected in [('addlayer layer', (0, 0, 0, 0)),
+                                  ('blendlayer layer 0 .25 .75 1', (0, .25, .75, 1))]:
+            with self.subTest(options=options):
+                cycles = self.pulse_autolayer_cycles(1, options)
+                self.assertTrue(all(math.isfinite(v) for v in cycles), cycles)
+                self.assertEqual(cycles, expected)
+
+    def test_pulse_autolayer_cycles_use_owning_animation_duration(self):
+        for frames, expected in [(2, (0, 1, 3, 4)), (5, (0, .25, .75, 1))]:
+            with self.subTest(frames=frames):
+                self.assertEqual(self.pulse_autolayer_cycles(frames, 'blendlayer layer 0 1 3 4'), expected)
+
+    def test_pulse_autolayer_cycles_preserve_pose_parameter_units(self):
+        for frames in (1, 5):
+            with self.subTest(frames=frames):
+                self.assertEqual(self.pulse_autolayer_cycles(
+                    frames, 'blendlayer layer -20 -10 10 20 poseparameter amount', pose=True),
+                    (-20, -10, 10, 20))
+
     def test_pulse_fast_and_legacy_bounds_enclose_weighted_animation(self):
         nodes = '0 "root" -1\n1 "tip" 0\n'
         pose = '0 0 0 0 0 0 0\n1 10 0 0 0 0 0\n'

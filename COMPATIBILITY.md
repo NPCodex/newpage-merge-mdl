@@ -2,7 +2,7 @@
 
 **Before every production compile, set `-game` to the target game/mod directory containing its correct `gameinfo.txt`.** Pass the directory, not the file, Steam root or `bin` directory. This is especially important for CSGO and MCV: AppID and mounts affect target layout, resources and defaults. Do not substitute another game's file. `-OutDir` controls output only and does not replace target selection. Keep existing assets and test isolated output in the intended game before replacing them. See the opening notes in [README.md](README.md) / [README.en.md](README.en.md) for format, material and runtime requirements.
 
-This fork uses PulseModel commit `174f8c0ea337f33505bd52c41bd254d3ba0128ab`
+This fork uses PulseModel commit `0396e3d2263945896de7d3d4f457e5f47dfe0378`
 as its base. It does not include StudioMDL-CE or Tools++ binaries or claim
 complete behavioral parity. Implementations use public documentation and the
 StudioMDL++ changelog supplied by the user on 2026-10-06, plus analysis and
@@ -15,15 +15,21 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current version: **v1.2.32**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+Current version: **v1.2.33**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
 
 Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Automatic upstream releases embed their exact merged project source at `sources/NewPageMergeMDL-source.zip`; manual releases use the repository source at the release tag. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
+
+## v1.2.33: guard one-frame autolayer cycle conversion
+
+The PulseModel baseline advances to `0396e3d`. For non-pose autolayers, the cycle divisor is now `max(owning_animation_frame_count - 1, 1)`. This prevents single-frame `addlayer` / `blendlayer` from emitting NaN/Inf. Multi-frame division continues to use the owning animation rather than the layer animation; `STUDIO_AL_POSE` layers retain raw pose units. The upstream source-version declaration becomes 0.36.3; distributed NewPage tools use project version 1.2.33.
+
+Three regressions cover single-frame add/blend layers, multi-frame owners with a different layer length, and pose-parameter units. The two single-frame subcases fail on v1.2.32 and pass after integration. This validates serialized model data; the upstream's stated engine out-of-bounds effect was not reproduced in a game session. See [VALIDATION.md](VALIDATION.md).
 
 ## v1.2.32: default VTA extensions for flexfile and eyelid
 
 Legacy `flexfile "head"` and `eyelid ... "head" ...` source references now search for `head.vta`. Resolution first checks the exact in-memory `$fakevta` name; only a non-synthetic source without an extension receives `.vta`. Explicit suffixes are preserved. The existing source search handles `$pushd` and `-filesearchdir`; a same-named SMD or DMX mesh is not used as the VTA source. A missing source diagnostic includes the resolved `.vta` filename and attempted paths.
 
-The original Luluka `playermodel_f_compile.qc` compiles unchanged with the correct GMod `-game` directory, producing 123 bones, 63,426 vertices and 19 physics bodies. All 59 original input hashes remain unchanged. Its five output files (MDL, VVD, two VTX variants and PHY) match byte for byte against v1.2.31 compiling a separate copy with explicit `.vta` on the four eyelid and one flexfile references. This is a previous-version control, not a CE binary comparison or game runtime certification. Current build and regression evidence is recorded in [VALIDATION.md](VALIDATION.md); the PulseModel baseline remains `174f8c0`.
+The original Luluka `playermodel_f_compile.qc` compiles unchanged with the correct GMod `-game` directory, producing 123 bones, 63,426 vertices and 19 physics bodies. All 59 original input hashes remain unchanged. Its five output files (MDL, VVD, two VTX variants and PHY) match byte for byte against v1.2.31 compiling a separate copy with explicit `.vta` on the four eyelid and one flexfile references. This is a previous-version control, not a CE binary comparison or game runtime certification. Current build and regression evidence is recorded in [VALIDATION.md](VALIDATION.md); the v1.2.32 PulseModel baseline was `174f8c0`.
 
 ## v1.2.31: deprecated-code cleanup with meshtool retained
 

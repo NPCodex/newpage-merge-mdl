@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 1f5c9a1..edd6829 100644
+index 1f5c9a1..eb9eeb8 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,12 +1,33 @@
@@ -11,7 +11,7 @@ index 1f5c9a1..edd6829 100644
 +# Distributed tools share the NewPageMergeMDL project version.
 +# Upstream TOOL_VERSION declarations remain as merge context only.
 +# C is enabled only for vendored dependencies; toolkit code is C++.
-+project(NewPageMergeMDL VERSION 1.2.32 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.33 LANGUAGES CXX C)
  
 -# LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
 -# with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -1112911,7 +1112911,7 @@ index 0000000..850d474
 +
 +} // namespace tinyusdz
 diff --git a/mdlcompiler/CMakeLists.txt b/mdlcompiler/CMakeLists.txt
-index 67688c0..8b84805 100644
+index 61fc568..eacbfbb 100644
 --- a/mdlcompiler/CMakeLists.txt
 +++ b/mdlcompiler/CMakeLists.txt
 @@ -1,21 +1,35 @@
@@ -1112924,7 +1112924,7 @@ index 67688c0..8b84805 100644
 +               flexreg.cpp qcloader.cpp writemdl.cpp outputfiles.cpp writevtx.cpp writephy.cpp
 +               surfaceproperties.cpp cloth.cpp clothadvanced.cpp clothprojection.cpp subd.cpp dmxeval.cpp)
  # Each tool owns its own version; there is no project-wide one.
- set(TOOL_VERSION 0.36.2)
+ set(TOOL_VERSION 0.36.3)
  string(REPLACE "." "," TOOL_VERSION_COMMA "${TOOL_VERSION}")
 -target_compile_definitions(mdlcompiler PRIVATE PULSEMODEL_VERSION="${TOOL_VERSION}")
 +target_compile_definitions(mdlcompiler PRIVATE PULSEMODEL_VERSION="${PROJECT_VERSION}")
@@ -1127056,7 +1127056,7 @@ index b8947a1..ae1655e 100644
      }
      BLOCK "VarFileInfo"
 diff --git a/mdlcompiler/writemdl.cpp b/mdlcompiler/writemdl.cpp
-index 3288136..9c791d5 100644
+index ffc6104..7b3ccb1 100644
 --- a/mdlcompiler/writemdl.cpp
 +++ b/mdlcompiler/writemdl.cpp
 @@ -9,6 +9,8 @@
@@ -1127247,7 +1127247,7 @@ index 3288136..9c791d5 100644
              srcanim.flags |= fmt::STUDIO_FRAMEANIM;
              destanimdesc->flags |= fmt::STUDIO_FRAMEANIM;
          }
-@@ -2005,6 +2084,10 @@ void WriteTextures(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
+@@ -2007,6 +2086,10 @@ void WriteTextures(Buf& buf, fmt::studiohdr_t* phdr, cm::CompiledModel& m) {
          int j = mats.materialToTexture[i];
          g_strings.Add(buf, &ptexture[i], &ptexture[i].sznameindex,
                        mats.textures[j].name.c_str());
@@ -1127258,7 +1127258,7 @@ index 3288136..9c791d5 100644
      }
      buf.Align4();
  
-@@ -2169,14 +2252,15 @@ void WriteBoneFlexDrivers(Buf& buf, fmt::studiohdr2_t* phdr2, cm::CompiledModel&
+@@ -2171,14 +2254,15 @@ void WriteBoneFlexDrivers(Buf& buf, fmt::studiohdr2_t* phdr2, cm::CompiledModel&
  void WriteBodyGroupPresets(Buf& buf, fmt::studiohdr2_t* phdr2, cm::CompiledModel& m) {
      buf.Align4();
  
@@ -1127277,7 +1127277,7 @@ index 3288136..9c791d5 100644
          static_cast<int32_t>(buf.p() - reinterpret_cast<uint8_t*>(phdr2));
      buf.pos += m.bodygrouppresets.size() * sizeof(fmt::mstudiobodygrouppreset_t);
      buf.Align4();
-@@ -2711,6 +2795,25 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
+@@ -2713,6 +2797,25 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
                                  newID = vertexList[newID].finalMeshVertID;
                                  v->origMeshVertID = static_cast<uint16_t>(newID);
                              }
@@ -1127303,7 +1127303,7 @@ index 3288136..9c791d5 100644
                          }
                      }
                  }
-@@ -2781,28 +2884,103 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
+@@ -2783,28 +2886,103 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
      return true;
  }
  
@@ -1127424,7 +1127424,7 @@ index 3288136..9c791d5 100644
      Buf buf(kFileBuffer);
  
      fmt::studiohdr_t* phdr = buf.Reserve<fmt::studiohdr_t>();
-@@ -2817,7 +2995,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -2819,7 +2997,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::unique_ptr<Buf> blockBuf;
      fmt::studiohdr_t* pblockhdr = nullptr;
      if (m.animblocksize != 0) {
@@ -1127433,7 +1127433,7 @@ index 3288136..9c791d5 100644
          blockBuf = std::make_unique<Buf>(kFileBuffer);
          pblockhdr = blockBuf->Reserve<fmt::studiohdr_t>();
          pblockhdr->id = fmt::kIdStudioAnimGroupHeader;
-@@ -2856,20 +3034,23 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -2858,20 +3036,23 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      CopyV3(phdr->view_bbmax, cbox1);
  
      phdr->flags = m.gflags;
@@ -1127462,7 +1127462,7 @@ index 3288136..9c791d5 100644
  
      // per-block byte accounting, in the reference's own order and wording
      g_mdlReport.clear();
-@@ -2946,6 +3127,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -2948,6 +3129,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
  
      g_strings.Write(buf);
  
@@ -1127492,7 +1127492,7 @@ index 3288136..9c791d5 100644
      size_t total = buf.pos;
  
      // the reference takes this delta AFTER the string table, so it is the
-@@ -3028,6 +3232,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3030,6 +3234,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::vector<uint8_t> phyBuf =
          BuildPhy(m, reinterpret_cast<fmt::studiohdr_t*>(mdlBuf.data())->checksum);
  
@@ -1127522,7 +1127522,7 @@ index 3288136..9c791d5 100644
      // save. Reference hardcodes a "models/" root in the disk path (not in the
      // header name), so $modelname stays prefix-free and the .mdl bytes match.
      std::filesystem::path base =
-@@ -3049,16 +3276,18 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3051,16 +3278,18 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          return path;
      };
  
@@ -1127543,7 +1127543,7 @@ index 3288136..9c791d5 100644
  
          // which strip layout went out. SFM reads the Alien Swarm/CS:GO 35-byte
          // strips and crashes on the legacy ones, so make the format explicit.
-@@ -3067,14 +3296,14 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3069,14 +3298,14 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          vtxPath = announce(".dx90.vtx");
          FlushReport(vtxReport);
          std::printf("everything (%zu bytes)\n", vtxBuf.size());
@@ -1127560,7 +1127560,7 @@ index 3288136..9c791d5 100644
          }
      }
  
-@@ -3084,11 +3313,10 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3086,11 +3315,10 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          // the .ani sits beside the .mdl under the same "models/" root, and its
          // name is what szanimblocknameindex already recorded
          pblockhdr->length = static_cast<int32_t>(blockBuf->pos);
@@ -1127574,7 +1127574,7 @@ index 3288136..9c791d5 100644
      }
  
      if (!phyBuf.empty()) {
-@@ -3113,9 +3341,11 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3115,9 +3343,11 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          else if (!m.physCollisionPairs.empty())
              std::printf("pairs      %7zu\n", m.physCollisionPairs.size());
          std::printf("total      %7zu\n", phyBuf.size());
