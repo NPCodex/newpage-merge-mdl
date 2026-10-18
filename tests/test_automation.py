@@ -563,7 +563,11 @@ class PackageValidationTests(unittest.TestCase):
                           'version:   ' + version + '\n'
                           'developer: ToppiOfficial\n'
                           '-------------------------------\n')
-                responses = [argparse.Namespace(stdout='CS2 AnimGraph2 proportion wrapper (experimental)\nUsage:\n'),
+                responses = [argparse.Namespace(stdout=(
+                                'CS2 AnimGraph2 proportion wrapper (experimental)\n'
+                                'Usage:\n'
+                                '--generate-only\n'
+                                'Existing generated assets are not compiled; compile the sources before use.\n')),
                              argparse.Namespace(stdout=banner + 'ag2proportions ' + version + '\n')]
                 with patch.object(verifier.subprocess, 'run', side_effect=responses) as run:
                     if version == '1.2.28':
