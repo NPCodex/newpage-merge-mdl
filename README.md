@@ -9,11 +9,11 @@
 
 基于 [PulseModel](https://github.com/ToppiOfficial/PulseModel) 的 Source 模型工具，整合 StudioMDL-CE、StudioMDL++、NekoMDL 和 StudioMDL 2013 的兼容功能，提供编译器、反编译器及四个辅助工具。
 
-**[下载与版本更新记录](https://github.com/NPCodex/newpage-merge-mdl/releases) · [安装指南](INSTALL.md) · [功能清单](FEATURE_MATRIX.md) · [兼容说明](COMPATIBILITY.md)**
+**[下载与发布说明](https://github.com/NPCodex/newpage-merge-mdl/releases) · [安装指南](INSTALL.md) · [功能清单](FEATURE_MATRIX.md) · [兼容说明](COMPATIBILITY.md)**
 
 ## 下载与安装
 
-从 Releases 下载对应平台的完整安装包，解压到新目录并保持目录结构。每个版本实际提供的平台、构建状态与更新日志均以该版本 Release 为准；GitHub 自动生成的 **Source code** 不是安装包。
+从 Releases 下载对应平台的完整安装包，解压到新目录并保持目录结构。每个版本实际提供的平台、构建状态与发布说明均以该版本 Release 为准；GitHub 自动生成的 **Source code** 不是安装包。
 
 - 主程序：`NewPageMergeMDL.exe`；反编译器：`NewPageMergeMDL-Decompiler.exe`。
 - `subtools/` 包含下文的四个辅助工具。Windows 完整包另含 C4D 桥接程序，VRML 使用独立转换器。

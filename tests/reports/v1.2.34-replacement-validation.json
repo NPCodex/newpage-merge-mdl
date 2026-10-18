@@ -242,12 +242,14 @@
     }
   },
   "final_package_validation": {
-    "status": "pending",
-    "scope": "Requires final archive extraction, checks against extracted executables, file/hash/source/license checks and matching final build hashes."
+    "status": "passed",
+    "scope": "Final Windows archive was extracted and verified against the validated eight executable hashes, source archive, provenance, licenses, package inventory and 402 compatibility regressions.",
+    "verified_by": "local-build/v1.2.34-replacement/prepare_release.py",
+    "package_verifier_exit_code": 0
   },
   "release_publication": {
-    "status": "pending",
-    "scope": "This report does not itself assert that a replacement asset or tag has been published."
+    "status": "tracked_remotely",
+    "scope": "The report is included in the package and does not self-certify publication; the GitHub v1.2.34 release metadata is the source of truth for the replacement tag and assets."
   },
   "limitations": [
     "Persistent recovery and process locks for AG2/decompiler do not provide an absolute hardware/power-loss guarantee or an atomic snapshot for external readers.",

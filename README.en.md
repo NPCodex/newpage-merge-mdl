@@ -15,7 +15,7 @@ See the [feature matrix](FEATURE_MATRIX.md) for supported features and boundarie
 ## Download and install
 
 Download a complete archive from [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases).
-**Available platforms, validation status and all version changes are listed in Releases.**
+**Available platforms, validation status and release notes are listed in Releases.**
 GitHub's automatic **Source code** downloads are not installation packages.
 
 Extract the entire archive into a new directory, preserving its layout. Keep the
