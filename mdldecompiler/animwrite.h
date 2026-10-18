@@ -22,7 +22,7 @@ void ComputeIkBaseRecovery(Mdl& m, const std::string& mdlPath);
 
 // One anims/<name>.<ext> per local animation that carries data, named by the
 // AnimRefs() alias the .pulseqc writes. `mdlPath` locates a sibling .ani for
-// demand-loaded clips. Reports what it wrote and never fails the decompile.
+// demand-loaded clips. Missing data or failed writes mark the decompile failed.
 void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::string& dir);
 
 // Local animation `anim` as WriteAnimationFiles writes it, reading block data from

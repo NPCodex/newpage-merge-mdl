@@ -1,6 +1,7 @@
 #include "mesh_simplify.h"
 
 #include <cstdint>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -85,22 +86,49 @@ bool RunSimplify(const std::string& requestPath, const std::string& responsePath
         r.Block(static_cast<std::size_t>(vertexCount) * 3u * sizeof(float)));
     if (vertexCount > 0 && !positions)
         return fail("the request ends inside its positions");
+    for (std::size_t i = 0; i < static_cast<std::size_t>(vertexCount) * 3; ++i)
+        if (!std::isfinite(positions[i]))
+            return fail("the request contains a non-finite vertex position");
     if (!r.U32(runCount))
         return fail("the request ends before its run count");
+
+    // Validate the whole request before entering meshoptimizer. Its API assumes
+    // triangle lists and valid indices, and malformed data can otherwise crash
+    // a release build instead of producing the protocol's ordinary error.
+    struct Run {
+        std::uint32_t indexCount, target, flags;
+        const unsigned int* indices;
+    };
+    std::vector<Run> runs;
+    for (std::uint32_t run = 0; run < runCount; ++run) {
+        std::uint32_t indexCount = 0, target = 0, flags = 0;
+        if (!r.U32(indexCount) || !r.U32(target) || !r.U32(flags))
+            return fail("the request ends inside a run header");
+        if (indexCount % 3 != 0)
+            return fail("a run's index count is not a multiple of three");
+        if (target > indexCount)
+            return fail("a run's target exceeds its index count");
+        if (flags & ~kLockBorder)
+            return fail("a run contains unsupported simplify flags");
+        const auto* indices = static_cast<const unsigned int*>(
+            r.Block(static_cast<std::size_t>(indexCount) * sizeof(unsigned int)));
+        if (indexCount > 0 && !indices)
+            return fail("the request ends inside a run's indices");
+        for (std::uint32_t i = 0; i < indexCount; ++i)
+            if (indices[i] >= vertexCount)
+                return fail("a run contains an index outside the vertex pool");
+        runs.push_back({indexCount, target, flags, indices});
+    }
+    if (r.at != r.end)
+        return fail("the request contains trailing data");
 
     std::vector<std::uint8_t> response;
     PutU32(response, kMagic);
     PutU32(response, runCount);
 
     std::vector<unsigned int> simplified;
-    for (std::uint32_t run = 0; run < runCount; run++) {
-        std::uint32_t indexCount = 0, target = 0, flags = 0;
-        if (!r.U32(indexCount) || !r.U32(target) || !r.U32(flags))
-            return fail("the request ends inside a run header");
-        const auto* indices = static_cast<const unsigned int*>(
-            r.Block(static_cast<std::size_t>(indexCount) * sizeof(unsigned int)));
-        if (indexCount > 0 && !indices)
-            return fail("the request ends inside a run's indices");
+    for (const Run& run : runs) {
+        const auto [indexCount, target, flags, indices] = run;
 
         float error = 0.0f;
         std::size_t kept = 0;

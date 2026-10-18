@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -106,26 +107,45 @@ bool LoadMdl(const std::string& path, Mdl& out) {
 
     const char* base = out.bytes.data();
     const auto* hdr = reinterpret_cast<const fm::studiohdr_t*>(base);
-    if (hdr->id != fm::kIdStudioHeader) return false;
-
-    const auto str = [&](size_t off) {
-        return off < out.bytes.size() ? std::string(base + off) : std::string();
+    if (hdr->id != fm::kIdStudioHeader || hdr->length < sizeof(fm::studiohdr_t) ||
+        static_cast<size_t>(hdr->length) > out.bytes.size()) return false;
+    const size_t length = static_cast<size_t>(hdr->length);
+    bool valid = true;
+    const auto table = [&](int64_t off, int count, size_t stride) {
+        return count >= 0 && (count == 0 || (off >= 0 && static_cast<uint64_t>(off) <= length &&
+            static_cast<size_t>(count) <= (length - static_cast<size_t>(off)) / stride));
+    };
+    if (!table(hdr->localposeparamindex, hdr->numlocalposeparameters, sizeof(fm::mstudioposeparamdesc_t)) ||
+        !table(hdr->localseqindex, hdr->numlocalseq, sizeof(fm::mstudioseqdesc_t)) ||
+        !table(hdr->includemodelindex, hdr->numincludemodels, sizeof(fm::mstudiomodelgroup_t)))
+        return false;
+    const auto str = [&](int64_t off) {
+        if (off < 0 || static_cast<uint64_t>(off) >= length) {
+            valid = false;
+            return std::string();
+        }
+        const char* start = base + off;
+        const char* end = static_cast<const char*>(std::memchr(start, 0, length - static_cast<size_t>(off)));
+        if (!end) {
+            valid = false;
+            return std::string();
+        }
+        return std::string(start, end);
     };
     std::vector<std::string> poses;
     for (int i = 0; i < hdr->numlocalposeparameters; ++i) {
         const size_t at = static_cast<size_t>(hdr->localposeparamindex) +
                           i * sizeof(fm::mstudioposeparamdesc_t);
-        if (at + sizeof(fm::mstudioposeparamdesc_t) > out.bytes.size()) break;
         const auto* pd = reinterpret_cast<const fm::mstudioposeparamdesc_t*>(base + at);
-        poses.push_back(str(at + static_cast<size_t>(pd->sznameindex)));
+        poses.push_back(str(static_cast<int64_t>(at) + pd->sznameindex));
     }
     for (int i = 0; i < hdr->numlocalseq; ++i) {
         const size_t at = static_cast<size_t>(hdr->localseqindex) + i * sizeof(fm::mstudioseqdesc_t);
-        if (at + sizeof(fm::mstudioseqdesc_t) > out.bytes.size()) break;
         const auto* sd = reinterpret_cast<const fm::mstudioseqdesc_t*>(base + at);
-        out.seqs.push_back(str(at + static_cast<size_t>(sd->szlabelindex)));
+        out.seqs.push_back(str(static_cast<int64_t>(at) + sd->szlabelindex));
+        if (out.seqs.back().empty()) return false;
         std::string act = sd->szactivitynameindex
-                              ? str(at + static_cast<size_t>(sd->szactivitynameindex))
+                              ? str(static_cast<int64_t>(at) + sd->szactivitynameindex)
                               : std::string();
         if (!act.empty()) act += " " + std::to_string(sd->actweight);
         out.acts.push_back(act);
@@ -143,10 +163,11 @@ bool LoadMdl(const std::string& path, Mdl& out) {
     for (int i = 0; i < static_cast<int>(out.seqs.size()); ++i) {
         const size_t at = static_cast<size_t>(hdr->localseqindex) + i * sizeof(fm::mstudioseqdesc_t);
         const auto* sd = reinterpret_cast<const fm::mstudioseqdesc_t*>(base + at);
+        if (!table(static_cast<int64_t>(at) + sd->autolayerindex, sd->numautolayers,
+                   sizeof(fm::mstudioautolayer_t))) return false;
         for (int k = 0; k < sd->numautolayers; ++k) {
             const size_t la =
                 at + static_cast<size_t>(sd->autolayerindex) + k * sizeof(fm::mstudioautolayer_t);
-            if (la + sizeof(fm::mstudioautolayer_t) > out.bytes.size()) break;
             const int s = reinterpret_cast<const fm::mstudioautolayer_t*>(base + la)->iSequence;
             if (s >= 0 && s < static_cast<int>(out.seqs.size())) out.autolayers.push_back(out.seqs[s]);
         }
@@ -154,11 +175,12 @@ bool LoadMdl(const std::string& path, Mdl& out) {
     for (int i = 0; i < hdr->numincludemodels; ++i) {
         const size_t at =
             static_cast<size_t>(hdr->includemodelindex) + i * sizeof(fm::mstudiomodelgroup_t);
-        if (at + sizeof(fm::mstudiomodelgroup_t) > out.bytes.size()) break;
         const auto* mg = reinterpret_cast<const fm::mstudiomodelgroup_t*>(base + at);
-        if (mg->sznameindex) out.includes.push_back(str(at + static_cast<size_t>(mg->sznameindex)));
+        if (!mg->sznameindex) return false;
+        out.includes.push_back(str(static_cast<int64_t>(at) + mg->sznameindex));
+        if (out.includes.back().empty()) return false;
     }
-    return true;
+    return valid;
 }
 
 // One survivor's resolved slot list: the name at each index and, for the
@@ -178,6 +200,7 @@ struct Resolver {
     std::string dir;
     std::map<std::string, Mdl> cache;
     bool missing = false;
+    std::set<const Mdl*> active;
 
     const Mdl* Get(const std::string& modelPath) {
         const std::string leaf = Leaf(modelPath);
@@ -195,6 +218,11 @@ struct Resolver {
     }
 
     void Walk(const Mdl& m, Slots& order, std::map<std::string, size_t>& seen) {
+        if (!active.insert(&m).second) {
+            std::fprintf(stderr, "  cyclic animation model include chain\n");
+            missing = true;
+            return;
+        }
         for (size_t i = 0; i < m.seqs.size(); ++i) {
             const std::string key = Lower(m.seqs[i]);
             const std::string act = i < m.acts.size() ? m.acts[i] : std::string();
@@ -218,6 +246,7 @@ struct Resolver {
         }
         for (const std::string& inc : m.includes)
             if (const Mdl* sub = Get(inc)) Walk(*sub, order, seen);
+        active.erase(&m);
     }
 
     Slots Order(const Survivor& h) {
@@ -1245,18 +1274,8 @@ int main(int argc, char** argv) {
     }
 
     const std::set<std::string> codes = CodeTokens();
-    Resolver res{dir, {}, false};
+    Resolver res{dir, {}, false, {}};
     std::map<std::string, Slots> orders;
-    for (const Survivor& h : kSurvivors) {
-        orders[h.survivor] = res.Order(h);
-        if (orders[h.survivor].names.size() <= static_cast<size_t>(skip)) {
-            std::fprintf(stderr, "no usable sequence list for %s - check survivor_%s.mdl in %s\n",
-                         h.survivor, h.code, dir.c_str());
-            return 1;
-        }
-    }
-    if (res.missing)
-        std::fprintf(stderr, "warning: some includes were unreadable, slot order may be short\n");
 
     std::vector<std::pair<const Survivor*, const Survivor*>> jobs;
     if (all) {
@@ -1267,6 +1286,11 @@ int main(int argc, char** argv) {
         jobs.emplace_back(rig, tgt);
     }
 
+    // Resolve all dependencies for the requested jobs before opening any QCI.
+    // A single swap needs only its target and selected donor chain; unrelated
+    // survivors need not be extracted just to convert that pair.
+    std::vector<std::vector<const Survivor*>> chains;
+    std::set<const Survivor*> required;
     for (const auto& job : jobs) {
         std::vector<const Survivor*> wanted{job.first};
         if (haveVia) {
@@ -1285,6 +1309,27 @@ int main(int argc, char** argv) {
         for (const Survivor* h : wanted)
             if (h != job.second && std::find(chain.begin(), chain.end(), h) == chain.end())
                 chain.push_back(h);
+        required.insert(job.first);
+        required.insert(job.second);
+        required.insert(chain.begin(), chain.end());
+        chains.push_back(std::move(chain));
+    }
+    for (const Survivor* h : required) {
+        orders[h->survivor] = res.Order(*h);
+        if (orders[h->survivor].names.size() <= static_cast<size_t>(skip)) {
+            std::fprintf(stderr, "no usable sequence list for %s - check survivor_%s.mdl in %s\n",
+                         h->survivor, h->code, dir.c_str());
+            return 1;
+        }
+    }
+    if (res.missing) {
+        std::fprintf(stderr, "required animation model includes are missing, malformed or cyclic; no QCI written\n");
+        return 1;
+    }
+
+    for (size_t jobIndex = 0; jobIndex < jobs.size(); ++jobIndex) {
+        const auto& job = jobs[jobIndex];
+        const auto& chain = chains[jobIndex];
 
         std::vector<Index> idx(chain.size());
         for (size_t d = 0; d < chain.size(); ++d)

@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.33
+# NewPageMergeMDL v1.2.34
 
 <p>
 <img src=".github/images/newpage-compiler.png" width="80" alt="NewPage compiler">
@@ -24,11 +24,11 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 - **排查时注意默认参数与兼容模式。** 参数优先级是 `gameinfo < cfg/commandline.cfg < 显式命令行`，`-nodefaultargs` 可禁用前两者。CE/Neko 的冲突行为由显式兼容选项选择，见 [兼容说明](COMPATIBILITY.md)，不要只凭文件扩展名假定行为相同。
 - **保留中断恢复文件。** 意外中断后，下次编译会尝试恢复整套模型；不要手动删除 `.npmdl-*` 日志、暂存或备份文件。若提示日志损坏或输出已被外部修改，先备份输出目录并检查报错；同一套输出不要由多个编译进程同时写入。
 
-项目版本：**v1.2.33**。编译器、反编译器和辅助工具统一使用本项目版本号。
+项目版本：**v1.2.34**。编译器、反编译器和辅助工具统一使用本项目版本号。
 
 ## 下载与安装：每个平台一个完整包
 
-**v1.2.33 平台状态：** Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，附带精确提交源码；本轮完成的构建与包内程序检查见 [当前验证](VALIDATION.md)。最近的 GitHub Actions 任务因账户计费限制未启动，本版本尚无经过验证的 Linux 包；请勿将旧版 Linux 包视为包含本次更新。
+**v1.2.34 平台状态：** Windows 完整包采用已验证的本地 MinSizeRel + ThinLTO 构建，附带发行提交的精确源码。本轮修复与包内程序验证见 [当前验证](VALIDATION.md)。GitHub Actions 最近一次运行因账户付款/额度限制未启动，本版 Linux 程序尚未构建或验证；本轮发布不会自动替换用户已安装的工具。
 
 从 [GitHub Releases](https://github.com/NPCodex/newpage-merge-mdl/releases) 选择当前版本的 **Windows x64 ZIP** 或 **Linux ZIP**，完整解压到一个新目录即可使用。Windows 包已经包含 C4D 桥接程序；两个平台包都包含编译器、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本、GMod Lua 模块、文档、许可、构建清单和包内校验文件，无须拼接其他附件。根目录的 `INSTALL.md`、`upstream-manifest.json`、`SHA256SUMS.txt` 提供安装说明、构建来源与文件校验；报告位于 `tests/reports/`。自动上游合并版还内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版的完整项目源码由发布标签对应的仓库提供。GitHub 自动显示的 **Source code** 链接供源码浏览，不是安装包。
 
@@ -42,6 +42,21 @@ NewPageMergeMDL.exe "model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/bui
 支持 Windows x64 和 Linux 构建；各版本实际验证的平台以上述发布状态及验证记录为准。
 
 目标是以 PulseModel 为基础，整合 CE、NekoMDL、StudioMDL 2013 和 StudioMDL++ 的模型编译功能。按来源追踪的状态见 [五编译器功能清单](FEATURE_MATRIX.md)，固定范围的最终结论见 [v1.2.23 结账表](FIVE_COMPILER_COMPLETION.md)。
+
+## v1.2.34：八项工具链完整性修复
+
+- 反编译器保留合法 UTF-8 骨名并分配唯一替代名；写出前检查整个批次的目标冲突，缺失或损坏的 VVD/VTX/ANI 返回失败。每个模型暂存成功后才发布，保留已有输出与用户附加文件；显式跳过网格/动画和无网格模型仍受支持。
+- `vmd2valvebiped` 统一检查人物、相机、表情、QC、音频的输出冲突；`l4d_animswap` 在写出前验证所需的引用链；`meshtool simplify` 拒绝越界或非三角形索引、截断数据和非有限数值。
+- SMD 三角形数值按完整字段校验，错误包含源文件和行号，保留已有模型。主编译器恢复日志支持 `.vertexanim.json`；取消碰撞或 DX80 后，同名且 checksum 与旧 MDL 相符的标准伴随文件在事务中清理。自定义路径、checksum 不符及无法关联的文件保留并提示；checksum 关联不等于完整内容指纹。
+- AG2 先检查依赖，将源文件、可选 VMDL、首次 `.bak` 和编译产物全部暂存后提交，普通失败回滚。CS2 官方资源与真实 Workshop Tools 的八个案例通过，正常产物与 v1.2.33 一致。AG2 和反编译器的回滚不包含强杀/断电恢复，AG2 不保证并发写同一目标，仍未完成最终带网格 ModelDoc 或游戏验证。
+
+## 2026-10-18：AG2 资源生成与编译历史验证（v1.2.33）
+
+使用安装版 Windows `ag2proportions` v1.2.33、CS2 build `25966348` 的四份官方骨架/动画图资源与 Workshop Tools，在隔离目录完成两组控制样本：官方比例，以及仅将 `leg_upper_L` 局部 X 增加 3。四份资源原样放入最小 VPK，并核对 CRC 与字节内容；两组均生成并实际编译一个比例 clip、第三人称图和 UI 图，clip 含 75 条静态轨道且增量旋转均为单位四元数。证据见 [AG2 资源验证报告](tests/reports/ag2-cs2-20261018.json)。
+
+工具仍为实验性：尚未验证最终带网格的 ModelDoc 模型、游戏运行或完整递归资源依赖。缺少工具链的负例返回失败，但此前已改写测试 VMDL 与已有生成源文件，确认失败不会回滚；本次只记录结果，尚未修复。请使用隔离副本，需保留 VMDL 时使用 KV3 job 的 `write_model=false`，并为生成资源使用独立目录。
+
+上述缺工具链时提前改写问题已在 v1.2.34 修复，原记录保留为修复前证据。
 
 ## v1.2.33：修复单帧序列的动画叠加周期
 

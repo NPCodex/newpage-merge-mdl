@@ -561,7 +561,8 @@ struct ClipSource {
     }
 
     bool Valid() const {
-        return descs && bones && m.hdr->numlocalanim > 0 && m.hdr->numbones > 0;
+        return descs && m.hdr->numlocalanim > 0 && m.hdr->numbones >= 0 &&
+               (m.hdr->numbones == 0 || bones);
     }
 
     void UnyawRoots(std::vector<Pose>& fr) const {
@@ -638,8 +639,10 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
         h.numanimblocks > 1)
         ReadWhole(StripExt(mdlPath) + ".ani", ani);
     const ClipSource src(m, ani);
-    if (!src.Valid())
+    if (!src.Valid()) {
+        if (h.numlocalanim > 0) ExtractionError("invalid animation table or skeleton");
         return;
+    }
     const fm::mstudioanimdesc_t* descs = src.descs;
     const fm::mstudiobone_t* bones = src.bones;
 
@@ -648,13 +651,17 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
     const std::string animDir = dir + "/anims";
     std::error_code ec;
     std::filesystem::create_directories(animDir, ec);
+    if (ec) {
+        ExtractionError("cannot create animation directory: " + ec.message());
+        return;
+    }
 
     auto emit = [&](const std::string& name, const std::vector<std::vector<Pose>>& frames,
                     int fps) {
         const std::string path = animDir + "/" + name + AnimExt();
         if (!g_smd) {
             if (!WriteAnimationDmx(m, path, name, fps, frames)) {
-                std::printf("  cannot write \"%s\"\n", path.c_str());
+                ExtractionError("cannot write \"" + path + "\"");
                 return false;
             }
             std::printf("  wrote %s (%d frame%s, %d bones)\n", path.c_str(),
@@ -663,7 +670,7 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
         }
         std::FILE* f = std::fopen(path.c_str(), "wb");
         if (!f) {
-            std::printf("  cannot write \"%s\"\n", path.c_str());
+            ExtractionError("cannot write \"" + path + "\"");
             return false;
         }
         std::fprintf(f, "version 1\nnodes\n");
@@ -680,7 +687,7 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
             }
         }
         std::fprintf(f, "end\n");
-        std::fclose(f);
+        if (!CloseOutput(f, path)) return false;
         std::printf("  wrote %s (%d frame%s, %d bones)\n", path.c_str(),
                     static_cast<int>(frames.size()), frames.size() == 1 ? "" : "s", h.numbones);
         return true;
@@ -700,9 +707,8 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
 
         std::vector<std::vector<Pose>> frames;
         if (!src.Decode(i, frames)) {
-            std::printf("  \"%s\": animation data is in a .ani that is missing or short "
-                        "- skipped\n",
-                        refs[i].name.c_str());
+            ExtractionError("cannot decode animation \"" + refs[i].name +
+                            "\": animation data is missing, truncated or invalid (check the .ani sidecar)");
             ++skipped;
             continue;
         }

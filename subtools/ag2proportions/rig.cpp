@@ -319,8 +319,12 @@ void SaveModelDmx(const fs::path& path, const char* modelName, const std::vector
     }
 
     std::string err;
-    if (!q.Save(path.u8string(), &err))
+    std::vector<uint8_t> bytes;
+    if (!dmx::Save(q.Finish(), bytes, &err))
         throw runtime_error(err);
+    // Include flush/close failures in the transaction's generation phase;
+    // the generic DMX path writer does not check the final close result.
+    kv::WriteFile(path.u8string(), bytes);
 }
 
 } // namespace

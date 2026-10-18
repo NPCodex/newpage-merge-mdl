@@ -33,7 +33,8 @@ struct LodInfo {
 // alias WriteBodyParts handed out - names[bodypart][model], "" for a blank body.
 // Lower LODs land beside it as <name>_lod<n>.dmx. `mdlPath` locates the sibling
 // .vvd/.vtx. Returns one entry per LOD (empty when the meshes could not be
-// read); never fails the decompile - the .pulseqc stands on its own.
+// read). Missing/invalid required data or failed writes mark the decompile failed;
+// explicit -nomesh permits absent sidecars.
 std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
                                        const std::string& dir,
                                        const std::vector<std::vector<std::string>>& names,

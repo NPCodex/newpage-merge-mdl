@@ -102,7 +102,9 @@ kv::Value WrapperGraph(const kv::Value& stockGraph, const std::string& stockPath
 void Generate(const Job& job, const Options& options);
 
 // compiler.cpp
+void PreflightCompiler(const Options& options, const Paths& paths);
 void Compile(const Options& options, const Paths& paths, const std::vector<uint8_t>& skeleton,
-             const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor);
+             const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor,
+             const fs::path& stagedCompiled);
 
 } // namespace ag2

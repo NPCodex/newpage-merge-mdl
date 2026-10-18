@@ -387,7 +387,7 @@ def package(args):
                      'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
             if (Path(args.source) / name).is_file():
                 archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
-        for path in sorted((Path(args.source) / 'tests/reports').glob('*-validation.json')):
+        for path in sorted((Path(args.source) / 'tests/reports').glob('*.json')):
             archive.write(path, 'NewPageMergeMDL/tests/reports/' + path.name)
         for path in sorted((Path(args.source) / 'integration').rglob('*')):
             if path.is_file():

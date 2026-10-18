@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.33。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.34。
 
 **每次生产编译都必须将 `-game` 指向目标游戏/模组中包含正确 `gameinfo.txt` 的目录。** `-OutDir` 只设置输出，不替代目标识别或资源挂载；请保留原始输入，并隔离输出进行验证。详细条件见 [编译前必读](README.md#编译前必读)。
 
@@ -35,6 +35,12 @@ v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 
 本轮 CSGO 固定范围 A1–A7/B1–B4 共 11 包已全部完成；原可选扩展 B 区已获授权并交付。完整范围与排除项见 [CSGO_PORTING_SCOPE.md](CSGO_PORTING_SCOPE.md)，新增布料语法见 [CSGO_CLOTH_AUTHORING.md](CSGO_CLOTH_AUTHORING.md)。
 
+## v1.2.34：八项完整性修复
+
+反编译器保留 UTF-8 骨名与唯一替代名，预检全批次输出冲突，缺 VVD/VTX/ANI 或写出失败不再报告成功，并暂存每个模型的结果。VMD 转换统一检查人物/相机/表情/QC/音频输出；l4d_animswap 验证实际所需引用链；meshtool simplify 拒绝坏索引、非三角形数据与非法数值。主编译器严格读取 SMD 三角形并报告文件/行号；恢复 `.vertexanim.json`，事务清理与旧 MDL checksum 相符的同名废弃伴随文件。未知归属及自定义共享文件保留，checksum 仅用于模型关联。AG2 预检工具链、暂存源与编译产物及可选 VMDL/首次备份，普通失败统一回滚。
+
+Windows 构建与针对性验证见 [VALIDATION.md](VALIDATION.md)。AG2 的八个真实 CS2 资源案例包含编译失败和中途文件锁回滚；六项正常 compiled 资源与旧版一致。AG2/反编译器没有强杀或断电自动恢复保证，AG2 不保证并发同目标；尚无最终带网格 ModelDoc、CS2 游戏或本版 Linux 验证。本版发行采用已验证的本地 Windows 完整包，内嵌发行提交源码；云端构建受账户付款/额度限制。
+
 ## 需求来源 / Requirement sources
 
 | 来源 | 核对依据 |
@@ -58,6 +64,12 @@ v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 | DMX 物理图元与 attachment 继承 | `$datamodelphysics` 读取物理图元并按骨骼 merge 分组生成凸包；`$physicsmodel` 内的 `$physicsshape primitive box\|sphere\|capsule` 支持骨空间尺寸、缩放及 ragdoll origin；`$attachment inherit` 支持已加载的 DMX attachment。 |
 | 共享 DMX/KV3/zstd 库 | 已接入编译器、反编译器及需要它们的辅助工具；保留 SubD DMX 往返扩展和已有输入校验。共享库不代表新增任意 DMX 算子兼容。 |
 | 实验性 CS2 AnimGraph2 比例工具 | Windows/Linux 包提供 `subtools/ag2proportions`，使用当前项目版本号；用法、CS2/Workshop Tools 条件和原位修改注意事项见 [INSTALL.md](INSTALL.md)。许可在 `subtools/licenses/zstd.txt` 与 `subtools/licenses/ValveResourceFormat.txt`。不扩大五编译器 Source1 固定清单，不宣称 CS2 实机已认证。 |
+
+### 2026-10-18：AG2 资源级验证（v1.2.33，仍为实验性）
+
+安装版 Windows 工具使用 CS2 build `25966348` 的四份官方骨架/动画图资源及 Workshop Tools，通过官方比例与 `leg_upper_L` 局部 X +3 两组隔离控制样本。最小 VPK 中四份资源的 CRC 与字节内容已核对；两组均生成并实际编译比例 clip、第三人称图和 UI 图，clip 均有 75 条静态轨道且增量旋转为单位四元数。详见 [验证报告](tests/reports/ag2-cs2-20261018.json)。
+
+缺工具链负例退出 1，但测试 VMDL 与已有生成源文件已提前改写，这是 v1.2.33 的失败回滚缺陷证据；v1.2.34 已修复普通失败回滚。未验证最终带网格 ModelDoc 模型、游戏运行或完整递归依赖；不扩大五编译器固定范围，也不宣称 CS2 全面兼容。历史构建/帮助检查仍仅代表当时范围。
 
 ## StudioMDL++：按公开模型编译日志核对
 

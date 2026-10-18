@@ -34,6 +34,8 @@ Linux 对应使用 `./subtools/ag2proportions`。工具需要已安装的 CS2 �
 
 **在输入模型的副本上操作。** 直接传入 `.vmdl` 会原位编辑，并仅保留首次 `<model>.vmdl.bak`；输出资源写入模型旁的同名文件夹。KV3 job 的 `write_model` 默认是 `false`。`--generate-only` 不会关闭已请求的原位修改。工具生成的 setup 说明会列出骨骼、attachment 和第一人称手臂注意事项；比例 clip 只改变平移，不会修复骨轴或重做蒙皮。请在 ModelDoc 编译并验证实际武器动作、重载、蹲伏、移动及第一人称手臂。本工具仍属实验性；帮助/版本检查不等于 CS2 实机验证。
 
+v1.2.34 先预检编译工具链，源文件、VMDL/首次备份与编译产物暂存成功后才统一发布，普通文件错误或编译失败会回滚；首次备份不替换。强杀/断电与并发写同一目标不在保证内。真实 CS2 资源验证见 [VALIDATION.md](VALIDATION.md)，不等于最终模型或游戏运行验证。
+
 随包许可位于 `subtools/licenses/zstd.txt` 和 `subtools/licenses/ValveResourceFormat.txt`；源码许可位于 `libs/zstd/LICENSE` 和 `libs/keyvalues3/ValveResourceFormat.LICENSE`。无需下载独立辅助包。
 
 详细说明：[编译前必读](README.md#编译前必读)、[格式导入](O5_FORMAT_IMPORTS.md)、[网格状态](MESH_STATE_WORKFLOW.md)、[VRM](VRM_RUNTIME.md)、[兼容边界](COMPATIBILITY.md)。
@@ -71,6 +73,8 @@ The complete archive includes `subtools/ag2proportions.exe` (Windows) or `subtoo
 Use the `.exe` on Windows. Installed CS2 data is required. Compiling the generated resources also requires compatible CS2 Workshop Tools Resource Compiler binaries; Linux can use `--compiler-runner wine` as documented by `--help`. `--generate-only` skips resource compilation but still reads CS2 data.
 
 **Work on a copy of the input model.** Passing a `.vmdl` directly edits it in place and keeps only the first `<model>.vmdl.bak`; assets are written beside it in a folder named after the model. KV3 jobs default to `write_model=false`. `--generate-only` does not disable requested model editing. Read the generated setup notes for skeleton, attachment and first-person guidance. The proportion clip changes translations; it does not repair bind axes or re-rig the mesh. Compile in ModelDoc and verify actual weapon actions, reloads, crouching, movement and first-person arms. The helper remains experimental; help/version checks do not establish CS2 runtime validation.
+
+Since v1.2.34, compiler dependencies are checked first; sources, optional VMDL/first backup and compiled assets are staged and published with rollback for ordinary errors. The first backup is retained. Hard kills, power loss and concurrent writers to one target are not covered. See [VALIDATION.md](VALIDATION.md) for bounded real-CS2 resource checks.
 
 Bundled notices are at `subtools/licenses/zstd.txt` and `subtools/licenses/ValveResourceFormat.txt`; source notices are at `libs/zstd/LICENSE` and `libs/keyvalues3/ValveResourceFormat.LICENSE`. No separate helper archive is required.
 

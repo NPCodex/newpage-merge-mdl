@@ -22,11 +22,18 @@
 #include <exception>
 #include <filesystem>
 #include <map>
+#include <memory>
+#include <stdexcept>
 #include <new>
 #include <set>
 #include <system_error>
 #include <string>
 #include <vector>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 #include "animwrite.h"
 #include "dmxwrite.h"
@@ -999,8 +1006,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
     if (!g_nomesh) {
         std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
         if (!f) {
-            q.Blank();
-            q.Line("// could not write " + name + " - the procedural bones are lost");
+            ExtractionError("cannot write procedural bones file \"" + name + "\"");
             return;
         }
         // a .vrd has no way to quote, so a name with a space in it splits into two
@@ -1010,7 +1016,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
                          s.c_str());
         for (const std::string& l : lines)
             std::fprintf(f, "%s\n", l.c_str());
-        std::fclose(f);
+        if (!CloseOutput(f, name)) return;
         std::printf("\nprocedural bones:\n  wrote %s\n", name.c_str());
     }
 
@@ -2576,12 +2582,12 @@ void WriteDeclareSequenceFile(const Mdl& m, const std::string& dir) {
     const std::string name = BaseName(dir) + "_declaresequence.qci";
     std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
     if (!f) {
-        std::printf("\ncould not write %s\n", name.c_str());
+        ExtractionError("cannot write \"" + name + "\"");
         return;
     }
     for (const std::string& l : labels)
         std::fprintf(f, "$declaresequence \"%s\"\n", l.c_str());
-    std::fclose(f);
+    if (!CloseOutput(f, name)) return;
     std::printf("\nwrote %s (%zu sequences)\n", name.c_str(), labels.size());
 }
 
@@ -2928,14 +2934,12 @@ std::string OutScript(const std::string& dir) {
         .string();
 }
 
-int DecompileOne(const std::string& in, const std::string& root, const char* outDir,
-                 int forceVersion) {
+int DecompileInto(const std::string& in, const std::string& dir, int forceVersion) {
     std::printf("Decompiling: %s\n", in.c_str());
 
     // GoldSrc shares only the "IDST" magic with v44+; it has its own reader.
     if (IsGoldSrcMdl(in)) {
         pulse::fatal::g_stage = "goldsrc";
-        const std::string dir = OutFolder(in, root, outDir);
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
         return DecompileGoldSrc(in, dir, OutScript(dir));
@@ -2957,6 +2961,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
     const auto tRead = Clock::now();
 
     const fm::studiohdr_t& h = *m.hdr;
+    const auto safeBoneNames = BoneNames(m);
+    const auto* storedBones = m.At<fm::mstudiobone_t>(m.buf.data(), h.boneindex, h.numbones);
+    for (int i = 0; storedBones && i < h.numbones; ++i)
+        if (safeBoneNames[i] != m.Str(&storedBones[i], storedBones[i].sznameindex))
+            std::printf("renamed unsafe or duplicate bone %d to \"%s\"\n", i, safeBoneNames[i].c_str());
     if (h.numanimblocks > 1)
         ReadWhole(StripExt(in) + ".ani", m.ani);
     ComputeIkBaseRecovery(m, in);
@@ -2968,7 +2977,6 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
     STAGE(PrintMaterials, m);
 
     pulse::fatal::g_stage = "output folder";
-    const std::string dir = OutFolder(in, root, outDir);
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
     const std::string outPath = OutScript(dir);
@@ -2978,6 +2986,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
                     "cannot write \"" + outPath + "\"" +
                         (ec ? " (" + ec.message() + ")" : std::string()));
 
+    std::unique_ptr<std::FILE, decltype(&std::fclose)> script(f, &std::fclose);
     Qc q{f};
     q.Line("// mdldecompiler version " + std::string(kAppVersion));
     q.Line("// " + in);
@@ -3096,7 +3105,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
     // AxisInterp has no corresponding DMX joint operator or inline QC form.
     // Keep its file even when other procedural categories move to joints DMX.
     if(!STAGE(WriteAxisInterpBones,q,dir,axisInterpText,err)) {
-        std::fclose(f);return Fail("write error",err);
+        return Fail("write error",err);
     }
     // stock has neither $driverbone nor $driveraimat - only the .vrd file form
     if (!joints.procedural && g_studiomdl) {
@@ -3118,7 +3127,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
     STAGE(WritePhysics, q, m, in, dir);
     const auto tPhys1 = Clock::now();
     STAGE(WriteKeyValues, q, m);
-    std::fclose(f);
+    CloseOutput(script.release(), outPath);
 
     if (h.numlocalanim > 0)
         std::printf("\nanimations:\n");
@@ -3130,8 +3139,9 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
     if (g_declareseq)
         STAGE(WriteDeclareSequenceFile, m, dir);
 
+    if (g_extractionFailed)
+        return Fail("extraction failed", "incomplete output was not published");
     pulse::fatal::g_stage = "done";
-    std::printf("\nwrote %s\n", outPath.c_str());
 
     if (pulse::perf::g_enabled) {
         pulse::perf::Record("total", "read", ms(t0, tRead));
@@ -3141,6 +3151,108 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
         pulse::perf::Record("total", "whole decompile", ms(t0, Clock::now()));
     }
     return 0;
+}
+
+// Build each model under a sibling staging directory. A failed extraction never
+// touches a previous result. Copying the old directory into staging preserves
+// user-added files; links are rejected so staged writes cannot escape to a target.
+class OutputStage {
+public:
+    std::filesystem::path destination, root, staged, backup;
+    bool keepRecovery = false;
+
+    explicit OutputStage(const std::filesystem::path& target) : destination(target) {
+        namespace fs = std::filesystem;
+        fs::create_directories(destination.parent_path());
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        for (unsigned attempt = 0; attempt < 100; ++attempt) {
+            root = destination.parent_path() / (".newpage-decompile-" + std::to_string(stamp) +
+                                               "-" + std::to_string(attempt));
+            if (fs::create_directory(root)) break;
+            root.clear();
+        }
+        if (root.empty()) throw std::runtime_error("cannot allocate output staging directory");
+        staged = root / "new" / destination.filename();
+        backup = root / "previous-output";
+        try {
+            fs::create_directory(staged.parent_path());
+            if (fs::exists(destination) || fs::is_symlink(destination)) {
+                if (!fs::is_directory(destination) || fs::is_symlink(destination))
+                    throw std::runtime_error("output destination is not a regular directory: " + destination.string());
+                for (const auto& entry : fs::recursive_directory_iterator(destination))
+                    if (entry.is_symlink() || (!entry.is_directory() && !entry.is_regular_file()))
+                        throw std::runtime_error("output contains a link or special file: " + entry.path().string());
+                fs::copy(destination, staged, fs::copy_options::recursive);
+            } else {
+                fs::create_directory(staged);
+            }
+        } catch (...) {
+            std::error_code ignored;
+            fs::remove_all(root, ignored);
+            throw;
+        }
+    }
+    ~OutputStage() {
+        if (!keepRecovery) {
+            std::error_code ignored;
+            std::filesystem::remove_all(root, ignored);
+        }
+    }
+    void Publish() {
+        namespace fs = std::filesystem;
+        const bool existed = fs::exists(destination);
+        if (existed) fs::rename(destination, backup);
+        try {
+            fs::rename(staged, destination);
+        } catch (...) {
+            if (existed) {
+                std::error_code restoreError;
+                fs::rename(backup, destination, restoreError);
+                if (restoreError) {
+                    keepRecovery = true;
+                    throw std::runtime_error("cannot publish or restore output; previous files retained at " +
+                                             backup.string() + ": " + restoreError.message());
+                }
+            }
+            throw;
+        }
+    }
+};
+
+int DecompileOne(const std::string& in, const std::string& root, const char* outDir,
+                 int forceVersion) {
+    const std::string destination = OutFolder(in, root, outDir);
+    OutputStage output(destination);
+    g_extractionFailed = false;
+    const int result = DecompileInto(in, output.staged.string(), forceVersion);
+    if (result || g_extractionFailed) return result ? result : 1;
+    output.Publish();
+    std::printf("\nwrote %s\n", OutScript(destination).c_str());
+    return 0;
+}
+
+using OutputPathString = std::filesystem::path::string_type;
+struct OutputPathLess {
+    bool operator()(const OutputPathString& a, const OutputPathString& b) const {
+#ifdef _WIN32
+        return CompareStringOrdinal(a.c_str(), static_cast<int>(a.size()), b.c_str(),
+                                    static_cast<int>(b.size()), TRUE) == CSTR_LESS_THAN;
+#else
+        return a < b;
+#endif
+    }
+};
+
+OutputPathString OutputPathKey(const std::string& path) {
+    return std::filesystem::weakly_canonical(std::filesystem::absolute(path)).make_preferred().native();
+}
+
+bool OutputPathContains(const OutputPathString& parent, const OutputPathString& child) {
+    if (child.size() < parent.size()) return false;
+    const auto prefix = child.substr(0, parent.size());
+    const OutputPathLess less;
+    if (less(parent, prefix) || less(prefix, parent)) return false;
+    return child.size() == parent.size() || child[parent.size()] == std::filesystem::path::preferred_separator;
 }
 
 } // namespace
@@ -3203,6 +3315,20 @@ int RunDecompile(int argc, char** argv) {
     }
     if (files.empty())
         return Fail("command line", "no .mdl files found");
+
+    // Preflight the complete batch, including paths expanded from folders. Two
+    // models must never publish to the same (or nested) output directory.
+    std::map<OutputPathString, std::string, OutputPathLess> destinations;
+    for (const auto& file : files) {
+        const std::string output = OutFolder(file.first, file.second, outDir);
+        const auto key = OutputPathKey(output);
+        for (const auto& previous : destinations) {
+            if (OutputPathContains(key, previous.first) || OutputPathContains(previous.first, key))
+                return Fail("output collision", "inputs \"" + previous.second + "\" and \"" + file.first +
+                            "\" share overlapping output folders; use separate -outdir runs");
+        }
+        destinations.emplace(key, file.first);
+    }
 
     // one bad model must not end a batch, so each is guarded on its own
     int failed = 0;

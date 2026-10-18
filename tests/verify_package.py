@@ -165,6 +165,12 @@ def main():
             subprocess.run([sys.executable,str(Path(__file__).with_name('c4d_bridge_test.py')),str(compiler)],check=True)
         else:
             print('Linux package uses C4D-to-GLB conversion on Windows; native C4D checks do not apply.',flush=True)
+        for script, arguments in (
+            ('compiler_integrity_test.py', [str(compiler)]),
+            ('decompiler_integrity_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix))]),
+            ('subtools_integrity_test.py', ['--bin-dir', str(compiler.parent)]),
+        ):
+            subprocess.run([sys.executable, str(Path(__file__).with_name(script)), *arguments], check=True)
         subprocess.run([sys.executable, str(Path(__file__).with_name('compatibility.py')), str(compiler)], check=True)
     print('Packaged binaries, version, provenance, runtime files and compatibility suite verified.')
 

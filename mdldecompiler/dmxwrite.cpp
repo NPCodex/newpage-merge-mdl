@@ -22,6 +22,7 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <fstream>
 #include <map>
 #include <string>
 #include <system_error>
@@ -496,9 +497,17 @@ struct Dmx : pulse::dmx::Builder {
     void Quat(const char* key, const pm::Quaternion& value) { Builder::Quat(key, value); }
     bool Save(const std::string& path) {
         std::string err;
-        if (Builder::Save(path, &err))
-            return true;
-        std::printf("  cannot write \"%s\": %s\n", path.c_str(), err.c_str());
+        std::vector<uint8_t> bytes;
+        if (!pulse::dmx::Save(Finish(), bytes, &err)) {
+            ExtractionError("cannot encode \"" + path + "\": " + err);
+            return false;
+        }
+        std::ofstream file(std::filesystem::u8path(path), std::ios::binary);
+        if (file) file.write(reinterpret_cast<const char*>(bytes.data()),
+                             static_cast<std::streamsize>(bytes.size()));
+        file.close();
+        if (file) return true;
+        ExtractionError("cannot finish writing \"" + path + "\"");
         return false;
     }
 };
@@ -668,13 +677,15 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
     if (nverts == 0)
         return; // this model contributes nothing at this LOD
     if (vbase + nverts > vvd.size()) {
-        std::printf("  \"%s\": vertex range is outside the .vvd - skipped\n", meshName.c_str());
+        ExtractionError("vertex range for \"" + meshName + "\" is outside the .vvd");
         return;
     }
     const fm::mstudiomesh_t* meshes =
         m.At<fm::mstudiomesh_t>(&model, model.meshindex, model.nummeshes);
-    if (!meshes)
+    if (!meshes) {
+        ExtractionError("invalid mesh table for \"" + meshName + "\"");
         return;
+    }
 
     // ---- vertex streams ----
     // Normals, UVs and the per-corner fields stay one entry per compiled vertex,
@@ -1963,24 +1974,43 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
     const fm::studiohdr_t& h = *m.hdr;
     const fm::mstudiobodyparts_t* parts =
         m.At<fm::mstudiobodyparts_t>(m.buf.data(), h.bodypartindex, h.numbodyparts);
-    if (!parts)
+    if (!parts) {
+        if (h.numbodyparts > 0) ExtractionError("invalid bodypart table");
         return lods;
+    }
+    bool hasMesh = false;
+    for (int i = 0; i < h.numbodyparts; ++i) {
+        const auto* models = m.At<fm::mstudiomodel_t>(&parts[i], parts[i].modelindex, parts[i].nummodels);
+        if (!models && parts[i].nummodels > 0) {
+            ExtractionError("invalid model table");
+            return lods;
+        }
+        for (int j = 0; models && j < parts[i].nummodels; ++j)
+            hasMesh |= models[j].nummeshes > 0 && models[j].numvertices > 0;
+    }
+    if (!hasMesh) return lods; // animation-only / all-blank bodygroups need no VVD/VTX
+    auto meshError = [&](const std::string& message) {
+        if (g_nomesh) std::printf("  %s (mesh extraction disabled by -nomesh)\n", message.c_str());
+        else ExtractionError(message);
+    };
 
     const std::string stem = StripExt(mdlPath);
     std::vector<char> vvdBuf;
     if (!ReadWhole(stem + ".vvd", vvdBuf)) {
-        std::printf("no usable \"%s.vvd\" - meshes not extracted\n", stem.c_str());
+        meshError("no usable \"" + stem + ".vvd\"");
         return lods;
     }
     std::vector<char> vtxBuf;
     // .dx90.vtx is what ships; the others are the same data for dead renderers
     if (!ReadWhole(stem + ".dx90.vtx", vtxBuf) && !ReadWhole(stem + ".vtx", vtxBuf) &&
         !ReadWhole(stem + ".dx80.vtx", vtxBuf)) {
-        std::printf("no usable \"%s.dx90.vtx\" - meshes not extracted\n", stem.c_str());
+        meshError("no usable VTX sidecar (.dx90.vtx, .vtx or .dx80.vtx) for \"" + stem + "\"");
         return lods;
     }
-    if (vtxBuf.size() < sizeof(vtx::FileHeader_t))
+    if (vtxBuf.size() < sizeof(vtx::FileHeader_t)) {
+        meshError("VTX header is truncated");
         return lods;
+    }
     const auto* fh = reinterpret_cast<const vtx::FileHeader_t*>(vtxBuf.data());
     const int numLods = fh->numLODs > 0 ? fh->numLODs : 1;
 
@@ -1990,10 +2020,8 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
     const LodLayout probe = BuildLodLayout(m, 0);
     if (!ExtractTris(vtxBuf, m, stride, 0, probe, tris)) {
         stride = sizeof(vtx::StripGroupHeader_t);
-        const LodLayout probe = BuildLodLayout(m, 0);
-    if (!ExtractTris(vtxBuf, m, stride, 0, probe, tris)) {
-            std::printf("the .vtx does not parse as either strip-group layout - meshes not "
-                        "extracted\n");
+        if (!ExtractTris(vtxBuf, m, stride, 0, probe, tris)) {
+            meshError("the .vtx does not parse as either strip-group layout");
             return lods;
         }
     }
@@ -2002,17 +2030,26 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
     // the LOD detection above (the $lod blocks need it) but writes no files.
     const std::string meshDir = dir + "/meshes";
     std::error_code ec;
-    if (!g_nomesh)
+    if (!g_nomesh) {
         std::filesystem::create_directories(meshDir, ec);
+        if (ec) {
+            ExtractionError("cannot create mesh directory: " + ec.message());
+            return lods;
+        }
+    }
 
     static const ModelTris empty;
     std::vector<fm::mstudiovertex_t> vvd;
     for (int lod = 0; lod < numLods && lod < fm::kMaxNumLods; ++lod) {
         const LodLayout layout = BuildLodLayout(m, lod);
-        if (!ExtractTris(vtxBuf, m, stride, lod, layout, tris))
+        if (!ExtractTris(vtxBuf, m, stride, lod, layout, tris)) {
+            meshError("invalid VTX triangle data at LOD " + std::to_string(lod));
             break;
-        if (!BuildLodVerts(vvdBuf, lod, vvd))
+        }
+        if (!BuildLodVerts(vvdBuf, lod, vvd)) {
+            meshError("invalid VVD vertex data at LOD " + std::to_string(lod));
             break;
+        }
 
         lods.push_back(LodInfo{});
         LodInfo& info = lods.back();

@@ -183,7 +183,7 @@ std::FILE* Create(const std::string& path) {
     fs::create_directories(fs::path(path).parent_path(), ec);
     std::FILE* f = std::fopen(path.c_str(), "wb");
     if (!f)
-        std::printf("  cannot write %s\n", path.c_str());
+        ExtractionError("cannot write \"" + path + "\"");
     return f;
 }
 
@@ -260,12 +260,11 @@ void LoadSiblings(Model& m, const std::string& in) {
 void BuildBindPose(Model& m) {
     const bone_t* bones = m.main.At<bone_t>(m.h->boneindex, m.h->numbones);
     m.bind.resize(static_cast<size_t>(std::max(m.h->numbones, 0)));
-    m.boneNames.resize(m.bind.size());
+    std::vector<std::string> rawNames;
+    for (int i = 0; bones && i < m.h->numbones; ++i) rawNames.push_back(Fixed(bones[i].name));
+    m.boneNames = UniqueBoneNames(rawNames);
     for (int i = 0; bones && i < m.h->numbones; ++i) {
         const bone_t& b = bones[i];
-        m.boneNames[i] = Sanitize(Fixed(b.name));
-        if (m.boneNames[i].empty())
-            m.boneNames[i] = "bone" + std::to_string(i);
         pm::matrix3x4 local;
         pm::AngleMatrix({b.value[3], b.value[4], b.value[5]},
                         {b.value[0], b.value[1], b.value[2]}, local);
@@ -402,7 +401,7 @@ void WriteMeshSmd(const Model& m, const model_t& mo, const std::string& path,
         }
     }
     std::fprintf(f, "end\n");
-    std::fclose(f);
+    CloseOutput(f, path);
 }
 
 // One channel of one bone at one frame. The RLE runs hold `total` frames of
@@ -468,7 +467,7 @@ void WriteAnimSmd(const Model& m, const seqdesc_t& s, int blend, const std::stri
         }
     }
     std::fprintf(f, "end\n");
-    std::fclose(f);
+    CloseOutput(f, path);
 }
 
 // --- textures ----------------------------------------------------------------
@@ -525,7 +524,7 @@ void WriteBmp(const Model& m, const texture_t& t, const std::string& path) {
         for (uint32_t p = static_cast<uint32_t>(t.width); p < stride; ++p)
             std::fputc(0, f);
     }
-    std::fclose(f);
+    CloseOutput(f, path);
 }
 
 // --- the script --------------------------------------------------------------
@@ -786,7 +785,7 @@ int Decompile(const std::string& in, const std::string& dir, const std::string& 
                    V3(s.linearmovement));
         q.Line("}");
     }
-    std::fclose(out);
+    CloseOutput(out, outPath);
 
     // --- textures -----------------------------------------------------------
     const texture_t* tex = m.tex->At<texture_t>(m.texHdr->textureindex, m.texHdr->numtextures);

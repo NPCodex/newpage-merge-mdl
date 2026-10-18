@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 1f5c9a1..eb9eeb8 100644
+index 1f5c9a1..34315d7 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,12 +1,33 @@
@@ -11,7 +11,7 @@ index 1f5c9a1..eb9eeb8 100644
 +# Distributed tools share the NewPageMergeMDL project version.
 +# Upstream TOOL_VERSION declarations remain as merge context only.
 +# C is enabled only for vendored dependencies; toolkit code is C++.
-+project(NewPageMergeMDL VERSION 1.2.33 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.2.34 LANGUAGES CXX C)
  
 -# LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
 -# with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -1122052,14 +1122052,15 @@ index b3c6ca1..ccabe1f 100644
  // dst may alias src - faces are rebuilt only after every mesh is simplified.
 diff --git a/mdlcompiler/outputfiles.cpp b/mdlcompiler/outputfiles.cpp
 new file mode 100644
-index 0000000..02ec9ee
+index 0000000..1cc1556
 --- /dev/null
 +++ b/mdlcompiler/outputfiles.cpp
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,359 @@
 +#include "outputfiles.h"
 +#include <algorithm>
 +#include <chrono>
 +#include <cctype>
++#include <cstdint>
 +#include <cstdio>
 +#include <cstdlib>
 +#include <fstream>
@@ -1122204,7 +1122205,7 @@ index 0000000..02ec9ee
 +};
 +struct Entry {
 +    fs::path relative,path,stage,backup;
-+    bool hadOld=false;
++    bool hadOld=false,remove=false;
 +    Digest oldDigest,newDigest;
 +};
 +struct Journal {
@@ -1122221,27 +1122222,39 @@ index 0000000..02ec9ee
 +    e.stage=e.path.string()+suffix+".stage";e.backup=e.path.string()+suffix+".backup";
 +    Resolve(j.root,Relative(j.root,e.stage));Resolve(j.root,Relative(j.root,e.backup));
 +}
++bool SupportedOutput(const fs::path& path) {
++    const auto ext=path.extension().string();
++    if(ext==".mdl"||ext==".vvd"||ext==".vtx"||ext==".phy"||ext==".ani")return true;
++    // This is the compiler's vertex-animation sidecar, not arbitrary JSON.
++    return ext==".json"&&path.stem().extension()==".vertexanim";
++}
 +void Read(Journal& j) {
 +    if(!Exists(j.path))return;
 +    if(fs::file_size(j.path)>1024*1024)throw std::runtime_error("output recovery journal exceeds 1 MiB");
 +    std::ifstream f(j.path,std::ios::binary);std::string magic;size_t count=0;
-+    if(!(f>>magic>>j.nonce>>count)||magic!="NPMDL_TXN_1"||j.nonce.empty()||j.nonce.find_first_not_of("0123456789-")!=std::string::npos||count==0||count>64)
++    if(!(f>>magic>>j.nonce>>count)||(magic!="NPMDL_TXN_1"&&magic!="NPMDL_TXN_2")||j.nonce.empty()||j.nonce.find_first_not_of("0123456789-")!=std::string::npos||count==0||count>64)
 +        throw std::runtime_error("invalid output recovery journal: "+j.path.string());
 +    std::set<std::string> seen;
 +    for(size_t i=0;i<count;++i) {
 +        Entry e;std::string relative;int had=0;
 +        if(!(f>>std::quoted(relative)>>had>>e.oldDigest.size>>e.oldDigest.hash>>e.newDigest.size>>e.newDigest.hash)||(had!=0&&had!=1))throw std::runtime_error("truncated output recovery journal: "+j.path.string());
++        if(magic=="NPMDL_TXN_2") {
++            int remove=0;
++            if(!(f>>remove)||(remove!=0&&remove!=1))throw std::runtime_error("invalid output recovery operation");
++            e.remove=remove!=0;
++        }
 +        e.relative=fs::u8path(relative);e.hadOld=had!=0;Derive(j,e,i);
 +        if(!seen.insert(Key(e.path)).second)throw std::runtime_error("duplicate output recovery path");
-+        const auto ext=e.path.extension().string();if(ext!=".mdl"&&ext!=".vvd"&&ext!=".vtx"&&ext!=".phy"&&ext!=".ani")throw std::runtime_error("unsupported output recovery extension");
++        if(!SupportedOutput(e.path))throw std::runtime_error("unsupported output recovery extension");
++        if(e.remove&&e.path.extension()==".mdl")throw std::runtime_error("cannot delete the primary output");
 +        j.entries.push_back(std::move(e));
 +    }
 +    f>>std::ws;if(!f.eof())throw std::runtime_error("unexpected output recovery journal data");
 +    if(std::none_of(j.entries.begin(),j.entries.end(),[&](const Entry& e){return Key(e.path.string()+".npmdl-journal")==Key(j.path);}))throw std::runtime_error("journal does not own its primary output");
 +}
 +void Write(const Journal& j) {
-+    std::ostringstream text;text<<"NPMDL_TXN_1 "<<j.nonce<<" "<<j.entries.size()<<"\n";
-+    for(const auto& e:j.entries)text<<std::quoted(e.relative.generic_u8string())<<" "<<e.hadOld<<" "<<e.oldDigest.size<<" "<<e.oldDigest.hash<<" "<<e.newDigest.size<<" "<<e.newDigest.hash<<"\n";
++    std::ostringstream text;text<<"NPMDL_TXN_2 "<<j.nonce<<" "<<j.entries.size()<<"\n";
++    for(const auto& e:j.entries)text<<std::quoted(e.relative.generic_u8string())<<" "<<e.hadOld<<" "<<e.oldDigest.size<<" "<<e.oldDigest.hash<<" "<<e.newDigest.size<<" "<<e.newDigest.hash<<" "<<e.remove<<"\n";
 +    auto s=text.str();WriteFile(j.path,s.data(),s.size());
 +}
 +std::vector<std::unique_ptr<Lock>> Locks(const Journal& old,const std::vector<PendingOutput>& outputs={}) {
@@ -1122268,14 +1122281,17 @@ index 0000000..02ec9ee
 +    if(committed) {
 +        std::ifstream marker(j.commit);std::string value;marker>>value;
 +        if(value!=j.nonce)throw std::runtime_error("invalid output commit marker");
-+        for(const auto& e:j.entries)Match(e.path,e.newDigest);
++        for(const auto& e:j.entries) {
++            if(e.remove){if(Exists(e.path))throw std::runtime_error("deleted output changed since transaction; recovery retained for review: "+e.path.string());}
++            else Match(e.path,e.newDigest);
++        }
 +    }else {
 +        // Validate the whole set before touching any member.
 +        for(const auto& e:j.entries) {
 +            const bool backup=Exists(e.backup),target=Exists(e.path);
-+            if(backup){if(!e.hadOld)throw std::runtime_error("unexpected output recovery backup");Match(e.backup,e.oldDigest);if(target)Match(e.path,e.newDigest);}
++            if(backup){if(!e.hadOld)throw std::runtime_error("unexpected output recovery backup");Match(e.backup,e.oldDigest);if(target){if(e.remove)throw std::runtime_error("deleted output changed since transaction; recovery retained for review: "+e.path.string());Match(e.path,e.newDigest);}}
 +            else if(e.hadOld)Match(e.path,e.oldDigest);
-+            else if(target)Match(e.path,e.newDigest);
++            else if(target){if(e.remove)throw std::runtime_error("deleted output changed since transaction; recovery retained for review: "+e.path.string());Match(e.path,e.newDigest);}
 +            Exists(e.stage);
 +        }
 +        for(auto it=j.entries.rbegin();it!=j.entries.rend();++it) {
@@ -1122297,6 +1122313,48 @@ index 0000000..02ec9ee
 +#else
 +void Checkpoint(const char*){}
 +#endif
++
++struct Companion { fs::path path; const char* suffix; };
++std::vector<Companion> Companions(const fs::path& model) {
++    auto stem=model;stem.replace_extension();
++    std::vector<Companion> result;
++    for(const char* suffix:{".vvd",".dx90.vtx",".dx80.vtx",".phy",".ani",".vertexanim.json"}) {
++        auto path=stem;path+=suffix;result.push_back({path,suffix});
++    }
++    return result;
++}
++bool OutputChecksum(const fs::path& path,const std::string& suffix,uint32_t& checksum) {
++    std::ifstream file(path,std::ios::binary);
++    unsigned char bytes[20]{};file.read(reinterpret_cast<char*>(bytes),sizeof(bytes));
++    const auto length=file.gcount();
++    const auto u32=[&](size_t at){return uint32_t(bytes[at])|(uint32_t(bytes[at+1])<<8)|
++                                      (uint32_t(bytes[at+2])<<16)|(uint32_t(bytes[at+3])<<24);};
++    if(suffix==".mdl"&&length>=12&&u32(0)==0x54534449&&(u32(4)==48||u32(4)==49))checksum=u32(8);
++    else if(suffix==".vvd"&&length>=12&&u32(0)==0x56534449&&u32(4)==4)checksum=u32(8);
++    else if((suffix==".dx90.vtx"||suffix==".dx80.vtx")&&length>=20&&u32(0)==7)checksum=u32(16);
++    else if(suffix==".phy"&&length>=16&&u32(0)==16&&u32(4)==0&&u32(8)>0)checksum=u32(12);
++    else return false;
++    return true;
++}
++void RetireCompanions(std::vector<PendingOutput>& outputs,const fs::path& primary,const Journal& journal) {
++    uint32_t oldChecksum=0;
++    const bool known=Exists(primary)&&OutputChecksum(primary,".mdl",oldChecksum);
++    for(const auto& companion:Companions(primary)) {
++        const auto path=Resolve(journal.root,Relative(journal.root,companion.path));
++        if(std::any_of(outputs.begin(),outputs.end(),[&](const PendingOutput& p){return Key(Relative(journal.root,p.path))==Key(Relative(journal.root,companion.path));})||!Exists(path))continue;
++        uint32_t checksum=0;
++        // Only the standard same-stem files carrying the previous MDL's
++        // checksum are attributable to this model. Never retire custom/shared
++        // physics paths, unchecksummed ANI/JSON, or checksum-mismatched files.
++        // This model checksum establishes association, not payload integrity.
++        if(known&&OutputChecksum(path,companion.suffix,checksum)&&checksum==oldChecksum) {
++            outputs.push_back({path,nullptr,0,true});
++            std::printf("retiring obsolete output: %s\n",path.string().c_str());
++        }else {
++            std::fprintf(stderr,"warning: retaining obsolete companion with unverified ownership: %s\n",path.string().c_str());
++        }
++    }
++}
 +}
 +
 +bool RecoverOutputFiles(const fs::path& model,const fs::path& root,std::string* error) {
@@ -1122311,13 +1122369,22 @@ index 0000000..02ec9ee
 +    std::vector<std::unique_ptr<Lock>> locks;
 +    try {
 +        if(outputs.empty())return true;
-+        const auto primary=std::find_if(outputs.begin(),outputs.end(),[](const PendingOutput& p){return p.path.extension()==".mdl";});
++        const auto primary=std::find_if(outputs.begin(),outputs.end(),[](const PendingOutput& p){return !p.remove&&p.path.extension()==".mdl";});
 +        if(primary==outputs.end())throw std::runtime_error("output set needs a primary MDL");
-+        journal=Location(primary->path,root);Read(journal);locks=Locks(journal,outputs);Recover(journal);Remove(journal.commit);
++        auto pending=outputs;
++        // Lock possible retired companions as well as writes before inspecting
++        // the previous set, including when two compiles choose different sets.
++        auto lockPaths=outputs;
++        for(const auto& companion:Companions(primary->path))lockPaths.push_back({companion.path,nullptr,0});
++        journal=Location(primary->path,root);Read(journal);locks=Locks(journal,lockPaths);Recover(journal);Remove(journal.commit);
++        RetireCompanions(pending,primary->path,journal);
 +        journal.entries.clear();journal.nonce=std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
 +        std::set<std::string> paths;
-+        for(const auto& output:outputs) {
++        for(const auto& output:pending) {
 +            Entry e;e.relative=Relative(journal.root,output.path);Derive(journal,e,journal.entries.size());
++            e.remove=output.remove;
++            if(!SupportedOutput(e.path))throw std::runtime_error("unsupported output recovery extension");
++            if(e.remove&&e.path.extension()==".mdl")throw std::runtime_error("cannot delete the primary output");
 +            if(!paths.insert(Key(e.path)).second)throw std::runtime_error("duplicate output path: "+e.path.string());
 +            fs::create_directories(e.path.parent_path());e.hadOld=Exists(e.path);
 +            if(e.hadOld) {
@@ -1122332,11 +1122399,12 @@ index 0000000..02ec9ee
 +        // Publish complete intent before staging or renaming originals. A torn
 +        // initial journal leaves the old set untouched and requires review.
 +        Write(journal);recorded=true;Checkpoint("journal");
-+        for(size_t i=0;i<outputs.size();++i){WriteFile(journal.entries[i].stage,outputs[i].data,outputs[i].size);Checkpoint("stage");}
++        for(size_t i=0;i<pending.size();++i)if(!pending[i].remove){WriteFile(journal.entries[i].stage,pending[i].data,pending[i].size);Checkpoint("stage");}
 +        for(const auto& e:journal.entries)if(e.hadOld){Rename(e.path,e.backup);Checkpoint("backup");}
 +        // Publish MDL last, after all companion files.
 +        for(int pass=0;pass<2;++pass)for(const auto& e:journal.entries)if((e.path.extension()==".mdl")==bool(pass)){
-+            Rename(e.stage,e.path);Checkpoint(pass?"mdl":"install");}
++            if(e.remove)Checkpoint("delete");
++            else {Rename(e.stage,e.path);Checkpoint(pass?"mdl":"install");}}
 +        WriteFile(journal.commit,journal.nonce.data(),journal.nonce.size());committed=true;Checkpoint("commit");
 +        for(const auto& e:journal.entries)Remove(e.backup);
 +        Remove(journal.path);Remove(journal.commit);return true;
@@ -1122349,10 +1122417,10 @@ index 0000000..02ec9ee
 +}
 diff --git a/mdlcompiler/outputfiles.h b/mdlcompiler/outputfiles.h
 new file mode 100644
-index 0000000..65da1d9
+index 0000000..d297cd2
 --- /dev/null
 +++ b/mdlcompiler/outputfiles.h
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,20 @@
 +#pragma once
 +#include <filesystem>
 +#include <string>
@@ -1122362,6 +1122430,8 @@ index 0000000..65da1d9
 +    std::filesystem::path path;
 +    const void* data;
 +    size_t size;
++    // A deletion participates in the same backup/recovery protocol as writes.
++    bool remove = false;
 +};
 +// Recover the same model before reading its previous sequence order. Journals
 +// are confined to outputRoot; altered files are retained for manual review.
@@ -1125813,10 +1125883,34 @@ index 0000000..42f1d4d
 +} // namespace newpage
 +#endif
 diff --git a/mdlcompiler/smdloader.cpp b/mdlcompiler/smdloader.cpp
-index 149ae76..84b1260 100644
+index 149ae76..b8eea18 100644
 --- a/mdlcompiler/smdloader.cpp
 +++ b/mdlcompiler/smdloader.cpp
-@@ -67,23 +67,24 @@ bool ReadAllLines(const std::string& path, LineReader& r, std::string* err) {
+@@ -10,6 +10,8 @@
+ #include "dependencies.h"
+ 
+ #include <algorithm>
++#include <cerrno>
++#include <climits>
+ #include <cmath>
+ #include <cstdint>
+ #include <cstdio>
+@@ -42,6 +44,7 @@ namespace {
+ // ---------------------------------------------------------------------------
+ struct LineReader {
+     std::vector<std::string> lines;
++    std::string path;
+     size_t idx = 0;
+     int lineNo = 0;
+ 
+@@ -61,29 +64,31 @@ struct LineReader {
+ };
+ 
+ bool ReadAllLines(const std::string& path, LineReader& r, std::string* err) {
++    r.path = path;
+     pulse::dependencies::Note(path);
+     std::ifstream f(path, std::ios::binary);
+     if (!f) {
          if (err) *err = "cannot open \"" + path + "\"";
          return false;
      }
@@ -1125852,7 +1125946,7 @@ index 149ae76..84b1260 100644
      return true;
  }
  
-@@ -127,6 +128,17 @@ bool GrabNodes(LineReader& r, Source& out, std::string* err) {
+@@ -127,6 +132,17 @@ bool GrabNodes(LineReader& r, Source& out, std::string* err) {
          return false;
      }
      bones.resize(out.numbones);
@@ -1125870,7 +1125964,7 @@ index 149ae76..84b1260 100644
      out.localBone = std::move(bones);
      return true;
  }
-@@ -159,6 +171,11 @@ bool GrabAnimation(LineReader& r, float scale, Source& out, std::string* err) {
+@@ -159,6 +175,11 @@ bool GrabAnimation(LineReader& r, float scale, Source& out, std::string* err) {
          float p0, p1, p2, e0, e1, e2;
          if (std::sscanf(line->c_str(), "%d %f %f %f %f %f %f", &index, &p0, &p1, &p2, &e0, &e1,
                          &e2) == 7) {
@@ -1125882,7 +1125976,7 @@ index 149ae76..84b1260 100644
              if (startframe < 0) {
                  if (err) *err = "bone data before the first `time` in skeleton block";
                  return false;
-@@ -296,6 +313,13 @@ struct TriState {
+@@ -296,6 +317,13 @@ struct TriState {
              auto eat = [&](uint32_t x) { h = (h ^ static_cast<uint64_t>(x)) * 1099511628211ULL; };
              eat(static_cast<uint32_t>(k.mat));
              eat(k.px); eat(k.py); eat(k.pz); eat(k.u); eat(k.v);
@@ -1125896,41 +1125990,138 @@ index 149ae76..84b1260 100644
              return static_cast<size_t>(h);
          }
      };
-@@ -388,6 +412,13 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
+@@ -356,6 +384,40 @@ int LookupIndex(TriState& st, int material, const pm::Vector3& pos, const pm::Ve
+     return numvlist;
+ }
+ 
++// A conversion must consume one complete token. strtof/strtol alone silently
++// accept both missing fields and prefixes such as "0.5oops".
++struct VertexTokens {
++    const char* p;
++    const LineReader& reader;
++    std::string* error;
++    void Space() { while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p; }
++    bool Done() { Space(); return !*p || (p[0] == '/' && p[1] == '/'); }
++    bool Fail(const std::string& field) {
++        if (error) *error = reader.path + ":" + std::to_string(reader.lineNo) +
++            ": invalid or missing SMD triangle " + field;
++        return false;
++    }
++    bool Boundary(const char* end) const {
++        return !*end || *end == ' ' || *end == '\t' || *end == '\r' || *end == '\n' ||
++            (end[0] == '/' && end[1] == '/');
++    }
++    bool Integer(int& value, const std::string& field) {
++        Space(); char* end = nullptr; errno = 0;
++        const long result = std::strtol(p, &end, 10);
++        if (end == p || !Boundary(end) || errno == ERANGE || result < INT_MIN || result > INT_MAX)
++            return Fail(field);
++        value = static_cast<int>(result); p = end; return true;
++    }
++    bool Float(float& value, const std::string& field) {
++        Space(); char* end = nullptr; errno = 0;
++        value = std::strtof(p, &end);
++        // Finite underflow (subnormal or rounded zero) is legitimate; overflow
++        // and explicit NaN/Inf are rejected by the finiteness check.
++        if (end == p || !Boundary(end) || !std::isfinite(value)) return Fail(field);
++        p = end; return true;
++    }
++};
++
+ // reference ParseFaceData: read the 3 corner lines of one triangle. The unify
+ // itself is deferred to BuildUnifiedMeshes, which the FBX loader shares.
+ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int material,
+@@ -363,57 +425,59 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
+     for (int j = 0; j < 3; ++j) {
+         const std::string* line = r.Next();
+         if (!line) {
+-            if (err) *err = "unexpected EOF reading a triangle";
++            if (err) *err = r.path + ":" + std::to_string(r.lineNo + 1) + ": unexpected EOF reading a triangle";
+             return false;
+         }
+-        const char* p = line->c_str();
+-        char* end = nullptr;
+-
+-        long bone = std::strtol(p, &end, 10);
+-        p = end;
++        VertexTokens tokens{line->c_str(), r, err};
++        int bone = 0;
+         pm::Vector3 pos, nrm;
+-        pos.x = std::strtof(p, &end); p = end;
+-        pos.y = std::strtof(p, &end); p = end;
+-        pos.z = std::strtof(p, &end); p = end;
+-        nrm.x = std::strtof(p, &end); p = end;
+-        nrm.y = std::strtof(p, &end); p = end;
+-        nrm.z = std::strtof(p, &end); p = end;
+         pm::Vector2 tc;
+-        tc.x = std::strtof(p, &end); p = end;
+-        tc.y = std::strtof(p, &end); p = end;
++        if (!tokens.Integer(bone, "bone index") ||
++            !tokens.Float(pos.x, "position X") || !tokens.Float(pos.y, "position Y") || !tokens.Float(pos.z, "position Z") ||
++            !tokens.Float(nrm.x, "normal X") || !tokens.Float(nrm.y, "normal Y") || !tokens.Float(nrm.z, "normal Z") ||
++            !tokens.Float(tc.x, "UV U") || !tokens.Float(tc.y, "UV V")) return false;
+ 
+         if (bone < 0 || bone >= numbones) {
+-            if (err) *err = "bogus bone index in a triangle vertex";
+-            return false;
++            return tokens.Fail("bone index (bogus bone index, out of range)");
          }
  
          pos.x *= scale; pos.y *= scale; pos.z *= scale;
 +        if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z) ||
 +            !std::isfinite(nrm.x) || !std::isfinite(nrm.y) || !std::isfinite(nrm.z) ||
 +            !std::isfinite(tc.x) || !std::isfinite(tc.y)) {
-+            if (err) *err = "non-finite SMD vertex";
-+            return false;
++            return tokens.Fail("vertex (non-finite after scaling)");
 +        }
 +
  
          int iCount = 0;
          int bones[lim::kMaxSrcBoneWeights];
-@@ -399,10 +430,18 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
-         if (*q && *q != '\n' && *q != '\r') {
-             iCount = static_cast<int>(std::strtol(p, &end, 10));
-             p = end;
+         float weights[lim::kMaxSrcBoneWeights];
+ 
+         // optional explicit bone weight list
+-        const char* q = p;
+-        while (*q == ' ' || *q == '\t') ++q;
+-        if (*q && *q != '\n' && *q != '\r') {
+-            iCount = static_cast<int>(std::strtol(p, &end, 10));
+-            p = end;
 -            const int actual = iCount < lim::kMaxSrcBoneWeights ? iCount : lim::kMaxSrcBoneWeights;
++        if (!tokens.Done()) {
++            if (!tokens.Integer(iCount, "weight count")) return false;
 +            if (iCount < 0 || iCount > lim::kMaxSrcBoneWeights) {
-+                if (err) *err = "SMD vertex weight count must be 0.." + std::to_string(lim::kMaxSrcBoneWeights);
-+                return false;
++                return tokens.Fail("weight count (must be 0.." + std::to_string(lim::kMaxSrcBoneWeights) + ")");
 +            }
 +            const int actual = iCount;
              for (int k = 0; k < actual; ++k) {
-                 bones[k] = static_cast<int>(std::strtol(p, &end, 10)); p = end;
-                 weights[k] = std::strtof(p, &end); p = end;
+-                bones[k] = static_cast<int>(std::strtol(p, &end, 10)); p = end;
+-                weights[k] = std::strtof(p, &end); p = end;
++                if (!tokens.Integer(bones[k], "influence bone index") || !tokens.Float(weights[k], "influence weight")) return false;
 +                if (bones[k] < 0 || bones[k] >= numbones || !std::isfinite(weights[k]) || weights[k] < 0) {
-+                    if (err) *err = "invalid SMD vertex bone influence";
-+                    return false;
++                    return tokens.Fail("bone influence (out of range)");
 +                }
              }
              // SMD v3 extra texcoords: parsed to advance, ignored (single UV).
-             if (version >= 3) {
-@@ -761,6 +800,11 @@ bool GrabVertexAnimation(LineReader& r, float scale, std::vector<VtaFrame>& out,
+-            if (version >= 3) {
+-                const char* e = p;
+-                while (*e == ' ' || *e == '\t') ++e;
+-                if (*e && *e != '\n' && *e != '\r') {
+-                    int iExtras = static_cast<int>(std::strtol(p, &end, 10)); p = end;
+-                    for (int k = 0; k < iExtras; ++k) { std::strtof(p, &end); p = end; }
++            if (version >= 3 && !tokens.Done()) {
++                int extras = 0;
++                if (!tokens.Integer(extras, "extra UV count")) return false;
++                if (extras < 0 || extras > 8) return tokens.Fail("extra UV count (must be 0..8)");
++                for (int k = 0; k < extras; ++k) {
++                    float u, v;
++                    if (!tokens.Float(u, "extra UV U") || !tokens.Float(v, "extra UV V")) return false;
+                 }
+             }
+         }
++        if (!tokens.Done()) return tokens.Fail("trailing data");
+ 
+         tc.y = 1.0f - tc.y; // invert V
+ 
+@@ -761,6 +825,11 @@ bool GrabVertexAnimation(LineReader& r, float scale, std::vector<VtaFrame>& out,
                  return false;
              }
              v.pos.x *= scale; v.pos.y *= scale; v.pos.z *= scale;
@@ -1125942,7 +1126133,7 @@ index 149ae76..84b1260 100644
              out.back().verts.push_back({index, v});
              continue;
          }
-@@ -962,6 +1006,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
+@@ -962,6 +1031,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
      const int count = static_cast<int>(morph.vanims.size());
      SrcFlexKey key;
      key.name = morph.name;
@@ -1125950,7 +1126141,7 @@ index 149ae76..84b1260 100644
      key.target1 = position;
      out.flexkeys.push_back(std::move(key));
      out.morphs.push_back(std::move(morph));
-@@ -970,6 +1015,38 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
+@@ -970,6 +1040,38 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
  
  } // namespace
  
@@ -1125989,7 +1126180,7 @@ index 149ae76..84b1260 100644
  bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                     const std::vector<VtaFlexOption>& opts, std::string* err) {
      VtaBind bind;
-@@ -996,13 +1073,14 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
+@@ -996,13 +1098,14 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                           opt.name.c_str(), opt.frame, path.c_str());
              continue;
          }
@@ -1126010,7 +1126201,7 @@ index 149ae76..84b1260 100644
          std::printf("    flex %-32s frame %-4d %6d deltas  position %.3f decay %.3f\n",
                      opt.name.c_str(), opt.frame, deltas, opt.position, opt.decay);
      }
-@@ -1014,6 +1092,29 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
+@@ -1014,6 +1117,29 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
  // becomes flexdesc "f<i>" and ONE NWAY controller sweeps the whole run over
  // 0..1. Stock also emits a "default" flexkey on the basis; it is an empty morph
  // that only exists to make its indices line up, so we leave it out.
@@ -1127956,6 +1128147,94 @@ index 5d40c04..924bbbc 100644
      target_sources(mdldecompiler PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
                                           "${CMAKE_SOURCE_DIR}/utf8.manifest")
  endif()
+diff --git a/mdldecompiler/animwrite.cpp b/mdldecompiler/animwrite.cpp
+index 1b6172c..71bf6bd 100644
+--- a/mdldecompiler/animwrite.cpp
++++ b/mdldecompiler/animwrite.cpp
+@@ -561,7 +561,8 @@ struct ClipSource {
+     }
+ 
+     bool Valid() const {
+-        return descs && bones && m.hdr->numlocalanim > 0 && m.hdr->numbones > 0;
++        return descs && m.hdr->numlocalanim > 0 && m.hdr->numbones >= 0 &&
++               (m.hdr->numbones == 0 || bones);
+     }
+ 
+     void UnyawRoots(std::vector<Pose>& fr) const {
+@@ -638,8 +639,10 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
+         h.numanimblocks > 1)
+         ReadWhole(StripExt(mdlPath) + ".ani", ani);
+     const ClipSource src(m, ani);
+-    if (!src.Valid())
++    if (!src.Valid()) {
++        if (h.numlocalanim > 0) ExtractionError("invalid animation table or skeleton");
+         return;
++    }
+     const fm::mstudioanimdesc_t* descs = src.descs;
+     const fm::mstudiobone_t* bones = src.bones;
+ 
+@@ -648,13 +651,17 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
+     const std::string animDir = dir + "/anims";
+     std::error_code ec;
+     std::filesystem::create_directories(animDir, ec);
++    if (ec) {
++        ExtractionError("cannot create animation directory: " + ec.message());
++        return;
++    }
+ 
+     auto emit = [&](const std::string& name, const std::vector<std::vector<Pose>>& frames,
+                     int fps) {
+         const std::string path = animDir + "/" + name + AnimExt();
+         if (!g_smd) {
+             if (!WriteAnimationDmx(m, path, name, fps, frames)) {
+-                std::printf("  cannot write \"%s\"\n", path.c_str());
++                ExtractionError("cannot write \"" + path + "\"");
+                 return false;
+             }
+             std::printf("  wrote %s (%d frame%s, %d bones)\n", path.c_str(),
+@@ -663,7 +670,7 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
+         }
+         std::FILE* f = std::fopen(path.c_str(), "wb");
+         if (!f) {
+-            std::printf("  cannot write \"%s\"\n", path.c_str());
++            ExtractionError("cannot write \"" + path + "\"");
+             return false;
+         }
+         std::fprintf(f, "version 1\nnodes\n");
+@@ -680,7 +687,7 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
+             }
+         }
+         std::fprintf(f, "end\n");
+-        std::fclose(f);
++        if (!CloseOutput(f, path)) return false;
+         std::printf("  wrote %s (%d frame%s, %d bones)\n", path.c_str(),
+                     static_cast<int>(frames.size()), frames.size() == 1 ? "" : "s", h.numbones);
+         return true;
+@@ -700,9 +707,8 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
+ 
+         std::vector<std::vector<Pose>> frames;
+         if (!src.Decode(i, frames)) {
+-            std::printf("  \"%s\": animation data is in a .ani that is missing or short "
+-                        "- skipped\n",
+-                        refs[i].name.c_str());
++            ExtractionError("cannot decode animation \"" + refs[i].name +
++                            "\": animation data is missing, truncated or invalid (check the .ani sidecar)");
+             ++skipped;
+             continue;
+         }
+diff --git a/mdldecompiler/animwrite.h b/mdldecompiler/animwrite.h
+index 9b2c3c7..8150453 100644
+--- a/mdldecompiler/animwrite.h
++++ b/mdldecompiler/animwrite.h
+@@ -22,7 +22,7 @@ void ComputeIkBaseRecovery(Mdl& m, const std::string& mdlPath);
+ 
+ // One anims/<name>.<ext> per local animation that carries data, named by the
+ // AnimRefs() alias the .pulseqc writes. `mdlPath` locates a sibling .ani for
+-// demand-loaded clips. Reports what it wrote and never fails the decompile.
++// demand-loaded clips. Missing data or failed writes mark the decompile failed.
+ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::string& dir);
+ 
+ // Local animation `anim` as WriteAnimationFiles writes it, reading block data from
 diff --git a/mdldecompiler/app.ico b/mdldecompiler/app.ico
 index 5db996a6077dc05bd8210ab23e6e73ab118420d1..b785e440c8d99e4caa84673f878afa0b48564012 100644
 GIT binary patch
@@ -1129608,7 +1129887,7 @@ zgSiD`6D1G%`fnWomf*^ve?|C>3x}C280Ykt$LM|43N&rI*x6}$GPx`9KV)8kCzD()
 ZCN`Bgh?(Z;l{#ePpfi&s@c)Ja{x8yi%ryW2
 
 diff --git a/mdldecompiler/dmxwrite.cpp b/mdldecompiler/dmxwrite.cpp
-index c5bec37..fd06fd5 100644
+index c5bec37..68d62d2 100644
 --- a/mdldecompiler/dmxwrite.cpp
 +++ b/mdldecompiler/dmxwrite.cpp
 @@ -7,8 +7,8 @@
@@ -1129622,7 +1129901,15 @@ index c5bec37..fd06fd5 100644
  //
  // The .phy's collision hulls come out the same way, as one more mesh with the
  // same skeleton - see WritePhysicsMesh.
-@@ -165,6 +165,8 @@ bool ExtractTris(const std::vector<char>& buf, const Mdl& m, size_t sgStride, in
+@@ -22,6 +22,7 @@
+ #include <cstring>
+ #include <filesystem>
+ #include <functional>
++#include <fstream>
+ #include <map>
+ #include <string>
+ #include <system_error>
+@@ -165,6 +166,8 @@ bool ExtractTris(const std::vector<char>& buf, const Mdl& m, size_t sgStride, in
                   const LodLayout& layout, PartTris& out) {
      out.clear();
      const fm::studiohdr_t& h = *m.hdr;
@@ -1129631,7 +1129918,7 @@ index c5bec37..fd06fd5 100644
      const char* base = buf.data();
      const char* end = base + buf.size();
      auto ok = [&](const void* p, size_t bytes) {
-@@ -260,21 +262,28 @@ bool ExtractTris(const std::vector<char>& buf, const Mdl& m, size_t sgStride, in
+@@ -260,21 +263,28 @@ bool ExtractTris(const std::vector<char>& buf, const Mdl& m, size_t sgStride, in
                          return false;
                      const auto* sgVerts = reinterpret_cast<const vtx::Vertex_t*>(vRaw);
  
@@ -1129674,7 +1129961,28 @@ index c5bec37..fd06fd5 100644
                  }
              }
          }
-@@ -542,7 +551,8 @@ void WriteSkel(Dmx& q, const Mdl& m, const Skel& s, const std::string& name,
+@@ -487,9 +497,17 @@ struct Dmx : pulse::dmx::Builder {
+     void Quat(const char* key, const pm::Quaternion& value) { Builder::Quat(key, value); }
+     bool Save(const std::string& path) {
+         std::string err;
+-        if (Builder::Save(path, &err))
+-            return true;
+-        std::printf("  cannot write \"%s\": %s\n", path.c_str(), err.c_str());
++        std::vector<uint8_t> bytes;
++        if (!pulse::dmx::Save(Finish(), bytes, &err)) {
++            ExtractionError("cannot encode \"" + path + "\": " + err);
++            return false;
++        }
++        std::ofstream file(std::filesystem::u8path(path), std::ios::binary);
++        if (file) file.write(reinterpret_cast<const char*>(bytes.data()),
++                             static_cast<std::streamsize>(bytes.size()));
++        file.close();
++        if (file) return true;
++        ExtractionError("cannot finish writing \"" + path + "\"");
+         return false;
+     }
+ };
+@@ -542,7 +560,8 @@ void WriteSkel(Dmx& q, const Mdl& m, const Skel& s, const std::string& name,
                 const Guid& idMeshDag, const Guid& idMeshXform,
                 const Guid& idCombo, const Guid& idAnimList = Guid{},
                 const std::vector<AnimPose>* pose0 = nullptr,
@@ -1129684,7 +1129992,7 @@ index c5bec37..fd06fd5 100644
      const fm::mstudiobone_t* bones =
          m.At<fm::mstudiobone_t>(m.buf.data(), m.hdr->boneindex, m.hdr->numbones);
      const std::vector<std::string> boneNames = BoneNames(m);
-@@ -552,6 +562,7 @@ void WriteSkel(Dmx& q, const Mdl& m, const Skel& s, const std::string& name,
+@@ -552,6 +571,7 @@ void WriteSkel(Dmx& q, const Mdl& m, const Skel& s, const std::string& name,
      // reads as a mesh export, and an importer that types the file off that
      // attribute takes the ANIM branch away and drops every clip.
      q.Begin("DmElement", s.idRoot, name);
@@ -1129692,7 +1130000,25 @@ index c5bec37..fd06fd5 100644
      if (IsNull(idAnimList))
          q.Ref("model", s.idModel);
      q.Ref("skeleton", s.idModel);
-@@ -869,20 +880,18 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
+@@ -657,13 +677,15 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
+     if (nverts == 0)
+         return; // this model contributes nothing at this LOD
+     if (vbase + nverts > vvd.size()) {
+-        std::printf("  \"%s\": vertex range is outside the .vvd - skipped\n", meshName.c_str());
++        ExtractionError("vertex range for \"" + meshName + "\" is outside the .vvd");
+         return;
+     }
+     const fm::mstudiomesh_t* meshes =
+         m.At<fm::mstudiomesh_t>(&model, model.meshindex, model.nummeshes);
+-    if (!meshes)
++    if (!meshes) {
++        ExtractionError("invalid mesh table for \"" + meshName + "\"");
+         return;
++    }
+ 
+     // ---- vertex streams ----
+     // Normals, UVs and the per-corner fields stay one entry per compiled vertex,
+@@ -869,20 +891,18 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
      // A face set's `faces` are corner indices into the *Indices streams, and the
      // loader reads a triangle back as (c0, c2, c1) - so the corners go out
      // flipped to land on the winding the .vtx holds.
@@ -1129717,7 +1130043,7 @@ index c5bec37..fd06fd5 100644
              faces.push_back(-1);
          }
      }
-@@ -896,9 +905,9 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
+@@ -896,9 +916,9 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
      // of them. Sharing the slot would make it degenerate, so the second corner's
      // vertex takes a private one. One pass is enough: a split only ever un-shares,
      // and the fresh slot belongs to nothing else.
@@ -1129730,7 +1130056,7 @@ index c5bec37..fd06fd5 100644
                  if (corner[n + a] != corner[n + b] &&
                      posOf[corner[n + a]] == posOf[corner[n + b]])
                      posOf[corner[n + b]] = slots++;
-@@ -975,7 +984,7 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
+@@ -975,7 +995,7 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
          idDom.push_back(q.NewId());
      const Guid idCombo = deltaOrder.empty() ? Guid{} : q.NewId();
  
@@ -1129739,11 +1130065,201 @@ index c5bec37..fd06fd5 100644
  
      // ---- the mesh ----
      q.Begin("DmeDag", idMeshDag, MeshDagName(m, meshName));
+@@ -1954,24 +1974,43 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
+     const fm::studiohdr_t& h = *m.hdr;
+     const fm::mstudiobodyparts_t* parts =
+         m.At<fm::mstudiobodyparts_t>(m.buf.data(), h.bodypartindex, h.numbodyparts);
+-    if (!parts)
++    if (!parts) {
++        if (h.numbodyparts > 0) ExtractionError("invalid bodypart table");
+         return lods;
++    }
++    bool hasMesh = false;
++    for (int i = 0; i < h.numbodyparts; ++i) {
++        const auto* models = m.At<fm::mstudiomodel_t>(&parts[i], parts[i].modelindex, parts[i].nummodels);
++        if (!models && parts[i].nummodels > 0) {
++            ExtractionError("invalid model table");
++            return lods;
++        }
++        for (int j = 0; models && j < parts[i].nummodels; ++j)
++            hasMesh |= models[j].nummeshes > 0 && models[j].numvertices > 0;
++    }
++    if (!hasMesh) return lods; // animation-only / all-blank bodygroups need no VVD/VTX
++    auto meshError = [&](const std::string& message) {
++        if (g_nomesh) std::printf("  %s (mesh extraction disabled by -nomesh)\n", message.c_str());
++        else ExtractionError(message);
++    };
+ 
+     const std::string stem = StripExt(mdlPath);
+     std::vector<char> vvdBuf;
+     if (!ReadWhole(stem + ".vvd", vvdBuf)) {
+-        std::printf("no usable \"%s.vvd\" - meshes not extracted\n", stem.c_str());
++        meshError("no usable \"" + stem + ".vvd\"");
+         return lods;
+     }
+     std::vector<char> vtxBuf;
+     // .dx90.vtx is what ships; the others are the same data for dead renderers
+     if (!ReadWhole(stem + ".dx90.vtx", vtxBuf) && !ReadWhole(stem + ".vtx", vtxBuf) &&
+         !ReadWhole(stem + ".dx80.vtx", vtxBuf)) {
+-        std::printf("no usable \"%s.dx90.vtx\" - meshes not extracted\n", stem.c_str());
++        meshError("no usable VTX sidecar (.dx90.vtx, .vtx or .dx80.vtx) for \"" + stem + "\"");
+         return lods;
+     }
+-    if (vtxBuf.size() < sizeof(vtx::FileHeader_t))
++    if (vtxBuf.size() < sizeof(vtx::FileHeader_t)) {
++        meshError("VTX header is truncated");
+         return lods;
++    }
+     const auto* fh = reinterpret_cast<const vtx::FileHeader_t*>(vtxBuf.data());
+     const int numLods = fh->numLODs > 0 ? fh->numLODs : 1;
+ 
+@@ -1981,10 +2020,8 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
+     const LodLayout probe = BuildLodLayout(m, 0);
+     if (!ExtractTris(vtxBuf, m, stride, 0, probe, tris)) {
+         stride = sizeof(vtx::StripGroupHeader_t);
+-        const LodLayout probe = BuildLodLayout(m, 0);
+-    if (!ExtractTris(vtxBuf, m, stride, 0, probe, tris)) {
+-            std::printf("the .vtx does not parse as either strip-group layout - meshes not "
+-                        "extracted\n");
++        if (!ExtractTris(vtxBuf, m, stride, 0, probe, tris)) {
++            meshError("the .vtx does not parse as either strip-group layout");
+             return lods;
+         }
+     }
+@@ -1993,17 +2030,26 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
+     // the LOD detection above (the $lod blocks need it) but writes no files.
+     const std::string meshDir = dir + "/meshes";
+     std::error_code ec;
+-    if (!g_nomesh)
++    if (!g_nomesh) {
+         std::filesystem::create_directories(meshDir, ec);
++        if (ec) {
++            ExtractionError("cannot create mesh directory: " + ec.message());
++            return lods;
++        }
++    }
+ 
+     static const ModelTris empty;
+     std::vector<fm::mstudiovertex_t> vvd;
+     for (int lod = 0; lod < numLods && lod < fm::kMaxNumLods; ++lod) {
+         const LodLayout layout = BuildLodLayout(m, lod);
+-        if (!ExtractTris(vtxBuf, m, stride, lod, layout, tris))
++        if (!ExtractTris(vtxBuf, m, stride, lod, layout, tris)) {
++            meshError("invalid VTX triangle data at LOD " + std::to_string(lod));
+             break;
+-        if (!BuildLodVerts(vvdBuf, lod, vvd))
++        }
++        if (!BuildLodVerts(vvdBuf, lod, vvd)) {
++            meshError("invalid VVD vertex data at LOD " + std::to_string(lod));
+             break;
++        }
+ 
+         lods.push_back(LodInfo{});
+         LodInfo& info = lods.back();
+diff --git a/mdldecompiler/dmxwrite.h b/mdldecompiler/dmxwrite.h
+index 2bcb6d3..91fafa8 100644
+--- a/mdldecompiler/dmxwrite.h
++++ b/mdldecompiler/dmxwrite.h
+@@ -33,7 +33,8 @@ struct LodInfo {
+ // alias WriteBodyParts handed out - names[bodypart][model], "" for a blank body.
+ // Lower LODs land beside it as <name>_lod<n>.dmx. `mdlPath` locates the sibling
+ // .vvd/.vtx. Returns one entry per LOD (empty when the meshes could not be
+-// read); never fails the decompile - the .pulseqc stands on its own.
++// read). Missing/invalid required data or failed writes mark the decompile failed;
++// explicit -nomesh permits absent sidecars.
+ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
+                                        const std::string& dir,
+                                        const std::vector<std::vector<std::string>>& names,
+diff --git a/mdldecompiler/goldsrc.cpp b/mdldecompiler/goldsrc.cpp
+index 6043c47..e56a4c3 100644
+--- a/mdldecompiler/goldsrc.cpp
++++ b/mdldecompiler/goldsrc.cpp
+@@ -183,7 +183,7 @@ std::FILE* Create(const std::string& path) {
+     fs::create_directories(fs::path(path).parent_path(), ec);
+     std::FILE* f = std::fopen(path.c_str(), "wb");
+     if (!f)
+-        std::printf("  cannot write %s\n", path.c_str());
++        ExtractionError("cannot write \"" + path + "\"");
+     return f;
+ }
+ 
+@@ -260,12 +260,11 @@ void LoadSiblings(Model& m, const std::string& in) {
+ void BuildBindPose(Model& m) {
+     const bone_t* bones = m.main.At<bone_t>(m.h->boneindex, m.h->numbones);
+     m.bind.resize(static_cast<size_t>(std::max(m.h->numbones, 0)));
+-    m.boneNames.resize(m.bind.size());
++    std::vector<std::string> rawNames;
++    for (int i = 0; bones && i < m.h->numbones; ++i) rawNames.push_back(Fixed(bones[i].name));
++    m.boneNames = UniqueBoneNames(rawNames);
+     for (int i = 0; bones && i < m.h->numbones; ++i) {
+         const bone_t& b = bones[i];
+-        m.boneNames[i] = Sanitize(Fixed(b.name));
+-        if (m.boneNames[i].empty())
+-            m.boneNames[i] = "bone" + std::to_string(i);
+         pm::matrix3x4 local;
+         pm::AngleMatrix({b.value[3], b.value[4], b.value[5]},
+                         {b.value[0], b.value[1], b.value[2]}, local);
+@@ -402,7 +401,7 @@ void WriteMeshSmd(const Model& m, const model_t& mo, const std::string& path,
+         }
+     }
+     std::fprintf(f, "end\n");
+-    std::fclose(f);
++    CloseOutput(f, path);
+ }
+ 
+ // One channel of one bone at one frame. The RLE runs hold `total` frames of
+@@ -468,7 +467,7 @@ void WriteAnimSmd(const Model& m, const seqdesc_t& s, int blend, const std::stri
+         }
+     }
+     std::fprintf(f, "end\n");
+-    std::fclose(f);
++    CloseOutput(f, path);
+ }
+ 
+ // --- textures ----------------------------------------------------------------
+@@ -525,7 +524,7 @@ void WriteBmp(const Model& m, const texture_t& t, const std::string& path) {
+         for (uint32_t p = static_cast<uint32_t>(t.width); p < stride; ++p)
+             std::fputc(0, f);
+     }
+-    std::fclose(f);
++    CloseOutput(f, path);
+ }
+ 
+ // --- the script --------------------------------------------------------------
+@@ -786,7 +785,7 @@ int Decompile(const std::string& in, const std::string& dir, const std::string&
+                    V3(s.linearmovement));
+         q.Line("}");
+     }
+-    std::fclose(out);
++    CloseOutput(out, outPath);
+ 
+     // --- textures -----------------------------------------------------------
+     const texture_t* tex = m.tex->At<texture_t>(m.texHdr->textureindex, m.texHdr->numtextures);
 diff --git a/mdldecompiler/main.cpp b/mdldecompiler/main.cpp
-index c1a5fbb..cd02f05 100644
+index c1a5fbb..f5a0380 100644
 --- a/mdldecompiler/main.cpp
 +++ b/mdldecompiler/main.cpp
-@@ -36,6 +36,7 @@
+@@ -22,12 +22,19 @@
+ #include <exception>
+ #include <filesystem>
+ #include <map>
++#include <memory>
++#include <stdexcept>
+ #include <new>
+ #include <set>
+ #include <system_error>
+ #include <string>
+ #include <vector>
+ 
++#ifdef _WIN32
++#define NOMINMAX
++#include <windows.h>
++#endif
++
+ #include "animwrite.h"
+ #include "dmxwrite.h"
+ #include "fatalerror.h"
+@@ -36,6 +43,7 @@
  #include "format/phy.h"
  #include "mdlfile.h"
  #include "perf.h"
@@ -1129751,7 +1130267,7 @@ index c1a5fbb..cd02f05 100644
  
  using namespace mdldecompiler;
  using pulse::fatal::Fail;
-@@ -49,15 +50,11 @@ static constexpr const char* kAppVersion = PULSEMODEL_VERSION;
+@@ -49,15 +57,11 @@ static constexpr const char* kAppVersion = PULSEMODEL_VERSION;
  namespace {
  
  void PrintHeader() {
@@ -1129769,7 +1130285,7 @@ index c1a5fbb..cd02f05 100644
      std::printf("                     [-forceversion <n>] [-dmxencoding <enc>] [-dmxmodel <n>]\n");
      std::printf("                     [-smdanimation] [-pulseqc]\n");
      std::printf("                     [-nomesh] [-noanimation] [-declaresequence]\n");
-@@ -79,7 +76,7 @@ int Usage() {
+@@ -79,7 +83,7 @@ int Usage() {
      std::printf("                keyvalues2 text\n");
      std::printf("  -dmxmodel <n> the `format model` version they declare: 15 (default),\n");
      std::printf("                1, 18, or 22 for Source 2 modeldoc\n");
@@ -1129778,7 +1130294,7 @@ index c1a5fbb..cd02f05 100644
      std::printf("                still lists their commands\n");
      std::printf("  -noanimation  skip the animation clip files; the script still lists them\n");
      std::printf("  -declaresequence\n");
-@@ -819,6 +816,70 @@ void WriteAimAtBones(Qc& q, const Mdl& m) {
+@@ -819,6 +823,70 @@ void WriteAimAtBones(Qc& q, const Mdl& m) {
      }
  }
  
@@ -1129849,7 +1130365,41 @@ index c1a5fbb..cd02f05 100644
  // $proceduralbones + the .vrd it names - the file form of $driverbone and
  // $driveraimat, and the only spelling stock studiomdl has for either. Written
  // beside the script; the aim-at block carries its own <basepos>, which the
-@@ -2609,7 +2670,9 @@ void WriteSequences(Qc& q, const Mdl& m) {
+@@ -938,8 +1006,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
+     if (!g_nomesh) {
+         std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
+         if (!f) {
+-            q.Blank();
+-            q.Line("// could not write " + name + " - the procedural bones are lost");
++            ExtractionError("cannot write procedural bones file \"" + name + "\"");
+             return;
+         }
+         // a .vrd has no way to quote, so a name with a space in it splits into two
+@@ -949,7 +1016,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
+                          s.c_str());
+         for (const std::string& l : lines)
+             std::fprintf(f, "%s\n", l.c_str());
+-        std::fclose(f);
++        if (!CloseOutput(f, name)) return;
+         std::printf("\nprocedural bones:\n  wrote %s\n", name.c_str());
+     }
+ 
+@@ -2515,12 +2582,12 @@ void WriteDeclareSequenceFile(const Mdl& m, const std::string& dir) {
+     const std::string name = BaseName(dir) + "_declaresequence.qci";
+     std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
+     if (!f) {
+-        std::printf("\ncould not write %s\n", name.c_str());
++        ExtractionError("cannot write \"" + name + "\"");
+         return;
+     }
+     for (const std::string& l : labels)
+         std::fprintf(f, "$declaresequence \"%s\"\n", l.c_str());
+-    std::fclose(f);
++    if (!CloseOutput(f, name)) return;
+     std::printf("\nwrote %s (%zu sequences)\n", name.c_str(), labels.size());
+ }
+ 
+@@ -2609,7 +2676,9 @@ void WriteSequences(Qc& q, const Mdl& m) {
              opt("autoplay");
          if (f & fm::STUDIO_HIDDEN)
              opt("hidden");
@@ -1129860,7 +1130410,23 @@ index c1a5fbb..cd02f05 100644
              opt("realtime");
          if (f & fm::STUDIO_WORLD_AND_RELATIVE)
              opt("worldrelative");
-@@ -2889,6 +2952,8 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2865,14 +2934,12 @@ std::string OutScript(const std::string& dir) {
+         .string();
+ }
+ 
+-int DecompileOne(const std::string& in, const std::string& root, const char* outDir,
+-                 int forceVersion) {
++int DecompileInto(const std::string& in, const std::string& dir, int forceVersion) {
+     std::printf("Decompiling: %s\n", in.c_str());
+ 
+     // GoldSrc shares only the "IDST" magic with v44+; it has its own reader.
+     if (IsGoldSrcMdl(in)) {
+         pulse::fatal::g_stage = "goldsrc";
+-        const std::string dir = OutFolder(in, root, outDir);
+         std::error_code ec;
+         std::filesystem::create_directories(dir, ec);
+         return DecompileGoldSrc(in, dir, OutScript(dir));
+@@ -2889,9 +2956,16 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      std::string err;
      if (!ReadFile(in.c_str(), m, forceVersion, err))
          return Fail("read error", err);
@@ -1129869,18 +1130435,289 @@ index c1a5fbb..cd02f05 100644
      const auto tRead = Clock::now();
  
      const fm::studiohdr_t& h = *m.hdr;
-@@ -3028,6 +3093,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
++    const auto safeBoneNames = BoneNames(m);
++    const auto* storedBones = m.At<fm::mstudiobone_t>(m.buf.data(), h.boneindex, h.numbones);
++    for (int i = 0; storedBones && i < h.numbones; ++i)
++        if (safeBoneNames[i] != m.Str(&storedBones[i], storedBones[i].sznameindex))
++            std::printf("renamed unsafe or duplicate bone %d to \"%s\"\n", i, safeBoneNames[i].c_str());
+     if (h.numanimblocks > 1)
+         ReadWhole(StripExt(in) + ".ani", m.ani);
+     ComputeIkBaseRecovery(m, in);
+@@ -2903,7 +2977,6 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+     STAGE(PrintMaterials, m);
+ 
+     pulse::fatal::g_stage = "output folder";
+-    const std::string dir = OutFolder(in, root, outDir);
+     std::error_code ec;
+     std::filesystem::create_directories(dir, ec);
+     const std::string outPath = OutScript(dir);
+@@ -2913,6 +2986,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+                     "cannot write \"" + outPath + "\"" +
+                         (ec ? " (" + ec.message() + ")" : std::string()));
+ 
++    std::unique_ptr<std::FILE, decltype(&std::fclose)> script(f, &std::fclose);
+     Qc q{f};
+     q.Line("// mdldecompiler version " + std::string(kAppVersion));
+     q.Line("// " + in);
+@@ -3028,6 +3102,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
          STAGE(WriteHitboxes, q, m);
      STAGE(WriteBones, q, m);
      STAGE(WriteBoneMerges, q, m);
 +    // AxisInterp has no corresponding DMX joint operator or inline QC form.
 +    // Keep its file even when other procedural categories move to joints DMX.
 +    if(!STAGE(WriteAxisInterpBones,q,dir,axisInterpText,err)) {
-+        std::fclose(f);return Fail("write error",err);
++        return Fail("write error",err);
 +    }
      // stock has neither $driverbone nor $driveraimat - only the .vrd file form
      if (!joints.procedural && g_studiomdl) {
          STAGE(WriteProceduralBones, q, m, dir);
+@@ -3048,7 +3127,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+     STAGE(WritePhysics, q, m, in, dir);
+     const auto tPhys1 = Clock::now();
+     STAGE(WriteKeyValues, q, m);
+-    std::fclose(f);
++    CloseOutput(script.release(), outPath);
+ 
+     if (h.numlocalanim > 0)
+         std::printf("\nanimations:\n");
+@@ -3060,8 +3139,9 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+     if (g_declareseq)
+         STAGE(WriteDeclareSequenceFile, m, dir);
+ 
++    if (g_extractionFailed)
++        return Fail("extraction failed", "incomplete output was not published");
+     pulse::fatal::g_stage = "done";
+-    std::printf("\nwrote %s\n", outPath.c_str());
+ 
+     if (pulse::perf::g_enabled) {
+         pulse::perf::Record("total", "read", ms(t0, tRead));
+@@ -3073,6 +3153,108 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+     return 0;
+ }
+ 
++// Build each model under a sibling staging directory. A failed extraction never
++// touches a previous result. Copying the old directory into staging preserves
++// user-added files; links are rejected so staged writes cannot escape to a target.
++class OutputStage {
++public:
++    std::filesystem::path destination, root, staged, backup;
++    bool keepRecovery = false;
++
++    explicit OutputStage(const std::filesystem::path& target) : destination(target) {
++        namespace fs = std::filesystem;
++        fs::create_directories(destination.parent_path());
++        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
++        for (unsigned attempt = 0; attempt < 100; ++attempt) {
++            root = destination.parent_path() / (".newpage-decompile-" + std::to_string(stamp) +
++                                               "-" + std::to_string(attempt));
++            if (fs::create_directory(root)) break;
++            root.clear();
++        }
++        if (root.empty()) throw std::runtime_error("cannot allocate output staging directory");
++        staged = root / "new" / destination.filename();
++        backup = root / "previous-output";
++        try {
++            fs::create_directory(staged.parent_path());
++            if (fs::exists(destination) || fs::is_symlink(destination)) {
++                if (!fs::is_directory(destination) || fs::is_symlink(destination))
++                    throw std::runtime_error("output destination is not a regular directory: " + destination.string());
++                for (const auto& entry : fs::recursive_directory_iterator(destination))
++                    if (entry.is_symlink() || (!entry.is_directory() && !entry.is_regular_file()))
++                        throw std::runtime_error("output contains a link or special file: " + entry.path().string());
++                fs::copy(destination, staged, fs::copy_options::recursive);
++            } else {
++                fs::create_directory(staged);
++            }
++        } catch (...) {
++            std::error_code ignored;
++            fs::remove_all(root, ignored);
++            throw;
++        }
++    }
++    ~OutputStage() {
++        if (!keepRecovery) {
++            std::error_code ignored;
++            std::filesystem::remove_all(root, ignored);
++        }
++    }
++    void Publish() {
++        namespace fs = std::filesystem;
++        const bool existed = fs::exists(destination);
++        if (existed) fs::rename(destination, backup);
++        try {
++            fs::rename(staged, destination);
++        } catch (...) {
++            if (existed) {
++                std::error_code restoreError;
++                fs::rename(backup, destination, restoreError);
++                if (restoreError) {
++                    keepRecovery = true;
++                    throw std::runtime_error("cannot publish or restore output; previous files retained at " +
++                                             backup.string() + ": " + restoreError.message());
++                }
++            }
++            throw;
++        }
++    }
++};
++
++int DecompileOne(const std::string& in, const std::string& root, const char* outDir,
++                 int forceVersion) {
++    const std::string destination = OutFolder(in, root, outDir);
++    OutputStage output(destination);
++    g_extractionFailed = false;
++    const int result = DecompileInto(in, output.staged.string(), forceVersion);
++    if (result || g_extractionFailed) return result ? result : 1;
++    output.Publish();
++    std::printf("\nwrote %s\n", OutScript(destination).c_str());
++    return 0;
++}
++
++using OutputPathString = std::filesystem::path::string_type;
++struct OutputPathLess {
++    bool operator()(const OutputPathString& a, const OutputPathString& b) const {
++#ifdef _WIN32
++        return CompareStringOrdinal(a.c_str(), static_cast<int>(a.size()), b.c_str(),
++                                    static_cast<int>(b.size()), TRUE) == CSTR_LESS_THAN;
++#else
++        return a < b;
++#endif
++    }
++};
++
++OutputPathString OutputPathKey(const std::string& path) {
++    return std::filesystem::weakly_canonical(std::filesystem::absolute(path)).make_preferred().native();
++}
++
++bool OutputPathContains(const OutputPathString& parent, const OutputPathString& child) {
++    if (child.size() < parent.size()) return false;
++    const auto prefix = child.substr(0, parent.size());
++    const OutputPathLess less;
++    if (less(parent, prefix) || less(prefix, parent)) return false;
++    return child.size() == parent.size() || child[parent.size()] == std::filesystem::path::preferred_separator;
++}
++
+ } // namespace
+ 
+ int RunDecompile(int argc, char** argv) {
+@@ -3134,6 +3316,20 @@ int RunDecompile(int argc, char** argv) {
+     if (files.empty())
+         return Fail("command line", "no .mdl files found");
+ 
++    // Preflight the complete batch, including paths expanded from folders. Two
++    // models must never publish to the same (or nested) output directory.
++    std::map<OutputPathString, std::string, OutputPathLess> destinations;
++    for (const auto& file : files) {
++        const std::string output = OutFolder(file.first, file.second, outDir);
++        const auto key = OutputPathKey(output);
++        for (const auto& previous : destinations) {
++            if (OutputPathContains(key, previous.first) || OutputPathContains(previous.first, key))
++                return Fail("output collision", "inputs \"" + previous.second + "\" and \"" + file.first +
++                            "\" share overlapping output folders; use separate -outdir runs");
++        }
++        destinations.emplace(key, file.first);
++    }
++
+     // one bad model must not end a batch, so each is guarded on its own
+     int failed = 0;
+     for (size_t i = 0; i < files.size(); ++i) {
+diff --git a/mdldecompiler/mdlfile.h b/mdldecompiler/mdlfile.h
+index ae7fd7d..e9b2948 100644
+--- a/mdldecompiler/mdlfile.h
++++ b/mdldecompiler/mdlfile.h
+@@ -142,11 +142,68 @@ inline std::string StripExt(const std::string& s) {
+     return s.substr(0, dot);
+ }
+ 
+-// A stored name is only usable in a script when it is printable, quote-free and
+-// single-line - obfuscators point names into a blob of decoy text.
++// Names are stored as UTF-8. Keep printable Unicode rather than replacing valid
++// non-ASCII bone names; reject malformed UTF-8, controls and quotes, which cannot
++// be represented consistently by both stock QC and SMD quoted strings.
+ inline bool CleanName(const std::string& n) {
+-    return !n.empty() && n.find('"') == std::string::npos &&
+-           std::all_of(n.begin(), n.end(), [](unsigned char c) { return c >= 0x20 && c < 0x7f; });
++    if (n.empty()) return false;
++    for (size_t i = 0; i < n.size();) {
++        const unsigned char first = static_cast<unsigned char>(n[i++]);
++        uint32_t cp = first, minimum = 0;
++        size_t extra = 0;
++        if (first >= 0xc2 && first <= 0xdf) { cp = first & 0x1f; extra = 1; minimum = 0x80; }
++        else if (first >= 0xe0 && first <= 0xef) { cp = first & 0x0f; extra = 2; minimum = 0x800; }
++        else if (first >= 0xf0 && first <= 0xf4) { cp = first & 0x07; extra = 3; minimum = 0x10000; }
++        else if (first >= 0x80) return false;
++        if (extra > n.size() - i) return false;
++        for (size_t j = 0; j < extra; ++j) {
++            const unsigned char c = static_cast<unsigned char>(n[i++]);
++            if ((c & 0xc0) != 0x80) return false;
++            cp = (cp << 6) | (c & 0x3f);
++        }
++        if (cp < minimum || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ||
++            cp < 0x20 || (cp >= 0x7f && cp <= 0x9f) || cp == '"' ||
++            cp == 0x2028 || cp == 0x2029) return false;
++    }
++    return true;
++}
++
++// Source bone lookup folds ASCII case. The key leaves UTF-8 bytes intact.
++inline std::string BoneNameKey(std::string n) {
++    for (char& c : n) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
++    return n;
++}
++
++inline std::vector<std::string> UniqueBoneNames(const std::vector<std::string>& raw) {
++    std::set<std::string> reserved, used;
++    for (const auto& n : raw) if (CleanName(n)) reserved.insert(BoneNameKey(n));
++    std::vector<std::string> names;
++    for (size_t i = 0; i < raw.size(); ++i) {
++        std::string n = raw[i];
++        if (!CleanName(n) || !used.insert(BoneNameKey(n)).second) {
++            const std::string base = "bone_" + std::to_string(i);
++            n = base;
++            for (size_t suffix = 2; reserved.count(BoneNameKey(n)) || used.count(BoneNameKey(n)); ++suffix)
++                n = base + "_" + std::to_string(suffix);
++            used.insert(BoneNameKey(n));
++        }
++        names.push_back(n);
++    }
++    return names;
++}
++
++// Writers report actual extraction/I/O failures independently of intentional
++// -nomesh/-noanimation skips. Publication only happens when every writer succeeds.
++inline bool g_extractionFailed = false;
++inline void ExtractionError(const std::string& error) {
++    g_extractionFailed = true;
++    std::printf("extraction error: %s\n", error.c_str());
++}
++inline bool CloseOutput(std::FILE* f, const std::string& path) {
++    const bool streamOk = std::ferror(f) == 0;
++    const bool closeOk = std::fclose(f) == 0;
++    if (!streamOk || !closeOk) ExtractionError("cannot finish writing \"" + path + "\"");
++    return streamOk && closeOk;
+ }
+ 
+ inline std::vector<std::string> TextureNames(const Mdl& m) {
+@@ -169,16 +226,9 @@ inline std::vector<std::string> BoneNames(const Mdl& m) {
+     std::vector<std::string> names;
+     const fm::mstudiobone_t* bones =
+         m.At<fm::mstudiobone_t>(m.buf.data(), h.boneindex, h.numbones);
+-    std::set<std::string> used;
+-    for (int i = 0; bones && i < h.numbones; ++i) {
+-        std::string n = m.Str(&bones[i], bones[i].sznameindex);
+-        if (!CleanName(n) || !used.insert(n).second) {
+-            n = "bone_" + std::to_string(i);
+-            used.insert(n);
+-        }
+-        names.push_back(n);
+-    }
+-    return names;
++    for (int i = 0; bones && i < h.numbones; ++i)
++        names.emplace_back(m.Str(&bones[i], bones[i].sznameindex));
++    return UniqueBoneNames(names);
+ }
+ 
+ // The bind pose to trust, per bone. Obfuscators write a constant decoy into
 diff --git a/mdldecompiler/version.rc.in b/mdldecompiler/version.rc.in
 index 1d6ae63..ec0fe79 100644
 --- a/mdldecompiler/version.rc.in
@@ -1129937,9 +1130774,15 @@ index f6a5730..d049c17 100644
      add_subdirectory(vmd2valvebiped)
  endif()
 diff --git a/subtools/ag2proportions/CMakeLists.txt b/subtools/ag2proportions/CMakeLists.txt
-index 9d3da30..8029171 100644
+index 9d3da30..30ca2fb 100644
 --- a/subtools/ag2proportions/CMakeLists.txt
 +++ b/subtools/ag2proportions/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-add_executable(ag2proportions main.cpp workflow.cpp rig.cpp graph.cpp compiler.cpp)
++add_executable(ag2proportions main.cpp workflow.cpp rig.cpp graph.cpp compiler.cpp transaction.cpp)
+ target_link_libraries(ag2proportions PRIVATE pulse_libs pulse_math pulse_dmx pulse_keyvalues3)
+ target_include_directories(ag2proportions PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/wrapper.kv3" AG2_WRAPPER)
 @@ -13,7 +13,11 @@ set_target_properties(ag2proportions PROPERTIES
      RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${SUBTOOLS_DIR}")
  set(TOOL_VERSION 0.3.7)
@@ -1129953,6 +1130796,83 @@ index 9d3da30..8029171 100644
  if(WIN32)
      configure_file(version.rc.in "${CMAKE_CURRENT_BINARY_DIR}/version.rc" @ONLY)
      target_sources(ag2proportions PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc" "${CMAKE_SOURCE_DIR}/utf8.manifest")
+diff --git a/subtools/ag2proportions/ag2.h b/subtools/ag2proportions/ag2.h
+index e09c348..c92f474 100644
+--- a/subtools/ag2proportions/ag2.h
++++ b/subtools/ag2proportions/ag2.h
+@@ -102,7 +102,9 @@ kv::Value WrapperGraph(const kv::Value& stockGraph, const std::string& stockPath
+ void Generate(const Job& job, const Options& options);
+ 
+ // compiler.cpp
++void PreflightCompiler(const Options& options, const Paths& paths);
+ void Compile(const Options& options, const Paths& paths, const std::vector<uint8_t>& skeleton,
+-             const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor);
++             const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor,
++             const fs::path& stagedCompiled);
+ 
+ } // namespace ag2
+diff --git a/subtools/ag2proportions/compiler.cpp b/subtools/ag2proportions/compiler.cpp
+index 6096fd3..679f31b 100644
+--- a/subtools/ag2proportions/compiler.cpp
++++ b/subtools/ag2proportions/compiler.cpp
+@@ -1,5 +1,6 @@
+ // compiler.cpp - runs Valve's resourcecompiler headless in a throwaway
+-// workspace, validates the clip and graph it produces, then publishes them.
++// workspace, validates the clip and graph it produces, then stages them for
++// publication together with their sources and the optional VMDL edit.
+ 
+ #include <chrono>
+ #include <cmath>
+@@ -229,11 +230,13 @@ Toolchain FindToolchain(const fs::path& cs2, bool windowsBinaries) {
+                   : std::vector<std::string>{"resourcecompiler", "libresourcecompiler.so", "libtier0.so", "libassetsystem.so"};
+     t.modtools = windowsBinaries ? "modtools.dll" : "libmodtools.so";
+     for (const std::string& name : t.files)
+-        if (!fs::exists(t.bin / name))
++        if (!fs::is_regular_file(t.bin / name))
+             throw runtime_error("missing " + (t.bin / name).u8string() +
+                                 "; install CS2 Workshop Tools or use --generate-only");
+-    if (!fs::exists(t.modBin / t.modtools))
++    if (!fs::is_regular_file(t.modBin / t.modtools))
+         throw runtime_error("missing " + (t.modBin / t.modtools).u8string());
++    if (!fs::is_regular_file(cs2 / "game/bin/assettypes_common.txt"))
++        throw runtime_error("missing " + (cs2 / "game/bin/assettypes_common.txt").u8string());
+     return t;
+ }
+ 
+@@ -315,8 +318,18 @@ void ValidateGraph(const kv::Value& graph) {
+ 
+ } // namespace
+ 
++void PreflightCompiler(const Options& options, const Paths& paths) {
++#ifdef _WIN32
++    (void)options;
++    FindToolchain(paths.cs2, true);
++#else
++    FindToolchain(paths.cs2, options.compilerRunner == "wine");
++#endif
++}
++
+ void Compile(const Options& options, const Paths& paths, const std::vector<uint8_t>& skeleton,
+-             const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor) {
++             const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor,
++             const fs::path& stagedCompiled) {
+ #ifdef _WIN32
+     (void)options;
+     const bool windowsBinaries = true;
+@@ -373,10 +386,9 @@ void Compile(const Options& options, const Paths& paths, const std::vector<uint8
+         const fs::path published = paths.cs2 / "game/csgo_addons" / paths.addon.filename() / fs::u8path(paths.relative);
+         for (const char* source : {kClipFile, kWorldGraphFile, kUiGraphFile}) {
+             const fs::path name = fs::u8path(std::string(source) + "_c");
+-            fs::create_directories((published / name).parent_path());
+-            fs::copy_file(game / fs::u8path(paths.relative) / name, published / name,
+-                          fs::copy_options::overwrite_existing);
+-            std::cout << "Compiled: " << (published / name).u8string() << '\n';
++            fs::create_directories((stagedCompiled / name).parent_path());
++            fs::copy_file(game / fs::u8path(paths.relative) / name, stagedCompiled / name);
++            std::cout << "Validated compiled resource: " << name.u8string() << '\n';
+         }
+ 
+         const fs::path reportPath = paths.output / "debug/report.kv3";
 diff --git a/subtools/ag2proportions/main.cpp b/subtools/ag2proportions/main.cpp
 index 139170b..1e05e66 100644
 --- a/subtools/ag2proportions/main.cpp
@@ -1129977,6 +1130897,260 @@ index 139170b..1e05e66 100644
          auto at = [&] { return ag2::fs::weakly_canonical(base / ag2::fs::u8path(value.String())); };
          if (key == "vmdl") job.vmdl = at();
          else if (key == "model_dmx") job.modelDmx = at();
+diff --git a/subtools/ag2proportions/rig.cpp b/subtools/ag2proportions/rig.cpp
+index 5c810f8..fc236d5 100644
+--- a/subtools/ag2proportions/rig.cpp
++++ b/subtools/ag2proportions/rig.cpp
+@@ -319,8 +319,12 @@ void SaveModelDmx(const fs::path& path, const char* modelName, const std::vector
+     }
+ 
+     std::string err;
+-    if (!q.Save(path.u8string(), &err))
++    std::vector<uint8_t> bytes;
++    if (!dmx::Save(q.Finish(), bytes, &err))
+         throw runtime_error(err);
++    // Include flush/close failures in the transaction's generation phase;
++    // the generic DMX path writer does not check the final close result.
++    kv::WriteFile(path.u8string(), bytes);
+ }
+ 
+ } // namespace
+diff --git a/subtools/ag2proportions/transaction.cpp b/subtools/ag2proportions/transaction.cpp
+new file mode 100644
+index 0000000..c26267a
+--- /dev/null
++++ b/subtools/ag2proportions/transaction.cpp
+@@ -0,0 +1,185 @@
++#include "transaction.h"
++
++#include <algorithm>
++#include <chrono>
++#include <cwchar>
++#include <fstream>
++#include <iostream>
++#include <random>
++#include <stdexcept>
++#include <string>
++#include <utility>
++
++namespace ag2 {
++namespace fs = std::filesystem;
++
++// Only the standalone transaction regression harness defines this hook.
++// Release binaries have no environment-controlled failure injection.
++#ifdef AG2_TRANSACTION_TESTING
++void TransactionTestPoint(const char* point, size_t index);
++#else
++static void TransactionTestPoint(const char*, size_t) {}
++#endif
++
++namespace {
++fs::path UniqueDirectory(const fs::path& parent, const std::string& prefix) {
++    std::random_device random;
++    for (int attempt = 0; attempt < 32; ++attempt) {
++        const fs::path path = parent / (prefix + std::to_string(random()) + "-" +
++            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
++        if (fs::create_directory(path))
++            return path;
++    }
++    throw std::runtime_error("cannot allocate an AG2 staging directory in " + parent.u8string());
++}
++
++// symlink_status also rejects dangling symlinks, so publication never follows
++// a destination link and accidentally modifies a different file.
++bool ExistingFile(const fs::path& path) {
++    std::error_code ec;
++    const auto status = fs::symlink_status(path, ec);
++    if (ec && ec != std::errc::no_such_file_or_directory)
++        throw fs::filesystem_error("cannot inspect AG2 output", path, ec);
++    if (!fs::exists(status))
++        return false;
++    if (!fs::is_regular_file(status))
++        throw std::runtime_error("AG2 output is not a regular file: " + path.u8string());
++    return true;
++}
++
++bool SamePath(const fs::path& a, const fs::path& b) {
++#ifdef _WIN32
++    return _wcsicmp(a.c_str(), b.c_str()) == 0;
++#else
++    return a == b;
++#endif
++}
++} // namespace
++
++OutputTransaction::OutputTransaction()
++    : root_(UniqueDirectory(fs::temp_directory_path(), "newpage-ag2-stage-")) {}
++
++OutputTransaction::~OutputTransaction() { Cleanup(); }
++
++void OutputTransaction::Add(Entry entry) {
++    if (committed_)
++        throw std::runtime_error("AG2 transaction is already committed");
++    entry.destination = fs::absolute(entry.destination).lexically_normal();
++    for (const Entry& other : entries_)
++        if (SamePath(other.destination, entry.destination))
++            throw std::runtime_error("duplicate AG2 output: " + entry.destination.u8string());
++    entries_.push_back(std::move(entry));
++}
++
++void OutputTransaction::Replace(const fs::path& staged, const fs::path& destination, bool createOnly) {
++    Add({staged, destination, {}, createOnly});
++}
++
++void OutputTransaction::Remove(const fs::path& destination) { Add({{}, destination, {}}); }
++
++void OutputTransaction::MakeParents(const fs::path& directory) {
++    if (fs::is_directory(directory))
++        return;
++    if (directory.empty() || directory == directory.parent_path())
++        throw std::runtime_error("cannot create AG2 output directory: " + directory.u8string());
++    MakeParents(directory.parent_path());
++    if (fs::create_directory(directory))
++        createdDirectories_.push_back(directory);
++}
++
++void OutputTransaction::Cleanup() noexcept {
++    if (preserve_)
++        return;
++    auto removeTree = [](const fs::path& path) {
++        if (path.empty())
++            return;
++        std::error_code ec;
++        fs::remove_all(path, ec);
++        if (ec)
++            std::cerr << "WARNING: could not remove AG2 staging directory " << path.u8string()
++                      << ": " << ec.message() << '\n';
++    };
++    for (const Entry& entry : entries_)
++        removeTree(entry.slot);
++    removeTree(root_);
++    // A failed job must not remove unrelated files another process put here.
++    if (!committed_)
++        for (auto it = createdDirectories_.rbegin(); it != createdDirectories_.rend(); ++it) {
++            std::error_code ec;
++            fs::remove(*it, ec); // only succeeds while empty
++        }
++}
++
++void OutputTransaction::Commit() {
++    if (committed_)
++        throw std::runtime_error("AG2 transaction is already committed");
++    try {
++        // Finish every potentially large copy before moving any current output.
++        // Sibling slots make the subsequent renames stay on the destination's
++        // filesystem even when game/content or TEMP are on different volumes.
++        for (size_t i = 0; i < entries_.size(); ++i) {
++            Entry& entry = entries_[i];
++            entry.hadOriginal = ExistingFile(entry.destination);
++            if (entry.createOnly && entry.hadOriginal)
++                throw std::runtime_error("refusing to replace the existing VMDL backup: " + entry.destination.u8string());
++            if (entry.staged.empty() && !entry.hadOriginal)
++                continue;
++            MakeParents(entry.destination.parent_path());
++            entry.slot = UniqueDirectory(entry.destination.parent_path(), ".newpage-ag2-publish-");
++            if (!entry.staged.empty())
++                fs::copy_file(entry.staged, entry.slot / "replacement");
++            TransactionTestPoint("prepared", i);
++        }
++        std::ofstream recovery(root_ / "RECOVERY.txt", std::ios::binary);
++        recovery << "AG2 publication recovery locations (not an automatic crash-recovery journal):\n";
++        for (const Entry& entry : entries_)
++            recovery << entry.destination.u8string() << "\n  backup: "
++                     << (entry.slot / "previous").u8string() << '\n';
++        recovery.close();
++        if (!recovery)
++            throw std::runtime_error("cannot write AG2 recovery locations");
++
++        for (size_t i = 0; i < entries_.size(); ++i) {
++            Entry& entry = entries_[i];
++            if (entry.slot.empty())
++                continue;
++            if (ExistingFile(entry.destination) != entry.hadOriginal)
++                throw std::runtime_error("AG2 output changed during publication: " + entry.destination.u8string());
++            if (entry.hadOriginal) {
++                fs::rename(entry.destination, entry.slot / "previous");
++                entry.movedOriginal = true;
++            }
++            TransactionTestPoint("backed_up", i);
++            if (!entry.staged.empty()) {
++                fs::rename(entry.slot / "replacement", entry.destination);
++                entry.installed = true;
++            }
++            TransactionTestPoint("published", i);
++        }
++        committed_ = true;
++    } catch (const std::exception& failure) {
++        std::string rollbackErrors;
++        for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
++            try {
++                if (it->installed) {
++                    fs::remove(it->destination);
++                    it->installed = false;
++                }
++                if (it->movedOriginal) {
++                    fs::rename(it->slot / "previous", it->destination);
++                    it->movedOriginal = false;
++                }
++            } catch (const std::exception& e) {
++                rollbackErrors += "\n  " + it->destination.u8string() + ": " + e.what();
++            }
++        }
++        if (!rollbackErrors.empty()) {
++            preserve_ = true;
++            throw std::runtime_error(std::string(failure.what()) + "\nAG2 rollback incomplete:" + rollbackErrors +
++                "\nStaged files and backups were retained; see " + (root_ / "RECOVERY.txt").u8string());
++        }
++        throw;
++    }
++}
++
++} // namespace ag2
+diff --git a/subtools/ag2proportions/transaction.h b/subtools/ag2proportions/transaction.h
+new file mode 100644
+index 0000000..e304ec3
+--- /dev/null
++++ b/subtools/ag2proportions/transaction.h
+@@ -0,0 +1,39 @@
++// Exception-safe publication of one AG2 job. This is not a crash-recovery
++// journal: hard termination/power loss and concurrent writers are unsupported.
++#pragma once
++
++#include <filesystem>
++#include <vector>
++
++namespace ag2 {
++
++class OutputTransaction {
++public:
++    OutputTransaction();
++    ~OutputTransaction();
++    OutputTransaction(const OutputTransaction&) = delete;
++    OutputTransaction& operator=(const OutputTransaction&) = delete;
++
++    const std::filesystem::path& StageRoot() const { return root_; }
++    // createOnly protects the first VMDL backup, including if one appears
++    // between generation and publication. Existing backups are never replaced.
++    void Replace(const std::filesystem::path& staged, const std::filesystem::path& destination,
++                 bool createOnly = false);
++    void Remove(const std::filesystem::path& destination);
++    void Commit();
++
++private:
++    struct Entry {
++        std::filesystem::path staged, destination, slot;
++        bool createOnly = false, hadOriginal = false, movedOriginal = false, installed = false;
++    };
++    void Add(Entry entry);
++    void MakeParents(const std::filesystem::path& directory);
++    void Cleanup() noexcept;
++    std::filesystem::path root_;
++    std::vector<Entry> entries_;
++    std::vector<std::filesystem::path> createdDirectories_;
++    bool preserve_ = false, committed_ = false;
++};
++
++} // namespace ag2
 diff --git a/subtools/ag2proportions/version.rc.in b/subtools/ag2proportions/version.rc.in
 index 5b6b871..c9004da 100644
 --- a/subtools/ag2proportions/version.rc.in
@@ -1130008,6 +1131182,164 @@ index 5b6b871..c9004da 100644
          }
      }
      BLOCK "VarFileInfo"
+diff --git a/subtools/ag2proportions/workflow.cpp b/subtools/ag2proportions/workflow.cpp
+index 3beba3a..ebf368b 100644
+--- a/subtools/ag2proportions/workflow.cpp
++++ b/subtools/ag2proportions/workflow.cpp
+@@ -11,6 +11,7 @@
+ 
+ #include "ag2.h"
+ #include "strcompat.h"
++#include "transaction.h"
+ #include "vpk.h"
+ 
+ namespace ag2 {
+@@ -19,7 +20,9 @@ namespace {
+ namespace dmx = pulse::dmx;
+ using std::runtime_error;
+ 
+-// Every file a run writes into the output folder; a rerun clears these first.
++// Every source a run owns. Obsolete debug files are removed in the same
++// transaction as replacements; an input reused from a previous run is read
++// completely before any output is changed.
+ const char* const kGeneratedFiles[] = {
+     kWorldGraphFile, kUiGraphFile, kClipFile, kProportionsFile, kReferenceFile, kSkeletonFile,
+     "debug/skeleton_descriptor.kv3", "debug/report.kv3", "debug/MODEL_SETUP.txt",
+@@ -245,10 +248,10 @@ kv::Value::Array StockBoneNodes(const std::vector<Bone>& bones, const std::vecto
+     return roots;
+ }
+ 
+-// write_model: the VMDL is edited in place (the generated skeleton as its only
++// Build the replacement VMDL (the generated skeleton as its only
+ // SkeletonFile, the stock hierarchy as Bone nodes, graph bindings). The first
+-// edit keeps the untouched file as <name>.vmdl.bak, which ModelDoc never compiles.
+-void EditModel(const std::string& originalText, kv::Value model, const Job& job, const Paths& paths,
++// edit's backup and replacement are published only after the whole job succeeds.
++std::string EditedModel(const std::string& originalText, kv::Value model, const Paths& paths,
+                const kv::Value::Array& boneNodes) {
+     const std::string skeletonFile = paths.relative + "/" + kSkeletonFile;
+     // the generated SkeletonFile starts disabled; a rerun keeps the user's choice
+@@ -339,11 +342,7 @@ void EditModel(const std::string& originalText, kv::Value model, const Job& job,
+     const size_t header = originalText.find("-->");
+     if (header == std::string::npos)
+         throw runtime_error("the VMDL has no KV3 header");
+-    fs::path backup = job.vmdl;
+-    backup += ".bak";
+-    if (!fs::exists(backup))
+-        kv::WriteFile(backup.u8string(), originalText);
+-    kv::WriteFile(job.vmdl.u8string(), originalText.substr(0, header + 3) + "\n" + kv::TextBody(model) + "\n");
++    return originalText.substr(0, header + 3) + "\n" + kv::TextBody(model) + "\n";
+ }
+ 
+ std::string SetupNotes(const Paths& paths, const SkeletonBuild& skeleton, const std::vector<std::string>& warnings,
+@@ -426,6 +425,8 @@ void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::
+ void Generate(const Job& job, const Options& options) {
+     std::cout << "Processing " << job.vmdl.u8string() << '\n';
+     const Paths paths = Locate(job.vmdl);
++    if (!options.generateOnly)
++        PreflightCompiler(options, paths);
+     const std::string vmdlText = ReadText(job.vmdl);
+     kv::Value vmdl = kv::ParseText(vmdlText);
+     const Vpk package(paths.cs2 / "game/csgo/pak01_dir.vpk");
+@@ -503,46 +504,70 @@ void Generate(const Job& job, const Options& options) {
+     if (change < 1e-3f)
+         warnings.insert(warnings.begin(), "the target pose equals the stock skeleton, so the clip changes nothing");
+ 
+-    fs::create_directories(paths.output);
+-    // a job may read a previous run's output; never delete an input
+-    auto clear = [&](const fs::path& file) {
+-        for (const fs::path& input : {job.proportions, job.vnmskel, rigSource.path})
+-            if (!input.empty() && fs::exists(file) && fs::equivalent(file, input))
+-                return;
+-        fs::remove(file);
+-    };
+-    for (const char* name : kGeneratedFiles)
+-        clear(paths.output / name);
+-    std::error_code ec;
+-    for (const char* folder : {"debug", "graphs", "anims", "dmx"})
+-        fs::remove(paths.output / folder, ec); // only when empty
++    OutputTransaction transaction;
++    Paths staged = paths;
++    staged.output = transaction.StageRoot() / "sources";
+     std::cout << "Output: " << paths.output.u8string() << '\n';
+ 
+     for (const char* name : {kSkeletonFile, kReferenceFile})
+-        fs::create_directories((paths.output / name).parent_path());
+-    WriteSkeleton(paths.output / kSkeletonFile, skeleton.bones);
+-    WriteHeldPose(paths.output / kReferenceFile, installed.bones, installed.lowLodCount);
+-    WriteHeldPose(paths.output / kProportionsFile, target, installed.lowLodCount);
++        fs::create_directories((staged.output / name).parent_path());
++    WriteSkeleton(staged.output / kSkeletonFile, skeleton.bones);
++    WriteHeldPose(staged.output / kReferenceFile, installed.bones, installed.lowLodCount);
++    WriteHeldPose(staged.output / kProportionsFile, target, installed.lowLodCount);
+     const kv::Value descriptor = SkeletonDescriptor(ReadStockSkeleton(skeletonBytes), paths.relative + "/" + kReferenceFile);
+-    kv::WriteFile((paths.output / kClipFile).u8string(), kv::WriteText(ProportionClip(paths.relative)));
+-    kv::WriteFile((paths.output / kWorldGraphFile).u8string(), kv::WriteText(graph));
+-    kv::WriteFile((paths.output / kUiGraphFile).u8string(), kv::WriteText(uiGraph));
+-    if (job.writeModel)
+-        EditModel(vmdlText, vmdl, job, paths, StockBoneNodes(skeleton.bones, modelStock));
++    kv::WriteFile((staged.output / kClipFile).u8string(), kv::WriteText(ProportionClip(paths.relative)));
++    kv::WriteFile((staged.output / kWorldGraphFile).u8string(), kv::WriteText(graph));
++    kv::WriteFile((staged.output / kUiGraphFile).u8string(), kv::WriteText(uiGraph));
++    if (job.writeModel) {
++        const fs::path stagedModel = transaction.StageRoot() / "model.vmdl";
++        kv::WriteFile(stagedModel.u8string(), EditedModel(vmdlText, vmdl, paths, StockBoneNodes(skeleton.bones, modelStock)));
++        fs::path backup = job.vmdl;
++        backup += ".bak";
++        const auto backupStatus = fs::symlink_status(backup);
++        if (fs::exists(backupStatus) && !fs::is_regular_file(backupStatus))
++            throw runtime_error("the VMDL backup is not a regular file: " + backup.u8string());
++        if (!fs::exists(backupStatus)) {
++            const fs::path stagedBackup = transaction.StageRoot() / "model.vmdl.bak";
++            kv::WriteFile(stagedBackup.u8string(), vmdlText);
++            transaction.Replace(stagedBackup, backup, true);
++        }
++        transaction.Replace(stagedModel, job.vmdl);
++    }
+     // what the clip was built from, for issue reports
+     if (options.debug) {
+         const std::string rigName = rigSource.path.generic_u8string();
+         const std::string poseName = job.proportions.empty() ? rigName : job.proportions.generic_u8string();
+-        kv::WriteFile((paths.output / "debug/skeleton_descriptor.kv3").u8string(), kv::WriteText(descriptor));
+-        kv::WriteFile((paths.output / "debug/report.kv3").u8string(),
++        kv::WriteFile((staged.output / "debug/skeleton_descriptor.kv3").u8string(), kv::WriteText(descriptor));
++        kv::WriteFile((staged.output / "debug/report.kv3").u8string(),
+                       kv::WriteText(Report(job, rigName, poseName, paths, installed.bones, target)));
+-        kv::WriteFile((paths.output / "debug/MODEL_SETUP.txt").u8string(),
++        kv::WriteFile((staged.output / "debug/MODEL_SETUP.txt").u8string(),
+                       SetupNotes(paths, skeleton, warnings, job.writeModel));
+     }
++    if (!options.generateOnly) {
++        const fs::path stagedCompiled = transaction.StageRoot() / "compiled";
++        Compile(options, staged, skeletonBytes, graphBytes, uiGraphBytes, descriptor, stagedCompiled);
++        const fs::path published = paths.cs2 / "game/csgo_addons" / paths.addon.filename() / fs::u8path(paths.relative);
++        for (const char* source : {kClipFile, kWorldGraphFile, kUiGraphFile}) {
++            const fs::path name = fs::u8path(std::string(source) + "_c");
++            transaction.Replace(stagedCompiled / name, published / name);
++        }
++    }
++    for (const char* name : kGeneratedFiles) {
++        if (fs::is_regular_file(staged.output / name)) {
++            transaction.Replace(staged.output / name, paths.output / name);
++        } else {
++            // Optional debug output from the previous run is obsolete, unless
++            // it is also one of this job's explicitly supplied inputs.
++            bool input = false;
++            for (const fs::path& source : {job.proportions, job.vnmskel, rigSource.path})
++                if (!source.empty() && fs::exists(paths.output / name) && fs::equivalent(paths.output / name, source))
++                    input = true;
++            if (!input)
++                transaction.Remove(paths.output / name);
++        }
++    }
++    transaction.Commit();
+     PrintSummary(paths, skeleton, warnings, job);
+-
+-    if (!options.generateOnly)
+-        Compile(options, paths, skeletonBytes, graphBytes, uiGraphBytes, descriptor);
+     std::cout << "DONE: " << paths.output.u8string()
+               << (options.generateOnly ? " (source assets only)\n" : " (graph and clip compiled)\n");
+ }
 diff --git a/subtools/l4d_animswap/CMakeLists.txt b/subtools/l4d_animswap/CMakeLists.txt
 index 92c17dc..fa787b8 100644
 --- a/subtools/l4d_animswap/CMakeLists.txt
@@ -1130022,10 +1131354,130 @@ index 92c17dc..fa787b8 100644
  # Explorer's Details tab (file description, product name/version, copyright).
  if(WIN32)
 diff --git a/subtools/l4d_animswap/main.cpp b/subtools/l4d_animswap/main.cpp
-index 1619ffe..fd93121 100644
+index 1619ffe..e06833a 100644
 --- a/subtools/l4d_animswap/main.cpp
 +++ b/subtools/l4d_animswap/main.cpp
-@@ -1090,7 +1090,7 @@ bool WriteLight(const std::string& path, const Survivor& rig, const Survivor& tg
+@@ -7,6 +7,7 @@
+ 
+ #include <algorithm>
+ #include <cctype>
++#include <cstdint>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+@@ -106,26 +107,45 @@ bool LoadMdl(const std::string& path, Mdl& out) {
+ 
+     const char* base = out.bytes.data();
+     const auto* hdr = reinterpret_cast<const fm::studiohdr_t*>(base);
+-    if (hdr->id != fm::kIdStudioHeader) return false;
+-
+-    const auto str = [&](size_t off) {
+-        return off < out.bytes.size() ? std::string(base + off) : std::string();
++    if (hdr->id != fm::kIdStudioHeader || hdr->length < sizeof(fm::studiohdr_t) ||
++        static_cast<size_t>(hdr->length) > out.bytes.size()) return false;
++    const size_t length = static_cast<size_t>(hdr->length);
++    bool valid = true;
++    const auto table = [&](int64_t off, int count, size_t stride) {
++        return count >= 0 && (count == 0 || (off >= 0 && static_cast<uint64_t>(off) <= length &&
++            static_cast<size_t>(count) <= (length - static_cast<size_t>(off)) / stride));
++    };
++    if (!table(hdr->localposeparamindex, hdr->numlocalposeparameters, sizeof(fm::mstudioposeparamdesc_t)) ||
++        !table(hdr->localseqindex, hdr->numlocalseq, sizeof(fm::mstudioseqdesc_t)) ||
++        !table(hdr->includemodelindex, hdr->numincludemodels, sizeof(fm::mstudiomodelgroup_t)))
++        return false;
++    const auto str = [&](int64_t off) {
++        if (off < 0 || static_cast<uint64_t>(off) >= length) {
++            valid = false;
++            return std::string();
++        }
++        const char* start = base + off;
++        const char* end = static_cast<const char*>(std::memchr(start, 0, length - static_cast<size_t>(off)));
++        if (!end) {
++            valid = false;
++            return std::string();
++        }
++        return std::string(start, end);
+     };
+     std::vector<std::string> poses;
+     for (int i = 0; i < hdr->numlocalposeparameters; ++i) {
+         const size_t at = static_cast<size_t>(hdr->localposeparamindex) +
+                           i * sizeof(fm::mstudioposeparamdesc_t);
+-        if (at + sizeof(fm::mstudioposeparamdesc_t) > out.bytes.size()) break;
+         const auto* pd = reinterpret_cast<const fm::mstudioposeparamdesc_t*>(base + at);
+-        poses.push_back(str(at + static_cast<size_t>(pd->sznameindex)));
++        poses.push_back(str(static_cast<int64_t>(at) + pd->sznameindex));
+     }
+     for (int i = 0; i < hdr->numlocalseq; ++i) {
+         const size_t at = static_cast<size_t>(hdr->localseqindex) + i * sizeof(fm::mstudioseqdesc_t);
+-        if (at + sizeof(fm::mstudioseqdesc_t) > out.bytes.size()) break;
+         const auto* sd = reinterpret_cast<const fm::mstudioseqdesc_t*>(base + at);
+-        out.seqs.push_back(str(at + static_cast<size_t>(sd->szlabelindex)));
++        out.seqs.push_back(str(static_cast<int64_t>(at) + sd->szlabelindex));
++        if (out.seqs.back().empty()) return false;
+         std::string act = sd->szactivitynameindex
+-                              ? str(at + static_cast<size_t>(sd->szactivitynameindex))
++                              ? str(static_cast<int64_t>(at) + sd->szactivitynameindex)
+                               : std::string();
+         if (!act.empty()) act += " " + std::to_string(sd->actweight);
+         out.acts.push_back(act);
+@@ -143,10 +163,11 @@ bool LoadMdl(const std::string& path, Mdl& out) {
+     for (int i = 0; i < static_cast<int>(out.seqs.size()); ++i) {
+         const size_t at = static_cast<size_t>(hdr->localseqindex) + i * sizeof(fm::mstudioseqdesc_t);
+         const auto* sd = reinterpret_cast<const fm::mstudioseqdesc_t*>(base + at);
++        if (!table(static_cast<int64_t>(at) + sd->autolayerindex, sd->numautolayers,
++                   sizeof(fm::mstudioautolayer_t))) return false;
+         for (int k = 0; k < sd->numautolayers; ++k) {
+             const size_t la =
+                 at + static_cast<size_t>(sd->autolayerindex) + k * sizeof(fm::mstudioautolayer_t);
+-            if (la + sizeof(fm::mstudioautolayer_t) > out.bytes.size()) break;
+             const int s = reinterpret_cast<const fm::mstudioautolayer_t*>(base + la)->iSequence;
+             if (s >= 0 && s < static_cast<int>(out.seqs.size())) out.autolayers.push_back(out.seqs[s]);
+         }
+@@ -154,11 +175,12 @@ bool LoadMdl(const std::string& path, Mdl& out) {
+     for (int i = 0; i < hdr->numincludemodels; ++i) {
+         const size_t at =
+             static_cast<size_t>(hdr->includemodelindex) + i * sizeof(fm::mstudiomodelgroup_t);
+-        if (at + sizeof(fm::mstudiomodelgroup_t) > out.bytes.size()) break;
+         const auto* mg = reinterpret_cast<const fm::mstudiomodelgroup_t*>(base + at);
+-        if (mg->sznameindex) out.includes.push_back(str(at + static_cast<size_t>(mg->sznameindex)));
++        if (!mg->sznameindex) return false;
++        out.includes.push_back(str(static_cast<int64_t>(at) + mg->sznameindex));
++        if (out.includes.back().empty()) return false;
+     }
+-    return true;
++    return valid;
+ }
+ 
+ // One survivor's resolved slot list: the name at each index and, for the
+@@ -178,6 +200,7 @@ struct Resolver {
+     std::string dir;
+     std::map<std::string, Mdl> cache;
+     bool missing = false;
++    std::set<const Mdl*> active;
+ 
+     const Mdl* Get(const std::string& modelPath) {
+         const std::string leaf = Leaf(modelPath);
+@@ -195,6 +218,11 @@ struct Resolver {
+     }
+ 
+     void Walk(const Mdl& m, Slots& order, std::map<std::string, size_t>& seen) {
++        if (!active.insert(&m).second) {
++            std::fprintf(stderr, "  cyclic animation model include chain\n");
++            missing = true;
++            return;
++        }
+         for (size_t i = 0; i < m.seqs.size(); ++i) {
+             const std::string key = Lower(m.seqs[i]);
+             const std::string act = i < m.acts.size() ? m.acts[i] : std::string();
+@@ -218,6 +246,7 @@ struct Resolver {
+         }
+         for (const std::string& inc : m.includes)
+             if (const Mdl* sub = Get(inc)) Walk(*sub, order, seen);
++        active.erase(&m);
+     }
+ 
+     Slots Order(const Survivor& h) {
+@@ -1090,7 +1119,7 @@ bool WriteLight(const std::string& path, const Survivor& rig, const Survivor& tg
  
  void PrintHeader() {
      std::printf("-------------------------------\n");
@@ -1130034,6 +1131486,66 @@ index 1619ffe..fd93121 100644
      std::printf("version:   %s\n", PULSEMODEL_VERSION);
      std::printf("developer: Toppi\n");
      std::printf("-------------------------------\n");
+@@ -1245,18 +1274,8 @@ int main(int argc, char** argv) {
+     }
+ 
+     const std::set<std::string> codes = CodeTokens();
+-    Resolver res{dir, {}, false};
++    Resolver res{dir, {}, false, {}};
+     std::map<std::string, Slots> orders;
+-    for (const Survivor& h : kSurvivors) {
+-        orders[h.survivor] = res.Order(h);
+-        if (orders[h.survivor].names.size() <= static_cast<size_t>(skip)) {
+-            std::fprintf(stderr, "no usable sequence list for %s - check survivor_%s.mdl in %s\n",
+-                         h.survivor, h.code, dir.c_str());
+-            return 1;
+-        }
+-    }
+-    if (res.missing)
+-        std::fprintf(stderr, "warning: some includes were unreadable, slot order may be short\n");
+ 
+     std::vector<std::pair<const Survivor*, const Survivor*>> jobs;
+     if (all) {
+@@ -1267,6 +1286,11 @@ int main(int argc, char** argv) {
+         jobs.emplace_back(rig, tgt);
+     }
+ 
++    // Resolve all dependencies for the requested jobs before opening any QCI.
++    // A single swap needs only its target and selected donor chain; unrelated
++    // survivors need not be extracted just to convert that pair.
++    std::vector<std::vector<const Survivor*>> chains;
++    std::set<const Survivor*> required;
+     for (const auto& job : jobs) {
+         std::vector<const Survivor*> wanted{job.first};
+         if (haveVia) {
+@@ -1285,6 +1309,27 @@ int main(int argc, char** argv) {
+         for (const Survivor* h : wanted)
+             if (h != job.second && std::find(chain.begin(), chain.end(), h) == chain.end())
+                 chain.push_back(h);
++        required.insert(job.first);
++        required.insert(job.second);
++        required.insert(chain.begin(), chain.end());
++        chains.push_back(std::move(chain));
++    }
++    for (const Survivor* h : required) {
++        orders[h->survivor] = res.Order(*h);
++        if (orders[h->survivor].names.size() <= static_cast<size_t>(skip)) {
++            std::fprintf(stderr, "no usable sequence list for %s - check survivor_%s.mdl in %s\n",
++                         h->survivor, h->code, dir.c_str());
++            return 1;
++        }
++    }
++    if (res.missing) {
++        std::fprintf(stderr, "required animation model includes are missing, malformed or cyclic; no QCI written\n");
++        return 1;
++    }
++
++    for (size_t jobIndex = 0; jobIndex < jobs.size(); ++jobIndex) {
++        const auto& job = jobs[jobIndex];
++        const auto& chain = chains[jobIndex];
+ 
+         std::vector<Index> idx(chain.size());
+         for (size_t d = 0; d < chain.size(); ++d)
 diff --git a/subtools/l4d_animswap/version.rc.in b/subtools/l4d_animswap/version.rc.in
 index 0aa1c02..358f47a 100644
 --- a/subtools/l4d_animswap/version.rc.in
@@ -1130325,13 +1131837,14 @@ index 0000000..ec07d42
 +}
 diff --git a/subtools/meshtool/mesh_simplify.cpp b/subtools/meshtool/mesh_simplify.cpp
 new file mode 100644
-index 0000000..f0e5323
+index 0000000..14d8f61
 --- /dev/null
 +++ b/subtools/meshtool/mesh_simplify.cpp
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,159 @@
 +#include "mesh_simplify.h"
 +
 +#include <cstdint>
++#include <cmath>
 +#include <cstring>
 +#include <fstream>
 +#include <vector>
@@ -1130416,22 +1131929,49 @@ index 0000000..f0e5323
 +        r.Block(static_cast<std::size_t>(vertexCount) * 3u * sizeof(float)));
 +    if (vertexCount > 0 && !positions)
 +        return fail("the request ends inside its positions");
++    for (std::size_t i = 0; i < static_cast<std::size_t>(vertexCount) * 3; ++i)
++        if (!std::isfinite(positions[i]))
++            return fail("the request contains a non-finite vertex position");
 +    if (!r.U32(runCount))
 +        return fail("the request ends before its run count");
++
++    // Validate the whole request before entering meshoptimizer. Its API assumes
++    // triangle lists and valid indices, and malformed data can otherwise crash
++    // a release build instead of producing the protocol's ordinary error.
++    struct Run {
++        std::uint32_t indexCount, target, flags;
++        const unsigned int* indices;
++    };
++    std::vector<Run> runs;
++    for (std::uint32_t run = 0; run < runCount; ++run) {
++        std::uint32_t indexCount = 0, target = 0, flags = 0;
++        if (!r.U32(indexCount) || !r.U32(target) || !r.U32(flags))
++            return fail("the request ends inside a run header");
++        if (indexCount % 3 != 0)
++            return fail("a run's index count is not a multiple of three");
++        if (target > indexCount)
++            return fail("a run's target exceeds its index count");
++        if (flags & ~kLockBorder)
++            return fail("a run contains unsupported simplify flags");
++        const auto* indices = static_cast<const unsigned int*>(
++            r.Block(static_cast<std::size_t>(indexCount) * sizeof(unsigned int)));
++        if (indexCount > 0 && !indices)
++            return fail("the request ends inside a run's indices");
++        for (std::uint32_t i = 0; i < indexCount; ++i)
++            if (indices[i] >= vertexCount)
++                return fail("a run contains an index outside the vertex pool");
++        runs.push_back({indexCount, target, flags, indices});
++    }
++    if (r.at != r.end)
++        return fail("the request contains trailing data");
 +
 +    std::vector<std::uint8_t> response;
 +    PutU32(response, kMagic);
 +    PutU32(response, runCount);
 +
 +    std::vector<unsigned int> simplified;
-+    for (std::uint32_t run = 0; run < runCount; run++) {
-+        std::uint32_t indexCount = 0, target = 0, flags = 0;
-+        if (!r.U32(indexCount) || !r.U32(target) || !r.U32(flags))
-+            return fail("the request ends inside a run header");
-+        const auto* indices = static_cast<const unsigned int*>(
-+            r.Block(static_cast<std::size_t>(indexCount) * sizeof(unsigned int)));
-+        if (indexCount > 0 && !indices)
-+            return fail("the request ends inside a run's indices");
++    for (const Run& run : runs) {
++        const auto [indexCount, target, flags, indices] = run;
 +
 +        float error = 0.0f;
 +        std::size_t kept = 0;
@@ -1130529,10 +1132069,42 @@ index a8aa18b..64732b8 100644
  if(WIN32)
      configure_file(version.rc.in "${CMAKE_CURRENT_BINARY_DIR}/version.rc" @ONLY)
 diff --git a/subtools/vmd2valvebiped/main.cpp b/subtools/vmd2valvebiped/main.cpp
-index 0117649..845c3b1 100644
+index 0117649..2957ce0 100644
 --- a/subtools/vmd2valvebiped/main.cpp
 +++ b/subtools/vmd2valvebiped/main.cpp
-@@ -890,7 +890,7 @@ struct Leg {
+@@ -19,6 +19,11 @@
+ #include <string>
+ #include <vector>
+ 
++#ifdef _WIN32
++#define NOMINMAX
++#include <windows.h>
++#endif
++
+ #include "dmxwrite.h"
+ #include "dr_mp3.h"
+ #include "dr_wav.h"
+@@ -36,6 +41,19 @@ using pm::Vector3;
+ 
+ namespace {
+ 
++// Match the filesystem's case-insensitive Windows spelling, including Unicode,
++// after resolving existing directory aliases and lexical dot segments.
++struct OutputPathLess {
++    bool operator()(const fs::path::string_type& a, const fs::path::string_type& b) const {
++#ifdef _WIN32
++        return CompareStringOrdinal(a.c_str(), static_cast<int>(a.size()), b.c_str(),
++                                    static_cast<int>(b.size()), TRUE) == CSTR_LESS_THAN;
++#else
++        return a < b;
++#endif
++    }
++};
++
+ // ------------------------------------------------------------------ vector ops
+ 
+ Vector3 Add(const Vector3& a, const Vector3& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
+@@ -890,7 +908,7 @@ struct Leg {
  
  void PrintHeader() {
      std::printf("-------------------------------\n");
@@ -1130541,6 +1132113,160 @@ index 0117649..845c3b1 100644
      std::printf("version:   %s\n", PULSEMODEL_VERSION);
      std::printf("developer: Toppi\n");
      std::printf("-------------------------------\n");
+@@ -1482,9 +1500,112 @@ int main(int argc, char** argv) {
+             gameDir = fs::path(vmdPaths[0]).parent_path().string();
+         srcDir = !srcArg.empty() ? srcArg
+                                  : (fs::path(vmdPaths[0]).parent_path() / (ClipName(compileName) + "_src")).string();
+-        fs::create_directories(srcDir, ec);
+     }
+     const fs::path dataDir = compileName.empty() ? fs::path() : fs::path(gameDir) / "datamodel";
++
++    struct OutputPlan { std::string path, clip; };
++    std::vector<OutputPlan> plans(vmdPaths.size());
++    std::map<fs::path::string_type, std::string, OutputPathLess> outputOwners;
++    std::set<std::string> sequenceNames;
++    const auto sequenceKey = [](std::string name) {
++        for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
++        return name;
++    };
++    const auto reserve = [&](const fs::path& path, const std::string& owner) {
++        std::error_code pathError;
++        const fs::path absolute = fs::absolute(path, pathError);
++        const fs::path normalized = pathError ? absolute : fs::weakly_canonical(absolute, pathError);
++        if (pathError) {
++            err = "cannot resolve output path \"" + path.string() + "\": " + pathError.message();
++            return false;
++        }
++        for (const auto& [existingPath, existingOwner] : outputOwners) {
++            std::error_code equivalentError;
++            if (fs::equivalent(normalized, fs::path(existingPath), equivalentError) && !equivalentError) {
++                err = "output collision at \"" + normalized.string() + "\": " + existingOwner + " and " + owner;
++                return false;
++            }
++        }
++        const auto [at, inserted] = outputOwners.emplace(normalized.native(), owner);
++        if (!inserted) {
++            err = "output collision at \"" + normalized.string() + "\": " + at->second + " and " + owner;
++            return false;
++        }
++        return true;
++    };
++    const std::string qc = srcDir.empty() ? std::string()
++        : (fs::path(srcDir) / (ClipName(compileName) + ".qc")).string();
++    if (!qc.empty() && !reserve(qc, "animation QC")) return Fail(err);
++    // Discover every body, face, camera and audio destination before writing any
++    // file. A camera suffix can also be another input's body name; checking only
++    // the body names while converting silently replaces that earlier document.
++    for (size_t motion = 0; motion < vmdPaths.size(); ++motion) {
++        const std::string& vmdPath = vmdPaths[motion];
++        std::map<std::string, std::vector<Key>> keys;
++        Morphs morphs;
++        std::vector<CamKey> cams;
++        uint32_t lastFrame = 0;
++        if (!LoadVmd(vmdPath, keys, morphs, cams, lastFrame, err)) return Fail(err);
++        if (std::none_of(mmd.bones.begin(), mmd.bones.end(),
++                         [&](const MmdBone& bone) { return keys.count(bone.sj) != 0; }))
++            continue;
++        if ((endArg >= 0 ? std::min<long>(endArg, lastFrame) : static_cast<long>(lastFrame)) <
++            (startArg >= 0 ? startArg : 0))
++            return Fail("\"" + vmdPath + "\": -start is past -end or the motion's last key");
++        OutputPlan& plan = plans[motion];
++        if (!srcDir.empty()) {
++            plan.clip = ClipName(vmdPath);
++            const std::string base = plan.clip;
++            for (int n = 2; sequenceNames.count(sequenceKey(plan.clip)); ++n)
++                plan.clip = base + "_" + std::to_string(n);
++            plan.path = (fs::path(srcDir) / (plan.clip + ".dmx")).string();
++        } else {
++            plan.path = outPath.empty() ? mdldecompiler::StripExt(vmdPath) + ".dmx" : outPath;
++            plan.clip = mdldecompiler::StripExt(mdldecompiler::BaseName(plan.path));
++        }
++        sequenceNames.insert(sequenceKey(plan.clip));
++        if (!reserve(plan.path, "body from " + vmdPath)) return Fail(err);
++        if (!dataDir.empty() &&
++            !reserve(dataDir / "flex_anims" / (plan.clip + ".dmx"), "face/body copy from " + vmdPath))
++            return Fail(err);
++        const std::string faceVmd = mdldecompiler::StripExt(vmdPath) + "_face.vmd";
++        if (fs::exists(faceVmd, ec)) {
++            std::map<std::string, std::vector<Key>> faceKeys;
++            Morphs faceMorphs;
++            std::vector<CamKey> faceCams;
++            uint32_t faceLast = 0;
++            if (!LoadVmd(faceVmd, faceKeys, faceMorphs, faceCams, faceLast, err)) return Fail(err);
++        }
++        const std::string camVmd = mdldecompiler::StripExt(vmdPath) + "_camera.vmd";
++        if (fs::exists(camVmd, ec)) {
++            std::map<std::string, std::vector<Key>> camKeys;
++            Morphs camMorphs;
++            uint32_t camLast = 0;
++            cams.clear();
++            if (!LoadVmd(camVmd, camKeys, camMorphs, cams, camLast, err)) return Fail(err);
++        }
++        if (!cams.empty()) {
++            const std::string camClip = plan.clip + "_camera";
++            if (!srcDir.empty() && !sequenceNames.insert(sequenceKey(camClip)).second)
++                return Fail("sequence name collision: \"" + camClip + "\" (camera from " + vmdPath + ")");
++            const fs::path camDir = fs::path(plan.path).parent_path();
++            if (!reserve(camDir / (camClip + ".smd"), "camera from " + vmdPath)) return Fail(err);
++            if (cameraFov == "dmx" &&
++                !reserve((dataDir.empty() ? camDir : dataDir / "camera_anims") / (camClip + ".dmx"),
++                         "camera FOV from " + vmdPath)) return Fail(err);
++        }
++        if (sound) {
++            for (const char* ext : {".wav", ".mp3"}) {
++                if (!fs::exists(mdldecompiler::StripExt(vmdPath) + ext, ec)) continue;
++                if (std::string("mmd/" + plan.clip + ".wav").size() > 64)
++                    return Fail("sound path is over the 64-character event limit: " + plan.clip);
++                if (!reserve(fs::path(gameDir) / "sound" / "mmd" / (plan.clip + ".wav"),
++                             "sound from " + vmdPath)) return Fail(err);
++                break;
++            }
++        }
++    }
++    if (!srcDir.empty()) fs::create_directories(srcDir, ec);
+     if (!dataDir.empty())
+         fs::create_directories(dataDir / "flex_anims", ec);
+     std::set<std::string> faceMissing;
+@@ -1497,7 +1618,8 @@ int main(int argc, char** argv) {
+     std::vector<Clip> clips;
+     std::vector<matrix3x4> G(mmd.bones.size()), W(t.n), L(t.n);
+ 
+-    for (const std::string& vmdPath : vmdPaths) {
++    for (size_t motion = 0; motion < vmdPaths.size(); ++motion) {
++        const std::string& vmdPath = vmdPaths[motion];
+         std::map<std::string, std::vector<Key>> keys;
+         Morphs morphs;
+         std::vector<CamKey> cams;
+@@ -1602,19 +1724,8 @@ int main(int argc, char** argv) {
+             frames.push_back(std::move(fr));
+         }
+ 
+-        // -compile names clips for the script; a repeat takes an ordinal
+-        std::string path = outPath, clip;
+-        if (!srcDir.empty()) {
+-            clip = ClipName(vmdPath);
+-            const std::string base = clip;
+-            for (int n = 2; std::any_of(clips.begin(), clips.end(), [&](const Clip& c) { return c.name == clip; }); ++n)
+-                clip = base + "_" + std::to_string(n);
+-            path = (fs::path(srcDir) / (clip + ".dmx")).string();
+-        } else {
+-            if (path.empty())
+-                path = mdldecompiler::StripExt(vmdPath) + ".dmx";
+-            clip = mdldecompiler::StripExt(mdldecompiler::BaseName(path));
+-        }
++        const std::string& path = plans[motion].path;
++        const std::string& clip = plans[motion].clip;
+ 
+         // face: the motion's own morphs, each one <vmd name>_face.vmd also keys taken from there
+         const std::string faceVmd = mdldecompiler::StripExt(vmdPath) + "_face.vmd";
+@@ -1776,7 +1887,6 @@ int main(int argc, char** argv) {
+     if (srcDir.empty())
+         return 0;
+ 
+-    const std::string qc = (fs::path(srcDir) / (ClipName(compileName) + ".qc")).string();
+     if (!WriteAnimQc(qc, m, compileName, clips, fovBone))
+         return Fail("cannot write \"" + qc + "\"");
+     std::printf("wrote %s\n\n", qc.c_str());
 diff --git a/subtools/vmd2valvebiped/version.rc.in b/subtools/vmd2valvebiped/version.rc.in
 index 67add67..27d7e5b 100644
 --- a/subtools/vmd2valvebiped/version.rc.in

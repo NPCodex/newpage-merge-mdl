@@ -10,6 +10,8 @@
 #include "dependencies.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -42,6 +44,7 @@ namespace {
 // ---------------------------------------------------------------------------
 struct LineReader {
     std::vector<std::string> lines;
+    std::string path;
     size_t idx = 0;
     int lineNo = 0;
 
@@ -61,6 +64,7 @@ struct LineReader {
 };
 
 bool ReadAllLines(const std::string& path, LineReader& r, std::string* err) {
+    r.path = path;
     pulse::dependencies::Note(path);
     std::ifstream f(path, std::ios::binary);
     if (!f) {
@@ -380,6 +384,40 @@ int LookupIndex(TriState& st, int material, const pm::Vector3& pos, const pm::Ve
     return numvlist;
 }
 
+// A conversion must consume one complete token. strtof/strtol alone silently
+// accept both missing fields and prefixes such as "0.5oops".
+struct VertexTokens {
+    const char* p;
+    const LineReader& reader;
+    std::string* error;
+    void Space() { while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p; }
+    bool Done() { Space(); return !*p || (p[0] == '/' && p[1] == '/'); }
+    bool Fail(const std::string& field) {
+        if (error) *error = reader.path + ":" + std::to_string(reader.lineNo) +
+            ": invalid or missing SMD triangle " + field;
+        return false;
+    }
+    bool Boundary(const char* end) const {
+        return !*end || *end == ' ' || *end == '\t' || *end == '\r' || *end == '\n' ||
+            (end[0] == '/' && end[1] == '/');
+    }
+    bool Integer(int& value, const std::string& field) {
+        Space(); char* end = nullptr; errno = 0;
+        const long result = std::strtol(p, &end, 10);
+        if (end == p || !Boundary(end) || errno == ERANGE || result < INT_MIN || result > INT_MAX)
+            return Fail(field);
+        value = static_cast<int>(result); p = end; return true;
+    }
+    bool Float(float& value, const std::string& field) {
+        Space(); char* end = nullptr; errno = 0;
+        value = std::strtof(p, &end);
+        // Finite underflow (subnormal or rounded zero) is legitimate; overflow
+        // and explicit NaN/Inf are rejected by the finiteness check.
+        if (end == p || !Boundary(end) || !std::isfinite(value)) return Fail(field);
+        p = end; return true;
+    }
+};
+
 // reference ParseFaceData: read the 3 corner lines of one triangle. The unify
 // itself is deferred to BuildUnifiedMeshes, which the FBX loader shares.
 bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int material,
@@ -387,36 +425,27 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
     for (int j = 0; j < 3; ++j) {
         const std::string* line = r.Next();
         if (!line) {
-            if (err) *err = "unexpected EOF reading a triangle";
+            if (err) *err = r.path + ":" + std::to_string(r.lineNo + 1) + ": unexpected EOF reading a triangle";
             return false;
         }
-        const char* p = line->c_str();
-        char* end = nullptr;
-
-        long bone = std::strtol(p, &end, 10);
-        p = end;
+        VertexTokens tokens{line->c_str(), r, err};
+        int bone = 0;
         pm::Vector3 pos, nrm;
-        pos.x = std::strtof(p, &end); p = end;
-        pos.y = std::strtof(p, &end); p = end;
-        pos.z = std::strtof(p, &end); p = end;
-        nrm.x = std::strtof(p, &end); p = end;
-        nrm.y = std::strtof(p, &end); p = end;
-        nrm.z = std::strtof(p, &end); p = end;
         pm::Vector2 tc;
-        tc.x = std::strtof(p, &end); p = end;
-        tc.y = std::strtof(p, &end); p = end;
+        if (!tokens.Integer(bone, "bone index") ||
+            !tokens.Float(pos.x, "position X") || !tokens.Float(pos.y, "position Y") || !tokens.Float(pos.z, "position Z") ||
+            !tokens.Float(nrm.x, "normal X") || !tokens.Float(nrm.y, "normal Y") || !tokens.Float(nrm.z, "normal Z") ||
+            !tokens.Float(tc.x, "UV U") || !tokens.Float(tc.y, "UV V")) return false;
 
         if (bone < 0 || bone >= numbones) {
-            if (err) *err = "bogus bone index in a triangle vertex";
-            return false;
+            return tokens.Fail("bone index (bogus bone index, out of range)");
         }
 
         pos.x *= scale; pos.y *= scale; pos.z *= scale;
         if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z) ||
             !std::isfinite(nrm.x) || !std::isfinite(nrm.y) || !std::isfinite(nrm.z) ||
             !std::isfinite(tc.x) || !std::isfinite(tc.y)) {
-            if (err) *err = "non-finite SMD vertex";
-            return false;
+            return tokens.Fail("vertex (non-finite after scaling)");
         }
 
 
@@ -425,34 +454,30 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
         float weights[lim::kMaxSrcBoneWeights];
 
         // optional explicit bone weight list
-        const char* q = p;
-        while (*q == ' ' || *q == '\t') ++q;
-        if (*q && *q != '\n' && *q != '\r') {
-            iCount = static_cast<int>(std::strtol(p, &end, 10));
-            p = end;
+        if (!tokens.Done()) {
+            if (!tokens.Integer(iCount, "weight count")) return false;
             if (iCount < 0 || iCount > lim::kMaxSrcBoneWeights) {
-                if (err) *err = "SMD vertex weight count must be 0.." + std::to_string(lim::kMaxSrcBoneWeights);
-                return false;
+                return tokens.Fail("weight count (must be 0.." + std::to_string(lim::kMaxSrcBoneWeights) + ")");
             }
             const int actual = iCount;
             for (int k = 0; k < actual; ++k) {
-                bones[k] = static_cast<int>(std::strtol(p, &end, 10)); p = end;
-                weights[k] = std::strtof(p, &end); p = end;
+                if (!tokens.Integer(bones[k], "influence bone index") || !tokens.Float(weights[k], "influence weight")) return false;
                 if (bones[k] < 0 || bones[k] >= numbones || !std::isfinite(weights[k]) || weights[k] < 0) {
-                    if (err) *err = "invalid SMD vertex bone influence";
-                    return false;
+                    return tokens.Fail("bone influence (out of range)");
                 }
             }
             // SMD v3 extra texcoords: parsed to advance, ignored (single UV).
-            if (version >= 3) {
-                const char* e = p;
-                while (*e == ' ' || *e == '\t') ++e;
-                if (*e && *e != '\n' && *e != '\r') {
-                    int iExtras = static_cast<int>(std::strtol(p, &end, 10)); p = end;
-                    for (int k = 0; k < iExtras; ++k) { std::strtof(p, &end); p = end; }
+            if (version >= 3 && !tokens.Done()) {
+                int extras = 0;
+                if (!tokens.Integer(extras, "extra UV count")) return false;
+                if (extras < 0 || extras > 8) return tokens.Fail("extra UV count (must be 0..8)");
+                for (int k = 0; k < extras; ++k) {
+                    float u, v;
+                    if (!tokens.Float(u, "extra UV U") || !tokens.Float(v, "extra UV V")) return false;
                 }
             }
         }
+        if (!tokens.Done()) return tokens.Fail("trailing data");
 
         tc.y = 1.0f - tc.y; // invert V
 

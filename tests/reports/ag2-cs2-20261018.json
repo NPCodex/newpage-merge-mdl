@@ -1,0 +1,500 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "timezone": "Asia/Shanghai",
+  "project_version": "1.2.33",
+  "maintained_commit": "8078d44dc740bbb1f96a6ea67b8cf1079e7ad8bb",
+  "status": "resource_compilation_passed_failure_rollback_defect_reproduced",
+  "tool": {
+    "name": "ag2proportions.exe",
+    "sha256": "ca647e59ec32a76d171c2ed4c29883f0d8aadc278020d08b10fc47be5435a9d2"
+  },
+  "cs2": {
+    "app_id": 730,
+    "build_id": "25966348",
+    "steam_state_flags": "4",
+    "original_vpk_sha256": "f0943b4d5a86fe8f4891ab98983b9d132b4450b9b7401a03a530bcd63f293f99"
+  },
+  "official_resources": [
+    {
+      "name": "animation/skeletons/characters/worldmodel.vnmskel_c",
+      "archive_index": 502,
+      "total_size": 7596,
+      "crc32_expected": "fba60dc9",
+      "crc32_actual": "fba60dc9",
+      "crc32_ok": true,
+      "sha256": "ed57c20e5636aa13c87e212b32ce0aa7dbd0268d8a2786f8ddab56673680b82f"
+    },
+    {
+      "name": "animation/skeletons/characters/viewmodel.vnmskel_c",
+      "archive_index": 502,
+      "total_size": 7416,
+      "crc32_expected": "58eb146b",
+      "crc32_actual": "58eb146b",
+      "crc32_ok": true,
+      "sha256": "927aac076b950de13735e7baa4c1223c65ebf54fea774938baf03ffc42ee2c86"
+    },
+    {
+      "name": "animation/graphs/worldmodel/worldmodel.vnmgraph_c",
+      "archive_index": 262,
+      "total_size": 73848,
+      "crc32_expected": "7953aa79",
+      "crc32_actual": "7953aa79",
+      "crc32_ok": true,
+      "sha256": "3544e91145a5af2342aa8ff313df45b362020db7557b4f0a1e916690983149e6"
+    },
+    {
+      "name": "animation/graphs/ui/uimodel.vnmgraph_c",
+      "archive_index": 473,
+      "total_size": 44257,
+      "crc32_expected": "65823952",
+      "crc32_actual": "65823952",
+      "crc32_ok": true,
+      "sha256": "3e7f0d3e76e18149fa8396b98cee368f2862d8d019c6610bac06cc82a14e388d"
+    }
+  ],
+  "toolchain": [
+    {
+      "name": "game/bin/win64/resourcecompiler.exe",
+      "exists": true,
+      "size": 165528,
+      "sha256": "8df3ddc8825c6cee980d1c25f2ab9a386e9183ab6ab6ba2c96fe2c59872400f8"
+    },
+    {
+      "name": "game/bin/win64/resourcecompiler.dll",
+      "exists": true,
+      "size": 56337048,
+      "sha256": "204e16e550fd3936585bd467303b9b2033fdd7de9f1038c045095b3f5e15ac78"
+    },
+    {
+      "name": "game/bin/win64/tier0.dll",
+      "exists": true,
+      "size": 3979928,
+      "sha256": "990ea56bf1626d299ba54b64b423f2e409bd592bb737c7a5edf7972ad5c7143e"
+    },
+    {
+      "name": "game/bin/win64/assetsystem.dll",
+      "exists": true,
+      "size": 5703320,
+      "sha256": "613c2f8d52eb270e342285dec827ea88317ae11335c6b29f4770eb6b3fae9071"
+    },
+    {
+      "name": "game/csgo/bin/win64/modtools.dll",
+      "exists": true,
+      "size": 17944216,
+      "sha256": "31a29e428fd5e9bacf66614e7d11a44d273cdd74636bb3c45256e541655c18d6"
+    },
+    {
+      "name": "game/bin/assettypes_common.txt",
+      "exists": true,
+      "size": 32978,
+      "sha256": "3be28c98dc1e19fe8d92e5bfe907c7010c3dcc0d0045bb9caf17dea374c22e16"
+    },
+    {
+      "name": "game/bin/assettypes_internal.txt",
+      "exists": false,
+      "size": null,
+      "sha256": null
+    },
+    {
+      "name": "game/bin/win64/cs2.exe",
+      "exists": true,
+      "size": 2967704,
+      "sha256": "8614097aaa2761b0a7157c0045861713e769fb1e8235f50fc68f411294dd60cf"
+    }
+  ],
+  "test_container": {
+    "format": "VPK v1 authored minimal test container",
+    "sha256": "4cc6f9fccf2e8eb75611a21dcf6f84dcd3de1cf73155b3672b1cdf0bae4a5769",
+    "official_resource_count": 4,
+    "all_resource_streams_byte_identical_to_official_extraction": true,
+    "scope": "Container holds only the four required official resources. It does not include or certify recursive graph dependencies."
+  },
+  "fixtures": {
+    "stock": "Official worldmodel skeleton with the model-only eye_target bone added by the maintained helper.",
+    "shifted": {
+      "bone": "leg_upper_L",
+      "dmx_local_translation_delta": [
+        3,
+        0,
+        0
+      ]
+    },
+    "worldmodel_bones": 75,
+    "viewmodel_bones": 56,
+    "target_model_bones": 76,
+    "geometry": "No render mesh, skin weights, materials or authored attachments; minimal VMDL container."
+  },
+  "cases": [
+    {
+      "name": "rollback",
+      "generate_only": true,
+      "write_model": false,
+      "exit_code": 0,
+      "vmdl_changed": false,
+      "source_file_count": 9,
+      "compiled_files": {}
+    },
+    {
+      "name": "rollback",
+      "generate_only": false,
+      "write_model": true,
+      "exit_code": 1,
+      "vmdl_changed": true,
+      "source_file_count": 9,
+      "compiled_files": {}
+    },
+    {
+      "name": "stock",
+      "generate_only": false,
+      "write_model": false,
+      "exit_code": 0,
+      "vmdl_changed": false,
+      "source_file_count": 9,
+      "compiled_files": {
+        "anims/proportions.vnmclip_c": "21478e2b6a44646fe5de8bace37d6ea881a491aac0c9a7fe0527e9e91473726f",
+        "graphs/proportions_uimodel.vnmgraph_c": "036333fa8c36281a9a771ac72da4feaec5a8d6e3c1954b87f4376e2c0f21569c",
+        "graphs/proportions_worldmodel.vnmgraph_c": "7ed4a2923d711d111a34fa4b05044dcbd4548ca43c010909a7c16dc425c66a28"
+      }
+    },
+    {
+      "name": "shifted",
+      "generate_only": false,
+      "write_model": true,
+      "exit_code": 0,
+      "vmdl_changed": true,
+      "source_file_count": 9,
+      "compiled_files": {
+        "anims/proportions.vnmclip_c": "e5b17aabdc4d149aced07da977cb03fcaa945ffff8aff04c4afae8fb4fb56bcc",
+        "graphs/proportions_uimodel.vnmgraph_c": "b2f6d454d69b229e3cd9582d89ab5ba1eceeb33b4f351f6fc799daddb42f7d36",
+        "graphs/proportions_worldmodel.vnmgraph_c": "aa6dfce8ca11c0d21880c64ee9c170a4f74dfe6a6b2db3854c74a1b2f235c681"
+      }
+    }
+  ],
+  "missing_toolchain_failure": {
+    "exit_code": 1,
+    "vmdl_modified_before_failure": true,
+    "first_backup_preserved_original": true,
+    "preexisting_source_files_replaced": [
+      "anims/proportions.dmx",
+      "debug/MODEL_SETUP.txt",
+      "debug/report.kv3",
+      "dmx/ag2_skeleton.dmx"
+    ],
+    "rollback_performed": false,
+    "fixed": false,
+    "test_setup": "Real official resource streams and a valid generated rig; Resource Compiler intentionally absent only from the isolated test root. Installed CS2 files were not removed or renamed."
+  },
+  "compiled_resource_inspection": {
+    "checked_at_utc": "2026-10-18T07:15:54.052890+00:00",
+    "scope": "Read-only inspection of six already compiled outputs; AG2 and Resource Compiler were not rerun. Resource-level verification only, not ModelDoc final model or in-game validation.",
+    "decoder": "Maintained pulse_keyvalues3 ReadResource; binary blobs represented losslessly as __binary_blob_hex/__binary_blob_size objects for diagnostics. KV3 dumps with these artificial objects are not round-trip source assets.",
+    "tolerance": 1e-05,
+    "reference_skeleton": {
+      "path": "animation/skeletons/characters/worldmodel.vnmskel",
+      "bone_count": 75,
+      "low_lod_count": 28
+    },
+    "clips": {
+      "stock": {
+        "frames": 2,
+        "duration": 0.033299997448921204,
+        "track_count": 75,
+        "all_translation_rotation_scale_static": true,
+        "max_rotation_identity_error": 2.9802322387695312e-08,
+        "max_abs_translation": 0,
+        "compressed_pose_blob_bytes": 0,
+        "skeleton": "animation/skeletons/characters/worldmodel.vnmskel"
+      },
+      "shifted": {
+        "frames": 2,
+        "duration": 0.033299997448921204,
+        "track_count": 75,
+        "all_translation_rotation_scale_static": true,
+        "max_rotation_identity_error": 2.9802322387695312e-08,
+        "max_abs_translation": 3,
+        "compressed_pose_blob_bytes": 0,
+        "skeleton": "animation/skeletons/characters/worldmodel.vnmskel"
+      }
+    },
+    "graphs": {
+      "stock/worldmodel": {
+        "skeleton": "animation/skeletons/characters/worldmodel.vnmskel",
+        "dependencies": [
+          "animation/graphs/worldmodel/worldmodel.vnmgraph",
+          "stock/anims/proportions.vnmclip"
+        ],
+        "node_count": 52,
+        "control_parameter_count": 47,
+        "output_node": "CNmSnapWeaponNode::CDefinition",
+        "chain": [
+          "ReferencedGraph",
+          "LayerBlend(Additive, weight=1)",
+          "SnapWeapon"
+        ],
+        "node_indices": {
+          "snap": 47,
+          "layer": 48,
+          "reference": 49,
+          "clip": 50,
+          "weight": 51
+        },
+        "only_base_root_motion": true,
+        "clip_root_motion_disabled": true
+      },
+      "stock/uimodel": {
+        "skeleton": "animation/skeletons/characters/worldmodel.vnmskel",
+        "dependencies": [
+          "animation/graphs/ui/uimodel.vnmgraph",
+          "stock/anims/proportions.vnmclip"
+        ],
+        "node_count": 23,
+        "control_parameter_count": 18,
+        "output_node": "CNmSnapWeaponNode::CDefinition",
+        "chain": [
+          "ReferencedGraph",
+          "LayerBlend(Additive, weight=1)",
+          "SnapWeapon"
+        ],
+        "node_indices": {
+          "snap": 18,
+          "layer": 19,
+          "reference": 20,
+          "clip": 21,
+          "weight": 22
+        },
+        "only_base_root_motion": true,
+        "clip_root_motion_disabled": true
+      },
+      "shifted/worldmodel": {
+        "skeleton": "animation/skeletons/characters/worldmodel.vnmskel",
+        "dependencies": [
+          "animation/graphs/worldmodel/worldmodel.vnmgraph",
+          "shifted/anims/proportions.vnmclip"
+        ],
+        "node_count": 52,
+        "control_parameter_count": 47,
+        "output_node": "CNmSnapWeaponNode::CDefinition",
+        "chain": [
+          "ReferencedGraph",
+          "LayerBlend(Additive, weight=1)",
+          "SnapWeapon"
+        ],
+        "node_indices": {
+          "snap": 47,
+          "layer": 48,
+          "reference": 49,
+          "clip": 50,
+          "weight": 51
+        },
+        "only_base_root_motion": true,
+        "clip_root_motion_disabled": true
+      },
+      "shifted/uimodel": {
+        "skeleton": "animation/skeletons/characters/worldmodel.vnmskel",
+        "dependencies": [
+          "animation/graphs/ui/uimodel.vnmgraph",
+          "shifted/anims/proportions.vnmclip"
+        ],
+        "node_count": 23,
+        "control_parameter_count": 18,
+        "output_node": "CNmSnapWeaponNode::CDefinition",
+        "chain": [
+          "ReferencedGraph",
+          "LayerBlend(Additive, weight=1)",
+          "SnapWeapon"
+        ],
+        "node_indices": {
+          "snap": 18,
+          "layer": 19,
+          "reference": 20,
+          "clip": 21,
+          "weight": 22
+        },
+        "only_base_root_motion": true,
+        "clip_root_motion_disabled": true
+      }
+    },
+    "compiled_files": {
+      "isolated\\game\\csgo_addons\\a\\stock\\anims\\proportions.vnmclip_c": {
+        "bytes": 2308,
+        "sha256": "21478e2b6a44646fe5de8bace37d6ea881a491aac0c9a7fe0527e9e91473726f"
+      },
+      "isolated\\game\\csgo_addons\\a\\stock\\graphs\\proportions_uimodel.vnmgraph_c": {
+        "bytes": 2570,
+        "sha256": "036333fa8c36281a9a771ac72da4feaec5a8d6e3c1954b87f4376e2c0f21569c"
+      },
+      "isolated\\game\\csgo_addons\\a\\stock\\graphs\\proportions_worldmodel.vnmgraph_c": {
+        "bytes": 3243,
+        "sha256": "7ed4a2923d711d111a34fa4b05044dcbd4548ca43c010909a7c16dc425c66a28"
+      },
+      "isolated\\game\\csgo_addons\\a\\shifted\\anims\\proportions.vnmclip_c": {
+        "bytes": 2372,
+        "sha256": "e5b17aabdc4d149aced07da977cb03fcaa945ffff8aff04c4afae8fb4fb56bcc"
+      },
+      "isolated\\game\\csgo_addons\\a\\shifted\\graphs\\proportions_uimodel.vnmgraph_c": {
+        "bytes": 2570,
+        "sha256": "b2f6d454d69b229e3cd9582d89ab5ba1eceeb33b4f351f6fc799daddb42f7d36"
+      },
+      "isolated\\game\\csgo_addons\\a\\shifted\\graphs\\proportions_worldmodel.vnmgraph_c": {
+        "bytes": 3243,
+        "sha256": "aa6dfce8ca11c0d21880c64ee9c170a4f74dfe6a6b2db3854c74a1b2f235c681"
+      }
+    },
+    "comparison": {
+      "significant_changed_bones": [
+        "leg_upper_L"
+      ],
+      "expected_leg_upper_L_translation_delta": [
+        3,
+        0,
+        0
+      ],
+      "actual_leg_upper_L_translation_delta": [
+        3,
+        1.9073486328125e-06,
+        -3.814697265625e-06
+      ],
+      "bitwise_changed_tracks": [
+        {
+          "index": 16,
+          "bone": "leg_upper_L",
+          "translation_delta": [
+            3,
+            1.9073486328125e-06,
+            -3.814697265625e-06
+          ],
+          "fields": {
+            "m_translationRangeX": {
+              "before": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 0
+              },
+              "after": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 3
+              }
+            },
+            "m_translationRangeY": {
+              "before": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 0
+              },
+              "after": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 1.9073486328125e-06
+              }
+            },
+            "m_translationRangeZ": {
+              "before": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 0
+              },
+              "after": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": -3.814697265625e-06
+              }
+            }
+          }
+        },
+        {
+          "index": 18,
+          "bone": "ankle_L",
+          "translation_delta": [
+            1.9073486328125e-06,
+            0,
+            0
+          ],
+          "fields": {
+            "m_translationRangeX": {
+              "before": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 0
+              },
+              "after": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 1.9073486328125e-06
+              }
+            }
+          }
+        },
+        {
+          "index": 68,
+          "bone": "ball_L",
+          "translation_delta": [
+            9.5367431640625e-07,
+            0,
+            0
+          ],
+          "fields": {
+            "m_translationRangeX": {
+              "before": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 0
+              },
+              "after": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 9.5367431640625e-07
+              }
+            }
+          }
+        },
+        {
+          "index": 69,
+          "bone": "attachFoot_L",
+          "translation_delta": [
+            9.5367431640625e-07,
+            0,
+            -4.76837158203125e-07
+          ],
+          "fields": {
+            "m_translationRangeX": {
+              "before": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 0
+              },
+              "after": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 9.5367431640625e-07
+              }
+            },
+            "m_translationRangeZ": {
+              "before": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": 0
+              },
+              "after": {
+                "m_flRangeLength": 0.10000000149011612,
+                "m_flRangeStart": -4.76837158203125e-07
+              }
+            }
+          }
+        }
+      ],
+      "non_target_max_abs_translation_delta": 1.9073486328125e-06,
+      "all_clip_other_fields_equal": true,
+      "note": "Four tracks have bitwise float differences; only leg_upper_L exceeds 1e-5. The other three are ankle_L, ball_L, attachFoot_L at floating point residual scale.",
+      "graphs_equal_after_fixture_clip_path_normalization": true,
+      "max_absolute_residual_from_expected_delta": 3.814697265625e-06
+    },
+    "helper_sha256_current": "07665141c456502728f9bb1fe3906a035da3aac47f4cc1327618273df507fb2f",
+    "helper_source_sha256_current": "65c0cbb1b3676cdfa783a672bdacd15d50cec09f78b894c460ee1ae610301829",
+    "status": "passed_resource_level_checks"
+  },
+  "preservation": {
+    "official_key_files_checked": 8,
+    "official_key_files_unchanged": true,
+    "test_outputs": "Independent diagnostic content/game/temp directories; installed game and original user models were not output targets."
+  },
+  "boundaries": {
+    "windows_only": true,
+    "full_modeldoc_model_compiled": false,
+    "game_session_run": false,
+    "recursive_graph_dependency_closure_verified": false,
+    "arbitrary_custom_rig_compatibility_verified": false,
+    "linux_or_wine_verified": false,
+    "product_code_changed": false,
+    "release_published": false,
+    "status_remains_experimental": true
+  }
+}

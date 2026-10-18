@@ -187,8 +187,9 @@ class ExtendedCases:
   source='version 1\nnodes\n0 "root" -1\nend\nskeleton\ntime 0\n0 0 0 0 0 0 0\nend\ntriangles\n'
   for face in faces:source+='material\n'+''.join(f'0 {points[v][0]} {points[v][1]} {points[v][2]} 0 0 1 0 0\n' for v in face)
   source+='end\n'
-  # Shift non-zero coordinates off the selected 1-unit grid.
-  source=source.replace('2 0 0','2.4 0 0').replace('0 2 0','0 2.4 0').replace('0 0 2','0 0 2.4');self.write('tetra.smd',source)
+  # Coordinates above are already off the 1-unit grid. Text replacement here
+  # used to turn the valid 2.4 token into 2.4.4, hidden by permissive SMD reads.
+  self.write('tetra.smd',source)
   outputs=[]
   for precision in (0,1):
    self.scene_qc(f'$modelname snap\n$body m tetra.smd\n$phyname custom\n$collisionprecision {precision}\n$collisionmodel tetra.smd {{ $mass 10 }}\n')

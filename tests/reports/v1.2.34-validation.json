@@ -1,0 +1,140 @@
+{
+  "schema": 1,
+  "project_version": "1.2.34",
+  "date": "2026-10-18",
+  "status": "windows_package_validation_passed",
+  "scope": "Eight user-selected toolchain integrity fixes; verified Windows release package. User-installed tools remain unchanged.",
+  "base_commit": "8078d44dc740bbb1f96a6ea67b8cf1079e7ad8bb",
+  "pulsemodel_base": "0396e3d2263945896de7d3d4f457e5f47dfe0378",
+  "fixes": [
+    "UTF-8 and unique decompiler bone names",
+    "Whole-batch decompiler output conflict preflight",
+    "VMD body/camera/face/QC/audio conflicts",
+    "Strict SMD triangle tokens with file/line errors",
+    "Required decompiler and animation-swap dependencies fail explicitly",
+    "Malformed simplify protocol/topology rejection",
+    "Vertex-animation sidecar recovery and obsolete companion retirement",
+    "AG2 preflight, staging and rollback"
+  ],
+  "automated_checks": {
+    "compatibility": {
+      "passed": 402
+    },
+    "compiler_integrity": {
+      "passed": 6
+    },
+    "output_transaction": {
+      "passed": 14
+    },
+    "decompiler_integrity": {
+      "passed": 13
+    },
+    "subtools_integrity": {
+      "passed": 34
+    },
+    "ag2_transaction": {
+      "passed": 7,
+      "injected_checkpoints": 39
+    },
+    "automation": {
+      "passed": 39
+    },
+    "windows_extras": {
+      "passed": 10
+    }
+  },
+  "packaged_checks": {
+    "inventory_checksums": true,
+    "source_provenance": true,
+    "runtime_files_and_licenses": true,
+    "c4d_tests": 7,
+    "compiler_integrity_tests": 6,
+    "decompiler_integrity_tests": 13,
+    "subtools_integrity_cases": 34,
+    "compatibility_tests": 402,
+    "vrml_conversion_and_compilation": true,
+    "ag2_help_and_version": true
+  },
+  "hosted_ci": {
+    "checked_run": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39098052028",
+    "status": "not_started_account_payment_or_spending_limit",
+    "linux_built": false
+  },
+  "build": {
+    "platform": "win64",
+    "configuration": "MinSizeRel",
+    "lto": "ThinLTO",
+    "toolchain": "llvm-mingw 20260922 UCRT x86_64",
+    "cmake": "4.4.4",
+    "binaries": {
+      "NewPageMergeMDL-C4D.exe": "ba42c153c88792552e3a2b28cfe4f38ce5fbee43f28ee6f3b9cd72618c740c97",
+      "NewPageMergeMDL-Decompiler.exe": "a173778f4f1e0a8385dbd56bdb2d38068834a214fe31208c095546c070298654",
+      "NewPageMergeMDL.exe": "cab5dd7d34e2b6e85c0bf737950859487883b22352d5d3c504a5f65fb49f3d70",
+      "NewPageVRMLtoX3D.exe": "9e878fe2926ca9a74713a0c79fb71c00c92b53cc5061eb7c03cbe9cef7a4a1f9",
+      "subtools/ag2proportions.exe": "bd227f1da9b11a6cb3472ca43ee4989c9a239881fb7a572a7843213cca33a3f4",
+      "subtools/l4d_animswap.exe": "2d07e2c633e3e4319455244006e5b6db71eafc586eb091fb1c81d76ed3f7cdd2",
+      "subtools/meshtool.exe": "2e29d3f41d7f91179d7310044bcf6d22d43485befa23d580cec57de81f5b520f",
+      "subtools/vmd2valvebiped.exe": "93950b3f1e15792edc5b67363b407ec29ed7e1a8c30d573c920239a085e357b7"
+    },
+    "c4d": "Pinned previously validated helper; not rebuilt."
+  },
+  "ag2_cs2": {
+    "build": "25966348",
+    "official_resource_count": 4,
+    "cases": 8,
+    "all_passed": true,
+    "all_6_normal_compiled_resources_identical_to_v1_2_33": true,
+    "failure_cases": [
+      "Missing compiler dependency",
+      "Isolated fake compiler exit 37",
+      "Actual Windows file-sharing failure after real compilation and partially completed publication"
+    ],
+    "failure_cases_preserved_all_existing_file_hashes": true,
+    "installed_8_key_files_unchanged": true,
+    "initial_8_case_executable_sha256": "8fe845187c6884cf964e63abef5c4df4234d0935d1aa77ff781e1c539d4a6127",
+    "checked_close_followup": {
+      "executable_sha256": "bd227f1da9b11a6cb3472ca43ee4989c9a239881fb7a572a7843213cca33a3f4",
+      "real_shifted_compile_succeeded": true,
+      "all_outputs_identical": true,
+      "installed_8_key_files_unchanged": true
+    },
+    "limits": [
+      "Resource-level test only, no final meshed ModelDoc model or in-game session",
+      "Four resources, not full recursive runtime dependencies",
+      "Forced compiler exit tested with an isolated stub; positives use genuine CS2 ResourceCompiler"
+    ]
+  },
+  "plum": {
+    "original_qc_available": false,
+    "input": "Exact preserved original copy; all 131 registered files matched historical SHA-256s.",
+    "source_qc_sha256": "b9ab3227397b416be2241d78384b43ced3c48f6893d4bd4347b5e86ec0bcc783",
+    "input_files_checked": 131,
+    "changed_inputs": [],
+    "correct_gameinfo": true,
+    "gameinfo_unchanged": true,
+    "all_outputs_identical_to_installed_and_historical_v1_2_33": true,
+    "structure": {
+      "model": "plum_dreaming_hair_p.mdl",
+      "bones": 131,
+      "vertices": 572277,
+      "physics_bodies": 21
+    },
+    "output_sha256": {
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx80.vtx": "6f7adb7762e05fe6328eca1b9fac43c01ea843b983797e9651045561b21820b8",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.dx90.vtx": "97db7d983f332d66e06c5cd37194c09825ff9d7730158e89070c474523581215",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.mdl": "e7cc4f4ca8232360d137e286d5c37aa3f4689401912e910e757f4274c09230b9",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.phy": "771db442051ae673033ff2bee15ccd43321cbd035b380c4f189d348f97e4476b",
+      "models/player/dewobedil/sodau/plum/plum_dreaming_hair_p.vvd": "c0cfc9d0b12832359439e41d0a6d86de43788e0580a35537b0a73faebd32b6f8"
+    },
+    "game_runtime_tested": false
+  },
+  "limitations": [
+    "Windows only; no Linux build validation",
+    "AG2/decompiler rollback covers ordinary exceptions/file errors, not hard-kill or power-loss recovery; AG2 does not serialize concurrent writers",
+    "VMD/L4D preflight is not a general batch-write transaction",
+    "Companion retirement uses typed headers and the previous MDL checksum, not a persistent content ownership digest; payload edits preserving checksum do not prevent retirement",
+    "Custom paths and unidentified ANI/JSON sidecars are retained",
+    "meshtool malformed protocol coverage does not establish that ordinary models triggered the original crash"
+  ],
+  "historical_ag2_evidence": "ag2-cs2-20261018.json"
+}

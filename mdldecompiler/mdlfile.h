@@ -142,11 +142,68 @@ inline std::string StripExt(const std::string& s) {
     return s.substr(0, dot);
 }
 
-// A stored name is only usable in a script when it is printable, quote-free and
-// single-line - obfuscators point names into a blob of decoy text.
+// Names are stored as UTF-8. Keep printable Unicode rather than replacing valid
+// non-ASCII bone names; reject malformed UTF-8, controls and quotes, which cannot
+// be represented consistently by both stock QC and SMD quoted strings.
 inline bool CleanName(const std::string& n) {
-    return !n.empty() && n.find('"') == std::string::npos &&
-           std::all_of(n.begin(), n.end(), [](unsigned char c) { return c >= 0x20 && c < 0x7f; });
+    if (n.empty()) return false;
+    for (size_t i = 0; i < n.size();) {
+        const unsigned char first = static_cast<unsigned char>(n[i++]);
+        uint32_t cp = first, minimum = 0;
+        size_t extra = 0;
+        if (first >= 0xc2 && first <= 0xdf) { cp = first & 0x1f; extra = 1; minimum = 0x80; }
+        else if (first >= 0xe0 && first <= 0xef) { cp = first & 0x0f; extra = 2; minimum = 0x800; }
+        else if (first >= 0xf0 && first <= 0xf4) { cp = first & 0x07; extra = 3; minimum = 0x10000; }
+        else if (first >= 0x80) return false;
+        if (extra > n.size() - i) return false;
+        for (size_t j = 0; j < extra; ++j) {
+            const unsigned char c = static_cast<unsigned char>(n[i++]);
+            if ((c & 0xc0) != 0x80) return false;
+            cp = (cp << 6) | (c & 0x3f);
+        }
+        if (cp < minimum || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ||
+            cp < 0x20 || (cp >= 0x7f && cp <= 0x9f) || cp == '"' ||
+            cp == 0x2028 || cp == 0x2029) return false;
+    }
+    return true;
+}
+
+// Source bone lookup folds ASCII case. The key leaves UTF-8 bytes intact.
+inline std::string BoneNameKey(std::string n) {
+    for (char& c : n) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+    return n;
+}
+
+inline std::vector<std::string> UniqueBoneNames(const std::vector<std::string>& raw) {
+    std::set<std::string> reserved, used;
+    for (const auto& n : raw) if (CleanName(n)) reserved.insert(BoneNameKey(n));
+    std::vector<std::string> names;
+    for (size_t i = 0; i < raw.size(); ++i) {
+        std::string n = raw[i];
+        if (!CleanName(n) || !used.insert(BoneNameKey(n)).second) {
+            const std::string base = "bone_" + std::to_string(i);
+            n = base;
+            for (size_t suffix = 2; reserved.count(BoneNameKey(n)) || used.count(BoneNameKey(n)); ++suffix)
+                n = base + "_" + std::to_string(suffix);
+            used.insert(BoneNameKey(n));
+        }
+        names.push_back(n);
+    }
+    return names;
+}
+
+// Writers report actual extraction/I/O failures independently of intentional
+// -nomesh/-noanimation skips. Publication only happens when every writer succeeds.
+inline bool g_extractionFailed = false;
+inline void ExtractionError(const std::string& error) {
+    g_extractionFailed = true;
+    std::printf("extraction error: %s\n", error.c_str());
+}
+inline bool CloseOutput(std::FILE* f, const std::string& path) {
+    const bool streamOk = std::ferror(f) == 0;
+    const bool closeOk = std::fclose(f) == 0;
+    if (!streamOk || !closeOk) ExtractionError("cannot finish writing \"" + path + "\"");
+    return streamOk && closeOk;
 }
 
 inline std::vector<std::string> TextureNames(const Mdl& m) {
@@ -169,16 +226,9 @@ inline std::vector<std::string> BoneNames(const Mdl& m) {
     std::vector<std::string> names;
     const fm::mstudiobone_t* bones =
         m.At<fm::mstudiobone_t>(m.buf.data(), h.boneindex, h.numbones);
-    std::set<std::string> used;
-    for (int i = 0; bones && i < h.numbones; ++i) {
-        std::string n = m.Str(&bones[i], bones[i].sznameindex);
-        if (!CleanName(n) || !used.insert(n).second) {
-            n = "bone_" + std::to_string(i);
-            used.insert(n);
-        }
-        names.push_back(n);
-    }
-    return names;
+    for (int i = 0; bones && i < h.numbones; ++i)
+        names.emplace_back(m.Str(&bones[i], bones[i].sznameindex));
+    return UniqueBoneNames(names);
 }
 
 // The bind pose to trust, per bone. Obfuscators write a constant decoy into

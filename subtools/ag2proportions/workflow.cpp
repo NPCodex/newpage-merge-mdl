@@ -11,6 +11,7 @@
 
 #include "ag2.h"
 #include "strcompat.h"
+#include "transaction.h"
 #include "vpk.h"
 
 namespace ag2 {
@@ -19,7 +20,9 @@ namespace {
 namespace dmx = pulse::dmx;
 using std::runtime_error;
 
-// Every file a run writes into the output folder; a rerun clears these first.
+// Every source a run owns. Obsolete debug files are removed in the same
+// transaction as replacements; an input reused from a previous run is read
+// completely before any output is changed.
 const char* const kGeneratedFiles[] = {
     kWorldGraphFile, kUiGraphFile, kClipFile, kProportionsFile, kReferenceFile, kSkeletonFile,
     "debug/skeleton_descriptor.kv3", "debug/report.kv3", "debug/MODEL_SETUP.txt",
@@ -245,10 +248,10 @@ kv::Value::Array StockBoneNodes(const std::vector<Bone>& bones, const std::vecto
     return roots;
 }
 
-// write_model: the VMDL is edited in place (the generated skeleton as its only
+// Build the replacement VMDL (the generated skeleton as its only
 // SkeletonFile, the stock hierarchy as Bone nodes, graph bindings). The first
-// edit keeps the untouched file as <name>.vmdl.bak, which ModelDoc never compiles.
-void EditModel(const std::string& originalText, kv::Value model, const Job& job, const Paths& paths,
+// edit's backup and replacement are published only after the whole job succeeds.
+std::string EditedModel(const std::string& originalText, kv::Value model, const Paths& paths,
                const kv::Value::Array& boneNodes) {
     const std::string skeletonFile = paths.relative + "/" + kSkeletonFile;
     // the generated SkeletonFile starts disabled; a rerun keeps the user's choice
@@ -339,11 +342,7 @@ void EditModel(const std::string& originalText, kv::Value model, const Job& job,
     const size_t header = originalText.find("-->");
     if (header == std::string::npos)
         throw runtime_error("the VMDL has no KV3 header");
-    fs::path backup = job.vmdl;
-    backup += ".bak";
-    if (!fs::exists(backup))
-        kv::WriteFile(backup.u8string(), originalText);
-    kv::WriteFile(job.vmdl.u8string(), originalText.substr(0, header + 3) + "\n" + kv::TextBody(model) + "\n");
+    return originalText.substr(0, header + 3) + "\n" + kv::TextBody(model) + "\n";
 }
 
 std::string SetupNotes(const Paths& paths, const SkeletonBuild& skeleton, const std::vector<std::string>& warnings,
@@ -426,6 +425,8 @@ void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::
 void Generate(const Job& job, const Options& options) {
     std::cout << "Processing " << job.vmdl.u8string() << '\n';
     const Paths paths = Locate(job.vmdl);
+    if (!options.generateOnly)
+        PreflightCompiler(options, paths);
     const std::string vmdlText = ReadText(job.vmdl);
     kv::Value vmdl = kv::ParseText(vmdlText);
     const Vpk package(paths.cs2 / "game/csgo/pak01_dir.vpk");
@@ -503,46 +504,70 @@ void Generate(const Job& job, const Options& options) {
     if (change < 1e-3f)
         warnings.insert(warnings.begin(), "the target pose equals the stock skeleton, so the clip changes nothing");
 
-    fs::create_directories(paths.output);
-    // a job may read a previous run's output; never delete an input
-    auto clear = [&](const fs::path& file) {
-        for (const fs::path& input : {job.proportions, job.vnmskel, rigSource.path})
-            if (!input.empty() && fs::exists(file) && fs::equivalent(file, input))
-                return;
-        fs::remove(file);
-    };
-    for (const char* name : kGeneratedFiles)
-        clear(paths.output / name);
-    std::error_code ec;
-    for (const char* folder : {"debug", "graphs", "anims", "dmx"})
-        fs::remove(paths.output / folder, ec); // only when empty
+    OutputTransaction transaction;
+    Paths staged = paths;
+    staged.output = transaction.StageRoot() / "sources";
     std::cout << "Output: " << paths.output.u8string() << '\n';
 
     for (const char* name : {kSkeletonFile, kReferenceFile})
-        fs::create_directories((paths.output / name).parent_path());
-    WriteSkeleton(paths.output / kSkeletonFile, skeleton.bones);
-    WriteHeldPose(paths.output / kReferenceFile, installed.bones, installed.lowLodCount);
-    WriteHeldPose(paths.output / kProportionsFile, target, installed.lowLodCount);
+        fs::create_directories((staged.output / name).parent_path());
+    WriteSkeleton(staged.output / kSkeletonFile, skeleton.bones);
+    WriteHeldPose(staged.output / kReferenceFile, installed.bones, installed.lowLodCount);
+    WriteHeldPose(staged.output / kProportionsFile, target, installed.lowLodCount);
     const kv::Value descriptor = SkeletonDescriptor(ReadStockSkeleton(skeletonBytes), paths.relative + "/" + kReferenceFile);
-    kv::WriteFile((paths.output / kClipFile).u8string(), kv::WriteText(ProportionClip(paths.relative)));
-    kv::WriteFile((paths.output / kWorldGraphFile).u8string(), kv::WriteText(graph));
-    kv::WriteFile((paths.output / kUiGraphFile).u8string(), kv::WriteText(uiGraph));
-    if (job.writeModel)
-        EditModel(vmdlText, vmdl, job, paths, StockBoneNodes(skeleton.bones, modelStock));
+    kv::WriteFile((staged.output / kClipFile).u8string(), kv::WriteText(ProportionClip(paths.relative)));
+    kv::WriteFile((staged.output / kWorldGraphFile).u8string(), kv::WriteText(graph));
+    kv::WriteFile((staged.output / kUiGraphFile).u8string(), kv::WriteText(uiGraph));
+    if (job.writeModel) {
+        const fs::path stagedModel = transaction.StageRoot() / "model.vmdl";
+        kv::WriteFile(stagedModel.u8string(), EditedModel(vmdlText, vmdl, paths, StockBoneNodes(skeleton.bones, modelStock)));
+        fs::path backup = job.vmdl;
+        backup += ".bak";
+        const auto backupStatus = fs::symlink_status(backup);
+        if (fs::exists(backupStatus) && !fs::is_regular_file(backupStatus))
+            throw runtime_error("the VMDL backup is not a regular file: " + backup.u8string());
+        if (!fs::exists(backupStatus)) {
+            const fs::path stagedBackup = transaction.StageRoot() / "model.vmdl.bak";
+            kv::WriteFile(stagedBackup.u8string(), vmdlText);
+            transaction.Replace(stagedBackup, backup, true);
+        }
+        transaction.Replace(stagedModel, job.vmdl);
+    }
     // what the clip was built from, for issue reports
     if (options.debug) {
         const std::string rigName = rigSource.path.generic_u8string();
         const std::string poseName = job.proportions.empty() ? rigName : job.proportions.generic_u8string();
-        kv::WriteFile((paths.output / "debug/skeleton_descriptor.kv3").u8string(), kv::WriteText(descriptor));
-        kv::WriteFile((paths.output / "debug/report.kv3").u8string(),
+        kv::WriteFile((staged.output / "debug/skeleton_descriptor.kv3").u8string(), kv::WriteText(descriptor));
+        kv::WriteFile((staged.output / "debug/report.kv3").u8string(),
                       kv::WriteText(Report(job, rigName, poseName, paths, installed.bones, target)));
-        kv::WriteFile((paths.output / "debug/MODEL_SETUP.txt").u8string(),
+        kv::WriteFile((staged.output / "debug/MODEL_SETUP.txt").u8string(),
                       SetupNotes(paths, skeleton, warnings, job.writeModel));
     }
+    if (!options.generateOnly) {
+        const fs::path stagedCompiled = transaction.StageRoot() / "compiled";
+        Compile(options, staged, skeletonBytes, graphBytes, uiGraphBytes, descriptor, stagedCompiled);
+        const fs::path published = paths.cs2 / "game/csgo_addons" / paths.addon.filename() / fs::u8path(paths.relative);
+        for (const char* source : {kClipFile, kWorldGraphFile, kUiGraphFile}) {
+            const fs::path name = fs::u8path(std::string(source) + "_c");
+            transaction.Replace(stagedCompiled / name, published / name);
+        }
+    }
+    for (const char* name : kGeneratedFiles) {
+        if (fs::is_regular_file(staged.output / name)) {
+            transaction.Replace(staged.output / name, paths.output / name);
+        } else {
+            // Optional debug output from the previous run is obsolete, unless
+            // it is also one of this job's explicitly supplied inputs.
+            bool input = false;
+            for (const fs::path& source : {job.proportions, job.vnmskel, rigSource.path})
+                if (!source.empty() && fs::exists(paths.output / name) && fs::equivalent(paths.output / name, source))
+                    input = true;
+            if (!input)
+                transaction.Remove(paths.output / name);
+        }
+    }
+    transaction.Commit();
     PrintSummary(paths, skeleton, warnings, job);
-
-    if (!options.generateOnly)
-        Compile(options, paths, skeletonBytes, graphBytes, uiGraphBytes, descriptor);
     std::cout << "DONE: " << paths.output.u8string()
               << (options.generateOnly ? " (source assets only)\n" : " (graph and clip compiled)\n");
 }

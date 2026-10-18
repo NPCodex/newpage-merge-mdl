@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -146,7 +147,7 @@ struct Lock {
 };
 struct Entry {
     fs::path relative,path,stage,backup;
-    bool hadOld=false;
+    bool hadOld=false,remove=false;
     Digest oldDigest,newDigest;
 };
 struct Journal {
@@ -163,27 +164,39 @@ void Derive(Journal& j,Entry& e,size_t i) {
     e.stage=e.path.string()+suffix+".stage";e.backup=e.path.string()+suffix+".backup";
     Resolve(j.root,Relative(j.root,e.stage));Resolve(j.root,Relative(j.root,e.backup));
 }
+bool SupportedOutput(const fs::path& path) {
+    const auto ext=path.extension().string();
+    if(ext==".mdl"||ext==".vvd"||ext==".vtx"||ext==".phy"||ext==".ani")return true;
+    // This is the compiler's vertex-animation sidecar, not arbitrary JSON.
+    return ext==".json"&&path.stem().extension()==".vertexanim";
+}
 void Read(Journal& j) {
     if(!Exists(j.path))return;
     if(fs::file_size(j.path)>1024*1024)throw std::runtime_error("output recovery journal exceeds 1 MiB");
     std::ifstream f(j.path,std::ios::binary);std::string magic;size_t count=0;
-    if(!(f>>magic>>j.nonce>>count)||magic!="NPMDL_TXN_1"||j.nonce.empty()||j.nonce.find_first_not_of("0123456789-")!=std::string::npos||count==0||count>64)
+    if(!(f>>magic>>j.nonce>>count)||(magic!="NPMDL_TXN_1"&&magic!="NPMDL_TXN_2")||j.nonce.empty()||j.nonce.find_first_not_of("0123456789-")!=std::string::npos||count==0||count>64)
         throw std::runtime_error("invalid output recovery journal: "+j.path.string());
     std::set<std::string> seen;
     for(size_t i=0;i<count;++i) {
         Entry e;std::string relative;int had=0;
         if(!(f>>std::quoted(relative)>>had>>e.oldDigest.size>>e.oldDigest.hash>>e.newDigest.size>>e.newDigest.hash)||(had!=0&&had!=1))throw std::runtime_error("truncated output recovery journal: "+j.path.string());
+        if(magic=="NPMDL_TXN_2") {
+            int remove=0;
+            if(!(f>>remove)||(remove!=0&&remove!=1))throw std::runtime_error("invalid output recovery operation");
+            e.remove=remove!=0;
+        }
         e.relative=fs::u8path(relative);e.hadOld=had!=0;Derive(j,e,i);
         if(!seen.insert(Key(e.path)).second)throw std::runtime_error("duplicate output recovery path");
-        const auto ext=e.path.extension().string();if(ext!=".mdl"&&ext!=".vvd"&&ext!=".vtx"&&ext!=".phy"&&ext!=".ani")throw std::runtime_error("unsupported output recovery extension");
+        if(!SupportedOutput(e.path))throw std::runtime_error("unsupported output recovery extension");
+        if(e.remove&&e.path.extension()==".mdl")throw std::runtime_error("cannot delete the primary output");
         j.entries.push_back(std::move(e));
     }
     f>>std::ws;if(!f.eof())throw std::runtime_error("unexpected output recovery journal data");
     if(std::none_of(j.entries.begin(),j.entries.end(),[&](const Entry& e){return Key(e.path.string()+".npmdl-journal")==Key(j.path);}))throw std::runtime_error("journal does not own its primary output");
 }
 void Write(const Journal& j) {
-    std::ostringstream text;text<<"NPMDL_TXN_1 "<<j.nonce<<" "<<j.entries.size()<<"\n";
-    for(const auto& e:j.entries)text<<std::quoted(e.relative.generic_u8string())<<" "<<e.hadOld<<" "<<e.oldDigest.size<<" "<<e.oldDigest.hash<<" "<<e.newDigest.size<<" "<<e.newDigest.hash<<"\n";
+    std::ostringstream text;text<<"NPMDL_TXN_2 "<<j.nonce<<" "<<j.entries.size()<<"\n";
+    for(const auto& e:j.entries)text<<std::quoted(e.relative.generic_u8string())<<" "<<e.hadOld<<" "<<e.oldDigest.size<<" "<<e.oldDigest.hash<<" "<<e.newDigest.size<<" "<<e.newDigest.hash<<" "<<e.remove<<"\n";
     auto s=text.str();WriteFile(j.path,s.data(),s.size());
 }
 std::vector<std::unique_ptr<Lock>> Locks(const Journal& old,const std::vector<PendingOutput>& outputs={}) {
@@ -210,14 +223,17 @@ void Recover(Journal& j) {
     if(committed) {
         std::ifstream marker(j.commit);std::string value;marker>>value;
         if(value!=j.nonce)throw std::runtime_error("invalid output commit marker");
-        for(const auto& e:j.entries)Match(e.path,e.newDigest);
+        for(const auto& e:j.entries) {
+            if(e.remove){if(Exists(e.path))throw std::runtime_error("deleted output changed since transaction; recovery retained for review: "+e.path.string());}
+            else Match(e.path,e.newDigest);
+        }
     }else {
         // Validate the whole set before touching any member.
         for(const auto& e:j.entries) {
             const bool backup=Exists(e.backup),target=Exists(e.path);
-            if(backup){if(!e.hadOld)throw std::runtime_error("unexpected output recovery backup");Match(e.backup,e.oldDigest);if(target)Match(e.path,e.newDigest);}
+            if(backup){if(!e.hadOld)throw std::runtime_error("unexpected output recovery backup");Match(e.backup,e.oldDigest);if(target){if(e.remove)throw std::runtime_error("deleted output changed since transaction; recovery retained for review: "+e.path.string());Match(e.path,e.newDigest);}}
             else if(e.hadOld)Match(e.path,e.oldDigest);
-            else if(target)Match(e.path,e.newDigest);
+            else if(target){if(e.remove)throw std::runtime_error("deleted output changed since transaction; recovery retained for review: "+e.path.string());Match(e.path,e.newDigest);}
             Exists(e.stage);
         }
         for(auto it=j.entries.rbegin();it!=j.entries.rend();++it) {
@@ -239,6 +255,48 @@ void Checkpoint(const char* name) {
 #else
 void Checkpoint(const char*){}
 #endif
+
+struct Companion { fs::path path; const char* suffix; };
+std::vector<Companion> Companions(const fs::path& model) {
+    auto stem=model;stem.replace_extension();
+    std::vector<Companion> result;
+    for(const char* suffix:{".vvd",".dx90.vtx",".dx80.vtx",".phy",".ani",".vertexanim.json"}) {
+        auto path=stem;path+=suffix;result.push_back({path,suffix});
+    }
+    return result;
+}
+bool OutputChecksum(const fs::path& path,const std::string& suffix,uint32_t& checksum) {
+    std::ifstream file(path,std::ios::binary);
+    unsigned char bytes[20]{};file.read(reinterpret_cast<char*>(bytes),sizeof(bytes));
+    const auto length=file.gcount();
+    const auto u32=[&](size_t at){return uint32_t(bytes[at])|(uint32_t(bytes[at+1])<<8)|
+                                      (uint32_t(bytes[at+2])<<16)|(uint32_t(bytes[at+3])<<24);};
+    if(suffix==".mdl"&&length>=12&&u32(0)==0x54534449&&(u32(4)==48||u32(4)==49))checksum=u32(8);
+    else if(suffix==".vvd"&&length>=12&&u32(0)==0x56534449&&u32(4)==4)checksum=u32(8);
+    else if((suffix==".dx90.vtx"||suffix==".dx80.vtx")&&length>=20&&u32(0)==7)checksum=u32(16);
+    else if(suffix==".phy"&&length>=16&&u32(0)==16&&u32(4)==0&&u32(8)>0)checksum=u32(12);
+    else return false;
+    return true;
+}
+void RetireCompanions(std::vector<PendingOutput>& outputs,const fs::path& primary,const Journal& journal) {
+    uint32_t oldChecksum=0;
+    const bool known=Exists(primary)&&OutputChecksum(primary,".mdl",oldChecksum);
+    for(const auto& companion:Companions(primary)) {
+        const auto path=Resolve(journal.root,Relative(journal.root,companion.path));
+        if(std::any_of(outputs.begin(),outputs.end(),[&](const PendingOutput& p){return Key(Relative(journal.root,p.path))==Key(Relative(journal.root,companion.path));})||!Exists(path))continue;
+        uint32_t checksum=0;
+        // Only the standard same-stem files carrying the previous MDL's
+        // checksum are attributable to this model. Never retire custom/shared
+        // physics paths, unchecksummed ANI/JSON, or checksum-mismatched files.
+        // This model checksum establishes association, not payload integrity.
+        if(known&&OutputChecksum(path,companion.suffix,checksum)&&checksum==oldChecksum) {
+            outputs.push_back({path,nullptr,0,true});
+            std::printf("retiring obsolete output: %s\n",path.string().c_str());
+        }else {
+            std::fprintf(stderr,"warning: retaining obsolete companion with unverified ownership: %s\n",path.string().c_str());
+        }
+    }
+}
 }
 
 bool RecoverOutputFiles(const fs::path& model,const fs::path& root,std::string* error) {
@@ -253,13 +311,22 @@ bool SaveOutputSet(const std::vector<PendingOutput>& outputs,const fs::path& roo
     std::vector<std::unique_ptr<Lock>> locks;
     try {
         if(outputs.empty())return true;
-        const auto primary=std::find_if(outputs.begin(),outputs.end(),[](const PendingOutput& p){return p.path.extension()==".mdl";});
+        const auto primary=std::find_if(outputs.begin(),outputs.end(),[](const PendingOutput& p){return !p.remove&&p.path.extension()==".mdl";});
         if(primary==outputs.end())throw std::runtime_error("output set needs a primary MDL");
-        journal=Location(primary->path,root);Read(journal);locks=Locks(journal,outputs);Recover(journal);Remove(journal.commit);
+        auto pending=outputs;
+        // Lock possible retired companions as well as writes before inspecting
+        // the previous set, including when two compiles choose different sets.
+        auto lockPaths=outputs;
+        for(const auto& companion:Companions(primary->path))lockPaths.push_back({companion.path,nullptr,0});
+        journal=Location(primary->path,root);Read(journal);locks=Locks(journal,lockPaths);Recover(journal);Remove(journal.commit);
+        RetireCompanions(pending,primary->path,journal);
         journal.entries.clear();journal.nonce=std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         std::set<std::string> paths;
-        for(const auto& output:outputs) {
+        for(const auto& output:pending) {
             Entry e;e.relative=Relative(journal.root,output.path);Derive(journal,e,journal.entries.size());
+            e.remove=output.remove;
+            if(!SupportedOutput(e.path))throw std::runtime_error("unsupported output recovery extension");
+            if(e.remove&&e.path.extension()==".mdl")throw std::runtime_error("cannot delete the primary output");
             if(!paths.insert(Key(e.path)).second)throw std::runtime_error("duplicate output path: "+e.path.string());
             fs::create_directories(e.path.parent_path());e.hadOld=Exists(e.path);
             if(e.hadOld) {
@@ -274,11 +341,12 @@ bool SaveOutputSet(const std::vector<PendingOutput>& outputs,const fs::path& roo
         // Publish complete intent before staging or renaming originals. A torn
         // initial journal leaves the old set untouched and requires review.
         Write(journal);recorded=true;Checkpoint("journal");
-        for(size_t i=0;i<outputs.size();++i){WriteFile(journal.entries[i].stage,outputs[i].data,outputs[i].size);Checkpoint("stage");}
+        for(size_t i=0;i<pending.size();++i)if(!pending[i].remove){WriteFile(journal.entries[i].stage,pending[i].data,pending[i].size);Checkpoint("stage");}
         for(const auto& e:journal.entries)if(e.hadOld){Rename(e.path,e.backup);Checkpoint("backup");}
         // Publish MDL last, after all companion files.
         for(int pass=0;pass<2;++pass)for(const auto& e:journal.entries)if((e.path.extension()==".mdl")==bool(pass)){
-            Rename(e.stage,e.path);Checkpoint(pass?"mdl":"install");}
+            if(e.remove)Checkpoint("delete");
+            else {Rename(e.stage,e.path);Checkpoint(pass?"mdl":"install");}}
         WriteFile(journal.commit,journal.nonce.data(),journal.nonce.size());committed=true;Checkpoint("commit");
         for(const auto& e:journal.entries)Remove(e.backup);
         Remove(journal.path);Remove(journal.commit);return true;

@@ -15,10 +15,13 @@ int main(int argc,char** argv) {
         auto journal=Location(output/"fixture.mdl",root);Read(journal);auto locks=Locks(journal);
         std::puts("LOCKED");std::fflush(stdout);std::this_thread::sleep_for(std::chrono::seconds(20));return 0;
     }else {
-        std::string mdl=mode+"-model",vvd=mode+"-vertices",vtx=mode+"-indices",phy=mode+"-physics";
-        std::vector<PendingOutput> outputs{{output/"fixture.mdl",mdl.data(),mdl.size()},
+        std::string mdl=mode+"-model",vvd=mode+"-vertices",vtx=mode+"-indices",phy=mode+"-physics",json=mode+"-vertexanim";
+        std::vector<PendingOutput> outputs{{output/"fixture.vertexanim.json",json.data(),json.size()},
+            {output/"fixture.mdl",mdl.data(),mdl.size()},
             {output/"fixture.vvd",vvd.data(),vvd.size()},{output/"fixture.dx90.vtx",vtx.data(),vtx.size()},
             {output/"collision/other.phy",phy.data(),phy.size()}};
+        if(mode=="delete")outputs.back()={output/"collision/other.phy",nullptr,0,true};
+        if(mode=="badjson")outputs.front().path=output/"unrelated.json";
         if(SaveOutputSet(outputs,root,&error))return 0;
     }
     std::fprintf(stderr,"%s\n",error.c_str());return 1;

@@ -7,6 +7,8 @@ struct PendingOutput {
     std::filesystem::path path;
     const void* data;
     size_t size;
+    // A deletion participates in the same backup/recovery protocol as writes.
+    bool remove = false;
 };
 // Recover the same model before reading its previous sequence order. Journals
 // are confined to outputRoot; altered files are retained for manual review.

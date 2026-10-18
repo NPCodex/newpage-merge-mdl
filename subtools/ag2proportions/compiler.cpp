@@ -1,5 +1,6 @@
 // compiler.cpp - runs Valve's resourcecompiler headless in a throwaway
-// workspace, validates the clip and graph it produces, then publishes them.
+// workspace, validates the clip and graph it produces, then stages them for
+// publication together with their sources and the optional VMDL edit.
 
 #include <chrono>
 #include <cmath>
@@ -229,11 +230,13 @@ Toolchain FindToolchain(const fs::path& cs2, bool windowsBinaries) {
                   : std::vector<std::string>{"resourcecompiler", "libresourcecompiler.so", "libtier0.so", "libassetsystem.so"};
     t.modtools = windowsBinaries ? "modtools.dll" : "libmodtools.so";
     for (const std::string& name : t.files)
-        if (!fs::exists(t.bin / name))
+        if (!fs::is_regular_file(t.bin / name))
             throw runtime_error("missing " + (t.bin / name).u8string() +
                                 "; install CS2 Workshop Tools or use --generate-only");
-    if (!fs::exists(t.modBin / t.modtools))
+    if (!fs::is_regular_file(t.modBin / t.modtools))
         throw runtime_error("missing " + (t.modBin / t.modtools).u8string());
+    if (!fs::is_regular_file(cs2 / "game/bin/assettypes_common.txt"))
+        throw runtime_error("missing " + (cs2 / "game/bin/assettypes_common.txt").u8string());
     return t;
 }
 
@@ -315,8 +318,18 @@ void ValidateGraph(const kv::Value& graph) {
 
 } // namespace
 
+void PreflightCompiler(const Options& options, const Paths& paths) {
+#ifdef _WIN32
+    (void)options;
+    FindToolchain(paths.cs2, true);
+#else
+    FindToolchain(paths.cs2, options.compilerRunner == "wine");
+#endif
+}
+
 void Compile(const Options& options, const Paths& paths, const std::vector<uint8_t>& skeleton,
-             const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor) {
+             const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor,
+             const fs::path& stagedCompiled) {
 #ifdef _WIN32
     (void)options;
     const bool windowsBinaries = true;
@@ -373,10 +386,9 @@ void Compile(const Options& options, const Paths& paths, const std::vector<uint8
         const fs::path published = paths.cs2 / "game/csgo_addons" / paths.addon.filename() / fs::u8path(paths.relative);
         for (const char* source : {kClipFile, kWorldGraphFile, kUiGraphFile}) {
             const fs::path name = fs::u8path(std::string(source) + "_c");
-            fs::create_directories((published / name).parent_path());
-            fs::copy_file(game / fs::u8path(paths.relative) / name, published / name,
-                          fs::copy_options::overwrite_existing);
-            std::cout << "Compiled: " << (published / name).u8string() << '\n';
+            fs::create_directories((stagedCompiled / name).parent_path());
+            fs::copy_file(game / fs::u8path(paths.relative) / name, stagedCompiled / name);
+            std::cout << "Validated compiled resource: " << name.u8string() << '\n';
         }
 
         const fs::path reportPath = paths.output / "debug/report.kv3";

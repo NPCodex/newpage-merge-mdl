@@ -1,4 +1,4 @@
-add_executable(ag2proportions main.cpp workflow.cpp rig.cpp graph.cpp compiler.cpp)
+add_executable(ag2proportions main.cpp workflow.cpp rig.cpp graph.cpp compiler.cpp transaction.cpp)
 target_link_libraries(ag2proportions PRIVATE pulse_libs pulse_math pulse_dmx pulse_keyvalues3)
 target_include_directories(ag2proportions PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/wrapper.kv3" AG2_WRAPPER)
