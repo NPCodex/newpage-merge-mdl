@@ -5,9 +5,63 @@
 #include "c4d_file.h"
 #include "default_alien_overloads.h"
 #include <cstdio>
+#include <cstring>
 using namespace cineware;
 void GetWriterInfo(Int32& id,String& name){id=0;name="NewPageMergeMDL validation fixture";}
+
+bool WriteMaterialFixture(const char* output) {
+    BaseDocument* doc=BaseDocument::Alloc();if(!doc)return false;
+    BaseObject* parent=BaseObject::Alloc(Onull);parent->SetName("MaterialParent");
+    Matrix parentPose;parentPose.off=Vector(200,300,400);parent->SetMl(parentPose);doc->InsertObject(parent,nullptr);
+    const char* materialNames[]={"FixtureBlue","FixtureRed","FixtureGreen","UnusedYellow"};
+    const Vector colors[]={Vector(.2,.4,.8),Vector(.8,.2,.1),Vector(.1,.8,.2),Vector(.8,.8,.1)};
+    Material* materials[4];
+    for(int i=0;i<4;++i) {
+        auto* material=materials[i]=Material::Alloc();material->SetName(materialNames[i]);
+        material->GetDataInstance()->SetBool(MATERIAL_USE_COLOR,true);
+        material->GetDataInstance()->SetVector(MATERIAL_COLOR_COLOR,colors[i]);
+        material->GetDataInstance()->SetFloat(MATERIAL_COLOR_BRIGHTNESS,1.0);doc->InsertMaterial(material);
+    }
+    const char* names[]={"SmoothStrip","AuthoredStrip","RestrictedOnly","LastUnrestricted"};
+    for(int mode=0;mode<4;++mode) {
+        auto* mesh=PolygonObject::Alloc(10,4);mesh->SetName(names[mode]);
+        Matrix pose;pose.off=Vector(0,mode*200,0);mesh->SetMl(pose);doc->InsertObject(mesh,parent);
+        auto* points=mesh->GetPointW();
+        for(int row=0;row<2;++row)for(int x=0;x<5;++x)points[row*5+x]=Vector(x*100,row*100,x>=2?40:0);
+        for(int i=0;i<4;++i)mesh->GetPolygonW()[i]=CPolygon(i,i+1,i+6,i+5);
+        BaseTag* last=nullptr;
+        auto selection=[&](const char* name,int first,int final) {
+            auto* tag=static_cast<SelectionTag*>(mesh->MakeTag(Tpolygonselection,last));last=tag;tag->SetName(name);
+            for(int i=first;i<=final;++i)tag->GetBaseSelect()->Select(i);
+        };
+        auto texture=[&](int material,const char* restriction) {
+            auto* tag=static_cast<TextureTag*>(mesh->MakeTag(Ttexture,last));last=tag;
+            tag->SetMaterial(materials[material]);tag->GetDataInstance()->SetString(TEXTURETAG_RESTRICTION,restriction);
+        };
+        selection("Middle",1,2);selection("Overlap",2,2);
+        if(mode!=2)texture(0,"");
+        texture(1,"Middle");texture(2,"Overlap");texture(3,"MissingSelection");
+        if(mode==3)texture(0,""); // late unrestricted assignment must override all previous tags
+        auto* uv=static_cast<UVWTag*>(mesh->MakeTag(Tuvw,last));last=uv;uv->Resize(4);
+        for(int i=0;i<4;++i) {
+            UVWStruct value;value.a=Vector(i/4.0,0,0);value.b=Vector((i+1)/4.0,0,0);
+            value.c=Vector((i+1)/4.0,1,0);value.d=Vector(i/4.0,1,0);
+            UVWTag::Set(uv->GetDataAddressW(),i,value);
+        }
+        if(mode==1) {
+            auto* normal=static_cast<NormalTag*>(mesh->MakeTag(Tnormal,last));normal->Resize(4);
+            NormalStruct value;value.a=value.b=value.c=value.d=Vector(0,.6,.8);
+            for(int i=0;i<4;++i)NormalTag::Set(normal->GetDataAddressW(),i,value);
+        }
+    }
+    const bool ok=SaveDocument(doc,Filename(output),SAVEDOCUMENTFLAGS_0);
+    BaseDocument::Free(doc);return ok;
+}
+
 int main(int argc,char** argv) {
+    if(argc==3 && std::strcmp(argv[2],"materials")==0) {
+        const bool ok=WriteMaterialFixture(argv[1]);std::printf("material fixture %s\n",ok?"written":"failed");return ok?0:1;
+    }
     if(argc!=2)return 2;
     BaseDocument* doc=BaseDocument::Alloc();if(!doc)return 1;
     BaseObject* parent=BaseObject::Alloc(Onull);parent->SetName("FixtureParent");

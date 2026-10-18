@@ -24,6 +24,8 @@
 #include <windows.h>
 #endif
 
+#include "compiler_process.h"
+#include "output_transaction.h"
 #include "dmxwrite.h"
 #include "dr_mp3.h"
 #include "dr_wav.h"
@@ -926,7 +928,7 @@ int Usage() {
         "  -armangle <deg>  built-in rest arm droop below horizontal (default 35)\n"
         "  -o <file>        output .dmx for a single -vmd (default: the .vmd's name,\n"
         "                   beside it)\n"
-        "  -compile <name>  also build an animation-only .mdl/.ani with mdlcompiler:\n"
+        "  -compile <name>  also build an animation-only .mdl/.ani with NewPageMergeMDL:\n"
         "                   <name> is its $modelname (e.g. survivors/anim_mmd.mdl);\n"
         "                   clips and .qc go in <name>_src beside the first .vmd\n"
         "  -srcdir <dir>    where -compile writes its clips and .qc (default\n"
@@ -1000,18 +1002,6 @@ std::string ClipName(const std::string& path) {
     return s.empty() ? std::string("clip") : s;
 }
 
-// The compiler ships one folder up from the subtools.
-std::string CompilerPath(const char* argv0) {
-    std::error_code ec;
-    const fs::path self = fs::absolute(fs::path(argv0), ec);
-#ifdef _WIN32
-    const char* exe = "mdlcompiler.exe";
-#else
-    const char* exe = "mdlcompiler";
-#endif
-    const fs::path p = self.parent_path().parent_path() / exe;
-    return fs::exists(p, ec) ? p.string() : std::string(exe);
-}
 
 struct Clip {
     std::string name;
@@ -1074,7 +1064,8 @@ const char* const kCameraFovBone = "mmd_camera_fov";
 
 bool WriteCameraSmd(const std::string& path, const std::vector<AnimPose>& frames,
                     const std::vector<float>* fov) {
-    std::FILE* f = std::fopen(path.c_str(), "wb");
+    subtool::OutputFile file(path);
+    std::FILE* f = file.Get();
     if (!f)
         return false;
     std::fprintf(f, "version 1\nnodes\n0 \"%s\" -1\n", kCameraBone);
@@ -1088,7 +1079,7 @@ bool WriteCameraSmd(const std::string& path, const std::vector<AnimPose>& frames
             std::fprintf(f, "1 %f 0 0 0 0 0\n", (*fov)[k]);
     }
     std::fprintf(f, "end\n");
-    return std::fclose(f) == 0;
+    return file.Close();
 }
 
 // Decodes a .wav or .mp3 and writes it as the PCM wav the engine plays: 16-bit,
@@ -1101,7 +1092,7 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
     unsigned ch = 0, rate = 0;
     drwav_uint64 frames = 0;
     int16_t* pcm = nullptr;
-    const bool mp3 = _stricmp(fs::path(src).extension().string().c_str(), ".mp3") == 0;
+    const bool mp3 = _stricmp(fs::u8path(src).extension().u8string().c_str(), ".mp3") == 0;
     if (mp3) {
         drmp3_config cfg{};
         drmp3_uint64 n = 0;
@@ -1153,7 +1144,8 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
     }
     mp3 ? drmp3_free(pcm, nullptr) : drwav_free(pcm, nullptr);
 
-    std::FILE* f = std::fopen(dst.c_str(), "wb");
+    subtool::OutputFile file(dst);
+    std::FILE* f = file.Get();
     if (!f)
         return "cannot write \"" + dst + "\"";
     const uint32_t bytes = static_cast<uint32_t>(out.size() * 2);
@@ -1172,7 +1164,7 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
     std::fwrite("data", 1, 4, f);
     u32(bytes);
     std::fwrite(out.data(), 2, out.size(), f);
-    const bool ok = std::fclose(f) == 0;
+    const bool ok = file.Close();
 
     note = std::string(mp3 ? "mp3" : "wav") + " " + std::to_string(rate) + " Hz " +
            std::to_string(ch) + "ch -> wav " + std::to_string(outRate) + " Hz 16-bit " +
@@ -1184,7 +1176,8 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
 // $sequence per clip. Joints go out exactly as the decompiler writes them.
 bool WriteAnimQc(const std::string& path, const Mdl& m, const std::string& modelname,
                  const std::vector<Clip>& clips, bool fovBone) {
-    std::FILE* f = std::fopen(path.c_str(), "wb");
+    subtool::OutputFile file(path);
+    std::FILE* f = file.Get();
     if (!f)
         return false;
     const fm::studiohdr_t& h = *m.hdr;
@@ -1228,13 +1221,12 @@ bool WriteAnimQc(const std::string& path, const Mdl& m, const std::string& model
             std::fprintf(f, " {\n    event AE_CL_PLAYSOUND 0 \"%s\"\n}", c.sound.c_str());
         std::fputc('\n', f);
     }
-    std::fclose(f);
-    return true;
+    return file.Close();
 }
 
 } // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) try {
     PrintHeader();
     std::vector<std::string> vmdPaths;
     std::string mdlPath, pmxPath, outPath, compileName, gameDir, srcArg, faceMapPath;
@@ -1497,11 +1489,11 @@ int main(int argc, char** argv) {
     std::string srcDir;
     if (!compileName.empty()) {
         if (gameDir.empty())
-            gameDir = fs::path(vmdPaths[0]).parent_path().string();
+            gameDir = fs::u8path(vmdPaths[0]).parent_path().u8string();
         srcDir = !srcArg.empty() ? srcArg
-                                 : (fs::path(vmdPaths[0]).parent_path() / (ClipName(compileName) + "_src")).string();
+                                 : (fs::u8path(vmdPaths[0]).parent_path() / (ClipName(compileName) + "_src")).u8string();
     }
-    const fs::path dataDir = compileName.empty() ? fs::path() : fs::path(gameDir) / "datamodel";
+    const fs::path dataDir = compileName.empty() ? fs::path() : fs::u8path(gameDir) / "datamodel";
 
     struct OutputPlan { std::string path, clip; };
     std::vector<OutputPlan> plans(vmdPaths.size());
@@ -1516,26 +1508,26 @@ int main(int argc, char** argv) {
         const fs::path absolute = fs::absolute(path, pathError);
         const fs::path normalized = pathError ? absolute : fs::weakly_canonical(absolute, pathError);
         if (pathError) {
-            err = "cannot resolve output path \"" + path.string() + "\": " + pathError.message();
+            err = "cannot resolve output path \"" + path.u8string() + "\": " + pathError.message();
             return false;
         }
         for (const auto& [existingPath, existingOwner] : outputOwners) {
             std::error_code equivalentError;
             if (fs::equivalent(normalized, fs::path(existingPath), equivalentError) && !equivalentError) {
-                err = "output collision at \"" + normalized.string() + "\": " + existingOwner + " and " + owner;
+                err = "output collision at \"" + normalized.u8string() + "\": " + existingOwner + " and " + owner;
                 return false;
             }
         }
         const auto [at, inserted] = outputOwners.emplace(normalized.native(), owner);
         if (!inserted) {
-            err = "output collision at \"" + normalized.string() + "\": " + at->second + " and " + owner;
+            err = "output collision at \"" + normalized.u8string() + "\": " + at->second + " and " + owner;
             return false;
         }
         return true;
     };
     const std::string qc = srcDir.empty() ? std::string()
-        : (fs::path(srcDir) / (ClipName(compileName) + ".qc")).string();
-    if (!qc.empty() && !reserve(qc, "animation QC")) return Fail(err);
+        : (fs::u8path(srcDir) / (ClipName(compileName) + ".qc")).u8string();
+    if (!qc.empty() && !reserve(fs::u8path(qc), "animation QC")) return Fail(err);
     // Discover every body, face, camera and audio destination before writing any
     // file. A camera suffix can also be another input's body name; checking only
     // the body names while converting silently replaces that earlier document.
@@ -1558,18 +1550,18 @@ int main(int argc, char** argv) {
             const std::string base = plan.clip;
             for (int n = 2; sequenceNames.count(sequenceKey(plan.clip)); ++n)
                 plan.clip = base + "_" + std::to_string(n);
-            plan.path = (fs::path(srcDir) / (plan.clip + ".dmx")).string();
+            plan.path = (fs::u8path(srcDir) / (plan.clip + ".dmx")).u8string();
         } else {
             plan.path = outPath.empty() ? mdldecompiler::StripExt(vmdPath) + ".dmx" : outPath;
             plan.clip = mdldecompiler::StripExt(mdldecompiler::BaseName(plan.path));
         }
         sequenceNames.insert(sequenceKey(plan.clip));
-        if (!reserve(plan.path, "body from " + vmdPath)) return Fail(err);
+        if (!reserve(fs::u8path(plan.path), "body from " + vmdPath)) return Fail(err);
         if (!dataDir.empty() &&
             !reserve(dataDir / "flex_anims" / (plan.clip + ".dmx"), "face/body copy from " + vmdPath))
             return Fail(err);
         const std::string faceVmd = mdldecompiler::StripExt(vmdPath) + "_face.vmd";
-        if (fs::exists(faceVmd, ec)) {
+        if (fs::exists(fs::u8path(faceVmd), ec)) {
             std::map<std::string, std::vector<Key>> faceKeys;
             Morphs faceMorphs;
             std::vector<CamKey> faceCams;
@@ -1577,7 +1569,7 @@ int main(int argc, char** argv) {
             if (!LoadVmd(faceVmd, faceKeys, faceMorphs, faceCams, faceLast, err)) return Fail(err);
         }
         const std::string camVmd = mdldecompiler::StripExt(vmdPath) + "_camera.vmd";
-        if (fs::exists(camVmd, ec)) {
+        if (fs::exists(fs::u8path(camVmd), ec)) {
             std::map<std::string, std::vector<Key>> camKeys;
             Morphs camMorphs;
             uint32_t camLast = 0;
@@ -1588,7 +1580,7 @@ int main(int argc, char** argv) {
             const std::string camClip = plan.clip + "_camera";
             if (!srcDir.empty() && !sequenceNames.insert(sequenceKey(camClip)).second)
                 return Fail("sequence name collision: \"" + camClip + "\" (camera from " + vmdPath + ")");
-            const fs::path camDir = fs::path(plan.path).parent_path();
+            const fs::path camDir = fs::u8path(plan.path).parent_path();
             if (!reserve(camDir / (camClip + ".smd"), "camera from " + vmdPath)) return Fail(err);
             if (cameraFov == "dmx" &&
                 !reserve((dataDir.empty() ? camDir : dataDir / "camera_anims") / (camClip + ".dmx"),
@@ -1596,18 +1588,17 @@ int main(int argc, char** argv) {
         }
         if (sound) {
             for (const char* ext : {".wav", ".mp3"}) {
-                if (!fs::exists(mdldecompiler::StripExt(vmdPath) + ext, ec)) continue;
+                if (!fs::exists(fs::u8path(mdldecompiler::StripExt(vmdPath) + ext), ec)) continue;
                 if (std::string("mmd/" + plan.clip + ".wav").size() > 64)
                     return Fail("sound path is over the 64-character event limit: " + plan.clip);
-                if (!reserve(fs::path(gameDir) / "sound" / "mmd" / (plan.clip + ".wav"),
+                if (!reserve(fs::u8path(gameDir) / "sound" / "mmd" / (plan.clip + ".wav"),
                              "sound from " + vmdPath)) return Fail(err);
                 break;
             }
         }
     }
-    if (!srcDir.empty()) fs::create_directories(srcDir, ec);
-    if (!dataDir.empty())
-        fs::create_directories(dataDir / "flex_anims", ec);
+    const fs::path compiler = compileName.empty() ? fs::path() : vmdtool::CompilerPath(argv[0]);
+    subtool::OutputTransaction outputs;
     std::set<std::string> faceMissing;
 
     const int lower = mmd.Find("lower");
@@ -1729,7 +1720,7 @@ int main(int argc, char** argv) {
 
         // face: the motion's own morphs, each one <vmd name>_face.vmd also keys taken from there
         const std::string faceVmd = mdldecompiler::StripExt(vmdPath) + "_face.vmd";
-        const bool faceFile = fs::exists(faceVmd, ec);
+        const bool faceFile = fs::exists(fs::u8path(faceVmd), ec);
         if (faceFile) {
             std::map<std::string, std::vector<Key>> unusedKeys;
             std::vector<CamKey> unusedCams;
@@ -1750,7 +1741,7 @@ int main(int argc, char** argv) {
         AddEyeTracks(keys, ctrls, times, eyeRange, face);
         const std::vector<mdldecompiler::FlexTrack>* flex = face.empty() ? nullptr : &face;
 
-        if (!mdldecompiler::WriteAnimationDmx(m, path, clip, fps, frames,
+        if (!mdldecompiler::WriteAnimationDmx(m, outputs.Stage(path), clip, fps, frames,
                                               dmxModel == 22 && srcDir.empty() ? flex : nullptr))
             return Fail("cannot write \"" + path + "\"");
         int root = pelvis;
@@ -1759,7 +1750,7 @@ int main(int argc, char** argv) {
         const std::string walkOpts = walkEvery >= 0 ? WalkFrames(frames, root, walkEvery, walkTol) : std::string();
         clips.push_back({clip, fps, std::string(), false, walkOpts});
 
-        std::printf("wrote %s\n", path.c_str());
+        std::printf("prepared %s\n", path.c_str());
         std::printf("  %ld frame%s at %d fps", count, count == 1 ? "" : "s", fps);
         if (fps != 30)
             std::printf(" (resampled from %ld MMD frames to fit the %ld-frame limit)", span + 1, limit);
@@ -1776,20 +1767,20 @@ int main(int argc, char** argv) {
 
         // -compile: the SFM / PulseWorkshop copy, always model 22
         if (!dataDir.empty()) {
-            const std::string dataPath = (dataDir / "flex_anims" / (clip + ".dmx")).string();
+            const std::string dataPath = (dataDir / "flex_anims" / (clip + ".dmx")).u8string();
             mdldecompiler::SetDmxOutput(dmxEncoding, 22);
-            const bool ok = mdldecompiler::WriteAnimationDmx(m, dataPath, clip, fps, frames, flex);
+            const bool ok = mdldecompiler::WriteAnimationDmx(m, outputs.Stage(dataPath), clip, fps, frames, flex);
             mdldecompiler::SetDmxOutput(dmxEncoding, dmxModel);
             if (!ok)
                 return Fail("cannot write \"" + dataPath + "\"");
-            std::printf("wrote %s\n", dataPath.c_str());
+            std::printf("prepared %s\n", dataPath.c_str());
         }
         const size_t body = clips.size() - 1;
 
         // camera: <vmd name>_camera.vmd beside the motion, else the motion's own keys,
         // sampled over the body clip's frames so the two stay in sync
         const std::string camVmd = mdldecompiler::StripExt(vmdPath) + "_camera.vmd";
-        const bool camFile = fs::exists(camVmd, ec);
+        const bool camFile = fs::exists(fs::u8path(camVmd), ec);
         if (camFile) {
             std::map<std::string, std::vector<Key>> unused;
             uint32_t camLast = 0;
@@ -1818,12 +1809,12 @@ int main(int argc, char** argv) {
                 pm::MatrixAngles(cm, cf[static_cast<size_t>(k)].rot, cf[static_cast<size_t>(k)].pos);
             }
             const std::string camClip = clip + "_camera";
-            const std::string camPath = (fs::path(path).parent_path() / (camClip + ".smd")).string();
-            if (!WriteCameraSmd(camPath, cf, fovBone ? &fov : nullptr))
+            const std::string camPath = (fs::u8path(path).parent_path() / (camClip + ".smd")).u8string();
+            if (!WriteCameraSmd(outputs.Stage(camPath), cf, fovBone ? &fov : nullptr))
                 return Fail("cannot write \"" + camPath + "\"");
             clips.push_back({camClip, fps, std::string(), true});
             const auto [fovLo, fovHi] = std::minmax_element(fov.begin(), fov.end());
-            std::printf("wrote %s\n  %zu camera keys from %s, fov %g-%g degrees\n", camPath.c_str(),
+            std::printf("prepared %s\n  %zu camera keys from %s, fov %g-%g degrees\n", camPath.c_str(),
                         cams.size(), camFile ? camVmd.c_str() : "the motion", *fovLo, *fovHi);
             if (srcDir.empty()) {
                 std::printf("  $sequence \"%s\" \"%s.smd\" fps %d - needs $definebone \"%s\" \"\" 0 0 0 0 0 0  0 0 0 0 0 0\n",
@@ -1833,12 +1824,11 @@ int main(int argc, char** argv) {
                                 kCameraBone);
             }
             if (cameraFov == "dmx") {
-                const fs::path camDir = dataDir.empty() ? fs::path(camPath).parent_path() : dataDir / "camera_anims";
-                fs::create_directories(camDir, ec);
-                const std::string camDmx = (camDir / (camClip + ".dmx")).string();
-                if (!mdldecompiler::WriteCameraDmx(camDmx, camClip, fps, cf, fov))
+                const fs::path camDir = dataDir.empty() ? fs::u8path(camPath).parent_path() : dataDir / "camera_anims";
+                const std::string camDmx = (camDir / (camClip + ".dmx")).u8string();
+                if (!mdldecompiler::WriteCameraDmx(outputs.Stage(camDmx), camClip, fps, cf, fov))
                     return Fail("cannot write \"" + camDmx + "\"");
-                std::printf("wrote %s\n", camDmx.c_str());
+                std::printf("prepared %s\n", camDmx.c_str());
             }
         }
 
@@ -1847,7 +1837,7 @@ int main(int argc, char** argv) {
         if (sound) {
             std::string audio;
             for (const char* ext : {".wav", ".mp3"})
-                if (fs::exists(mdldecompiler::StripExt(vmdPath) + ext, ec)) {
+                if (fs::exists(fs::u8path(mdldecompiler::StripExt(vmdPath) + ext), ec)) {
                     audio = mdldecompiler::StripExt(vmdPath) + ext;
                     break;
                 }
@@ -1859,14 +1849,13 @@ int main(int argc, char** argv) {
             if (rel.size() > 64)
                 return Fail("sound path \"" + rel + "\" is over the 64-character event limit - "
                             "rename the .vmd shorter");
-            const fs::path dst = fs::path(gameDir) / "sound" / "mmd" / (clip + ".wav");
-            fs::create_directories(dst.parent_path(), ec);
+            const fs::path dst = fs::u8path(gameDir) / "sound" / "mmd" / (clip + ".wav");
             std::string note;
-            const std::string why = ConvertAudio(audio, dst.string(), note);
+            const std::string why = ConvertAudio(audio, outputs.Stage(dst.u8string()), note);
             if (!why.empty())
                 return Fail("\"" + audio + "\" " + why);
             clips[body].sound = rel;
-            std::printf("  sound %s (%s)\n", dst.string().c_str(), note.c_str());
+            std::printf("  sound %s (%s)\n", dst.u8string().c_str(), note.c_str());
             if (first > 0)
                 std::printf("  warning: -start trims the motion but not the audio - they will not line up\n");
         }
@@ -1884,19 +1873,45 @@ int main(int argc, char** argv) {
             std::printf(" %s", c.c_str());
         std::printf("\n");
     }
-    if (srcDir.empty())
-        return 0;
-
-    if (!WriteAnimQc(qc, m, compileName, clips, fovBone))
-        return Fail("cannot write \"" + qc + "\"");
-    std::printf("wrote %s\n\n", qc.c_str());
-
-    std::string cmd = "\"" + CompilerPath(argv[0]) + "\" -game \"" + gameDir + "\" \"" + qc + "\"";
-#ifdef _WIN32
-    cmd = "\"" + cmd + "\""; // cmd /c strips one outer pair of quotes
-#endif
-    std::fflush(stdout);
-    if (std::system(cmd.c_str()) != 0)
-        return Fail("mdlcompiler failed on \"" + qc + "\" - the .qc and clips are kept for a rerun");
+    if (!srcDir.empty()) {
+        const std::string stagedQc = outputs.Stage(qc);
+        if (!WriteAnimQc(stagedQc, m, compileName, clips, fovBone))
+            return Fail("cannot write \"" + qc + "\"");
+        const fs::path compiled = outputs.Root() / "compiled";
+        fs::create_directory(compiled);
+        std::fflush(stdout);
+        const int result = vmdtool::RunCompiler(compiler,
+            {"-game", fs::absolute(fs::u8path(gameDir)).u8string(), "-OutDir", compiled.u8string(), stagedQc});
+        if (result != 0) {
+            Fail("NewPageMergeMDL exited with status " + std::to_string(result) +
+                 "; original outputs were preserved");
+            return result;
+        }
+        const fs::path generated = compiled / "models";
+        if (!fs::is_directory(generated))
+            return Fail("NewPageMergeMDL returned success without generated models");
+        size_t modelCount = 0;
+        std::vector<fs::path> models;
+        for (const auto& item : fs::recursive_directory_iterator(generated)) {
+            if (!item.is_regular_file()) continue;
+            const fs::path relative = fs::relative(item.path(), generated);
+            outputs.Replace(item.path(), fs::u8path(gameDir) / "models" / relative);
+            if (item.path().extension() == ".mdl") { ++modelCount; models.push_back(relative); }
+        }
+        if (!modelCount) return Fail("NewPageMergeMDL returned success without an MDL");
+        // Remove old companions only as part of the same successful publication.
+        for (fs::path model : models) {
+            model.replace_extension();
+            for (const char* suffix : {".ani", ".vvd", ".vtx", ".dx90.vtx", ".dx80.vtx", ".phy", ".vertexanim.json"}) {
+                const fs::path companion = fs::u8path(model.u8string() + suffix);
+                if (!fs::exists(generated / companion))
+                    outputs.Remove(fs::u8path(gameDir) / "models" / companion);
+            }
+        }
+    }
+    outputs.Commit();
+    std::printf("all conversion outputs published successfully\n");
     return 0;
+} catch (const std::exception& error) {
+    return Fail(error.what());
 }

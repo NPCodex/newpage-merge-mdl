@@ -29,7 +29,10 @@ namespace pulse::source {
 // `physicsShapes` = $datamodelphysics: read the DmePhysicsShape dags instead of
 // the DmeMesh ones, each connected piece pinned to its most-weighted bone, plus
 // the root's physicsPrimitiveList as one rigid hull per merge group.
-struct DmxProcessing { bool computeNormals=false, computeWrinkles=false, ignoreWrinkles=false; };
+struct DmxProcessing {
+    bool computeNormals=false, computeWrinkles=false, ignoreWrinkles=false;
+    bool ceNormals=false; // CE: equal-face weighting, per-position smoothing and sparse cutoff
+};
 
 bool LoadDmxSource(const pulse::dmx::Datamodel& dm, Source& out,
                    MaterialTable& mats, float scale, std::string* err,

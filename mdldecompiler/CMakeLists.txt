@@ -10,10 +10,16 @@ target_compile_definitions(mdldecompiler PRIVATE PULSEMODEL_VERSION="${PROJECT_V
 
 # App icon plus Explorer's Details tab (description, product name/version, copyright).
 if(WIN32)
+    set(SUBTOOL_UTF8_MANIFEST_RESOURCE "")
+    if(MINGW)
+        set(SUBTOOL_UTF8_MANIFEST_RESOURCE "1 24 \"${CMAKE_SOURCE_DIR}/utf8.manifest\"")
+    endif()
     configure_file(version.rc.in "${CMAKE_CURRENT_BINARY_DIR}/version.rc" @ONLY)
     set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/version.rc" APPEND PROPERTY
                  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/app.ico")
-    target_sources(mdldecompiler PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
-                                         "${CMAKE_SOURCE_DIR}/utf8.manifest")
+    target_sources(mdldecompiler PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc")
+    if(NOT MINGW)
+        target_sources(mdldecompiler PRIVATE "${CMAKE_SOURCE_DIR}/utf8.manifest")
+    endif()
 endif()
 target_link_libraries(mdldecompiler PRIVATE pulse_libs pulse_math pulse_dmx)

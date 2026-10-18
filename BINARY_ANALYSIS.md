@@ -1,4 +1,22 @@
-# Current integration status (v1.2.12)
+# Current targeted analysis and fixes (2026-10-18, v1.2.34 replacement)
+
+The [REA second-pass report](tests/reports/2026-10-18-rea-second-pass.md) records
+the **before-replacement** executable and its missing normal-only combination
+correctives. The replacement implementation rebuilds combined DMX poses in
+dependency order and subtracts the base and lower-order normal contributions.
+The CE profile uses the observed equal-face weighting and sparse-normal threshold;
+native mode retains area weighting. Six regressions cover serialized CE controls,
+zero-position correctives, unordered intermediate subsets, seams, thresholds and
+the local/global switches. See the [replacement validation report](tests/reports/v1.2.34-replacement-validation.md)
+for tested builds and release status; the historical report's hashes identify the
+earlier executable, not the replacement.
+
+Neko's nonuniform normal transform and mirrored winding differ from the
+mathematically correct behavior already present here. StudioMDL++ passed 58 bounded
+animation-command comparisons in the historical analysis. Neither result establishes
+general binary or engine parity.
+
+# Historical integration status (v1.2.12)
 
 The investigations below are historical evidence. Current status is tracked in
 FEATURE_MATRIX.md and COMPATIBILITY.md. AppID mounts, explicit bone retention,

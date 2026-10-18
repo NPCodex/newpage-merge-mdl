@@ -6,6 +6,7 @@ by tools/c4d_bridge/fixture.cpp, rather than taken from Cineware's examples.
 """
 from pathlib import Path
 import json
+import math
 import os
 import shutil
 import struct
@@ -17,6 +18,28 @@ import unittest
 COMPILER = Path(sys.argv.pop(1)).resolve()
 HELPER = COMPILER.with_name('NewPageMergeMDL-C4D.exe')
 FIXTURE = Path(__file__).parent / 'fixtures/cineware-static.c4d'
+MATERIAL_FIXTURE = Path(__file__).parent / 'fixtures/cineware-materials.c4d'
+
+
+def read_glb(path):
+    data = path.read_bytes()
+    if data[:4] != b'glTF': raise ValueError('not a GLB')
+    offset, doc, binary = 12, None, None
+    while offset < len(data):
+        size, kind = struct.unpack_from('<2I', data, offset)
+        value = data[offset+8:offset+8+size]
+        if kind == 0x4e4f534a: doc = json.loads(value)
+        elif kind == 0x004e4942: binary = value
+        offset += size+8
+    def accessor(index):
+        item = doc['accessors'][index]
+        view = doc['bufferViews'][item['bufferView']]
+        count = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4}[item['type']]
+        fmt = '<' + str(count) + {5121: 'B', 5123: 'H', 5125: 'I', 5126: 'f'}[item['componentType']]
+        start = view.get('byteOffset', 0)+item.get('byteOffset', 0)
+        stride = view.get('byteStride', struct.calcsize(fmt))
+        return [struct.unpack_from(fmt, binary, start+i*stride) for i in range(item['count'])]
+    return doc, accessor
 
 
 @unittest.skipUnless(os.name == 'nt', 'Cineware 22 bridge uses the Windows MSVC ABI')
@@ -131,6 +154,81 @@ class C4dBridge(unittest.TestCase):
         text = self.run_process([HELPER, self.source, output], success=False)
         self.assertIn('Refusing to overwrite', text)
         self.assertEqual(output.read_bytes(), b'previous scene')
+
+    def material_scene(self):
+        output = self.root / 'materials.glb'
+        self.run_process([HELPER, MATERIAL_FIXTURE.resolve(), output])
+        return read_glb(output)
+
+    def test_polygon_selections_and_texture_tag_order_preserve_face_materials(self):
+        doc, values = self.material_scene()
+        expected = {
+            'SmoothStrip': ['FixtureBlue', 'FixtureRed', 'FixtureGreen', 'FixtureBlue'],
+            'AuthoredStrip': ['FixtureBlue', 'FixtureRed', 'FixtureGreen', 'FixtureBlue'],
+            'RestrictedOnly': ['DefaultMaterial', 'FixtureRed', 'FixtureGreen', 'DefaultMaterial'],
+            'LastUnrestricted': ['FixtureBlue']*4,
+        }
+        parent = next(n for n in doc['nodes'] if n['name'] == 'MaterialParent')
+        self.assertEqual(parent['matrix'][12:15], [200, 300, 400])
+        self.assertEqual({doc['nodes'][n]['name'] for n in parent['children']}, set(expected))
+        for name, assignment in expected.items():
+            with self.subTest(node=name):
+                node = next(n for n in doc['nodes'] if n['name'] == name)
+                if name != 'SmoothStrip':
+                    self.assertEqual(node['matrix'][13], list(expected).index(name)*200)
+                polygons = [0]*4
+                for primitive in doc['meshes'][node['mesh']]['primitives']:
+                    material = doc['materials'][primitive['material']]['name']
+                    positions = values(primitive['attributes']['POSITION'])
+                    indices = [i[0] for i in values(primitive['indices'])]
+                    self.assertEqual(len(indices) % 3, 0)
+                    for i in range(0, len(indices), 3):
+                        center = sum(positions[j][0] for j in indices[i:i+3])/3
+                        polygon = int(center // 100)
+                        polygons[polygon] += 1
+                        self.assertEqual(material, assignment[polygon])
+                self.assertEqual(polygons, [2]*4)
+
+    def test_material_splits_preserve_uv_authored_normals_and_smoothing(self):
+        doc, values = self.material_scene()
+        smooth_boundary = []
+        expected_smooth = (-.18910752, 0, .98195639)
+        for name in ('SmoothStrip', 'AuthoredStrip'):
+            node = next(n for n in doc['nodes'] if n['name'] == name)
+            for primitive in doc['meshes'][node['mesh']]['primitives']:
+                attributes = primitive['attributes']
+                for position, normal, uv in zip(values(attributes['POSITION']), values(attributes['NORMAL']), values(attributes['TEXCOORD_0'])):
+                    self.assertAlmostEqual(uv[0], position[0]/400, places=6)
+                    self.assertAlmostEqual(uv[1], position[1]/100, places=6)
+                    self.assertAlmostEqual(math.sqrt(sum(x*x for x in normal)), 1, places=5)
+                    if name == 'AuthoredStrip':
+                        for a, b in zip(normal, (0, .6, .8)): self.assertAlmostEqual(a, b, places=4)
+                    elif position[0] in (100, 200):
+                        smooth_boundary.append(normal)
+                        for a, b in zip(normal, expected_smooth): self.assertAlmostEqual(a, b, places=5)
+        self.assertEqual(len(smooth_boundary), 8) # each side of both material boundaries
+
+    def test_multimaterial_binary_c4d_compiles_with_geometry_and_materials(self):
+        self.compile(source=MATERIAL_FIXTURE.resolve(), selection='InNode SmoothStrip')
+        mdl = (self.root/'models/c4d.mdl').read_bytes()
+        count, offset = struct.unpack_from('<2i', mdl, 204)
+        names = []
+        for i in range(count):
+            start = offset+i*64
+            name = start+struct.unpack_from('<i', mdl, start)[0]
+            names.append(mdl[name:mdl.index(b'\0', name)].decode())
+        self.assertEqual(set(names), {'FixtureBlue', 'FixtureRed', 'FixtureGreen'})
+        vvd = (self.root/'models/c4d.vvd').read_bytes()
+        count = struct.unpack_from('<i', vvd, 16)[0]
+        offset = struct.unpack_from('<i', vvd, 56)[0]
+        vertices = [struct.unpack_from('<8f', vvd, offset+i*48+16) for i in range(count)]
+        expected = {(2+x, 4+(.4 if x>=2 else 0), 3+y) for x in range(5) for y in range(2)}
+        self.assertEqual({tuple(round(v, 4) for v in p[:3]) for p in vertices}, expected)
+        for p in vertices:
+            self.assertAlmostEqual(p[6], (p[0]-2)/4, places=5)
+            self.assertAlmostEqual(p[7], p[2]-3, places=5)
+            if round(p[0], 5) in (3, 4):
+                for a, b in zip(p[3:6], (-.18910752, .98195639, 0)): self.assertAlmostEqual(a, b, places=5)
 
 
 if __name__ == '__main__':

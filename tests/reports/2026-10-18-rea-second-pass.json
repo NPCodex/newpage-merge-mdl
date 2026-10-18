@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "project_version": "1.2.34",
+  "status": "analysis-complete-ce-gap-unfixed",
+  "historical_scope": "Before the v1.2.34 replacement; status, hashes and measurements preserve the original analysis, not current implementation status.",
+  "superseded_by": "v1.2.34-replacement-validation.json",
+  "report": "2026-10-18-rea-second-pass.md",
+  "provider": "REA / Ghidra 12.1.4",
+  "method": [
+    "static-native-analysis",
+    "isolated-authored-fixture-execution",
+    "independent-output-math"
+  ],
+  "binaries_sha256": {
+    "newpage": "cab5dd7d34e2b6e85c0bf737950859487883b22352d5d3c504a5f65fb49f3d70",
+    "decompiler": "a173778f4f1e0a8385dbd56bdb2d38068834a214fe31208c095546c070298654",
+    "ce": "bc5cbbcb1444d539d35a36afdc7a84b7419839fd1b15674e2d0ec6ffc37e0758",
+    "neko": "36b7eaad13af84a492733a09bfe56d11b1c3b7e1d8bfe0070b99188198f9aa77",
+    "plusplus": "77791bdd9c0e09b6ae4efbadad9674d9398fc06bee74d3f6598ac2bacd128713"
+  },
+  "ce": {
+    "reference_version": "CE 0.3.0 (Preview), Build ID 20260107071306",
+    "case_count": 6,
+    "compile_count": 12,
+    "all_runs_exit_zero": true,
+    "finding": "Missing normal-only combination corrective when automatic normals are enabled",
+    "runtime_scope": "$dmxcompatibility ce plus $ComputeDeltaNormals",
+    "authored_normal_controls_identical": 2,
+    "single_face_corner_angle_error_degrees": {
+      "ce": 0.0018564,
+      "newpage": 0.8402847
+    },
+    "separate_policy_difference": "CE equal-face versus current area-weighted normals",
+    "static_core": "0x140168c80",
+    "static_sparse_delta_threshold_squared": 0.0001,
+    "not_tested": [
+      "in-game lighting",
+      "arbitrary rigs",
+      "intermediate subsets and order",
+      "runtime threshold boundary"
+    ]
+  },
+  "neko": {
+    "fixture_count": 4,
+    "import_modes": [
+      "fast-gltf",
+      "assimp-NoFastGltf"
+    ],
+    "compile_count": 16,
+    "position_max_component_error": 2.3997146421095294e-06,
+    "normal_max_angle_error_degrees": {
+      "neko": 72.25532991585764,
+      "newpage": 2.091309789151873e-06
+    },
+    "finding": "Reference transforms normals with M, not inverse transpose; mirrored winding flips. NewPage already correct.",
+    "static_vertex_functions": [
+      "0x140024fd8",
+      "0x1400a64b8"
+    ],
+    "static_assimp_triangle_writer": "0x1400a726c",
+    "scope": "Static unskinned glTF; not general rigs or game rendering",
+    "structural_validation_reported": "All 16 MDL/VVD/VTX checks pass in the separately reviewed Neko findings report."
+  },
+  "plusplus": {
+    "distinct_common_syntax_cases": 33,
+    "match_count": 58,
+    "native_extension_rejected_count": 2,
+    "different_count": 0,
+    "max_numeric_error": 1.4000000000014001e-05,
+    "sensitivity_controls": {
+      "copy_subtract vs subtract_copy": {
+        "pose_max_difference": 3.9962160000000004,
+        "metadata_max_difference": 0.0
+      },
+      "match_rot_subtract vs subtract_match_rot": {
+        "pose_max_difference": 1.882231,
+        "metadata_max_difference": 0.0
+      },
+      "copy_walk vs walk_copy": {
+        "pose_max_difference": 8.999542,
+        "metadata_max_difference": 24.0
+      },
+      "child_match_reset vs match_child_reset": {
+        "pose_max_difference": 14.992645,
+        "metadata_max_difference": 0.0
+      },
+      "copy_full vs copy_fractional": {
+        "pose_max_difference": 0,
+        "metadata_max_difference": 0.0
+      }
+    },
+    "reference_sha256": "77791bdd9c0e09b6ae4efbadad9674d9398fc06bee74d3f6598ac2bacd128713",
+    "scope": "Two bones, four frames, command order, weights and short source holding",
+    "static_parser": "0x1400d02e0",
+    "static_executor": "0x1400a2b70",
+    "finding": "No new mismatch within tested common syntax",
+    "limitation": "Decoded poses plus direct metadata; not raw compressed-channel or whole-file parity. Large executor high-pcode truncated."
+  },
+  "code_changed": false,
+  "build_or_release_performed": false,
+  "game_validation_performed": false,
+  "local_evidence_directory_name": "rea-second-pass-20261018",
+  "local_only_evidence": {
+    "ce/summary.json": {
+      "sha256": "6302ab1a1e2052c38a7d5f0979e19c636832023252f31139fc4ea7208d1cf2dd",
+      "bytes": 23410
+    },
+    "ce/report.json": {
+      "sha256": "138131e184f26bc45756a7b775429fdf7a99110d00c9f1e831218098473e3531",
+      "bytes": 128596
+    },
+    "ce/zero-corrective-report.json": {
+      "sha256": "880ddb852bd814d5cf75b8414210f2bb80800b88c1b77b384e158b9185f81670",
+      "bytes": 48447
+    },
+    "ce/formula-analysis.json": {
+      "sha256": "457eb002311ba200f0408ec4ae99f639a895c9e3814a1434926b5fb68b89de4f",
+      "bytes": 4262
+    },
+    "ce/probe.py": {
+      "sha256": "f2282428bd1f69219400680f2b0245fa07a4f01e223bb13f5798d451fb6d5371",
+      "bytes": 9157
+    },
+    "ce/probe_zero_corrective.py": {
+      "sha256": "048fdd06a22ea02bc5a847be9c838268ac960b587c6777e9acd89f64165d9e49",
+      "bytes": 2901
+    },
+    "ce/analyze_formula.py": {
+      "sha256": "c930c4006220a2c7223fb5032916d572153ae5bc684cea014215bffbe0c23e1b",
+      "bytes": 3461
+    },
+    "neko/static-results.json": {
+      "sha256": "07ca4fb025b988ef428379a2fffe4896a830c72bbb000cc01b8742a9afe6fd40",
+      "bytes": 53002
+    },
+    "neko/static-analysis.json": {
+      "sha256": "938ff02fed7a7e2598e7b799aac00056b6156adf66a21f267d50559ef7eac6ae",
+      "bytes": 22068
+    },
+    "neko/probe_static_transforms.py": {
+      "sha256": "c69ad72d4f5c2831805cf3c8b39b35797c3283a65d6b7215ed59de4420de384f",
+      "bytes": 6446
+    },
+    "neko/analyze_static_transforms.py": {
+      "sha256": "4bf5eb951c7f583ced35e472b22ac56a4ecc31c03fa6f67d26901ae02c5046fe",
+      "bytes": 3124
+    },
+    "plusplus/summary.json": {
+      "sha256": "a2d154fa177a6df56c2e0bf65ec4dd588024d1f2fad724bd7ad37d0c0a85ce03",
+      "bytes": 912
+    },
+    "plusplus/extended_animation_diff.py": {
+      "sha256": "cdb65faccb5c3654199c4ba535e82739c16eea60af880cf2d73311a9acb1179f",
+      "bytes": 13477
+    },
+    "plusplus/run-01/report.json": {
+      "sha256": "cb78e4a4539ded6fd7eb19784d42fc7a80aee27ac76f63f14173063f91d98e93",
+      "bytes": 257722
+    },
+    "plusplus/run-02-3d/report.json": {
+      "sha256": "4ba75463324998f7af2bb30902c6a61b05277afb0d3842715a67f3462d6387e1",
+      "bytes": 263123
+    },
+    "plusplus/run-03-weight-reset/report.json": {
+      "sha256": "f09b5700c527c671d2cfd7d2c643d1c85112e95da5a7872fd8397f486dd44361",
+      "bytes": 83847
+    },
+    "rea-ce-evidence.json": {
+      "sha256": "ea75f0981a651be1e16fd69d0944e9640e6cd1b319ec9d8afa235fc39b01d2d3",
+      "bytes": 9288983
+    },
+    "rea-neko-evidence.json": {
+      "sha256": "50e1f11e4826e8dcf0918372bec09b94716f0bcd75ade55a38507306420de724",
+      "bytes": 9923008
+    },
+    "rea-plusplus-evidence.json": {
+      "sha256": "df03d4ee539ded0f08cc01b8fa50629886c211879522238f37a246213b644940",
+      "bytes": 14530107
+    }
+  },
+  "excluded": "Stale build-local v1.2.29 CE exploratory runs; final CE runs use release v1.2.34."
+}

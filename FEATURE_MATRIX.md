@@ -7,7 +7,7 @@
 
 发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化与体积优化均不扩展下表的游戏运行时认证范围。
 
-v1.2.26 发布构建及 `x64-compact` 预设采用 `MinSizeRel` 与 IPO/LTO，保留全部导入器和工具。安装包运行目录中的 tinyusdz 仅保留 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，省去运行无需的源码与开发图片；完整项目源码的获取规则不变，GPL VRML 转换器对应源码继续随包附带。Windows C4D 使用原先已验证的 helper。Plum 与 viewarms 的本地模型输出逐文件一致，最终体积与验证范围见 [验证记录](VALIDATION.md)。
+v1.2.26 历史发布构建及 `x64-compact` 预设采用 `MinSizeRel` 与 IPO/LTO，保留全部导入器和工具。安装包运行目录中的 tinyusdz 仅保留 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，省去运行无需的源码与开发图片；完整项目源码的获取规则不变，GPL VRML 转换器对应源码继续随包附带。当时 Windows C4D 使用原先已验证的 helper。Plum 与 viewarms 的本地模型输出逐文件一致，最终体积与验证范围见 [验证记录](VALIDATION.md)。
 
 v1.2.25 修复真实手臂 QC：VRD 短名父骨在折叠时同步解析并重算姿态；共用皮肤表的未使用基材质列警告后跳过，保留实际使用的替换与全部行。CE 会保留未使用的皮肤材质登记，本工具继续裁剪；详见 [验证记录](VALIDATION.md)。
 
@@ -35,11 +35,13 @@ v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 
 本轮 CSGO 固定范围 A1–A7/B1–B4 共 11 包已全部完成；原可选扩展 B 区已获授权并交付。完整范围与排除项见 [CSGO_PORTING_SCOPE.md](CSGO_PORTING_SCOPE.md)，新增布料语法见 [CSGO_CLOTH_AUTHORING.md](CSGO_CLOTH_AUTHORING.md)。
 
-## v1.2.34：八项完整性修复
+## v1.2.34 替换版：完整性修复与补充验证
 
-反编译器保留 UTF-8 骨名与唯一替代名，预检全批次输出冲突，缺 VVD/VTX/ANI 或写出失败不再报告成功，并暂存每个模型的结果。VMD 转换统一检查人物/相机/表情/QC/音频输出；l4d_animswap 验证实际所需引用链；meshtool simplify 拒绝坏索引、非三角形数据与非法数值。主编译器严格读取 SMD 三角形并报告文件/行号；恢复 `.vertexanim.json`，事务清理与旧 MDL checksum 相符的同名废弃伴随文件。未知归属及自定义共享文件保留，checksum 仅用于模型关联。AG2 预检工具链、暂存源与编译产物及可选 VMDL/首次备份，普通失败统一回滚。
+反编译器保留 UTF-8 骨名与唯一替代名，预检全批次输出冲突，缺 VVD/VTX/ANI 或写出失败不再报告成功，并暂存每个模型的结果。VMD 转换统一检查人物/相机/表情/QC/音频输出；l4d_animswap 验证实际所需引用链，存在但序列表/标签损坏的 Light 模型也必须失败。两者现在暂存整批结果并在普通失败时整体回滚，包括相机、音频、retarget 动画和 Light QCI；L4D retarget 文件名同时包含 rig 与 target，防止 `-all` 同名动作互相覆盖。VMD `-compile` 直接调用随包 `NewPageMergeMDL`，保留真实 `-game` 并暂存编译产物。meshtool simplify 拒绝坏索引、非三角形数据与非法数值。主编译器严格读取 SMD 三角形并报告文件/行号；恢复 `.vertexanim.json`，事务清理与旧 MDL checksum 相符的同名废弃伴随文件。未知归属及自定义共享文件保留，checksum 仅用于模型关联。
 
-Windows 构建与针对性验证见 [VALIDATION.md](VALIDATION.md)。AG2 的八个真实 CS2 资源案例包含编译失败和中途文件锁回滚；六项正常 compiled 资源与旧版一致。AG2/反编译器没有强杀或断电自动恢复保证，AG2 不保证并发同目标；尚无最终带网格 ModelDoc、CS2 游戏或本版 Linux 验证。本版发行采用已验证的本地 Windows 完整包，内嵌发行提交源码；云端构建受账户付款/额度限制。
+AG2 预检工具链，暂存源、compiled 与可选 VMDL/首次备份。AG2 与反编译器均增加持久日志、同目标进程锁和内容指纹检查，支持强杀后重跑恢复，检测外部修改冲突并保留备份；16 项专项验证涵盖中断恢复、恢复时再次强杀及 Windows 大小写/Unicode 别名。持久化不等于任意硬件断电下的绝对保证；VMD/L4D 仍只保证普通失败回滚。八个新版 AG2 真实 CS2 资源案例覆盖实际编译、失败及后续文件锁回滚；资源级结果与最终模型/游戏验证分开记录。
+
+补齐组合 flex 自动法线的纯法线 corrective：CE profile 使用等面加权和已观测阈值，native 保留面积加权；六项定向回归覆盖组合子集顺序、接缝和开关。命令行完整数值/缺值校验与 DMX 小数帧率往返有六项专项测试。Windows C4D helper 增加按多边形选择集和纹理标签顺序分配材质，拆分时保留 UV、作者法线及平滑法线；十项真实 C4D 夹具回归通过，不扩展到蒙皮、动画、生成器或完整着色网络。替换构建、最终安装包与发布状态以 [替换版报告](tests/reports/v1.2.34-replacement-validation.md) 为准；原 v1.2.34 发布包验证保留为历史证据。本版 Linux 尚未验证。
 
 ## 需求来源 / Requirement sources
 
@@ -69,7 +71,7 @@ Windows 构建与针对性验证见 [VALIDATION.md](VALIDATION.md)。AG2 的八�
 
 安装版 Windows 工具使用 CS2 build `25966348` 的四份官方骨架/动画图资源及 Workshop Tools，通过官方比例与 `leg_upper_L` 局部 X +3 两组隔离控制样本。最小 VPK 中四份资源的 CRC 与字节内容已核对；两组均生成并实际编译比例 clip、第三人称图和 UI 图，clip 均有 75 条静态轨道且增量旋转为单位四元数。详见 [验证报告](tests/reports/ag2-cs2-20261018.json)。
 
-缺工具链负例退出 1，但测试 VMDL 与已有生成源文件已提前改写，这是 v1.2.33 的失败回滚缺陷证据；v1.2.34 已修复普通失败回滚。未验证最终带网格 ModelDoc 模型、游戏运行或完整递归依赖；不扩大五编译器固定范围，也不宣称 CS2 全面兼容。历史构建/帮助检查仍仅代表当时范围。
+缺工具链负例退出 1，但测试 VMDL 与已有生成源文件已提前改写，这是 v1.2.33 的失败回滚缺陷证据；v1.2.34 替换版已补齐预检、暂存及持久恢复。该历史资源实验未验证最终带网格 ModelDoc 模型、游戏运行或完整递归依赖；不扩大五编译器固定范围，也不宣称 CS2 全面兼容。新的验证另见替换版报告，历史构建/帮助检查仅代表当时范围。
 
 ## StudioMDL++：按公开模型编译日志核对
 
@@ -79,7 +81,7 @@ Windows 构建与针对性验证见 [VALIDATION.md](VALIDATION.md)。AG2 的八�
 | 顶点/材质/网格/动画容量与输出缓冲 | 动态容器与分割已实现，具体格式字段有边界；不是固定 32 MB 分配。 |
 | AppID 资源挂载 | 已实现 resources.cpp：Steam 安装路径、gameinfo 搜索顺序及 VPK。 |
 | `-nodx80`、取消 SW VTX、未使用材质清理 | 已实现。 |
-| `reverse`、`match pos/rot`、`copy`、动画条件 | 已实现；copy 命名 weightlist 等七个姿态/FPS 对照通过。原生 copy 通道扩展另有语义。 |
+| `reverse`、`match pos/rot`、`copy`、动画条件 | 已实现；原七个姿态/FPS 对照通过。2026-10-18 新增 33 种命令组合、58 次数值对照通过，REA 确认按输入顺序处理；不代表任意命令全面一致。无显式 weightlist 的 copy 仍为原生扩展。 |
 | 宏默认值、`$endmacro`、全局变量回退 | 已实现；v1.2.13 恢复传统单/双反斜杠续行宏。重复宏报错、重复变量警告与 `$setvariable` 已实现。 |
 | 数字 contents、可选 activity weight/attachment offset | 已实现 QC 解析。 |
 | `-noremap`、`-cullanims`/`nocull`、`gmtime` | 已实现；UTC 播放需模组支持。 |
@@ -95,7 +97,7 @@ Windows 构建与针对性验证见 [VALIDATION.md](VALIDATION.md)。AG2 的八�
 | --- | --- |
 | body/bodygroup 面部块、多 studio、控制器覆盖/重复 | 已实现；显式 CE 面部策略与组合 rig 对照已加入。 |
 | 逆向 flex、自动控制器、默认 flex、衰减和缩放 | 已实现 AddInvStudioFlexes/InvertControllers、addcontrollerbyflex、IgnoreDefaultFlexKey、ZeroFlexDecay、DefaqScale/IgnoreDMXDefaq/fscale。 |
-| 法线、皱纹和绑定空间重映射 | 已实现全局/局部 compute 与 Ignore 选项、RemapFlexToGlobal；复杂自定义法线仍需实模。 |
+| 法线、皱纹和绑定空间重映射 | 选项与 RemapFlexToGlobal 已实现；v1.2.34 替换版修复自动法线重算遗漏组合纯法线 corrective，按依赖顺序扣除基础/低阶贡献。CE 使用等面加权与观测阈值，native 保留面积加权；作者法线直接导入继续支持。六项回归及边界见 [替换版验证](tests/reports/v1.2.34-replacement-validation.md)，[REA 分析](tests/reports/2026-10-18-rea-second-pass.md) 是替换前证据。 |
 | 眼球缩放、瞳孔缩放、眼睑关闭 | 已实现 EyeballScale 及 Ignore 系列；GMod 有限定样例。 |
 | `NoAutoDMXRules` 与 Legacy | 两种行为均有实现；native 按源禁用，Legacy 清除先前自动规则/控制器，有意保留差异。 |
 | 单骨绑定、碰撞单骨绑定 | 已实现，实验性；不把参考自身的实验功能写成全面认证。 |
@@ -105,14 +107,14 @@ Windows 构建与针对性验证见 [VALIDATION.md](VALIDATION.md)。AG2 的八�
 | NvTriStrip 与全局分割 | 已实现；全局分割作用于统一 LOD 字典，非参考源文件预拆分逐字复现。 |
 | `$lod replacemodel ... reverse` | **v1.2.12 补齐**：静态控制流及三组 CE 输出确认，反转替换 LOD 绕序、保留法线、隔离共享源。 |
 | `$lod replacemesh` | **待确认**：日志列为修复，但提供的 `0.3.0 (Preview)` 二进制未识别本轮候选用法，x86/x64 均未找到命令字符串，x64 LOD 分支已反汇编核对；后续仍未发现公开语法、源码实现、Issue 示例或发布资产。不能猜成 replacemodel 别名。现有 replacemodel/replacematerial 不受影响。 |
-| `$DontDestroy` / `-DontDestroy` | **v1.2.8 接入**默认不清理输出策略；编译/预检失败保留既有输出。v1.2.9 增加检查写入及可处理故障回滚，目录冲突/Windows 文件锁回归通过；不保证断电或强制终止恢复。 |
+| `$DontDestroy` / `-DontDestroy` | 默认不清理输出策略；编译/预检失败保留既有输出。主编译器从 v1.2.23 起使用持久日志和输出锁，进程终止后下次编译先恢复；v1.2.34 补齐 sidecar 与删除恢复。外部修改或坏日志保留并报错，不承诺任意硬件断电无损。 |
 | 历史 VTA/DMX、分割、LOD、缩放缺陷修复 | 多 VTA、默认姿态、flex 重映射等有对应实现/回归；其余历史修复仍按具体输入核对，不仅检查开关存在。 |
 
 ## NekoMDL：按中文日志核对
 
 | 功能组 | 状态 / 当前路径 |
 | --- | --- |
-| glTF/GLB/VRM、FBX 与 Assimp 场景格式 | 已实现导入，含无 UV/形态键法线；尚未逐格式验证所有 Assimp 格式。FBX 使用 ufbx；v1.2.11 保留 Assimp glTF 几何导入并用原始采样器修复 STEP/CUBICSPLINE，glTF/GLB/VRM 双后端数值检查通过。 |
+| glTF/GLB/VRM、FBX 与 Assimp 场景格式 | 已实现导入，含无 UV/形态键法线；尚未逐格式验证所有 Assimp 格式。FBX 使用 ufbx；v1.2.11 保留 Assimp glTF 几何导入并用原始采样器修复 STEP/CUBICSPLINE，glTF/GLB/VRM 双后端数值检查通过。2026-10-18 静态 glTF 双路径对照确认当前逆转置法线与镜像绕序补偿正确，保留与 Neko 参考侧缺陷的差异；未扩张任意蒙皮/动画保证。 |
 | 场景节点、蒙皮、形态键、动画、LOD | 已实现；InNode、Pick、SampleRate、FPS、按后端 UpAxis 与缓存已接入。 |
 | `$NekoModel`、named flex/flexpair、眼球/眼睑 | 已实现；多 studio 面部作用域与显式 Neko 面部策略已测试。 |
 | `$NekoDriverBone`、jiggle 轴向、NoBoneRealign/AppendScale | 已实现；v1.2.10 修复动画父级及不同姿态层级，6 组参考数值对照和 12 组命令顺序回归通过；任意 rig 全面一致不作保证。 |

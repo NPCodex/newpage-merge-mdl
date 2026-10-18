@@ -80,9 +80,8 @@ ag2::Job LoadJob(const path& file) {
     }
     if (job.vmdl.empty())
         throw std::runtime_error("the job has no vmdl");
-    for (const path* p : {&job.vmdl, &job.modelDmx, &job.proportions, &job.vnmskel})
-        if (!p->empty() && !ag2::fs::is_regular_file(*p))
-            throw std::runtime_error("not found: " + p->u8string());
+    // Generate locks and recovers before checking these inputs: a killed
+    // publication may have moved the VMDL to its transaction backup.
     return job;
 }
 

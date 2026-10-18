@@ -24,6 +24,7 @@
 #include <functional>
 #include <fstream>
 #include <map>
+#include <limits>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -1350,28 +1351,36 @@ bool ReadPhyHulls(const Mdl& m, const std::string& phyPath, std::vector<PhyHull>
     return !out.empty();
 }
 
-// Model 22 writes frameRate as a float (Source 2 convention); older models keep
-// the int stock studiomdl reads.
-void FrameRate(Dmx& q, int fps) {
-    if (g_formatModel >= 22)
-        q.Float("frameRate", static_cast<float>(fps));
+// Preserve legacy integer metadata when exact; fractional rates need float
+// metadata as well as correctly spaced keys to survive reimport.
+void FrameRate(Dmx& q, float fps) {
+    if (g_formatModel >= 22 || fps != std::floor(fps))
+        q.Float("frameRate", fps);
     else
-        q.Int("frameRate", fps);
+        q.Int("frameRate", static_cast<int>(fps));
 }
 
 // The frame times a DmeChannelsClip is sampled at: whole seconds plus the
 // rounded remainder, which is how the importer reconstructs them - a key
 // that lands anywhere else gets interpolated instead of read.
-void FrameTimes(size_t count, int fps, std::vector<float>& times, std::vector<int>& legacyTimes) {
+bool FrameTimes(size_t count, float fps, std::vector<float>& times, std::vector<int>& legacyTimes) {
+    if (!std::isfinite(fps) || fps <= 0 || fps > 10000) return false;
     times.reserve(count);
     legacyTimes.reserve(count);
-    for (int k = 0; k < static_cast<int>(count); ++k) {
-        const int whole = k / fps;
-        const int ticks = whole * 10000 +
-                          Ticks(static_cast<float>(k - whole * fps) / static_cast<float>(fps));
+    for (size_t k = 0; k < count; ++k) {
+        const double rounded = std::floor(double(k) * 10000.0 / double(fps) + 0.5);
+        if (rounded > std::numeric_limits<int32_t>::max()) return false;
+        int ticks = static_cast<int>(rounded);
+        if (fps == std::floor(fps)) {
+            const auto rate = static_cast<size_t>(fps);
+            // Keep the established integer-rate tick convention byte for byte.
+            ticks = static_cast<int>((k / rate) * 10000) +
+                Ticks(static_cast<float>(k % rate) / fps);
+        }
         times.push_back(static_cast<float>(ticks) / 10000.0f);
         legacyTimes.push_back(ticks);
     }
+    return true;
 }
 
 } // namespace
@@ -1388,7 +1397,7 @@ const char* SetDmxOutput(const std::string& encoding, int formatModel) {
 
 int DmxModelVersion() { return g_formatModel; }
 
-bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string& clipName, int fps,
+bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string& clipName, float fps,
                        const std::vector<std::vector<AnimPose>>& frames,
                        const std::vector<FlexTrack>* flex) {
     if (frames.empty() || fps <= 0)
@@ -1415,7 +1424,7 @@ bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string&
 
     std::vector<float> times;
     std::vector<int> legacyTimes;
-    FrameTimes(frames.size(), fps, times, legacyTimes);
+    if (!FrameTimes(frames.size(), fps, times, legacyTimes)) return false;
 
     WriteSkel(q, m, s, clipName, Guid{}, Guid{}, Guid{}, idList, &frames[0]);
 
@@ -1541,7 +1550,7 @@ bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string&
     return q.Save(path);
 }
 
-bool WriteCameraDmx(const std::string& path, const std::string& clipName, int fps,
+bool WriteCameraDmx(const std::string& path, const std::string& clipName, float fps,
                     const std::vector<AnimPose>& poses, const std::vector<float>& fov) {
     if (poses.empty() || fov.size() != poses.size() || fps <= 0)
         return false;
@@ -1557,7 +1566,7 @@ bool WriteCameraDmx(const std::string& path, const std::string& clipName, int fp
 
     std::vector<float> times;
     std::vector<int> legacyTimes;
-    FrameTimes(poses.size(), fps, times, legacyTimes);
+    if (!FrameTimes(poses.size(), fps, times, legacyTimes)) return false;
 
     std::vector<pm::Vector3> pos;
     std::vector<pm::Quaternion> rot;

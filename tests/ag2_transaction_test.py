@@ -42,11 +42,14 @@ class Ag2Transaction(unittest.TestCase):
 
     def files(self):
         return {p.relative_to(self.root).as_posix(): p.read_bytes()
-                for p in self.root.rglob('*') if p.is_file()}
+                for p in self.root.rglob('*') if p.is_file()
+                and not any(x.startswith('.newpage-output-') or '.newpage-txn-' in x for x in p.parts)}
 
     def assert_clean(self):
         self.assertEqual(list(self.tmp.iterdir()), [])
-        self.assertEqual(list(self.root.rglob('.newpage-ag2-publish-*')), [])
+        self.assertFalse([p for p in self.root.rglob('*') if '.newpage-txn-' in p.name])
+        self.assertFalse(list(self.root.rglob('intent')))
+        self.assertFalse(list(self.root.rglob('work')))
 
     def test_success_updates_complete_set_and_removes_obsolete_debug(self):
         self.run_tool('new', code=0)
@@ -81,7 +84,7 @@ class Ag2Transaction(unittest.TestCase):
             for index in range(6):
                 with self.subTest(phase=phase, index=index):
                     self.run_tool(f'{phase}:{index}')
-                    self.assertFalse(self.root.exists())
+                    self.assertEqual(self.files(), {})
                     self.assert_clean()
 
     def test_existing_first_backup_is_not_replaced(self):
@@ -93,18 +96,18 @@ class Ag2Transaction(unittest.TestCase):
 
     def test_backup_appearing_during_generation_aborts_publication(self):
         old = self.files()
-        self.assertIn('refusing to replace', self.run_tool('backup_race'))
+        self.assertIn('output appeared during transaction', self.run_tool('backup_race'))
         old['model.vmdl.bak'] = b'first backup created concurrently'
         self.assertEqual(self.files(), old)
         self.assert_clean()
 
     def test_rollback_error_reports_and_preserves_recovery_evidence(self):
         output = self.run_tool('rollback_failure')
-        self.assertIn('AG2 rollback incomplete', output)
-        manifests = list(self.tmp.rglob('RECOVERY.txt'))
+        self.assertIn('Recovery retained', output)
+        manifests = list(self.root.rglob('intent'))
         self.assertEqual(len(manifests), 1)
-        self.assertIn(str(manifests[0]), output)
-        backups = list(self.root.rglob('.newpage-ag2-publish-*/previous'))
+        self.assertIn(str(manifests[0].parent), output)
+        backups = list(self.root.rglob('*.backup'))
         self.assertTrue(any(p.read_bytes() == b'old model.vmdl' for p in backups))
         self.assertEqual((self.root / 'model.vmdl/obstruction').read_bytes(), b'keep this evidence')
 

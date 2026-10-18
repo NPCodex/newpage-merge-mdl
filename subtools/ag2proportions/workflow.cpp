@@ -73,8 +73,6 @@ Paths Locate(const fs::path& vmdl) {
     if (p.addon.empty())
         throw runtime_error("the VMDL is not inside content/csgo_addons/<addon>");
     p.cs2 = p.addon.parent_path().parent_path().parent_path();
-    if (!fs::exists(p.cs2 / "game/csgo/pak01_dir.vpk"))
-        throw runtime_error("no CS2 install above the addon (game/csgo/pak01_dir.vpk is missing)");
     p.output = vmdl.parent_path() / vmdl.stem();
     p.relative = p.output.lexically_relative(p.addon).generic_u8string();
     return p;
@@ -425,6 +423,21 @@ void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::
 void Generate(const Job& job, const Options& options) {
     std::cout << "Processing " << job.vmdl.u8string() << '\n';
     const Paths paths = Locate(job.vmdl);
+    // Register every possible output so interrupted jobs remain recoverable
+    // even when this run changes debug/generate-only/write_model switches.
+    std::vector<fs::path> destinations{job.vmdl, fs::u8path(job.vmdl.u8string() + ".bak")};
+    for (const char* name : kGeneratedFiles) destinations.push_back(paths.output / name);
+    const fs::path compiledOutput = paths.cs2 / "game/csgo_addons" / paths.addon.filename() / fs::u8path(paths.relative);
+    for (const char* name : {kClipFile, kWorldGraphFile, kUiGraphFile})
+        destinations.push_back(compiledOutput / fs::u8path(std::string(name) + "_c"));
+    OutputTransaction transaction(job.vmdl, destinations);
+    // Recover saved user outputs even if the game data disappeared after a
+    // killed run. Installation/toolchain availability belongs after recovery.
+    if (!fs::exists(paths.cs2 / "game/csgo/pak01_dir.vpk"))
+        throw runtime_error("no CS2 install above the addon (game/csgo/pak01_dir.vpk is missing)");
+    for (const fs::path* input : {&job.vmdl, &job.modelDmx, &job.proportions, &job.vnmskel})
+        if (!input->empty() && !fs::is_regular_file(*input))
+            throw runtime_error("not found: " + input->u8string());
     if (!options.generateOnly)
         PreflightCompiler(options, paths);
     const std::string vmdlText = ReadText(job.vmdl);
@@ -504,7 +517,6 @@ void Generate(const Job& job, const Options& options) {
     if (change < 1e-3f)
         warnings.insert(warnings.begin(), "the target pose equals the stock skeleton, so the clip changes nothing");
 
-    OutputTransaction transaction;
     Paths staged = paths;
     staged.output = transaction.StageRoot() / "sources";
     std::cout << "Output: " << paths.output.u8string() << '\n';

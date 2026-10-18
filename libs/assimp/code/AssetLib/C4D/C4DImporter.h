@@ -93,7 +93,7 @@ private:
     void ReadMaterials(cineware::BaseMaterial* mat);
     void RecurseHierarchy(cineware::BaseObject* object, aiNode* parent);
     aiMesh* ReadMesh(cineware::BaseObject* object);
-    unsigned int ResolveMaterial(cineware::PolygonObject* obj);
+    std::vector<unsigned int> ResolveMaterials(cineware::PolygonObject* obj);
 
     bool ReadShader(aiMaterial* out, cineware::BaseShader* shader);
 

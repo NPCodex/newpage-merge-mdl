@@ -37,14 +37,19 @@ def validate_config(config):
     if config.get('schema') != 1:
         raise ValueError('Unsupported Windows extras manifest schema')
     source = config['source']
-    if not re.fullmatch(
+    match = re.fullmatch(
             r'https://github\.com/NPCodex/newpage-merge-mdl/releases/download/'
-            r'[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.zip', source['url']):
+            r'([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+\.zip)', source['url'])
+    if not match or source.get('release_tag') != match[1]:
         raise ValueError('Windows extras must come from a pinned project release ZIP')
-    if not re.fullmatch(
+    if source.get('api_url') and not re.fullmatch(
             r'https://api\.github\.com/repos/NPCodex/newpage-merge-mdl/releases/assets/[0-9]+',
             source['api_url']):
         raise ValueError('Windows extras require a pinned project asset API URL')
+    if not source.get('api_url') and source.get('asset_name') != match[2]:
+        raise ValueError('Windows extras require an exact asset name or pinned API URL')
+    if source.get('asset_name') and source['asset_name'] != match[2]:
+        raise ValueError('Windows extras asset name does not match its download URL')
     _hash(source['sha256'])
     files = config['files']
     if not files:
@@ -66,10 +71,33 @@ def validate_config(config):
         _hash(entry['sha256'])
 
 
-def stage(config_path, dist, fetch=None):
+def resolve_asset(source, fetch):
+    if source.get('api_url'):
+        return source['api_url']
+    # A separately hashed helper archive can be published before the main ZIP.
+    # Resolve its exact name without needing the upload-assigned numeric ID in
+    # source control. The downloaded archive and executable are still SHA-pinned.
+    url = 'https://api.github.com/repos/NPCodex/newpage-merge-mdl/releases/tags/' + source['release_tag']
+    release = json.loads(fetch(url))
+    if release.get('tag_name') != source['release_tag']:
+        raise ValueError('Windows helper release tag does not match the pin')
+    matches = [asset for asset in release.get('assets', []) if asset.get('name') == source['asset_name']]
+    if len(matches) != 1:
+        raise ValueError('Expected exactly one pinned Windows helper asset: ' + source['asset_name'])
+    asset = matches[0]
+    api_url = asset.get('url', '')
+    if (not re.fullmatch(r'https://api\.github\.com/repos/NPCodex/newpage-merge-mdl/releases/assets/[0-9]+', api_url)
+            or asset.get('browser_download_url') != source['url']):
+        raise ValueError('Windows helper asset metadata points outside the pinned project release')
+    return api_url
+
+
+def stage(config_path, dist, fetch=None, archive=None):
     config = json.loads(Path(config_path).read_text(encoding='utf-8'))
     validate_config(config)
-    data = (fetch or downloads.fetch)(config['source']['api_url'], accept='application/octet-stream')
+    fetch = fetch or downloads.fetch
+    data = (Path(archive).read_bytes() if archive is not None else
+            fetch(resolve_asset(config['source'], fetch), accept='application/octet-stream'))
     if _digest(data) != config['source']['sha256']:
         raise ValueError('Windows extras archive SHA256 mismatch')
     staged = {}
@@ -103,8 +131,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=ROOT / 'automation/windows-extras.json')
     parser.add_argument('--dist', type=Path, required=True)
+    parser.add_argument('--archive', type=Path, help='Verify/stage a local copy of the pinned archive before upload')
     args = parser.parse_args()
-    config = stage(args.config, args.dist)
+    config = stage(args.config, args.dist, archive=args.archive)
     print('Verified and staged: ' + ', '.join(entry['name'] for entry in config['files']))
 
 

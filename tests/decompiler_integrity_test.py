@@ -72,10 +72,17 @@ class DecompilerIntegrity(unittest.TestCase):
         return next(destination.glob('decompiled */shared'))
 
     def snapshot(self, directory):
-        return {str(p.relative_to(directory)): p.read_bytes() for p in directory.rglob('*') if p.is_file()}
+        # Persistent lock identities intentionally survive successful/failed
+        # transactions. They are metadata, not decompiled user outputs.
+        return {str(p.relative_to(directory)): p.read_bytes() for p in directory.rglob('*')
+                if p.is_file() and not (p.parent.name == '.newpage-output-locks' and p.suffix == '.lock')}
 
     def assert_no_staging(self, directory):
         self.assertEqual(list(directory.rglob('.newpage-decompile-*')), [])
+        for journals in directory.rglob('.newpage-output-transactions'):
+            # Stable empty identity directories may remain; journals, staged
+            # work and recovery backups must all have been removed.
+            self.assertEqual([p for p in journals.rglob('*') if not p.is_dir() or p.parent != journals], [])
 
     def roundtrip(self, destination, names):
         generated = self.output_dir(destination)

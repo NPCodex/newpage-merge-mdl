@@ -124,12 +124,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python .github/scripts/fetch_windows_extras.py --dist dist
-      - name: Test emitted models and decompiled animations
-        run: python candidate/NewPageMergeMDL/tests/compatibility.py dist/NewPageMergeMDL${{ matrix.ext }}
+      - name: Configure isolated output recovery tests
+        run: cmake -S candidate/NewPageMergeMDL/tests/output_transactions -B output-tests -DCMAKE_BUILD_TYPE=Release
+      - name: Build isolated output recovery tests
+        run: cmake --build output-tests --config Release --parallel 2
+      - name: Test killed processes and output rollback
+        run: ctest --test-dir output-tests -C Release --output-on-failure
       - name: Package with source provenance
         run: python .github/scripts/upstream_release.py package --source candidate/NewPageMergeMDL --dist dist --platform ${{ matrix.platform }} --manifest prepared/upstream-manifest.json --source-archive prepared/NewPageMergeMDL-source.zip --output newpage-merge-mdl-${{ matrix.platform }}.zip
       - name: Verify packaged binaries before release
-        run: python candidate/NewPageMergeMDL/tests/verify_package.py newpage-merge-mdl-${{ matrix.platform }}.zip --manifest prepared/upstream-manifest.json
+        run: python candidate/NewPageMergeMDL/tests/verify_package.py newpage-merge-mdl-${{ matrix.platform }}.zip --manifest prepared/upstream-manifest.json --subtool-probe output-tests/bin/subtool_transaction_probe${{ matrix.ext }}
       - uses: actions/upload-artifact@v7
         with:
           name: tested-${{ matrix.platform }}
@@ -186,6 +190,7 @@ jobs:
           gh release upload "$RELEASE_TAG" release-files/newpage-merge-mdl-win64.zip release-files/newpage-merge-mdl-linux64.zip --clobber
           python3 - <<'PY'
           import hashlib
+          import json
           import os
           from pathlib import Path
           import subprocess
@@ -200,6 +205,15 @@ jobs:
               expected = 'sha256:' + hashlib.sha256((Path('release-files') / name).read_bytes()).hexdigest()
               if len(matches) != 1 or matches[0].get('digest') != expected:
                   raise RuntimeError('Uploaded package digest mismatch: ' + name)
+          # A helper ZIP is a pinned build input for subsequent Windows jobs.
+          # Preserve it when a forced rebuild replaces the same release tag.
+          helper = json.loads(Path('automation/windows-extras.json').read_text(encoding='utf-8'))['source']
+          if helper['release_tag'] == tag and helper.get('asset_name'):
+              name = helper['asset_name']
+              matches = [asset for asset in release['assets'] if asset['name'] == name]
+              if len(matches) != 1 or matches[0].get('digest') != 'sha256:' + helper['sha256']:
+                  raise RuntimeError('Pinned helper asset missing or changed: ' + name)
+              keep.add(name)
           # A forced retry may target a release made by the older multi-asset flow.
           # Remove superseded assets only after both complete ZIPs are verified.
           for asset in release['assets']:

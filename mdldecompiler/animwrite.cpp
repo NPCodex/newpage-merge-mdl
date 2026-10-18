@@ -657,7 +657,7 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
     }
 
     auto emit = [&](const std::string& name, const std::vector<std::vector<Pose>>& frames,
-                    int fps) {
+                    float fps) {
         const std::string path = animDir + "/" + name + AnimExt();
         if (!g_smd) {
             if (!WriteAnimationDmx(m, path, name, fps, frames)) {
@@ -715,7 +715,12 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
 
         // the clip's own fps, so the DMX key times land on the frames the
         // `fps` the script writes will sample
-        const int fps = a.fps > 0.0f ? static_cast<int>(a.fps + 0.5f) : 30;
+        const float fps = a.fps > 0.0f ? a.fps : 30.0f;
+        if (!std::isfinite(a.fps)) {
+            ExtractionError("invalid frame rate in animation \"" + refs[i].name + "\"");
+            ++skipped;
+            continue;
+        }
         if (emit(refs[i].name, frames, fps))
             ++written;
         else

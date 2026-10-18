@@ -147,6 +147,56 @@ class WindowsExtrasTests(unittest.TestCase):
         extras.validate_config(config)
         self.assertEqual(config['files'][0]['name'], 'NewPageMergeMDL-C4D.exe')
 
+    def named_asset(self):
+        self.config['source'].pop('api_url')
+        self.config['source']['asset_name'] = 'full.zip'
+        self.config_path.write_text(json.dumps(self.config), encoding='utf-8')
+        return {'tag_name': 'v1.2.23', 'assets': [{'name': 'full.zip',
+                'url': 'https://api.github.com/repos/NPCodex/newpage-merge-mdl/releases/assets/456',
+                'browser_download_url': self.config['source']['url']}]}
+
+    def test_exact_named_asset_resolves_without_main_package_hash_cycle(self):
+        metadata = self.named_asset()
+        fetch = Mock(side_effect=[json.dumps(metadata).encode(), self.data])
+        extras.stage(self.config_path, self.dist, fetch=fetch)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertEqual(fetch.call_args_list[0].args, ('https://api.github.com/repos/NPCodex/newpage-merge-mdl/releases/tags/v1.2.23',))
+        self.assertEqual(fetch.call_args_list[1].args, (metadata['assets'][0]['url'],))
+        self.assertEqual((self.dist/'NewPageMergeMDL-C4D.exe').read_bytes(), self.binary)
+
+    def test_named_asset_missing_ambiguous_or_foreign_metadata_stages_nothing(self):
+        valid = self.named_asset()
+        variants = [dict(valid, assets=[]), dict(valid, assets=valid['assets']*2), dict(valid, tag_name='v2')]
+        for key, value in [('url', 'https://api.github.com/repos/foreign/repo/releases/assets/456'),
+                           ('browser_download_url', self.config['source']['url'].replace('v1.2.23', 'v2'))]:
+            metadata = copy.deepcopy(valid)
+            metadata['assets'][0][key] = value
+            variants.append(metadata)
+        for metadata in variants:
+            with self.subTest(metadata=metadata):
+                with self.assertRaises(ValueError):
+                    extras.stage(self.config_path, self.dist, fetch=Mock(return_value=json.dumps(metadata).encode()))
+                self.assertEqual(list(self.dist.iterdir()), [])
+
+    def test_local_archive_staging_verifies_pins_without_network(self):
+        self.named_asset()
+        archive = self.root/'helper.zip'; archive.write_bytes(self.data)
+        fetch = Mock(side_effect=AssertionError('network must not be used'))
+        extras.stage(self.config_path, self.dist, fetch=fetch, archive=archive)
+        self.assertEqual((self.dist/'NewPageMergeMDL-C4D.exe').read_bytes(), self.binary)
+        archive.write_bytes(b'changed archive')
+        with self.assertRaisesRegex(ValueError, 'archive SHA256 mismatch'):
+            extras.stage(self.config_path, self.dist, fetch=fetch, archive=archive)
+        self.assertEqual((self.dist/'NewPageMergeMDL-C4D.exe').read_bytes(), self.binary)
+
+    def test_named_asset_must_match_tag_and_download_name(self):
+        self.named_asset()
+        for key, value in [('release_tag', 'v2'), ('asset_name', '../evil.zip'), ('asset_name', '')]:
+            config = copy.deepcopy(self.config)
+            config['source'][key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                extras.validate_config(config)
+
 
 if __name__ == '__main__':
     unittest.main()

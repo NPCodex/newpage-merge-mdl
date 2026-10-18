@@ -21,8 +21,14 @@ target_compile_definitions(l4d_animswap PRIVATE PULSEMODEL_VERSION="${PROJECT_VE
 
 # Explorer's Details tab (file description, product name/version, copyright).
 if(WIN32)
+    set(SUBTOOL_UTF8_MANIFEST_RESOURCE "")
+    if(MINGW)
+        set(SUBTOOL_UTF8_MANIFEST_RESOURCE "1 24 \"${CMAKE_SOURCE_DIR}/utf8.manifest\"")
+    endif()
     configure_file(version.rc.in "${CMAKE_CURRENT_BINARY_DIR}/version.rc" @ONLY)
-    target_sources(l4d_animswap PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
-                                    "${CMAKE_SOURCE_DIR}/utf8.manifest")
+    target_sources(l4d_animswap PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/version.rc")
+    if(NOT MINGW)
+        target_sources(l4d_animswap PRIVATE "${CMAKE_SOURCE_DIR}/utf8.manifest")
+    endif()
 endif()
 target_link_libraries(l4d_animswap PRIVATE pulse_libs pulse_math pulse_dmx)

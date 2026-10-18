@@ -13,7 +13,11 @@ directory, imports the resulting GLB and removes its own temporary files. Its
 dependency report retains the original C4D input.
 
 Supported scope: editable polygon objects, hierarchy transforms, normals, UVs,
-material names and basic diffuse colors. The importer converts centimeters to
+material names, per-polygon material assignments and basic diffuse colors. Texture
+tags are applied in document order: named polygon selections restrict their
+scope, and the last applicable tag wins. Missing selections are ignored; uncovered
+polygons use the default material. Material boundaries retain UVs and authored
+normals, or smooth normals generated before splitting the mesh. The importer converts centimeters to
 meters and C4D handedness to the common scene coordinate system. Textures and
 shader networks are not baked into Source materials; supply appropriate Source
 materials separately. Convert procedural generators to editable polygon objects
@@ -41,6 +45,19 @@ The helper is separate because the Cineware MSVC C++ ABI cannot be linked into
 the main project's LLVM/MinGW binary. Linux builds import a GLB previously
 converted on Windows.
 
+CI stages the linked executable from the dedicated
+`NewPageMergeMDL-C4D-v1.2.34-win64.zip` asset on the project's `v1.2.34` release.
+`automation/windows-extras.json` pins both the ZIP and executable SHA256 values.
+The exact release/asset name is resolved through GitHub's API; neither a moving
+latest release nor an unverified helper is accepted. The helper archive must be
+uploaded before workflows use this pin. Main Windows packages already include
+the verified helper, so end users do not need the separate build-input archive.
+For verification before upload, use:
+
+```text
+python .github/scripts/fetch_windows_extras.py --archive NewPageMergeMDL-C4D-v1.2.34-win64.zip --dist dist
+```
+
 ## Validation
 
 ```text
@@ -53,3 +70,9 @@ translated parent, diffuse material and UVs. Its generating source is
 example model or documentation. Regenerate it with `c4d-fixture.exe output.c4d`.
 The tests inspect GLB material/hierarchy and compiled MDL/VVD geometry, as well
 as Unicode paths, node selection, dependencies, cleanup and failure recovery.
+
+`tests/fixtures/cineware-materials.c4d` is another self-authored, genuine Cineware
+document. Generate it with `c4d-fixture.exe output.c4d materials`. Its folded
+polygon strips cover unrestricted/restricted/overlapping/missing selections,
+default materials, a final unrestricted override, authored and generated normals,
+UVs and parent transforms. Tests check both the exported GLB and compiled MDL/VVD.

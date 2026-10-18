@@ -129,7 +129,16 @@ bool ScaleBone(Source& src, const std::string& bone, const Vector3& scale);
 
 // Reverse normals, morph normal deltas and triangle winding.
 void FlipNormals(Source& src);
-// Smooth base and delta normals from mesh topology, including stationary vertices.
+// DMX corrective names encode component sets (A_B). Dependencies contain every
+// available proper subset, not just single controls; order is independent of
+// the input declaration order. No combination-operator rig is required.
+struct MorphNormalDependencies {
+    std::vector<int> order;
+    std::vector<std::vector<int>> lower;
+};
+MorphNormalDependencies BuildMorphNormalDependencies(const std::vector<std::string>& names);
+
+// Native area-weighted normals, including stationary and corrective vertices.
 void ComputeMorphNormals(Source& src);
 
 // meshoptimizer decimation to `factor` (0,1] of each mesh's index count.

@@ -281,6 +281,7 @@ bool Save(const Datamodel& dm, const std::string& path, std::string* err) {
     if (!Save(dm, bytes, err)) return false;
     std::ofstream f(std::filesystem::u8path(path), std::ios::binary);
     if (f) f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    f.close();
     if (!f) {
         if (err) *err = "cannot write file: " + path;
         return false;

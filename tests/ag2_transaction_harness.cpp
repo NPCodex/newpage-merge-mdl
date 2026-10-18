@@ -19,14 +19,16 @@ void Write(const std::filesystem::path& path, const std::string& contents) {
 }
 
 namespace ag2 {
+namespace fs = std::filesystem;
 void TransactionTestPoint(const char* point, size_t index) {
     if (mode == std::string(point) + ":" + std::to_string(index))
         throw std::runtime_error("injected " + mode);
     if (mode == "publish_io_failure" && std::string(point) == "backed_up" && index == 3) {
         // Make the actual final rename fail after several successful publishes.
         for (const auto& item : fs::directory_iterator(testRoot / "content/graphs"))
-            if (item.is_directory() && item.path().filename().string().find(".newpage-ag2-publish-") == 0)
-                fs::remove(item.path() / "replacement");
+            if (item.is_regular_file() && item.path().filename().string().find(".newpage-txn-") != std::string::npos
+                && item.path().extension() == ".stage")
+                fs::remove(item.path());
     }
     if (mode == "rollback_failure" && std::string(point) == "published" && index == 0) {
         fs::remove(testRoot / "model.vmdl");
@@ -42,10 +44,13 @@ int main(int argc, char** argv) {
     testRoot = std::filesystem::absolute(std::filesystem::u8path(argv[1]));
     mode = argv[2];
     try {
-        ag2::OutputTransaction transaction;
-        const auto stage = transaction.StageRoot();
         const char* names[] = {"model.vmdl", "model.vmdl.bak", "content/anims/proportions.dmx",
             "content/graphs/world.vnmgraph", "game/anims/proportions.vnmclip_c", "game/graphs/world.vnmgraph_c"};
+        std::vector<std::filesystem::path> allowed;
+        for (const char* name : names) allowed.push_back(testRoot / name);
+        allowed.push_back(testRoot / "content/debug/report.kv3");
+        ag2::OutputTransaction transaction(testRoot / "model.vmdl", allowed);
+        const auto stage = transaction.StageRoot();
         for (const char* name : names) {
             if (std::string(name) == "model.vmdl.bak" && std::filesystem::exists(testRoot / name))
                 continue;

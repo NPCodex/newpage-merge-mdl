@@ -49,6 +49,40 @@ int MeshFilter::Tag(const std::string& meshName, const std::string& dagName) {
     return find(tags) | (find(inflateTags) << 8);
 }
 
+MorphNormalDependencies BuildMorphNormalDependencies(const std::vector<std::string>& names) {
+    MorphNormalDependencies result;
+    result.lower.resize(names.size());
+    std::vector<std::vector<std::string>> components(names.size());
+    for (size_t i = 0; i < names.size(); ++i) {
+        result.order.push_back(static_cast<int>(i));
+        size_t first = 0;
+        do {
+            const size_t last = names[i].find('_', first);
+            auto part = names[i].substr(first, last == std::string::npos ? last : last - first);
+            if (part.empty()) { components[i].clear(); break; }
+            // Delta-name matching in the DMX loader is ASCII case-insensitive.
+            for (char& c : part) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+            components[i].push_back(std::move(part));
+            if (last == std::string::npos) break;
+            first = last + 1;
+        } while (first <= names[i].size());
+        std::sort(components[i].begin(), components[i].end());
+    }
+    std::stable_sort(result.order.begin(), result.order.end(), [&](int a, int b) {
+        return components[a].size() < components[b].size();
+    });
+    for (int current : result.order) {
+        for (int lower : result.order) {
+            if (components[lower].size() >= components[current].size()) break;
+            if (!components[lower].empty() &&
+                std::includes(components[current].begin(), components[current].end(),
+                              components[lower].begin(), components[lower].end()))
+                result.lower[current].push_back(lower);
+        }
+    }
+    return result;
+}
+
 void ComputeMorphNormals(Source& src) {
     using Position=std::tuple<float,float,float>;
     std::map<Position,int> groups;
@@ -60,7 +94,8 @@ void ComputeMorphNormals(Source& src) {
     }
     auto normals=[&](const std::vector<pm::Vector3>& positions) {
         std::vector<pm::Vector3> sums(groups.size());
-        for(int material:src.meshindex) {
+        for(int m=0;m<src.nummeshes;++m) {
+            const int material=src.meshindex[m];
             const auto& mesh=src.mesh[material];
             for(int j=0;j<mesh.numfaces;++j) {
                 const auto& face=src.face[mesh.faceoffset+j];
@@ -83,8 +118,22 @@ void ComputeMorphNormals(Source& src) {
     std::vector<pm::Vector3> positions;
     for(const auto& v:src.vertex) positions.push_back(v.position);
     const auto base=normals(positions);
-    for(auto& morph:src.morphs) {
+    std::vector<std::string> names;
+    for(const auto& morph:src.morphs) names.push_back(morph.name);
+    const auto dependencies=BuildMorphNormalDependencies(names);
+    for(int current:dependencies.order) {
+        auto& morph=src.morphs[current];
         auto posed=positions;
+        auto previous=base;
+        // A_B_C is a residual on top of A, B, C, and any supplied A_B/A_C/B_C.
+        // Generate lower orders first, then subtract the normals actually kept
+        // for those orders (including sparse-threshold decisions).
+        for(int lower:dependencies.lower[current]) {
+            for(const auto& va:src.morphs[lower].vanims) {
+                auto& p=posed[va.vertex];p={p.x+va.pos.x,p.y+va.pos.y,p.z+va.pos.z};
+                auto& n=previous[va.vertex];n={n.x+va.normal.x,n.y+va.normal.y,n.z+va.normal.z};
+            }
+        }
         std::map<int,SrcVertAnim> values;
         for(const auto& va:morph.vanims) {
             values[va.vertex]=va;
@@ -92,7 +141,7 @@ void ComputeMorphNormals(Source& src) {
         }
         const auto target=normals(posed);
         for(size_t i=0;i<target.size();++i) {
-            pm::Vector3 delta{target[i].x-base[i].x,target[i].y-base[i].y,target[i].z-base[i].z};
+            pm::Vector3 delta{target[i].x-previous[i].x,target[i].y-previous[i].y,target[i].z-previous[i].z};
             if(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z<0.000001f && !values.count(static_cast<int>(i))) continue;
             auto found=values.find(static_cast<int>(i));
             if(found==values.end()) { SrcVertAnim va{};va.vertex=static_cast<int>(i);va.speed=1;va.side=1;values[va.vertex]=va; }

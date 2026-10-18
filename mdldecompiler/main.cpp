@@ -44,6 +44,8 @@
 #include "mdlfile.h"
 #include "perf.h"
 #include "branding.h"
+#include "persistentoutput.h"
+#include "cliargs.h"
 
 using namespace mdldecompiler;
 using pulse::fatal::Fail;
@@ -3158,64 +3160,22 @@ int DecompileInto(const std::string& in, const std::string& dir, int forceVersio
 // user-added files; links are rejected so staged writes cannot escape to a target.
 class OutputStage {
 public:
-    std::filesystem::path destination, root, staged, backup;
-    bool keepRecovery = false;
+    std::filesystem::path destination, staged;
+    pulse::output::Transaction transaction;
 
-    explicit OutputStage(const std::filesystem::path& target) : destination(target) {
+    explicit OutputStage(const std::filesystem::path& target)
+        : destination(target), transaction(target, {{target, true}}) {
         namespace fs = std::filesystem;
-        fs::create_directories(destination.parent_path());
-        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-        for (unsigned attempt = 0; attempt < 100; ++attempt) {
-            root = destination.parent_path() / (".newpage-decompile-" + std::to_string(stamp) +
-                                               "-" + std::to_string(attempt));
-            if (fs::create_directory(root)) break;
-            root.clear();
-        }
-        if (root.empty()) throw std::runtime_error("cannot allocate output staging directory");
-        staged = root / "new" / destination.filename();
-        backup = root / "previous-output";
-        try {
-            fs::create_directory(staged.parent_path());
-            if (fs::exists(destination) || fs::is_symlink(destination)) {
-                if (!fs::is_directory(destination) || fs::is_symlink(destination))
-                    throw std::runtime_error("output destination is not a regular directory: " + destination.string());
-                for (const auto& entry : fs::recursive_directory_iterator(destination))
-                    if (entry.is_symlink() || (!entry.is_directory() && !entry.is_regular_file()))
-                        throw std::runtime_error("output contains a link or special file: " + entry.path().string());
-                fs::copy(destination, staged, fs::copy_options::recursive);
-            } else {
-                fs::create_directory(staged);
-            }
-        } catch (...) {
-            std::error_code ignored;
-            fs::remove_all(root, ignored);
-            throw;
-        }
-    }
-    ~OutputStage() {
-        if (!keepRecovery) {
-            std::error_code ignored;
-            std::filesystem::remove_all(root, ignored);
-        }
+        staged = transaction.StageRoot() / "new" / destination.filename();
+        fs::create_directory(staged.parent_path());
+        // Recovery and the process lock precede copying. Preserve user files;
+        // publication rejects edits made since the initial tree fingerprint.
+        if (fs::exists(destination)) pulse::output::detail::Copy(destination, staged, true);
+        else fs::create_directory(staged);
     }
     void Publish() {
-        namespace fs = std::filesystem;
-        const bool existed = fs::exists(destination);
-        if (existed) fs::rename(destination, backup);
-        try {
-            fs::rename(staged, destination);
-        } catch (...) {
-            if (existed) {
-                std::error_code restoreError;
-                fs::rename(backup, destination, restoreError);
-                if (restoreError) {
-                    keepRecovery = true;
-                    throw std::runtime_error("cannot publish or restore output; previous files retained at " +
-                                             backup.string() + ": " + restoreError.message());
-                }
-            }
-            throw;
-        }
+        transaction.Replace(staged, destination);
+        transaction.Commit();
     }
 };
 
@@ -3265,14 +3225,24 @@ int RunDecompile(int argc, char** argv) {
     std::string dmxEncoding = "binary";
     int dmxModel = 15;
     for (int i = 1; i < argc; ++i) {
+        const std::string option = argv[i];
+        if (option == "-outdir" || option == "-forceversion" ||
+            option == "-dmxencoding" || option == "-dmxmodel") {
+            if (i + 1 >= argc || pulse::cli::MissingValue(argv[i + 1]))
+                return Fail("command line", option + " needs an argument");
+        }
         if (std::strcmp(argv[i], "-outdir") == 0 && i + 1 < argc)
             outDir = argv[++i];
-        else if (std::strcmp(argv[i], "-forceversion") == 0 && i + 1 < argc)
-            forceVersion = std::atoi(argv[++i]);
+        else if (std::strcmp(argv[i], "-forceversion") == 0 && i + 1 < argc) {
+            if (!pulse::cli::Integer(argv[++i], forceVersion) || forceVersion <= 0)
+                return Fail("command line", "-forceversion needs a positive integer");
+        }
         else if (std::strcmp(argv[i], "-dmxencoding") == 0 && i + 1 < argc)
             dmxEncoding = argv[++i];
-        else if (std::strcmp(argv[i], "-dmxmodel") == 0 && i + 1 < argc)
-            dmxModel = std::atoi(argv[++i]);
+        else if (std::strcmp(argv[i], "-dmxmodel") == 0 && i + 1 < argc) {
+            if (!pulse::cli::Integer(argv[++i], dmxModel))
+                return Fail("command line", "-dmxmodel needs an integer (1, 15, 18 or 22)");
+        }
         else if (std::strcmp(argv[i], "-smdanimation") == 0)
             SetAnimFormat(true);
         else if (std::strcmp(argv[i], "-pulseqc") == 0)

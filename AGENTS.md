@@ -12,6 +12,10 @@ README.en.md, COMPATIBILITY.md and the feature matrix. Keep historical results
 clearly historical and distinguish intentional differences from bugs. Increment
 the project version for compiler changes and refresh automation/compatibility.patch.
 
+Keep both READMEs concise: project overview, setup, usage and documentation links.
+Put version-by-version changes and release-specific validation in GitHub Releases,
+not in the READMEs; retain detailed evidence in the relevant validation documents.
+
 The two user-supplied 2012/2013 packages contain the same executable with different
 game dependency configurations. Treat them as one feature source and preserve
 separate runtime/dependency evidence. Do not reopen previously explained format

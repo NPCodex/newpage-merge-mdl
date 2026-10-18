@@ -57,13 +57,13 @@ struct FlexTrack {
 // `path`: the skeleton plus one DmeChannelsClip holding `frames` at `fps`. The
 // joints are written at frame 0, the way an SMD's skeleton block doubles as its
 // bind pose, and every bone gets a channel so no bone falls back on that pose.
-bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string& clipName, int fps,
+bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string& clipName, float fps,
                        const std::vector<std::vector<AnimPose>>& frames,
                        const std::vector<FlexTrack>* flex = nullptr);
 
 // `path`: a `format pulsecamera 1` file (binary 5 or keyvalues2) - a DmeCamera whose
 // transform and verticalFieldOfView (degrees) one DmeChannelsClip keys per frame.
-bool WriteCameraDmx(const std::string& path, const std::string& clipName, int fps,
+bool WriteCameraDmx(const std::string& path, const std::string& clipName, float fps,
                     const std::vector<AnimPose>& poses, const std::vector<float>& fov);
 
 struct PhysicsMeshInfo {

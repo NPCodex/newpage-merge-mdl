@@ -31,6 +31,7 @@
 #include "resources.h"
 #include "sceneloader.h"
 #include "outputfiles.h"
+#include "cliargs.h"
 #ifdef _WIN32
 #include <windows.h>
 #include <psapi.h>
@@ -240,13 +241,35 @@ static int RunCompile(int argc, char** argv) {
     const std::vector<std::string> oneValue={"-game","-outdir","-steamdir","-modelname","-includeanimprefix",
         "-eyeballscale","-maxbones","-outputbuffersize","-mdloutputbuffersize","-anioutputbuffersize",
         "-includesearchdir","-filesearchdir","-tempcontent","-vtxformat","-minlod","-alwayscollapsebyprefix","-perfjson"};
+    auto isDefinition = [](const std::string& key, const char* raw) {
+        return raw[0] == '-' && raw[1] == 'D' && raw[2] &&
+            key != "-dontdestroy" && key != "-defaqscale" && key != "-defvar" && key != "-definebones" &&
+            key != "-dumpprocedural" && key != "-dumpdependencies" && key != "-dumpmaterials";
+    };
+    auto validateArguments = [&](int count, char** args) -> std::string {
+        for (int i = 1; i < count; ++i) {
+            std::string key = args[i];
+            for (char& c : key) c = char(std::tolower(static_cast<unsigned char>(c)));
+            const int values = key == "-defvar" || key == "-includeprefix" ? 2 :
+                (std::find(oneValue.begin(), oneValue.end(), key) != oneValue.end() ||
+                 isDefinition(key, args[i]) ? 1 : 0);
+            for (int j = 1; j <= values; ++j)
+                if (i + j >= count || pulse::cli::MissingValue(args[i + j]))
+                    return key == "-alwayscollapsebyprefix" ? key + " needs a non-empty prefix" :
+                        key + " needs " + std::to_string(values) + " argument(s)";
+            i += values;
+        }
+        return {};
+    };
+    if (const auto error = validateArguments(argc, argv); !error.empty())
+        return Fail("bad option", error);
     for(int i=1;i<argc;++i) {
         std::string key=argv[i];for(char& c:key)c=char(std::tolower(static_cast<unsigned char>(c)));
         if(key=="-nodefaultargs")noDefaultArgs=true;
         if(key=="-game"&&i+1<argc)explicitGame=argv[i+1];
         int count=key=="-defvar"||key=="-includeprefix"?2:
             (std::find(oneValue.begin(),oneValue.end(),key)!=oneValue.end()||
-             (argv[i][0]=='-'&&argv[i][1]=='D'&&argv[i][2])?1:0);
+             isDefinition(key, argv[i])?1:0);
         if(count){i+=count;continue;}
         if(argv[i][0]!='-'&&pulse::loader::IsQcScriptPath(argv[i]))explicitScript=argv[i];
     }
@@ -256,6 +279,8 @@ static int RunCompile(int argc, char** argv) {
     for(int i=1;i<argc;++i)merged.emplace_back(argv[i]);
     std::vector<char*> mergedPointers;for(auto& value:merged)mergedPointers.push_back(value.data());
     argc=static_cast<int>(mergedPointers.size());argv=mergedPointers.data();
+    if (const auto error = validateArguments(argc, argv); !error.empty())
+        return Fail("bad option", error);
     const char* script = nullptr;
     std::string outdir;
     std::string gameDirectory,steamDirectory;
@@ -304,6 +329,18 @@ static int RunCompile(int argc, char** argv) {
             for(int j=0;j<ceValues;++j) {
                 std::string value=argv[++i];
                 if(value.find_first_of("\"\r\n")!=std::string::npos) return Fail("bad option",option+" contains invalid characters");
+                if (ceName == "maxbones") {
+                    int number;
+                    if (!pulse::cli::Integer(value, number) || number < 1 || number > 256)
+                        return Fail("bad option", option + " needs an integer from 1 to 256");
+                } else if (ceName == "eyeballscale" || ceName == "outputbuffersize" ||
+                           ceName == "mdloutputbuffersize" || ceName == "anioutputbuffersize") {
+                    float number;
+                    if (!pulse::cli::Number(value, number) || number <= 0 ||
+                        (ceName != "eyeballscale" && (number > 4096 || number * 1048576.0 < 1)))
+                        return Fail("bad option", option + " needs a finite positive number" +
+                            (ceName == "eyeballscale" ? std::string() : " (one byte to 4096 MB)"));
+                }
                 cePrelude+=" \""+value+"\"";
             }
             cePrelude+="\n"; continue;
@@ -311,101 +348,94 @@ static int RunCompile(int argc, char** argv) {
         // -game is studiomdl's name for it: the mod dir the model installs
         // into. The writer already roots output at <dir>/models, so it is the
         // same value as -outdir.
-        if ((std::strcmp(argv[i], "-game") == 0 || std::strcmp(argv[i], "-outdir") == 0) &&
+        if ((option == "-game" || option == "-outdir") &&
             i + 1 < argc) {
             outdir = argv[++i];
-            if(std::strcmp(argv[i-1],"-game")==0)gameDirectory=outdir;
-        } else if(std::strcmp(argv[i],"-steamdir")==0 && i+1<argc) {
+            if(option == "-game")gameDirectory=outdir;
+        } else if(option == "-steamdir" && i+1<argc) {
             steamDirectory=argv[++i];
-        } else if (std::strcmp(argv[i], "-modelname") == 0) {
+        } else if (option == "-modelname") {
             if (i + 1 >= argc)
                 return Fail("bad option", "-modelname needs a model path");
             modelname = argv[++i];
-        } else if (argv[i][0]=='-' && argv[i][1]=='D' && argv[i][2]) {
+        } else if (isDefinition(option, argv[i])) {
             if(i+1>=argc) return Fail("bad option","-Dname needs a value");
             std::string name=argv[i]+2; defvars.emplace_back(name,argv[++i]);
-        } else if (std::strcmp(argv[i], "-checksequenceorder")==0) {
+        } else if (option == "-checksequenceorder") {
             noRemap=false;
-        } else if (std::strcmp(argv[i], "-defvar") == 0) {
+        } else if (option == "-defvar") {
             // a .pulseqc $definevariable, set from the launch line and pinned
             if (i + 2 >= argc)
                 return Fail("bad option", "-defvar needs two arguments: <name> <value>");
             defvars.emplace_back(argv[i + 1], argv[i + 2]);
             i += 2;
-        } else if (std::strcmp(argv[i], "-includesearchdir") == 0) {
+        } else if (option == "-includesearchdir") {
             if (i + 1 >= argc)
                 return Fail("bad option", "-includesearchdir needs a directory");
             includeDirs.emplace_back(argv[++i]);
-        } else if (std::strcmp(argv[i], "-filesearchdir") == 0 ||
-                   std::strcmp(argv[i], "-tempcontent") == 0) {
+        } else if (option == "-filesearchdir" ||
+                   option == "-tempcontent") {
             if (i + 1 >= argc)
                 return Fail("bad option", std::string(argv[i]) + " needs a directory");
             fileDirs.emplace_back(argv[++i]);
-        } else if (std::strcmp(argv[i], "-vtxformat") == 0 && i + 1 < argc) {
-            vtxFormat = std::atoi(argv[++i]);
-            if (vtxFormat != 0 && vtxFormat != 1)
+        } else if (option == "-vtxformat" && i + 1 < argc) {
+            const std::string value = argv[++i];
+            if (!pulse::cli::Integer(value, vtxFormat) || (vtxFormat != 0 && vtxFormat != 1))
                 return Fail("bad option", std::string("-vtxformat must be 0 or 1, got \"") +
                                               argv[i] + "\"");
-        } else if (std::strcmp(argv[i], "-minlod") == 0) {
+        } else if (option == "-minlod") {
             if (i + 1 >= argc)
                 return Fail("bad option", "-minlod needs a non-negative LOD index");
             const std::string value = argv[++i];
-            try {
-                size_t used = 0;
-                launchMinLod = std::stoi(value, &used);
-                if (used != value.size() || launchMinLod < 0)
-                    throw std::invalid_argument("invalid LOD index");
-            } catch (const std::exception&) {
+            if (!pulse::cli::Integer(value, launchMinLod) || launchMinLod < 0) {
                 return Fail("bad option", "-minlod needs a non-negative LOD index, got \"" +
                                               value + "\"");
             }
-        } else if (std::strcmp(argv[i], "-cullanims") == 0) {
+        } else if (option == "-cullanims") {
             cullAnims = true;
         } else if (option=="-nvtristrip" || option=="-usenvtristrip") {
             cePrelude += "$UseLegacyStripify\n";
-        } else if (std::strcmp(argv[i],"-reloadhlmv")==0) {
+        } else if (option == "-reloadhlmv") {
             reloadHlmv=true;
-        } else if (std::strcmp(argv[i],"-playbeep")==0) {
+        } else if (option == "-playbeep") {
             // Completion tone is emitted by main(), including compile failures.
-        } else if (std::strcmp(argv[i], "-noremap") == 0) {
+        } else if (option == "-noremap") {
             noRemap = true;
-        } else if (std::strcmp(argv[i], "-MostlyOpaque") == 0 ||
-                   std::strcmp(argv[i], "-mostlyopaque") == 0) {
+        } else if (option == "-mostlyopaque") {
             mostlyOpaque = true;
-        } else if (std::strcmp(argv[i], "-AlwaysCollapseByPrefix") == 0 ||
-                   std::strcmp(argv[i], "-alwayscollapsebyprefix") == 0) {
+        } else if (option == "-alwayscollapsebyprefix") {
             if (i + 1 >= argc || !argv[i + 1][0] || argv[i + 1][0] == '-')
                 return Fail("bad option", "-AlwaysCollapseByPrefix needs a non-empty prefix");
             collapsePrefixes.emplace_back(argv[++i]);
-        } else if (std::strcmp(argv[i], "-nodx80") == 0) {
+        } else if (option == "-nodx80") {
             noDx80 = true;
-        } else if (std::strcmp(argv[i], "-striplods") == 0) {
+        } else if (option == "-striplods") {
             stripLods = true;
-        } else if (std::strcmp(argv[i], "-forcewritevertexdata") == 0) {
+        } else if (option == "-forcewritevertexdata") {
             forceWriteVertexData = true;
-        } else if (std::strcmp(argv[i], "-definebones") == 0) {
+        } else if (option == "-definebones") {
             definebones = true;
-        } else if (std::strcmp(argv[i], "-verify") == 0) {
+        } else if (option == "-verify") {
             verify = true;
-        } else if (std::strcmp(argv[i], "-legacysequencebounds") == 0) {
+        } else if (option == "-legacysequencebounds") {
             legacySequenceBounds = true;
-        } else if (std::strcmp(argv[i], "-dumpprocedural") == 0) {
+        } else if (option == "-dumpprocedural") {
             dumpProcedural = true;
-        } else if (std::strcmp(argv[i], "-stdin") == 0) {
+        } else if (option == "-stdin") {
             scriptFromStdin = true;
-        } else if (std::strcmp(argv[i], "-dumpdependencies") == 0) {
+        } else if (option == "-dumpdependencies") {
             dumpDependencies = true;
             pulse::dependencies::g_enabled = true;
-        } else if (std::strcmp(argv[i], "-dumpmaterials") == 0) {
+        } else if (option == "-dumpmaterials") {
             dumpMaterials = true;
-        } else if(std::strcmp(argv[i],"-perfjson")==0 && i+1<argc) {
+        } else if(option == "-perfjson" && i+1<argc) {
             perfJson=argv[++i];
             pulse::perf::g_enabled = true;
-        } else if (std::strcmp(argv[i], "-perfmetrics") == 0) {
+        } else if (option == "-perfmetrics") {
             pulse::perf::g_enabled = true;
-        } else if (std::strcmp(argv[i], "-nodefaultargs") == 0) {
+        } else if (option == "-nodefaultargs") {
             // Already handled while loading launch defaults.
-        } else if (std::strcmp(argv[i], "-pause") == 0) {
+        } else if (option == "-pause") {
             pulse::fatal::g_pause = true;
         } else if (argv[i][0] == '-') {
             // studiomdl GUI front ends pass switches we do not have (-nop4,

@@ -47,6 +47,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // where it is turned on in the CMake settings.
 
 #include "C4DImporter.h"
+#include "PostProcessing/GenVertexNormalsProcess.h"
+#include "PostProcessing/ProcessHelper.h"
 #include <memory>
 #include <assimp/IOSystem.hpp>
 #include <assimp/scene.h>
@@ -334,12 +336,33 @@ void C4DImporter::RecurseHierarchy(BaseObject* object, aiNode* parent) {
         } else if (type == Olight) {
             // TODO: read light
         } else if (type == Opolygon) {
-            aiMesh* const mesh = ReadMesh(object);
-            if(mesh != nullptr) {
-                nd->mNumMeshes = 1;
-                nd->mMeshes = new unsigned int[1];
-                nd->mMeshes[0] = static_cast<unsigned int>(meshes.size());
-                meshes.push_back(mesh);
+            std::unique_ptr<aiMesh> mesh(ReadMesh(object));
+            if(mesh) {
+                const auto assignments = ResolveMaterials(static_cast<PolygonObject*>(object));
+                std::map<unsigned int, std::vector<unsigned int>> groups;
+                for (unsigned int i = 0; i < mesh->mNumFaces; ++i) groups[assignments[i]].push_back(i);
+                nd->mNumMeshes = static_cast<unsigned int>(groups.size());
+                nd->mMeshes = new unsigned int[nd->mNumMeshes];
+                if (groups.size() == 1) {
+                    mesh->mMaterialIndex = groups.begin()->first;
+                    nd->mMeshes[0] = static_cast<unsigned int>(meshes.size());
+                    meshes.push_back(mesh.release());
+                } else {
+                    // Generate missing smooth normals on the original connected
+                    // mesh. Generating them after splitting would create hard
+                    // seams solely because neighboring faces use different materials.
+                    if (!mesh->HasNormals()) {
+                        GenVertexNormalsProcess generator;
+                        generator.GenMeshVertexNormals(mesh.get(), 0);
+                    }
+                    unsigned int index = 0;
+                    for (const auto& group : groups) {
+                        std::unique_ptr<aiMesh> part(MakeSubmesh(mesh.get(), group.second, 0));
+                        part->mMaterialIndex = group.first;
+                        nd->mMeshes[index++] = static_cast<unsigned int>(meshes.size());
+                        meshes.push_back(part.release());
+                    }
+                }
             }
         } else {
             LogWarn("ignoring object type: ", type);
@@ -382,6 +405,7 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     ai_assert(polys != nullptr);
 
     std::unique_ptr<aiMesh> mesh(new aiMesh());
+    mesh->mName = aiStringFrom(object->GetName());
     mesh->mNumFaces = static_cast<unsigned int>(polyCount);
     aiFace* face = mesh->mFaces = new aiFace[mesh->mNumFaces]();
 
@@ -581,35 +605,40 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
         }
     }
 
-    mesh->mMaterialIndex = ResolveMaterial(polyObject);
-
     return mesh.release();
 }
 
 // ------------------------------------------------------------------------------------------------
-unsigned int C4DImporter::ResolveMaterial(PolygonObject* obj) {
+std::vector<unsigned int> C4DImporter::ResolveMaterials(PolygonObject* obj) {
     ai_assert(obj != nullptr);
-
     const unsigned int mat_count = static_cast<unsigned int>(materials.size());
-
-    BaseTag* tag = obj->GetTag(Ttexture);
-    if(tag == nullptr) {
-        return mat_count;
+    std::vector<unsigned int> result(obj->GetPolygonCount(), mat_count);
+    // Texture tags are ordered layers. For this static, single-material-per-face
+    // import the last applicable tag wins. A nonempty restriction refers to a
+    // named polygon-selection tag; a missing selection must not paint the mesh.
+    for (BaseTag* tag = obj->GetFirstTag(); tag; tag = tag->GetNext()) {
+        if (tag->GetType() != Ttexture) continue;
+        TextureTag& texture = static_cast<TextureTag&>(*tag);
+        const auto material = material_mapping.find(texture.GetMaterial());
+        if (material == material_mapping.end()) continue;
+        const String restriction = tag->GetDataInstance()->GetString(TEXTURETAG_RESTRICTION);
+        BaseSelect* selected = nullptr;
+        if (restriction.GetLength()) {
+            for (BaseTag* candidate = obj->GetFirstTag(); candidate; candidate = candidate->GetNext()) {
+                if (candidate->GetType() == Tpolygonselection && candidate->GetName() == restriction) {
+                    selected = static_cast<SelectionTag*>(candidate)->GetBaseSelect();
+                    break;
+                }
+            }
+            if (!selected) {
+                LogWarn("ignoring texture tag with missing polygon selection: ", aiStringFrom(restriction).C_Str());
+                continue;
+            }
+        }
+        for (unsigned int face = 0; face < result.size(); ++face)
+            if (!selected || selected->IsSelected(static_cast<Int32>(face))) result[face] = material->second;
     }
-
-    TextureTag& ttag = static_cast<TextureTag&>(*tag);
-
-    BaseMaterial* const mat = ttag.GetMaterial();
-    ai_assert(mat != nullptr);
-
-    const MaterialMap::const_iterator it = material_mapping.find(mat);
-    if(it == material_mapping.end()) {
-        return mat_count;
-    }
-
-    ai_assert((*it).second < mat_count);
-
-    return (*it).second;
+    return result;
 }
 
 #endif // ASSIMP_BUILD_NO_C4D_IMPORTER

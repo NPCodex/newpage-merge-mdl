@@ -2028,6 +2028,7 @@ bool CmdModel(Ctx& c, const Token& cmd) {
     bool bindOneBone=false;
     source::SceneOptions scene=c.sceneOptions;
     source::DmxProcessing processing;
+    processing.ceNormals=c.in.dmxCompatibility==cm::CompileInput::DmxCompatibility::Ce;
     processing.computeNormals=c.in.ce.computeNormals; processing.computeWrinkles=c.in.ce.computeWrinkles;
     std::vector<std::pair<std::string,std::string>> renameMaterials;
     std::string materialPrefix;

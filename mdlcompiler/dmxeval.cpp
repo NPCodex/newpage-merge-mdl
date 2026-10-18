@@ -63,7 +63,11 @@ int ticks(float sec) {
     return int(t);
 }
 int timeField(const E* e,const char* name) {
-    if(e)if(const auto* a=e->Get(name)) {
+    const auto* a = e ? e->Get(name) : nullptr;
+    // DMX model 1 names its integer-tick timeframe fields startTime,
+    // durationTime and offsetTime; later models use typed time values.
+    if (!a && e) a = e->Get(std::string(name) + "Time");
+    if(a) {
         if(const auto* t=std::get_if<dmx::Time>(&a->value))return ticks(t->seconds);
         if(const auto* t=std::get_if<int32_t>(&a->value))return *t;
         throw EvalError(std::string("invalid time field ")+name);
@@ -365,9 +369,8 @@ Key reference(const E* e) {
     return key(e->GetElement("element"),*e->GetString("attribute"),e->GetInt("index",0));
 }
 #include "dmxeval_graph.inc"
-int frameAt(int t,int fps){
-    const int64_t p=int64_t(t)*fps;
-    const int64_t frame=(p+(t<0?-10000+fps:fps))/10000;
+int frameAt(int t,float fps){
+    const double frame=std::floor((double(t)+1.0)*double(fps)/10000.0);
     if(frame<std::numeric_limits<int>::min()||frame>std::numeric_limits<int>::max())throw EvalError("animation frame index out of range");
     return int(frame);
 }
@@ -451,13 +454,17 @@ bool EvaluateDmxAnimations(const dmx::Datamodel& dm,const dmx::Element* root,
             const auto clips=CollectClips(clip);if(clips.empty())continue;
             source::SourceAnim anim;anim.name=clip->name;if(anim.name.empty())anim.name="animation";
             if(!names.insert(anim.name).second)throw EvalError("duplicate or reserved animation name '"+anim.name+"'");
-            int fps=clip->GetInt("frameRate",0);if(fps<=0){const float rate=clip->GetFloat("frameRate",30);if(!std::isfinite(rate)||rate>10000)throw EvalError("invalid animation frame rate");fps=rate>0?int(std::lround(rate)):30;if(fps<=0)fps=30;}
-            if(fps>10000)throw EvalError("animation frame rate exceeds 10000");
+            float fps=float(clip->GetInt("frameRate",0));if(fps<=0){fps=clip->GetFloat("frameRate",30);if(!std::isfinite(fps))throw EvalError("invalid animation frame rate");if(fps<=0)fps=30;}
+            if(fps>10000)throw EvalError("invalid animation frame rate: exceeds 10000");
             const E* tf=clip->GetElement("timeFrame");const int start=timeField(tf,"start"),duration=timeField(tf,"duration");if(duration<0||int64_t(start)+duration>std::numeric_limits<int>::max())throw EvalError("invalid clip duration");
             anim.startframe=frameAt(start,fps);anim.endframe=frameAt(start+duration,fps);const int64_t count=std::max<int64_t>(1,int64_t(anim.endframe)-anim.startframe+1);if(count>100000)throw EvalError("DMX animation exceeds 100000 frames");anim.numframes=int(count);
             Graph graph(dm,clips);anim.frames.resize(anim.numframes);
             for(int f=0;f<anim.numframes;++f) {
-                const int64_t time=int64_t(start)+(f/fps)*10000+ticks(float(f%fps)/float(fps));if(time<std::numeric_limits<int>::min()||time>std::numeric_limits<int>::max())throw EvalError("animation sample time out of range");
+                const double offset=std::floor(double(f)*10000.0/double(fps)+0.5);
+                if(offset>std::numeric_limits<int>::max())throw EvalError("animation sample time out of range");
+                const int64_t step = fps == std::floor(fps) ?
+                    int64_t(f/int(fps))*10000+ticks(float(f%int(fps))/fps) : int64_t(offset);
+                const int64_t time=int64_t(start)+step;if(time<std::numeric_limits<int>::min()||time>std::numeric_limits<int>::max())throw EvalError("animation sample time out of range");
                 graph.frame(int(time));auto& frame=anim.frames[f];frame.resize(out.numbones);
                 for(size_t b=0;b<transforms.size();++b){const V p=graph.read(key(transforms[b],"position"),false),q=graph.read(key(transforms[b],"orientation"),false);if(p.kind!=Kind::V3||q.kind!=Kind::Quat)throw EvalError("bone pose has an invalid value type");finite(p);const auto rotation=normalized({q.v[0],q.v[1],q.v[2],q.v[3]});const auto m=pm::QuaternionMatrix(rotation,{p.v[0],p.v[1],p.v[2]});pm::MatrixAngles(m,frame[b].rot,frame[b].pos);frame[b].pos=mul(frame[b].pos,scale);finite(vectorValue(frame[b].pos));}
                 graph.checkUnsupported(dm);for(const auto& id:graph.rigIds())if(std::find(anim.bakedRigOperators.begin(),anim.bakedRigOperators.end(),id)==anim.bakedRigOperators.end())anim.bakedRigOperators.push_back(id);

@@ -1,0 +1,265 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "timezone": "Asia/Shanghai",
+  "project_version": "1.2.34",
+  "status": "final-build-checks-passed-final-package-pending",
+  "report": "v1.2.34-replacement-validation.md",
+  "scope": "Replacement of the initial v1.2.34 build; historical initial-release and REA reports retain their original measurements and hashes.",
+  "upstream_commit": "0396e3d2263945896de7d3d4f457e5f47dfe0378",
+  "build": {
+    "platform": "windows-x64",
+    "configuration": "MinSizeRel + ThinLTO",
+    "compiler_toolchain": "llvm-mingw 20260922 UCRT x86_64",
+    "binaries": {
+      "NewPageMergeMDL-C4D.exe": "bdae1d70e79e01c785d93e2295e1a34a2840fdcfd52ed6f525ba7db1d8c2c43e",
+      "NewPageMergeMDL-Decompiler.exe": "2eb03849cde22e3deb909b026fb4a3d4c1bcd4ea33c000a021e8ad85197e4d06",
+      "NewPageMergeMDL.exe": "ce0c9a75ae096e1311e18da1e71ccaf9c636361c809cdffa1a69377c9b22edfe",
+      "NewPageVRMLtoX3D.exe": "9e878fe2926ca9a74713a0c79fb71c00c92b53cc5061eb7c03cbe9cef7a4a1f9",
+      "subtools/ag2proportions.exe": "a9272a1b0eb5739474afe809d0a673967192dbdb4ec6ef4ad174b169d21ac614",
+      "subtools/l4d_animswap.exe": "57e42f752d47be1372ace38690bd043808e0c09238f797f1d579191452ad25a0",
+      "subtools/meshtool.exe": "b1e01ec378faa9fae5fe4507b063320d5e4f9240a2989d7405a2418bbf903644",
+      "subtools/vmd2valvebiped.exe": "d99f669f350e68afe167209ddba4a2786552d05041e4105964250ce07c7e9f00"
+    },
+    "final_hash_capture": "2026-10-18T09:05:46.297982+00:00",
+    "linux_validation": "not-performed",
+    "binaries_unchanged_during_checks": true,
+    "evidence": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/summary.json",
+    "followup": "Only L4D rebuilt after Light table validation and target-qualified retarget names; publication suite rerun 21/21 and body/Light per-target naming regression 1/1."
+  },
+  "checks": {
+    "compatibility": {
+      "count": 402,
+      "passed": true,
+      "scope": "Existing compatibility suite on the final replacement build; archive-extracted executable checks are tracked separately.",
+      "evidence": "tests/compatibility.py",
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/compatibility.log"
+    },
+    "ce_combined_normals": {
+      "count": 6,
+      "passed": true,
+      "fixture_cases": 8,
+      "scope": "Serialized base/delta normals and positions against bounded CE controls; independent geometric reconstruction, zero-position correctives, unordered intermediate subsets, normal/UV seams, sparse threshold, local/global switches, and preserved native area weighting.",
+      "reference": "StudioMDL-CE 0.3.0 Preview",
+      "reference_sha256": "bc5cbbcb1444d539d35a36afdc7a84b7419839fd1b15674e2d0ec6ffc37e0758",
+      "evidence": [
+        "tests/ce_morph_normals.py",
+        "tests/fixtures/ce-combined-normals.json"
+      ],
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/ce_morph_normals.log"
+    },
+    "cli_and_fractional_fps": {
+      "count": 6,
+      "passed": true,
+      "frame_rates": [
+        23.7,
+        29.97,
+        59.94005994005994,
+        30
+      ],
+      "dmx_models": [
+        1,
+        15,
+        18,
+        22
+      ],
+      "encodings": [
+        "keyvalues2",
+        "binary"
+      ],
+      "scope": "Strict numeric/missing CLI arguments, configuration defaults, uppercase named -D options, old-output preservation and animation time/FPS/pose round trips.",
+      "evidence": "tests/cli_framerate_test.py",
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/cli_framerate.log"
+    },
+    "persistent_output": {
+      "count": 16,
+      "passed": true,
+      "ag2_prepare_backup_publish_kill_points": 27,
+      "scope": "Actual process termination for AG2 file sets and decompiler directory transactions, termination during recovery/disposal, before/after commit behavior, same-target locks, Unicode/case aliases, external edits, journal whitelist and reserved names.",
+      "evidence": [
+        "tests/persistent_output_test.py",
+        "tests/persistent_output_harness.cpp"
+      ],
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/persistent_output.log"
+    },
+    "ag2_ordinary_transactions": {
+      "count": 7,
+      "passed": true,
+      "scope": "Existing exception and rename-failure transaction regressions rerun against the persistent implementation.",
+      "evidence": "tests/ag2_transaction_test.py",
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/ag2_transaction.log"
+    },
+    "subtool_transaction_and_process": {
+      "count": 16,
+      "passed": true,
+      "scope": "Batch rollback with existing/new files and removals, recovery retention on rollback failure, write/close failures, actual Windows later-destination rename failure, direct child argv/exit propagation.",
+      "evidence": [
+        "tests/subtool_transaction_test.cpp",
+        "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/subtools-publication-20261018/unit-test.log"
+      ]
+    },
+    "subtool_publication": {
+      "count": 21,
+      "passed": true,
+      "scope": "VMD body/camera/audio/QC/model batch publication, late destination and sharing violations, exact packaged compiler invocation, real compiled IDST model, L4D all-56 publication and retarget/Light outputs. Present malformed Light sequence tables/counts/labels must fail and preserve every previous output; valid zero-sequence Light remains optional.",
+      "real_compiler_positive_case": true,
+      "controlled_process_probe_used_for": "Exact argv, child failures and file-sharing fault control; not the only compile-success evidence.",
+      "evidence": [
+        "tests/subtool_publication_test.py",
+        "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/subtools-publication-20261018/integration-run-04/report.json"
+      ],
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/subtools-publication-20261018/integration-run-04/report.json",
+      "tested_l4d_sha256": "57e42f752d47be1372ace38690bd043808e0c09238f797f1d579191452ad25a0"
+    },
+    "c4d_bridge": {
+      "count": 10,
+      "passed": true,
+      "scope": "Genuine self-authored Cineware documents: polygon-selection and texture-tag material ordering, missing/overlapping/default assignments, UV/authored/smooth normal retention across material splits, GLB and compiled MDL/VVD inspection plus existing path/dependency/failure checks.",
+      "evidence": [
+        "tests/c4d_bridge_test.py",
+        "tests/fixtures/cineware-materials.c4d",
+        "tools/c4d_bridge/fixture.cpp"
+      ]
+    },
+    "ag2_cs2_resource_regression": {
+      "count": 8,
+      "passed": true,
+      "tested_binary_sha256": "16d935fedb045f0f44968b3c4e342c6317b9bb8117d3b9c1c313cc3599031e0d",
+      "scope": "Four official skeleton/graph resources in an isolated CS2/Workshop Tools setup; stock/shifted real RC positives, two generate-only cases, missing RC, controlled exit 37, actual RC followed by Windows sharing conflict, and previous generated outputs as inputs.",
+      "original_installation_key_files_unchanged": 8,
+      "failure_output_set_sha256_unchanged": true,
+      "evidence": [
+        "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/toolkit-fixes-20261018/ag2-live/journal_summary.json",
+        "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/toolkit-fixes-20261018/ag2-live/journal_results.json"
+      ],
+      "boundary": "Resource regression only; meshed ModelDoc and game validation are recorded separately. This eight-case run predates the final AG2 prerequisite-recovery ordering rebuild; final prerequisite recovery is checked separately."
+    },
+    "compiler_integrity": {
+      "count": 6,
+      "passed": true,
+      "scope": "Malformed SMD numeric/UV/weight rejection with file/line diagnostics and previous-output preservation.",
+      "evidence": "tests/compiler_integrity_test.py",
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/compiler_integrity.log"
+    },
+    "decompiler_integrity": {
+      "count": 13,
+      "passed": true,
+      "scope": "UTF-8/unique bones, whole-batch destination conflicts, required dependency failures, skipped/meshless inputs and output preservation; persistent lock files excluded from output snapshots while journals/work must be clean.",
+      "evidence": "tests/decompiler_integrity_test.py",
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/decompiler_integrity.log"
+    },
+    "output_transaction": {
+      "count": 14,
+      "passed": true,
+      "scope": "Main-compiler persistent write/delete recovery, vertexanim JSON sidecar, old journal support and external-change conflicts.",
+      "evidence": "tests/output_transaction_test.py",
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/output_transaction.log"
+    },
+    "subtools_integrity": {
+      "count": 34,
+      "passed": true,
+      "scope": "Existing VMD output collision, L4D include-chain/dependency and meshtool malformed-request regressions.",
+      "evidence": "tests/subtools_integrity_test.py",
+      "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/subtools_integrity.log"
+    },
+    "ag2_prerequisite_recovery": {
+      "passed": true,
+      "case": "Final real AG2 EXE restores interrupted VMDL before rejecting unavailable CS2 VPK",
+      "initial_harness_exit": 86,
+      "product_exit": 1,
+      "old_vmdl_restored": true,
+      "recovery_files_cleaned": true,
+      "sha256": "a9272a1b0eb5739474afe809d0a673967192dbdb4ec6ef4ad174b169d21ac614",
+      "count": 1,
+      "evidence": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/summary.json"
+    },
+    "plum_production": {
+      "count": 1,
+      "passed": true,
+      "original_path_available": false,
+      "registered_original_files_checked": 131,
+      "inputs_unchanged": true,
+      "gameinfo_unchanged": true,
+      "output_count": 5,
+      "outputs_identical_to_installed_v1_2_33": true,
+      "outputs_match_historical_v1_2_33": true,
+      "structure": {
+        "model": "plum_dreaming_hair_p.mdl",
+        "bones": 131,
+        "vertices": 572277,
+        "physics_bodies": 21
+      },
+      "compiler_sha256": "ce0c9a75ae096e1311e18da1e71ccaf9c636361c809cdffa1a69377c9b22edfe",
+      "evidence": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/ag2-full-validation-20261018/plum/validation.json",
+      "scope": "Preserved exact source copy; original user directory is no longer present. No game runtime test."
+    },
+    "l4d_retarget_target_names": {
+      "count": 1,
+      "passed": true,
+      "scope": "Compile authored MDL fixtures, run Rochelle/Nick separately, then -all; body and Light output paths/content must remain equal to each standalone target. Before-fix binary demonstrated one target overwriting another.",
+      "tested_binary_sha256": "57e42f752d47be1372ace38690bd043808e0c09238f797f1d579191452ad25a0",
+      "evidence": [
+        "tests/l4d_retarget_names_test.py",
+        "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/subtools-publication-20261018/retarget-names-after-fix.log",
+        "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/subtools-publication-20261018/l4d-batch-collision-before-fix.json"
+      ]
+    }
+  },
+  "game_validation": {
+    "status": "resource_compile_and_tools_mount_passed_player_runtime_unverified",
+    "scope": "Actual CS2 Workshop Tools build 25966348 validation. Resource compilation and tools-mode registration passed; player replacement and gameplay animation remain unverified.",
+    "resource_compile": {
+      "passed": true,
+      "models": [
+        {
+          "name": "sas_plain.vmdl_c",
+          "sha256": "b62dc5a851e72df0cd745534670d0677a23115d49b69ef7956d102e978196a98",
+          "size": 575763
+        },
+        {
+          "name": "sas_scaled.vmdl_c",
+          "sha256": "97083c1c29a7e57e92cb956f300b4f32ba53d278b70d629845297f8bd789b844",
+          "size": 576281
+        }
+      ],
+      "evidence": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/ag2-full-validation-20261018/sas-scaled-validation.md"
+    },
+    "tools_mode_mount_and_resource_registration": {
+      "passed": true,
+      "observed": "-tools mounted the isolated addon; resource_list registered plain/scaled models and generated proportions worldmodel/uimodel graphs without the retail missing-manifest warning.",
+      "evidence": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/ag2-full-validation-20261018/runtime-tools-console.log"
+    },
+    "player_runtime": {
+      "passed": false,
+      "status": "unverified",
+      "reason": "SetModel on the player did not produce a stable visible custom player for either the plain control or scaled AG2 model. The same result for the plain control prevents attributing it to AG2. No claims are made for reload, crouch, first-person arms, weapon attachments or gameplay animation.",
+      "evidence": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/ag2-full-validation-20261018/cs2-runtime-static-findings.md"
+    },
+    "static_graph_selection": {
+      "passed": true,
+      "observed": "Read-only server binary evidence ties the CCSPlayerPawn construction path to the worldmodel AnimGraph2 identifier; this does not prove the failed SetModel call rebound to the generated wrapper.",
+      "evidence": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/ag2-full-validation-20261018/cs2-runtime-static-findings.md"
+    }
+  },
+  "final_package_validation": {
+    "status": "pending",
+    "scope": "Requires final archive extraction, checks against extracted executables, file/hash/source/license checks and matching final build hashes."
+  },
+  "release_publication": {
+    "status": "pending",
+    "scope": "This report does not itself assert that a replacement asset or tag has been published."
+  },
+  "limitations": [
+    "Persistent recovery and process locks for AG2/decompiler do not provide an absolute hardware/power-loss guarantee or an atomic snapshot for external readers.",
+    "VMD/L4D batch transactions handle ordinary failures, without persistent forced-termination recovery or same-target concurrency protection.",
+    "CE/reference comparisons are bounded authored inputs, not universal rig or game-rendering equivalence.",
+    "C4D support remains editable polygon geometry; procedural caches, skinning, animation, simulation and shader-network baking are outside scope.",
+    "No Linux replacement build has been verified.",
+    "Initial v1.2.34 release and before-replacement REA hashes remain in their historical reports and do not identify this replacement."
+  ],
+  "historical_reports": [
+    "v1.2.34-validation.json",
+    "2026-10-18-rea-second-pass.json",
+    "ag2-cs2-20261018.json"
+  ]
+}

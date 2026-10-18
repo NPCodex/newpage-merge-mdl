@@ -63,8 +63,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python .github/scripts/fetch_windows_extras.py --dist dist
 
-      - name: Test emitted models
-        run: python tests/compatibility.py dist/NewPageMergeMDL${{ matrix.ext }}
+      - name: Configure isolated output recovery tests
+        run: cmake -S tests/output_transactions -B output-tests -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build isolated output recovery tests
+        run: cmake --build output-tests --config Release --parallel 2
+
+      - name: Test killed processes and output rollback
+        run: ctest --test-dir output-tests -C Release --output-on-failure
 
       - name: Package with maintained source provenance
         shell: bash
@@ -73,7 +79,7 @@ jobs:
           python .github/scripts/upstream_release.py package --source . --dist dist --platform ${{ matrix.plat }} --manifest upstream-manifest.json --output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip
 
       - name: Verify actual packaged binaries
-        run: python tests/verify_package.py newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip --manifest upstream-manifest.json
+        run: python tests/verify_package.py newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip --manifest upstream-manifest.json --subtool-probe output-tests/bin/subtool_transaction_probe${{ matrix.ext }}
 
       - uses: actions/upload-artifact@v7
         with:

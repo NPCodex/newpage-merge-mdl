@@ -1,6 +1,6 @@
 """Verify and exercise the actual packaged binaries before publishing.
 
-Usage: python tests/verify_package.py package.zip --manifest manifest.json
+Usage: python tests/verify_package.py package.zip --manifest manifest.json --subtool-probe output-tests/bin/subtool_transaction_probe.exe
 """
 import argparse
 import hashlib
@@ -150,7 +150,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive')
     parser.add_argument('--manifest', required=True)
+    parser.add_argument('--subtool-probe', required=True, type=Path,
+                        help='Test-only process/transaction probe from tests/output_transactions')
     args = parser.parse_args()
+    probe = args.subtool_probe.resolve(strict=True)
     expected = json.loads(Path(args.manifest).read_text(encoding='utf-8'))
     with tempfile.TemporaryDirectory(prefix='newpage-package-') as folder:
         compiler = verify(args.archive, expected, folder)
@@ -166,9 +169,14 @@ def main():
         else:
             print('Linux package uses C4D-to-GLB conversion on Windows; native C4D checks do not apply.',flush=True)
         for script, arguments in (
+            ('ce_morph_normals.py', [str(compiler)]),
+            ('cli_framerate_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix))]),
             ('compiler_integrity_test.py', [str(compiler)]),
             ('decompiler_integrity_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix))]),
             ('subtools_integrity_test.py', ['--bin-dir', str(compiler.parent)]),
+            ('subtool_publication_test.py', ['--bin-dir', str(compiler.parent), '--probe', str(probe),
+                                             '--work', str(Path(folder)/'subtool-publication')]),
+            ('l4d_retarget_names_test.py', [str(compiler), str(compiler.parent/'subtools'/('l4d_animswap'+compiler.suffix))]),
         ):
             subprocess.run([sys.executable, str(Path(__file__).with_name(script)), *arguments], check=True)
         subprocess.run([sys.executable, str(Path(__file__).with_name('compatibility.py')), str(compiler)], check=True)

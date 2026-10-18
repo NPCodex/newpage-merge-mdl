@@ -8,6 +8,7 @@
 #include "dmxeval.h"
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
@@ -321,6 +322,7 @@ struct UniqueVert { // reference VertIndices_t (single UV channel)
 
 struct FlexTemp {
     bool forceWrinkles=false, ignoreWrinkles=false;
+    bool computeCeNormals=false;
     bool enabled = false; // rendermesh load - flex data is parsed at all
     std::vector<DeltaTempState> deltaStates;
     std::vector<float> balance; // FIELD_BALANCE data, 1.0f default per mesh
@@ -666,6 +668,124 @@ void ComputeTriangulatedIndices(const std::vector<dmx::Vector3>& positions,
         outIndices.push_back(faceCorners[firstIndex + ((nMinIndex + i) % vertexCount)]);
         outIndices.push_back(faceCorners[firstIndex + ((nMinIndex + i + 1) % vertexCount)]);
     }
+}
+
+struct RecomputedDmxNormals {
+    struct Delta {
+        std::vector<dmx::Vector3> values;
+        std::vector<int32_t> indices;
+    };
+    std::vector<dmx::Vector3> base;
+    std::vector<Delta> deltas;
+};
+
+// CE recomputes in each DmeMesh's local position-index domain, before normal
+// collapsing/vertex unification. UV/hard-normal seams therefore share the
+// generated normal, while separate coincident positions/meshes stay separate.
+// Authored normals and the document itself remain untouched when disabled.
+RecomputedDmxNormals ComputeCeDmxNormals(const dmx::Element& mesh,
+                                        const std::vector<dmx::Vector3>& positions,
+                                        const std::vector<int32_t>& positionIndices) {
+    std::vector<std::array<int, 3>> triangles;
+    if (const auto* sets = mesh.GetElementArray("faceSets")) {
+        std::vector<int> corners;
+        for (const auto* set : *sets) {
+            const auto* faces = set ? set->GetIntArray("faces") : nullptr;
+            if (!faces) continue;
+            for (int first = 0; first < static_cast<int>(faces->size());) {
+                int count = 0;
+                while (first + count < static_cast<int>(faces->size()) && (*faces)[first + count] != -1) ++count;
+                if (count >= 3) {
+                    ComputeTriangulatedIndices(positions, positionIndices, *faces, first, count, corners);
+                    for (size_t i = 0; i + 2 < corners.size(); i += 3) {
+                        std::array<int, 3> triangle{};
+                        bool valid = true;
+                        for (int k = 0; k < 3; ++k) {
+                            const int c = corners[i + k];
+                            const int p = c >= 0 && c < static_cast<int>(positionIndices.size()) ? positionIndices[c] : -1;
+                            if (p < 0 || p >= static_cast<int>(positions.size())) { valid = false; break; }
+                            triangle[k] = p;
+                        }
+                        if (valid) triangles.push_back(triangle);
+                    }
+                }
+                first += count + 1;
+            }
+        }
+    }
+    auto normals = [&](const std::vector<dmx::Vector3>& posed) {
+        std::vector<dmx::Vector3> result(positions.size());
+        std::vector<int> count(positions.size());
+        for (const auto& triangle : triangles) {
+            const auto& a = posed[triangle[0]];
+            const auto& b = posed[triangle[1]];
+            const auto& c = posed[triangle[2]];
+            const pm::Vector3 u{b.x - a.x, b.y - a.y, b.z - a.z};
+            const pm::Vector3 v{c.x - a.x, c.y - a.y, c.z - a.z};
+            pm::Vector3 n{u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x};
+            pm::VectorNormalize(n); // equal face weight, including the Valve epsilon
+            for (int p : triangle) {
+                auto& sum = result[p];
+                sum = {sum.x + n.x, sum.y + n.y, sum.z + n.z};
+                ++count[p];
+            }
+        }
+        for (size_t i = 0; i < result.size(); ++i) {
+            if (!count[i]) { result[i] = {0, 1, 0}; continue; }
+            const float scale = 1.0f / count[i];
+            pm::Vector3 n{result[i].x * scale, result[i].y * scale, result[i].z * scale};
+            pm::VectorNormalize(n);
+            result[i] = {n.x, n.y, n.z};
+        }
+        return result;
+    };
+    RecomputedDmxNormals output;
+    output.base = normals(positions);
+    const auto* states = mesh.GetElementArray("deltaStates");
+    if (!states) return output;
+    output.deltas.resize(states->size());
+    std::vector<std::string> names;
+    for (const auto* state : *states) names.push_back(state ? state->name : std::string{});
+    const auto dependencies = BuildMorphNormalDependencies(names);
+    for (int current : dependencies.order) {
+        if (!(*states)[current]) continue;
+        auto posed = positions;
+        auto previous = output.base;
+        auto addPositions = [&](int delta) {
+            const auto* element = (*states)[delta];
+            const auto* values = element ? PickV3Array(element, "position$0", "positions") : nullptr;
+            const auto* indices = element ? PickIntArray(element, "position$0Indices", "positionsIndices") : nullptr;
+            if (!values || !indices) return;
+            for (size_t k = 0; k < values->size() && k < indices->size(); ++k) {
+                const int index = (*indices)[k];
+                if (index < 0 || index >= static_cast<int>(posed.size())) continue;
+                auto& p = posed[index]; const auto& d = (*values)[k];
+                p = {p.x + d.x, p.y + d.y, p.z + d.z};
+            }
+        };
+        for (int lower : dependencies.lower[current]) {
+            addPositions(lower);
+            const auto& delta = output.deltas[lower];
+            for (size_t k = 0; k < delta.values.size(); ++k) {
+                auto& n = previous[delta.indices[k]]; const auto& d = delta.values[k];
+                n = {n.x + d.x, n.y + d.y, n.z + d.z};
+            }
+        }
+        addPositions(current);
+        const auto target = normals(posed);
+        auto& delta = output.deltas[current];
+        for (size_t i = 0; i < target.size(); ++i) {
+            dmx::Vector3 n{target[i].x - previous[i].x, target[i].y - previous[i].y,
+                          target[i].z - previous[i].z};
+            // Reference sparse generated-normal threshold; position/wrinkle
+            // records are loaded independently and are never removed here.
+            if (n.x * n.x + n.y * n.y + n.z * n.z >= 0.0001f) {
+                delta.values.push_back(n);
+                delta.indices.push_back(static_cast<int32_t>(i));
+            }
+        }
+    }
+    return output;
 }
 
 struct LoadMeshInfo {
@@ -1032,6 +1152,13 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
 
     const std::vector<dmx::ElementPtr>* deltaStates = mesh->GetElementArray("deltaStates");
     bool hasDeltas = deltaStates && !deltaStates->empty();
+    const bool computeCeNormals = info.flex && info.flex->computeCeNormals && positions && positionIndices;
+    RecomputedDmxNormals recomputed;
+    if (computeCeNormals) {
+        recomputed = ComputeCeDmxNormals(*mesh, *positions, *positionIndices);
+        normals = recomputed.base;
+        normalIndices = *positionIndices;
+    }
 
     const float flNormalBlend = static_cast<float>(cos(2.0f * pm::kDeg2Rad));
     { PULSE_PERF("mesh", "NormalizeDmxNormals"); NormalizeDmxNormals(normals); }
@@ -1149,7 +1276,8 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
         if (texcoordIndices)
             texcoordInverse = BuildInverseMap(*texcoordIndices, nTexcoordDataCount);
 
-        for (const dmx::Element* delta : *deltaStates) {
+        for (size_t deltaIndex = 0; deltaIndex < deltaStates->size(); ++deltaIndex) {
+            const dmx::Element* delta = (*deltaStates)[deltaIndex];
             if (!delta) continue;
 
             std::vector<dmx::Vector3> dPos;
@@ -1165,6 +1293,10 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
             std::vector<int32_t> dNormalIdx;
             if (auto ni = PickIntArray(delta, "normal$0Indices", "normalsIndices"))
                 dNormalIdx = *ni;
+            if (computeCeNormals) {
+                dNormals = recomputed.deltas[deltaIndex].values;
+                dNormalIdx = recomputed.deltas[deltaIndex].indices;
+            }
             if (bNormalsCollapsed)
                 CollapseDeltaNormals(normalMap, dNormals, dNormalIdx);
 
@@ -2466,6 +2598,7 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
         flexTemp.enabled = true;
         flexTemp.forceWrinkles=processing && processing->computeWrinkles;
         flexTemp.ignoreWrinkles=processing && processing->ignoreWrinkles;
+        flexTemp.computeCeNormals=processing && processing->computeNormals && processing->ceNormals;
         // controls first - GenerateWrinkleDeltas runs before the meshes load
         if (const dmx::Element* comboOp = root->GetElement("combinationOperator"))
             ParseComboControls(comboOp, comboTemp, flexTemp);
@@ -2499,7 +2632,7 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
     if (flexTemp.enabled)
         AddFlexKeys(comboTemp, flexTemp, out);
 
-    if(processing && processing->computeNormals && !out.vertex.empty()) ComputeMorphNormals(out);
+    if(processing && processing->computeNormals && !processing->ceNormals && !out.vertex.empty()) ComputeMorphNormals(out);
 
     // animations
     if (!loader::EvaluateDmxAnimations(dm, root, boneMap.transforms, scale, out, err))

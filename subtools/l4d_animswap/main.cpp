@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "../vmd2valvebiped/output_transaction.h"
 #include "animwrite.h"
 #include "dmxwrite.h"
 #include "format/mdl.h"
@@ -438,8 +439,10 @@ std::string Quote(const std::string& s) { return "\"" + s + "\""; }
 struct Retargeter {
     std::string dir, outDir;
     const Survivor* rig = nullptr;
+    const Survivor* target = nullptr;
     dc::Mdl rigMdl;
-    bool rigOk = false;
+    bool rigOk = false, failed = false;
+    subtool::OutputTransaction* outputs = nullptr;
     std::map<std::string, dc::Mdl> cache;
     int written = 0;
 
@@ -449,19 +452,31 @@ struct Retargeter {
         m.hdr = reinterpret_cast<const fm::studiohdr_t*>(m.buf.data());
         if (m.hdr->id != fm::kIdStudioHeader)
             return false;
-        if (m.hdr->numanimblocks > 1)
-            dc::ReadWhole(dir + "/" + dc::StripExt(leaf) + ".ani", m.ani);
+        if (m.hdr->numanimblocks > 1 &&
+            !dc::ReadWhole(dir + "/" + dc::StripExt(leaf) + ".ani", m.ani)) {
+            failed = true;
+            std::fprintf(stderr, "  -retarget: missing animation data for %s\n", leaf.c_str());
+            return false;
+        }
         return true;
     }
 
-    bool Init(const std::string& vanilla, const Survivor& r, const std::string& out) {
+    bool Init(const std::string& vanilla, const Survivor& r, const Survivor& t, const std::string& out) {
         dir = vanilla;
         rig = &r;
+        target = &t;
         outDir = out;
         rigOk = Load("survivor_" + std::string(r.code) + ".mdl", rigMdl) && rigMdl.hdr->numbones > 0;
         if (!rigOk)
             std::fprintf(stderr, "  -retarget: cannot read survivor_%s.mdl\n", r.code);
         return rigOk;
+    }
+
+    std::string OutputClip(const std::string& name) const {
+        // The same rig may replace several targets in one -all batch. Their
+        // same-named sequences need not contain the same motion, including
+        // optional Light models and delta bases.
+        return name + "_retarget_" + rig->survivor + "_for_" + target->survivor;
     }
 
     const dc::Mdl* Get(const std::string& leaf) {
@@ -532,8 +547,11 @@ struct Retargeter {
             return {};
         for (const std::string& inc : includes) {
             const dc::Mdl* m = Get(Leaf(inc));
-            if (!m)
-                continue;
+            if (!m) {
+                failed = true;
+                std::fprintf(stderr, "  -retarget: cannot read required animation model %s\n", inc.c_str());
+                return {};
+            }
             const fm::studiohdr_t& h = *m->hdr;
             const auto* seqs =
                 m->At<fm::mstudioseqdesc_t>(m->buf.data(), h.localseqindex, h.numlocalseq);
@@ -547,9 +565,9 @@ struct Retargeter {
 
     bool WriteClip(const std::string& clip, int fps,
                    const std::vector<std::vector<dc::AnimPose>>& frames) {
-        std::error_code ec;
-        std::filesystem::create_directories(outDir + "/anims", ec);
-        if (!dc::WriteAnimationDmx(rigMdl, outDir + "/anims/" + clip + ".dmx", clip, fps, frames)) {
+        const std::string path = outputs->Stage(outDir + "/anims/" + clip + ".dmx");
+        if (!dc::WriteAnimationDmx(rigMdl, path, clip, fps, frames)) {
+            failed = true;
             std::fprintf(stderr, "  -retarget: cannot write anims/%s.dmx\n", clip.c_str());
             return false;
         }
@@ -568,12 +586,15 @@ struct Retargeter {
         // share one anims/ folder.
         const std::string animName = (real ? refs[base].name : std::string(dc::kBindPoseAnim)) +
                                      "_" + Lower(dc::StripExt(dc::BaseName(m.hdr->name)));
-        const std::string clip = animName + "_retarget_" + rig->survivor;
+        const std::string clip = OutputClip(animName);
         if (bases.insert(Lower(clip)).second) {
             std::vector<std::vector<dc::AnimPose>> f;
             if (real) {
-                if (!dc::DecodeClip(m, base, f) || f.empty())
+                if (!dc::DecodeClip(m, base, f) || f.empty()) {
+                    failed = true;
+                    std::fprintf(stderr, "  -retarget: cannot decode delta base\n");
                     return {};
+                }
                 f.resize(1);
             } else {
                 f.push_back(dc::BindPose(m));
@@ -608,7 +629,8 @@ struct Retargeter {
         if (delta && !deltas)
             return {};
         if (!dc::DecodeClip(m, grid[0], frames)) {
-            std::fprintf(stderr, "  -retarget: \"%s\" could not be decoded, kept as a declare\n",
+            failed = true;
+            std::fprintf(stderr, "  -retarget: \"%s\" could not be decoded\n",
                          name.c_str());
             return {};
         }
@@ -616,7 +638,7 @@ struct Retargeter {
         const std::string subtract = delta ? Base(m, grid[0], pre) : std::string();
         if (delta && subtract.empty())
             return {};
-        const std::string clip = name + tag + "_retarget_" + rig->survivor;
+        const std::string clip = OutputClip(name + tag);
         const int fps = a.fps > 0.0f ? static_cast<int>(a.fps + 0.5f) : 30;
         if (!WriteClip(clip, fps, Remap(m, frames)))
             return {};
@@ -762,7 +784,7 @@ struct Retargeter {
 bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
            const std::vector<const Survivor*>& chain, const Result& res, int skip, const Slots& order,
            Resolver& mdls, const std::string& ref, bool noanim, bool nofallback,
-           bool keepintro, Retargeter* retarget) {
+           bool keepintro, Retargeter* retarget, subtool::OutputTransaction& outputs) {
     nofallback = BlockFallback(nofallback, rig, tgt);
     std::vector<int> won(chain.size(), 0);
     int kept = 0;
@@ -803,7 +825,8 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
             for (const std::string& s : m->autolayers) rigLayers.insert(Lower(s));
         }
 
-    FILE* f = std::fopen(path.c_str(), "wb");
+    subtool::OutputFile file(outputs.Stage(path));
+    FILE* f = file.Get();
     if (!f) {
         std::fprintf(stderr, "cannot write %s\n", path.c_str());
         return false;
@@ -1057,9 +1080,12 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
     for (size_t d = 0; d < chain.size(); ++d)
         if (won[d]) include(*chain[d]); // a donor that filled nothing is dead weight
     include(tgt);                       // last resort for every slot no donor claimed
-    std::fclose(f);
+    if (!file.Close() || (retarget && retarget->failed)) {
+        std::fprintf(stderr, "cannot complete %s\n", path.c_str());
+        return false;
+    }
 
-    std::printf("%s\n", path.c_str());
+    std::printf("prepared %s\n", path.c_str());
     for (size_t d = 0; d < chain.size(); ++d) std::printf("    %-10s %5d\n", chain[d]->survivor, won[d]);
     std::printf("    %-10s %5d (fallback)\n", tgt.survivor, kept);
     return true;
@@ -1067,16 +1093,31 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
 
 // The target's map-placed survivor_<code>_light.mdl keeps every clip local with no
 // $includemodel, so its whole list is rebuilt on the rig, deltas included.
-bool WriteLight(const std::string& path, const Survivor& rig, const Survivor& tgt, Retargeter& rt) {
+bool WriteLight(const std::string& path, const Survivor& rig, const Survivor& tgt, Retargeter& rt,
+                subtool::OutputTransaction& outputs) {
     const std::string leaf = "survivor_" + std::string(tgt.code) + "_light.mdl";
+    // The optional map-placed model is absent in some extracted input sets.
+    // If supplied, a failure reading it is an error rather than an omission.
+    if (!std::filesystem::exists(std::filesystem::u8path(rt.dir) / leaf)) return true;
+    Mdl checked;
+    if (!LoadMdl(rt.dir + "/" + leaf, checked)) {
+        std::fprintf(stderr, "  -retarget: invalid Light model tables or strings in %s\n", leaf.c_str());
+        return false;
+    }
     const dc::Mdl* m = rt.Get(leaf);
-    if (!m)
-        return true;
+    if (!m) {
+        std::fprintf(stderr, "  -retarget: cannot read %s\n", leaf.c_str());
+        return false;
+    }
     const fm::studiohdr_t& h = *m->hdr;
     const auto* seqs = m->At<fm::mstudioseqdesc_t>(m->buf.data(), h.localseqindex, h.numlocalseq);
-    if (!seqs || h.numlocalseq <= 0)
-        return true;
-    FILE* f = std::fopen(path.c_str(), "wb");
+    if (h.numlocalseq == 0) return true;
+    if (!seqs || h.numlocalseq < 0) {
+        std::fprintf(stderr, "  -retarget: invalid Light sequence table in %s\n", leaf.c_str());
+        return false;
+    }
+    subtool::OutputFile file(outputs.Stage(path));
+    FILE* f = file.Get();
     if (!f) {
         std::fprintf(stderr, "cannot write %s\n", path.c_str());
         return false;
@@ -1112,8 +1153,11 @@ bool WriteLight(const std::string& path, const Survivor& rig, const Survivor& tg
         for (const std::string& l : lines) std::fprintf(f, "%s\n", l.c_str());
         std::fputc('\n', f);
     }
-    std::fclose(f);
-    std::printf("%s\n", path.c_str());
+    if (!file.Close() || rt.failed) {
+        std::fprintf(stderr, "cannot complete %s\n", path.c_str());
+        return false;
+    }
+    std::printf("prepared %s\n", path.c_str());
     return true;
 }
 
@@ -1147,7 +1191,7 @@ void Usage() {
         "  -retarget       rebuild the target's own campaign intros and dlc1_* scene\n"
         "                  clips (deltas excepted) on the rig's\n"
         "                  skeleton as local $sequence, clips written beside the .qci\n"
-        "                  as anims/<name>_retarget_<rig>.dmx; compile them yourself.\n"
+        "                  as anims/<name>_retarget_<rig>_for_<target>.dmx; compile them yourself.\n"
         "                  A francis/zoey target also gets <out>_Light.qci, the map\n"
         "                  _light model's whole list rebuilt on the rig\n"
         "  -dmxencoding <enc>  retargeted clips: binary (default) or keyvalues2\n"
@@ -1235,7 +1279,7 @@ int SelfTest() {
 
 } // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) try {
     PrintHeader();
     std::string dir, out, outdir = ".", viaArg, ref, dmxEncoding = "binary";
     const Survivor* rig = nullptr;
@@ -1327,6 +1371,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    subtool::OutputTransaction outputs;
     for (size_t jobIndex = 0; jobIndex < jobs.size(); ++jobIndex) {
         const auto& job = jobs[jobIndex];
         const auto& chain = chains[jobIndex];
@@ -1349,22 +1394,28 @@ int main(int argc, char** argv) {
         }
         Retargeter rt;
         if (retarget) {
-            const std::filesystem::path parent = std::filesystem::path(path).parent_path();
-            rt.Init(dir, *job.first, parent.empty() ? "." : parent.string());
+            const std::filesystem::path parent = std::filesystem::u8path(path).parent_path();
+            rt.outputs = &outputs;
+            if (!rt.Init(dir, *job.first, *job.second, parent.empty() ? "." : parent.u8string())) return 1;
         }
         if (!Write(path, *job.first, *job.second, chain, built, skip, order, res, ref, noanim,
-                   nofallback, keepintro, retarget ? &rt : nullptr))
+                   nofallback, keepintro, retarget ? &rt : nullptr, outputs))
             return 1;
         // Rig == target still needs it: the modder's model stands in for the _light one too.
         if (retarget && rt.rigOk) {
             const std::string stem = path.size() > 4 && Lower(path.substr(path.size() - 4)) == ".qci"
                                          ? path.substr(0, path.size() - 4)
                                          : path;
-            if (!WriteLight(stem + "_Light.qci", *job.first, *job.second, rt))
+            if (!WriteLight(stem + "_Light.qci", *job.first, *job.second, rt, outputs))
                 return 1;
         }
         if (rt.written)
             std::printf("    %d clip(s) retargeted into %s/anims\n", rt.written, rt.outDir.c_str());
     }
+    outputs.Commit();
+    std::printf("all animation swap outputs published successfully\n");
     return 0;
+} catch (const std::exception& error) {
+    std::fprintf(stderr, "l4d_animswap: %s\n", error.what());
+    return 1;
 }
