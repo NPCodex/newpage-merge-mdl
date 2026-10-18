@@ -5,6 +5,8 @@
 // follow the MMD foot IK through the target model's own $ikchain data.
 
 #include <algorithm>
+#include <cerrno>
+#include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -986,6 +988,42 @@ int Fail(const std::string& err) {
     return 1;
 }
 
+bool ParseLongOption(const char* text, long& value) {
+    if (!text || !*text || std::isspace(static_cast<unsigned char>(*text)))
+        return false;
+    errno = 0;
+    char* end = nullptr;
+    const long long parsed = std::strtoll(text, &end, 10);
+    if (errno == ERANGE || end == text || *end != '\0' || parsed < LONG_MIN || parsed > LONG_MAX)
+        return false;
+    value = static_cast<long>(parsed);
+    return true;
+}
+
+bool ParseIntOption(const char* text, int& value) {
+    long parsed = 0;
+    if (!ParseLongOption(text, parsed) || parsed < INT_MIN || parsed > INT_MAX)
+        return false;
+    value = static_cast<int>(parsed);
+    return true;
+}
+
+bool ParseFloatOption(const char* text, float& value) {
+    if (!text || !*text || std::isspace(static_cast<unsigned char>(*text)))
+        return false;
+    errno = 0;
+    char* end = nullptr;
+    const float parsed = std::strtof(text, &end);
+    if (errno == ERANGE || end == text || *end != '\0' || !std::isfinite(parsed))
+        return false;
+    value = parsed;
+    return true;
+}
+
+bool LooksLikeOption(const char* text) {
+    return text && text[0] == '-' && std::isalpha(static_cast<unsigned char>(text[1]));
+}
+
 // Sequence/file name from a path: each run of spaces, punctuation or non-ASCII
 // becomes one '_'.
 std::string ClipName(const std::string& path) {
@@ -1005,7 +1043,7 @@ std::string ClipName(const std::string& path) {
 
 struct Clip {
     std::string name;
-    int fps = 30;
+    float fps = 30.0f;
     std::string sound; // path under sound/, empty for none
     bool camera = false; // an .smd holding only kCameraBone
     std::string walk;    // walkframe options for its $sequence
@@ -1214,7 +1252,7 @@ bool WriteAnimQc(const std::string& path, const Mdl& m, const std::string& model
     }
     std::fprintf(f, "\n$animblocksize 64\n\n");
     for (const Clip& c : clips) {
-        std::fprintf(f, "$sequence \"%s\" \"%s.%s\" fps %d%s", c.name.c_str(), c.name.c_str(),
+        std::fprintf(f, "$sequence \"%s\" \"%s.%s\" fps %.9g%s", c.name.c_str(), c.name.c_str(),
                      c.camera ? "smd" : "dmx", c.fps, c.walk.c_str());
         // client-side, fires at sequence start; a .wav/.mp3 name skips soundscripts
         if (!c.sound.empty())
@@ -1233,6 +1271,7 @@ int main(int argc, char** argv) try {
     std::string faceSet = "facs", cameraFov;
     float armAngle = 35.0f, eyeRange = 30.0f;
     long startArg = -1, endArg = -1;
+    bool haveStart = false, haveEnd = false;
     long walkEvery = -1;
     float walkTol = 4.0f;
     bool uncompress = false, sound = false;
@@ -1240,39 +1279,81 @@ int main(int argc, char** argv) try {
     int dmxModel = 15;
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
-        const auto next = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
-        if (!_stricmp(a, "-vmd")) vmdPaths.push_back(next());
-        else if (!_stricmp(a, "-mdl")) mdlPath = next();
-        else if (!_stricmp(a, "-pmx")) pmxPath = next();
-        else if (!_stricmp(a, "-o")) outPath = next();
-        else if (!_stricmp(a, "-compile")) compileName = next();
-        else if (!_stricmp(a, "-srcdir")) srcArg = next();
-        else if (!_stricmp(a, "-game")) gameDir = next();
-        else if (!_stricmp(a, "-armangle")) armAngle = static_cast<float>(std::atof(next()));
-        else if (!_stricmp(a, "-eyerange")) eyeRange = static_cast<float>(std::atof(next()));
-        else if (!_stricmp(a, "-start")) startArg = std::atol(next());
-        else if (!_stricmp(a, "-end")) endArg = std::atol(next());
+        std::string argumentError;
+        const auto next = [&]() -> const char* {
+            if (i + 1 >= argc || !argv[i + 1][0] || LooksLikeOption(argv[i + 1])) {
+                argumentError = std::string(a) + " requires a value";
+                return nullptr;
+            }
+            return argv[++i];
+        };
+        const auto stringArg = [&](std::string& value) {
+            const char* token = next();
+            if (!token) return false;
+            value = token;
+            return true;
+        };
+        const auto longArg = [&](long& value) {
+            const char* token = next();
+            if (!token) return false;
+            if (!ParseLongOption(token, value))
+                argumentError = std::string(a) + " requires a complete integer value";
+            return argumentError.empty();
+        };
+        const auto intArg = [&](int& value) {
+            const char* token = next();
+            if (!token) return false;
+            if (!ParseIntOption(token, value))
+                argumentError = std::string(a) + " requires a complete integer value";
+            return argumentError.empty();
+        };
+        const auto floatArg = [&](float& value) {
+            const char* token = next();
+            if (!token) return false;
+            if (!ParseFloatOption(token, value))
+                argumentError = std::string(a) + " requires a finite numeric value";
+            return argumentError.empty();
+        };
+        if (!_stricmp(a, "-vmd")) {
+            std::string value;
+            if (!stringArg(value)) return Fail(argumentError);
+            vmdPaths.push_back(std::move(value));
+        }
+        else if (!_stricmp(a, "-mdl")) { if (!stringArg(mdlPath)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-pmx")) { if (!stringArg(pmxPath)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-o")) { if (!stringArg(outPath)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-compile")) { if (!stringArg(compileName)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-srcdir")) { if (!stringArg(srcArg)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-game")) { if (!stringArg(gameDir)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-armangle")) { if (!floatArg(armAngle)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-eyerange")) { if (!floatArg(eyeRange)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-start")) { if (!longArg(startArg)) return Fail(argumentError); haveStart = true; }
+        else if (!_stricmp(a, "-end")) { if (!longArg(endArg)) return Fail(argumentError); haveEnd = true; }
         else if (!_stricmp(a, "-uncompressanim")) uncompress = true;
         else if (!_stricmp(a, "-walkframe")) {
-            walkEvery = std::atol(next());
+            if (!longArg(walkEvery)) return Fail(argumentError);
             if (walkEvery < 0)
                 return Fail("-walkframe must be 0 (auto) or more frames");
         }
-        else if (!_stricmp(a, "-walktolerance")) walkTol = static_cast<float>(std::atof(next()));
+        else if (!_stricmp(a, "-walktolerance")) { if (!floatArg(walkTol)) return Fail(argumentError); }
         else if (!_stricmp(a, "-sound")) sound = true;
-        else if (!_stricmp(a, "-dmxencoding")) dmxEncoding = next();
-        else if (!_stricmp(a, "-dmxmodel")) dmxModel = std::atoi(next());
-        else if (!_stricmp(a, "-facemap")) faceMapPath = next();
-        else if (!_stricmp(a, "-faceset")) faceSet = next();
-        else if (!_stricmp(a, "-camerafov")) cameraFov = next();
+        else if (!_stricmp(a, "-dmxencoding")) { if (!stringArg(dmxEncoding)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-dmxmodel")) { if (!intArg(dmxModel)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-facemap")) { if (!stringArg(faceMapPath)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-faceset")) { if (!stringArg(faceSet)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-camerafov")) { if (!stringArg(cameraFov)) return Fail(argumentError); }
         else return Usage();
     }
     if (vmdPaths.empty() || mdlPath.empty())
         return Usage();
+    if ((haveStart && startArg < 0) || (haveEnd && endArg < 0))
+        return Fail("-start and -end must be non-negative frame numbers");
     if (!outPath.empty() && (vmdPaths.size() > 1 || !compileName.empty()))
         return Fail("-o names one .dmx; it cannot be used with several -vmd or with -compile");
+    if (armAngle < 0.0f || armAngle > 180.0f)
+        return Fail("-armangle must be between 0 and 180 degrees");
     if (walkTol <= 0.0f)
-        return Fail("-walktolerance must be above 0");
+        return Fail("-walktolerance must be finite and above 0");
     if (sound && compileName.empty())
         return Fail("-sound writes a sequence event, so it needs -compile");
     if (const char* e = mdldecompiler::SetDmxOutput(dmxEncoding, dmxModel))
@@ -1288,8 +1369,8 @@ int main(int argc, char** argv) try {
         return Fail(err);
     if (faceSet != "facs" && faceSet != "visemes")
         return Fail("unknown -faceset \"" + faceSet + "\" (facs or visemes)");
-    if (eyeRange <= 0.0f)
-        return Fail("-eyerange must be above 0 degrees");
+    if (eyeRange <= 0.0f || eyeRange > 180.0f)
+        return Fail("-eyerange must be above 0 and no more than 180 degrees");
     FaceMap faceMap = BuiltinFaceMap(faceSet == "visemes");
     if (!faceMapPath.empty() && !LoadFaceMap(faceMapPath, faceMap, err))
         return Fail(err);
@@ -1632,23 +1713,24 @@ int main(int argc, char** argv) try {
             continue;
         }
 
-        // Frame budget: past the engine limit the clip is resampled over the same
-        // duration at a lower integer fps, never cut.
+        // Frame budget: resample over the same duration at the exact fractional
+        // rate needed to fit, never cut or shorten the clip.
         const long first = startArg >= 0 ? startArg : 0;
         const long last = endArg >= 0 ? std::min<long>(endArg, lastFrame) : static_cast<long>(lastFrame);
         if (last < first)
             return Fail("\"" + vmdPath + "\": -start is past -end or the motion's last key");
         const long span = last - first;
-        int fps = 30;
+        float fps = 30.0f;
         long count = span + 1;
         if (count > limit && !uncompress) {
-            fps = std::max(1, static_cast<int>(30 * (limit - 1) / span));
-            count = span * fps / 30 + 1;
+            count = limit;
+            fps = static_cast<float>(30.0 * static_cast<double>(count - 1) / span);
         }
 
         std::vector<float> times;
+        const double sampleStep = count > 1 ? static_cast<double>(span) / (count - 1) : 0.0;
         for (long k = 0; k < count; ++k)
-            times.push_back(static_cast<float>(first) + static_cast<float>(k) * 30.0f / fps);
+            times.push_back(static_cast<float>(static_cast<double>(first) + k * sampleStep));
 
         std::vector<std::vector<AnimPose>> frames;
         frames.reserve(static_cast<size_t>(count));
@@ -1751,8 +1833,8 @@ int main(int argc, char** argv) try {
         clips.push_back({clip, fps, std::string(), false, walkOpts});
 
         std::printf("prepared %s\n", path.c_str());
-        std::printf("  %ld frame%s at %d fps", count, count == 1 ? "" : "s", fps);
-        if (fps != 30)
+        std::printf("  %ld frame%s at %.9g fps", count, count == 1 ? "" : "s", fps);
+        if (fps != 30.0f)
             std::printf(" (resampled from %ld MMD frames to fit the %ld-frame limit)", span + 1, limit);
         std::printf("\n  %d MMD bones keyed, %d target bones mapped, legs by $ikchain\n", keyed, mapped);
         if (!morphs.empty())
@@ -1793,7 +1875,7 @@ int main(int argc, char** argv) try {
             std::vector<AnimPose> cf(static_cast<size_t>(count));
             std::vector<float> fov(static_cast<size_t>(count));
             for (long k = 0; k < count; ++k) {
-                const float f = static_cast<float>(first) + static_cast<float>(k) * 30.0f / fps;
+                const float f = times[static_cast<size_t>(k)];
                 Vector3 eye, look, up;
                 SampleCamera(cams, f, eye, look, up, fov[static_cast<size_t>(k)]);
                 look = pm::VectorRotate(look, M);
@@ -1817,7 +1899,7 @@ int main(int argc, char** argv) try {
             std::printf("prepared %s\n  %zu camera keys from %s, fov %g-%g degrees\n", camPath.c_str(),
                         cams.size(), camFile ? camVmd.c_str() : "the motion", *fovLo, *fovHi);
             if (srcDir.empty()) {
-                std::printf("  $sequence \"%s\" \"%s.smd\" fps %d - needs $definebone \"%s\" \"\" 0 0 0 0 0 0  0 0 0 0 0 0\n",
+                std::printf("  $sequence \"%s\" \"%s.smd\" fps %.9g - needs $definebone \"%s\" \"\" 0 0 0 0 0 0  0 0 0 0 0 0\n",
                             camClip.c_str(), camClip.c_str(), fps, kCameraBone);
                 if (fovBone)
                     std::printf("  and $definebone \"%s\" \"%s\" 0 0 0 0 0 0  0 0 0 0 0 0\n", kCameraFovBone,
@@ -1860,7 +1942,7 @@ int main(int argc, char** argv) try {
                 std::printf("  warning: -start trims the motion but not the audio - they will not line up\n");
         }
         if (srcDir.empty())
-            std::printf("  $sequence \"%s\" \"%s\" fps %d%s\n", clip.c_str(),
+            std::printf("  $sequence \"%s\" \"%s\" fps %.9g%s\n", clip.c_str(),
                         mdldecompiler::BaseName(path).c_str(), fps, walkOpts.c_str());
     }
     if (clips.empty())

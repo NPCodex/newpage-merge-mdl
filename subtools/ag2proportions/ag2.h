@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "dmx/dmx.h"
+#include "generated_assets.h"
 #include "keyvalues3/kv3.h"
 #include "math/math.h"
 
@@ -24,13 +25,6 @@ inline constexpr const char* kStockSkeleton = "animation/skeletons/characters/wo
 inline constexpr const char* kStockViewSkeleton = "animation/skeletons/characters/viewmodel.vnmskel";
 
 // Generated assets, relative to the output folder.
-inline constexpr const char* kWorldGraphFile = "graphs/proportions_worldmodel.vnmgraph";
-inline constexpr const char* kUiGraphFile = "graphs/proportions_uimodel.vnmgraph";
-inline constexpr const char* kClipFile = "anims/proportions.vnmclip";
-inline constexpr const char* kProportionsFile = "anims/proportions.dmx";
-inline constexpr const char* kReferenceFile = "anims/reference.dmx";
-inline constexpr const char* kSkeletonFile = "dmx/ag2_skeleton.dmx";
-
 // One model to wrap. Paths are absolute once loaded; empty means "use the default".
 struct Job {
     fs::path vmdl;

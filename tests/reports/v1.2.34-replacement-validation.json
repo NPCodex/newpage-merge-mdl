@@ -13,13 +13,13 @@
     "compiler_toolchain": "llvm-mingw 20260922 UCRT x86_64",
     "binaries": {
       "NewPageMergeMDL-C4D.exe": "bdae1d70e79e01c785d93e2295e1a34a2840fdcfd52ed6f525ba7db1d8c2c43e",
-      "NewPageMergeMDL-Decompiler.exe": "2eb03849cde22e3deb909b026fb4a3d4c1bcd4ea33c000a021e8ad85197e4d06",
+      "NewPageMergeMDL-Decompiler.exe": "bf12b91c1c1be0393dd872b0ba1554a648ada82dfc4e12226047de0722979e94",
       "NewPageMergeMDL.exe": "ce0c9a75ae096e1311e18da1e71ccaf9c636361c809cdffa1a69377c9b22edfe",
       "NewPageVRMLtoX3D.exe": "9e878fe2926ca9a74713a0c79fb71c00c92b53cc5061eb7c03cbe9cef7a4a1f9",
-      "subtools/ag2proportions.exe": "a9272a1b0eb5739474afe809d0a673967192dbdb4ec6ef4ad174b169d21ac614",
-      "subtools/l4d_animswap.exe": "57e42f752d47be1372ace38690bd043808e0c09238f797f1d579191452ad25a0",
-      "subtools/meshtool.exe": "b1e01ec378faa9fae5fe4507b063320d5e4f9240a2989d7405a2418bbf903644",
-      "subtools/vmd2valvebiped.exe": "d99f669f350e68afe167209ddba4a2786552d05041e4105964250ce07c7e9f00"
+      "subtools/ag2proportions.exe": "74a5bc0db02914e2f8442af7891304773725bf2bfb97a73d22e3c3ba43f67223",
+      "subtools/l4d_animswap.exe": "f236d36f9e1b7f79c6dfa31171ec35882ab85ff5e6532fd7c8656ee895595393",
+      "subtools/meshtool.exe": "8572cff8018adbc24cc410f3c953c294803def6a77d53e8d4910f929790e22ab",
+      "subtools/vmd2valvebiped.exe": "211708b0d91d23d2384780044e53ea82a3b251a21df4cceb72ca5aaff57a7e3e"
     },
     "final_hash_capture": "2026-10-18T09:05:46.297982+00:00",
     "linux_validation": "not-performed",
@@ -156,11 +156,17 @@
       "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/output_transaction.log"
     },
     "subtools_integrity": {
-      "count": 34,
+      "count": 45,
       "passed": true,
-      "scope": "Existing VMD output collision, L4D include-chain/dependency and meshtool malformed-request regressions.",
+      "scope": "VMD output collisions and fractional frame-rate duration, L4D dependency/output guards, and meshtool malformed simplify/decompose requests including VHACD failure propagation and all-or-nothing response publication.",
       "evidence": "tests/subtools_integrity_test.py",
       "final_build_log": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/subtools_integrity.log"
+    },
+    "subtools_cli_arguments": {
+      "count": 63,
+      "passed": true,
+      "scope": "Rejects missing, malformed, out-of-range, non-finite, and unknown CLI values for VMD and L4D tools while preserving existing output files; valid numeric tokens reach input loading.",
+      "evidence": "tests/subtools_cli_arguments_test.py"
     },
     "ag2_prerequisite_recovery": {
       "passed": true,
@@ -169,7 +175,7 @@
       "product_exit": 1,
       "old_vmdl_restored": true,
       "recovery_files_cleaned": true,
-      "sha256": "a9272a1b0eb5739474afe809d0a673967192dbdb4ec6ef4ad174b169d21ac614",
+      "sha256": "74a5bc0db02914e2f8442af7891304773725bf2bfb97a73d22e3c3ba43f67223",
       "count": 1,
       "evidence": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/final-toolchain-20261018/summary.json"
     },
@@ -197,7 +203,7 @@
       "count": 1,
       "passed": true,
       "scope": "Compile authored MDL fixtures, run Rochelle/Nick separately, then -all; body and Light output paths/content must remain equal to each standalone target. Before-fix binary demonstrated one target overwriting another.",
-      "tested_binary_sha256": "57e42f752d47be1372ace38690bd043808e0c09238f797f1d579191452ad25a0",
+      "tested_binary_sha256": "f236d36f9e1b7f79c6dfa31171ec35882ab85ff5e6532fd7c8656ee895595393",
       "evidence": [
         "tests/l4d_retarget_names_test.py",
         "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/subtools-publication-20261018/retarget-names-after-fix.log",

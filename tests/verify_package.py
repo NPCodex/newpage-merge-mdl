@@ -139,6 +139,9 @@ def exercise_packaged_ag2proportions(compiler, expected_version):
                                  errors='replace', check=True)
     if 'Usage:' not in help_result.stdout or 'CS2 AnimGraph2 proportion wrapper' not in help_result.stdout:
         raise ValueError('Packaged ag2proportions help output is incomplete')
+    if '--generate-only' not in help_result.stdout or 'Existing generated' not in help_result.stdout \
+            or 'compile the sources before use' not in help_result.stdout:
+        raise ValueError('Packaged ag2proportions does not warn that generate-only output is uncompiled')
     version_result = subprocess.run([str(tool), '--version'], capture_output=True, text=True,
                                      errors='replace', check=True)
     versions = re.findall(r'^ag2proportions (\d+\.\d+\.\d+)\r?$', version_result.stdout, re.MULTILINE)
@@ -174,6 +177,7 @@ def main():
             ('compiler_integrity_test.py', [str(compiler)]),
             ('decompiler_integrity_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix))]),
             ('subtools_integrity_test.py', ['--bin-dir', str(compiler.parent)]),
+            ('subtools_cli_arguments_test.py', ['--bin-dir', str(compiler.parent)]),
             ('subtool_publication_test.py', ['--bin-dir', str(compiler.parent), '--probe', str(probe),
                                              '--work', str(Path(folder)/'subtool-publication')]),
             ('l4d_retarget_names_test.py', [str(compiler), str(compiler.parent/'subtools'/('l4d_animswap'+compiler.suffix))]),

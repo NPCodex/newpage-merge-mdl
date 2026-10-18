@@ -1,8 +1,10 @@
 #include "convex_decompose.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <vector>
 
 #include "vhacd/vhacd_hull.h"
@@ -90,11 +92,15 @@ bool RunDecompose(const std::string& requestPath, const std::string& responsePat
         std::uint32_t vertCount = 0;
         if (!r.U32(vertCount))
             return fail("a job is truncated");
+        if (vertCount > static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
+            return fail("a job has too many vertices");
         const auto* verts = static_cast<const float*>(
             r.Block(static_cast<std::size_t>(vertCount) * 3 * sizeof(float)));
         std::uint32_t triCount = 0;
         if (!verts || !r.U32(triCount))
             return fail("a job is truncated");
+        if (triCount > static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
+            return fail("a job has too many triangles");
         const auto* tris = static_cast<const std::int32_t*>(
             r.Block(static_cast<std::size_t>(triCount) * 3 * sizeof(std::int32_t)));
         float concavity = 0.0f, decimate = 0.0f;
@@ -102,15 +108,36 @@ bool RunDecompose(const std::string& requestPath, const std::string& responsePat
         if (!tris || !r.F32(concavity) || !r.U32(maxHulls) || !r.F32(decimate) ||
             !r.U32(resolution))
             return fail("a job is truncated");
+        if (!std::isfinite(concavity) || !std::isfinite(decimate))
+            return fail("a job contains a non-finite decomposition parameter");
+        if (maxHulls > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
+            resolution > static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
+            return fail("a job contains an out-of-range integer parameter");
+
+        for (std::size_t i = 0; i < static_cast<std::size_t>(vertCount) * 3; ++i)
+            if (!std::isfinite(verts[i]))
+                return fail("a job contains a non-finite vertex position");
+
+        for (std::size_t i = 0; i < static_cast<std::size_t>(triCount) * 3; ++i)
+            if (tris[i] < 0 || static_cast<std::uint32_t>(tris[i]) >= vertCount)
+                return fail("a job contains an index outside its vertex pool");
+
+        // Empty geometry is a valid no-op in a batch. A partially empty mesh
+        // is malformed and must not be confused with VHACD failure.
+        if (vertCount == 0 && triCount == 0) {
+            PutU32(out, 0);
+            continue;
+        }
+        if (vertCount < 4 || triCount == 0)
+            return fail("a non-empty job needs at least four vertices and one triangle");
 
         std::vector<VHACDHull::DecomposedHull> hulls;
-        VHACDHull::DecomposeConvex(verts, static_cast<int>(vertCount), tris,
-                                   static_cast<int>(triCount), concavity,
-                                   static_cast<int>(maxHulls), decimate, hulls,
-                                   static_cast<int>(resolution));
+        if (!VHACDHull::DecomposeConvex(verts, static_cast<int>(vertCount), tris,
+                                        static_cast<int>(triCount), concavity,
+                                        static_cast<int>(maxHulls), decimate, hulls,
+                                        static_cast<int>(resolution)))
+            return fail("VHACD could not decompose the job");
 
-        // A job that decomposes to nothing answers with no pieces rather than
-        // failing the batch - the caller falls back to one hull for that body.
         PutU32(out, static_cast<std::uint32_t>(hulls.size()));
         for (const VHACDHull::DecomposedHull& hull : hulls) {
             const auto points = static_cast<std::uint32_t>(hull.vertices.size() / 3);
@@ -118,6 +145,8 @@ bool RunDecompose(const std::string& requestPath, const std::string& responsePat
             Put(out, hull.vertices.data(), points * 3 * sizeof(float));
         }
     }
+    if (r.at != r.end)
+        return fail("the request contains trailing data");
 
     std::ofstream answer(responsePath, std::ios::binary | std::ios::trunc);
     if (!answer)

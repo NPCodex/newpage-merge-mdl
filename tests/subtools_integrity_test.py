@@ -8,6 +8,7 @@ import argparse
 import ctypes
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -70,10 +71,10 @@ def target_mdl(path):
     path.write_bytes(data)
 
 
-def vmd(path, camera=True):
+def vmd(path, camera=True, last_frame=30):
     data = bytearray(b"Vocaloid Motion Data 0002".ljust(30, b"\0") + b"integrity".ljust(20, b"\0"))
     data.extend(struct.pack("<I", 2))
-    for frame in (0, 30):
+    for frame in (0, last_frame):
         data.extend("下半身".encode("shift_jis").ljust(15, b"\0") +
                     struct.pack("<I7f", frame, 0, 0, 0, 0, 0, 0, 1) + bytes(64))
     data.extend(struct.pack("<II", 0, int(camera)))
@@ -91,6 +92,19 @@ def simplify_request(indices=(0, 1, 2), target=3, positions=(0, 0, 0, 1, 0, 0, 0
         data += struct.pack("<III", len(indices), target, flags)
         data += struct.pack("<" + "I" * len(indices), *indices)
     return data
+
+
+def decompose_request(jobs):
+    data = bytearray(struct.pack("<III", 0x44435750, 2, len(jobs)))
+    for vertices, triangles, concavity, max_hulls, decimate, resolution in jobs:
+        data.extend(struct.pack("<I", len(vertices) // 3))
+        if vertices:
+            data.extend(struct.pack("<" + "f" * len(vertices), *vertices))
+        data.extend(struct.pack("<I", len(triangles) // 3))
+        if triangles:
+            data.extend(struct.pack("<" + "i" * len(triangles), *triangles))
+        data.extend(struct.pack("<fIfI", concavity, max_hulls, decimate, resolution))
+    return bytes(data)
 
 
 def main():
@@ -157,6 +171,62 @@ def main():
         request.write_bytes(simplify_request(indices=(), target=0, positions=()))
         run("mesh_empty_run", "meshtool", ["simplify", request, response])
         assert struct.unpack("<III f", response.read_bytes()) == (0x4D535750, 1, 0, 0)
+
+        # Decomposition preserves the distinction between a valid empty job
+        # and malformed or unusable geometry, and never replaces an old answer
+        # unless every job has been processed successfully.
+        decompose_response = root / "decompose.response"
+        empty_job = ((), (), 0.1, 4, 1.0, 10000)
+        request.write_bytes(decompose_request([empty_job]))
+        run("mesh_decompose_empty_job", "meshtool", ["decompose", request, decompose_response])
+        assert struct.unpack("<III", decompose_response.read_bytes()) == (0x44435750, 1, 0)
+
+        tetra_vertices = (0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        tetra_faces = (0, 2, 1, 0, 1, 3, 1, 2, 3, 2, 0, 3)
+        request.write_bytes(decompose_request([
+            (tetra_vertices, tetra_faces, 0.1, 4, 1.0, 10000),
+        ]))
+        run("mesh_decompose_tetrahedron", "meshtool", ["decompose", request, decompose_response])
+        decoded = decompose_response.read_bytes()
+        magic, jobs, hulls = struct.unpack_from("<III", decoded)
+        assert (magic, jobs) == (0x44435750, 1) and hulls >= 1, decoded
+        offset = 12
+        for _ in range(hulls):
+            points, = struct.unpack_from("<I", decoded, offset)
+            assert points >= 4, decoded
+            offset += 4 + points * 3 * 4
+        assert offset == len(decoded), decoded
+
+        bad_decompose_jobs = {
+            "index_out_of_range": (tetra_vertices, (0, 1, 9), 0.1, 4, 1.0, 10000),
+            "negative_index": (tetra_vertices, (0, 1, -1), 0.1, 4, 1.0, 10000),
+            "nan_position": ((0, 0, 0, 1, 0, 0, 0, 1, 0, float("nan"), 0, 1),
+                             tetra_faces, 0.1, 4, 1.0, 10000),
+            "nan_concavity": (tetra_vertices, tetra_faces, float("nan"), 4, 1.0, 10000),
+            "infinite_decimate": (tetra_vertices, tetra_faces, 0.1, 4, float("inf"), 10000),
+            "partial_empty_mesh": ((0, 0, 0), (), 0.1, 4, 1.0, 10000),
+            # Valid indices and counts, but a single degenerate triangle cannot
+            # seed VHACD's 3D decomposition.
+            "vhacd_degenerate_mesh": (
+                tetra_vertices, (0, 0, 0), 0.1, 4, 1.0, 10000),
+        }
+        sentinel = b"previous decompose response must survive"
+        for name, job in bad_decompose_jobs.items():
+            request.write_bytes(decompose_request([job]))
+            decompose_response.write_bytes(sentinel)
+            run("mesh_decompose_" + name, "meshtool", ["decompose", request, decompose_response],
+                1, [decompose_response], "decompose:")
+        assert "VHACD" in next(result["stderr"] for result in results
+                               if result["name"] == "mesh_decompose_vhacd_degenerate_mesh")
+
+        # A failed second job must not publish the successfully decomposed first one.
+        request.write_bytes(decompose_request([
+            (tetra_vertices, tetra_faces, 0.1, 4, 1.0, 10000),
+            bad_decompose_jobs["vhacd_degenerate_mesh"],
+        ]))
+        decompose_response.write_bytes(sentinel)
+        run("mesh_decompose_late_job_failure", "meshtool", ["decompose", request, decompose_response],
+            1, [decompose_response], "VHACD")
 
         # One requested female pair must work without the six male survivor MDLs.
         vanilla = root / "vanilla"
@@ -265,6 +335,28 @@ def main():
         run("vmd_nonconflicting_batch", "vmd2valvebiped",
             base + ["-vmd", dance_camera, "-vmd", safe])
         assert b"format model 15" in (root / "safe.dmx").read_bytes()[:100]
+
+        # Clips over the frame budget retain their full MMD duration. Their
+        # fractional sampling rate must be represented consistently in DMX,
+        # generated sequence QC, and the camera companion timeline.
+        long_motion = root / "long_motion.vmd"
+        long_span = 6328  # requires 23.6994 fps to use the full 5000-frame budget
+        vmd(long_motion, camera=True, last_frame=long_span)
+        long_base = ["-mdl", target, "-camerafov", "dmx", "-dmxencoding", "keyvalues2",
+                     "-vmd", long_motion]
+        run("vmd_fractional_budget_rate", "vmd2valvebiped", long_base)
+        long_output = results[-1]["stdout"] + results[-1]["stderr"]
+        fps_match = re.search(r'\$sequence "long_motion" "long_motion\.dmx" fps ([0-9.]+)', long_output)
+        assert fps_match, long_output
+        fps = float(fps_match.group(1))
+        assert abs(fps - 30 * 4999 / long_span) < 1e-5, (fps, long_output)
+        assert "5000 frames" in long_output, long_output
+        for output in (root / "long_motion.dmx", root / "long_motion_camera.dmx"):
+            text = output.read_text(encoding="utf-8")
+            rate = re.search(r'"frameRate"\s+"float"\s+"([^"]+)"', text)
+            duration = re.search(r'"duration"\s+"time"\s+"([^"]+)"', text)
+            assert rate and abs(float(rate.group(1)) - fps) < 1e-5, (output, text[:500])
+            assert duration and abs(float(duration.group(1)) - long_span / 30) < 0.001, (output, duration)
     report = {"passed": len(results), "cases": results}
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)

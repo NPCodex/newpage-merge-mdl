@@ -6,6 +6,7 @@
 // the matching animation from a donor survivor so the donor's include claims it.
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -13,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <climits>
 #include <set>
 #include <string>
 #include <utility>
@@ -28,6 +30,22 @@ namespace fm = pulse::format;
 namespace dc = mdldecompiler;
 
 namespace {
+
+bool ParseIntOption(const char* text, int& value) {
+    if (!text || !*text || std::isspace(static_cast<unsigned char>(*text)))
+        return false;
+    errno = 0;
+    char* end = nullptr;
+    const long long parsed = std::strtoll(text, &end, 10);
+    if (errno == ERANGE || end == text || *end != '\0' || parsed < INT_MIN || parsed > INT_MAX)
+        return false;
+    value = static_cast<int>(parsed);
+    return true;
+}
+
+bool LooksLikeOption(const char* text) {
+    return text && text[0] == '-' && std::isalpha(static_cast<unsigned char>(text[1]));
+}
 
 // Survivor name -> the codename Valve embeds in file and sequence names. Group
 // picks the default donor chain: swapping inside a build-alike set keeps the
@@ -1202,18 +1220,31 @@ void Usage() {
         "  survivors: bill francis louis zoey coach nick ellis rochelle\n");
 }
 
+int Fail(const std::string& message) {
+    std::fprintf(stderr, "l4d_animswap: %s\n", message.c_str());
+    Usage();
+    return 2;
+}
+
 std::vector<const Survivor*> ParseVia(const std::string& arg, bool& ok) {
     std::vector<const Survivor*> v;
     ok = true;
+    if (arg.empty()) {
+        std::fprintf(stderr, "-via requires at least one survivor\n");
+        ok = false;
+        return v;
+    }
     for (size_t i = 0;;) {
         const size_t e = arg.find(',', i);
         const std::string one = arg.substr(i, (e == std::string::npos ? arg.size() : e) - i);
-        if (!one.empty()) {
-            if (const Survivor* h = FindSurvivor(one)) v.push_back(h);
-            else {
-                std::fprintf(stderr, "unknown survivor '%s'\n", one.c_str());
-                ok = false;
-            }
+        if (one.empty()) {
+            std::fprintf(stderr, "-via contains an empty survivor name\n");
+            ok = false;
+        } else if (const Survivor* h = FindSurvivor(one)) {
+            v.push_back(h);
+        } else {
+            std::fprintf(stderr, "unknown survivor '%s'\n", one.c_str());
+            ok = false;
         }
         if (e == std::string::npos) break;
         i = e + 1;
@@ -1289,28 +1320,66 @@ int main(int argc, char** argv) try {
 
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
-        const auto next = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
-        if (!std::strcmp(a, "-vanilla")) dir = next();
-        else if (!std::strcmp(a, "-rig")) rig = FindSurvivor(next());
-        else if (!std::strcmp(a, "-replace")) tgt = FindSurvivor(next());
-        else if (!std::strcmp(a, "-via")) { viaArg = next(); haveVia = true; }
-        else if (!std::strcmp(a, "-skip")) skip = std::atoi(next());
-        else if (!std::strcmp(a, "-o")) out = next();
-        else if (!std::strcmp(a, "-outdir")) outdir = next();
-        else if (!std::strcmp(a, "-ref")) ref = next();
+        std::string argumentError;
+        const auto next = [&]() -> const char* {
+            if (i + 1 >= argc || !argv[i + 1][0] || LooksLikeOption(argv[i + 1])) {
+                argumentError = std::string(a) + " requires a value";
+                return nullptr;
+            }
+            return argv[++i];
+        };
+        const auto stringArg = [&](std::string& value) {
+            const char* token = next();
+            if (!token) return false;
+            value = token;
+            return true;
+        };
+        const auto intArg = [&](int& value) {
+            const char* token = next();
+            if (!token) return false;
+            if (!ParseIntOption(token, value))
+                argumentError = std::string(a) + " requires a complete integer value";
+            return argumentError.empty();
+        };
+        if (!std::strcmp(a, "-vanilla")) { if (!stringArg(dir)) return Fail(argumentError); }
+        else if (!std::strcmp(a, "-rig")) {
+            std::string value;
+            if (!stringArg(value)) return Fail(argumentError);
+            rig = FindSurvivor(value);
+            if (!rig) return Fail("unknown -rig survivor \"" + value + "\"");
+        }
+        else if (!std::strcmp(a, "-replace")) {
+            std::string value;
+            if (!stringArg(value)) return Fail(argumentError);
+            tgt = FindSurvivor(value);
+            if (!tgt) return Fail("unknown -replace survivor \"" + value + "\"");
+        }
+        else if (!std::strcmp(a, "-via")) { if (!stringArg(viaArg)) return Fail(argumentError); haveVia = true; }
+        else if (!std::strcmp(a, "-skip")) { if (!intArg(skip)) return Fail(argumentError); }
+        else if (!std::strcmp(a, "-o")) { if (!stringArg(out)) return Fail(argumentError); }
+        else if (!std::strcmp(a, "-outdir")) { if (!stringArg(outdir)) return Fail(argumentError); }
+        else if (!std::strcmp(a, "-ref")) { if (!stringArg(ref)) return Fail(argumentError); }
         else if (!std::strcmp(a, "-usenoanimation")) noanim = true;
         else if (!std::strcmp(a, "-nofallbackanimation")) nofallback = true;
         else if (!std::strcmp(a, "-keepintro")) keepintro = true;
         else if (!std::strcmp(a, "-retarget")) retarget = true;
-        else if (!std::strcmp(a, "-dmxencoding")) dmxEncoding = next();
-        else if (!std::strcmp(a, "-dmxmodel")) dmxModel = std::atoi(next());
+        else if (!std::strcmp(a, "-dmxencoding")) { if (!stringArg(dmxEncoding)) return Fail(argumentError); }
+        else if (!std::strcmp(a, "-dmxmodel")) { if (!intArg(dmxModel)) return Fail(argumentError); }
         else if (!std::strcmp(a, "-all")) all = true;
-        else if (!std::strcmp(a, "-selftest")) return SelfTest();
-        else { Usage(); return 1; }
+        else if (!std::strcmp(a, "-selftest")) {
+            if (argc != 2) return Fail("-selftest takes no additional arguments");
+            return SelfTest();
+        }
+        else return Fail(std::string("unknown option '") + a + "'");
     }
     if (dir.empty() || skip < 0 || (!all && (!rig || !tgt))) {
-        Usage();
-        return 1;
+        return Fail("-vanilla and non-negative -skip are required; -rig and -replace are required unless -all is used");
+    }
+    if (haveVia) {
+        bool ok = false;
+        const auto parsedVia = ParseVia(viaArg, ok);
+        if (!ok) return 2;
+        if (parsedVia.empty()) return Fail("-via requires at least one survivor");
     }
     if (const char* err = dc::SetDmxOutput(dmxEncoding, dmxModel)) {
         std::fprintf(stderr, "%s\n", err);

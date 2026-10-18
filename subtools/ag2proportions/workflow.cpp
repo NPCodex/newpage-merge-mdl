@@ -12,6 +12,7 @@
 #include "ag2.h"
 #include "strcompat.h"
 #include "transaction.h"
+#include "uncompiled_outputs.h"
 #include "vpk.h"
 
 namespace ag2 {
@@ -399,7 +400,7 @@ bool IsAxisNote(const std::string& warning) { return warning.rfind("bone axes di
 
 // What the user has to do next, on the console; the full notes are --debug only.
 void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::vector<std::string>& warnings,
-                  const Job& job) {
+                  const Job& job, bool generateOnly) {
     std::cout << "Skeleton " << paths.relative << "/" << kSkeletonFile << ": " << skeleton.added.size()
               << " stock bones added, " << skeleton.reparented.size() << " moved under their stock parent\n";
     if (job.writeModel)
@@ -416,6 +417,12 @@ void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::
     if (axes)
         std::cout << "WARNING: " << axes << " bones have axes unlike stock and may be placed off "
                   << "(--debug lists them)\n";
+    if (generateOnly) {
+        std::cout << "WARNING: Generated VMDL source assets were not compiled. Existing generated *_c files "
+                     "were removed; do not use *_c until these sources are compiled with ResourceCompiler.\n"
+                     "Next step: run this job again without --generate-only (or compile the generated sources "
+                     "in ModelDoc/ResourceCompiler).\n";
+    }
 }
 
 } // namespace
@@ -563,6 +570,12 @@ void Generate(const Job& job, const Options& options) {
             const fs::path name = fs::u8path(std::string(source) + "_c");
             transaction.Replace(stagedCompiled / name, published / name);
         }
+    } else {
+        // A previous full run may have left compiled resources beside these
+        // newly generated sources. Remove them in the same transaction so a
+        // caller cannot accidentally consume an *_c file made from an older
+        // VMDL/DMX/graph set.
+        RemoveUncompiledResources(transaction, compiledOutput, {kClipFile, kWorldGraphFile, kUiGraphFile});
     }
     for (const char* name : kGeneratedFiles) {
         if (fs::is_regular_file(staged.output / name)) {
@@ -579,7 +592,18 @@ void Generate(const Job& job, const Options& options) {
         }
     }
     transaction.Commit();
-    PrintSummary(paths, skeleton, warnings, job);
+    if (options.generateOnly) {
+        // Keep the addon tree tidy when the three generated files were the
+        // only contents of the old compiled-resource directory. Failure here
+        // is harmless: the transaction has already removed the stale files.
+        std::error_code ec;
+        fs::remove(compiledOutput / "anims", ec);
+        ec.clear();
+        fs::remove(compiledOutput / "graphs", ec);
+        ec.clear();
+        fs::remove(compiledOutput, ec);
+    }
+    PrintSummary(paths, skeleton, warnings, job, options.generateOnly);
     std::cout << "DONE: " << paths.output.u8string()
               << (options.generateOnly ? " (source assets only)\n" : " (graph and clip compiled)\n");
 }
