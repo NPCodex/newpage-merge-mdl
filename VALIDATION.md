@@ -4,7 +4,7 @@
 
 版本号保持 1.2.34。本节描述替换构建的新增实现和已完成验证；后面的原发行包及 REA 证据明确属于**替换前**。最终安装包验证、发布和游戏验证的状态分别记录在 [替换版报告](tests/reports/v1.2.34-replacement-validation.md) 与 [机器摘要](tests/reports/v1.2.34-replacement-validation.json)，不能用旧包的通过结果替代。
 
-最终发布状态：当前最终提交 `15bbe1f7d10edae84c8bf006b8769417cbec0c21` 已推送到 `main`；Windows 主资产将在本轮重新打包并替换同一个 `v1.2.34` Release。标签对象必须保持 `1130a5c292100f5f87b0ae09a72d8e7806de1f5f`；C4D helper 不变。Linux 本轮没有可验证构建，不替换 Linux 资产。
+最终发布状态：当前最终提交已推送到 `main`；Windows 主资产将在本轮重新打包并替换同一个 `v1.2.34` Release。标签对象必须保持 `1130a5c292100f5f87b0ae09a72d8e7806de1f5f`；C4D helper 不变。Windows 资产的 ID、大小和 digest 以替换完成后的 GitHub Release API 为准。Linux 本轮没有可验证构建，不替换 Linux 资产。
 
 - **CE 自动法线：** 六项回归通过，涵盖八类自制 DMX 输入及 CE 0.3.0 Preview 的冻结序列化参考。组合纯法线 corrective、乱序中间子集、硬法线/UV 接缝、稀疏阈值边界及局部/全局开关得到检查。CE profile 使用等面加权与平方长度 `0.0001` 门限；native 保留面积加权。未开启重算时保留作者法线路径。数学重建检查独立于参考程序，未据此宣称任意 rig 或游戏光照等价。
 - **命令行与小数帧率：** 六项专项测试通过，检查完整数值 token、缺值、配置默认参数和大写命名 `-D` 选项；坏输入保持旧输出。23.7、29.97、60000/1001、30 FPS 在 DMX model 1/15/18/22 的文本及二进制导出后重编译，检查时间轴、帧数、FPS 和逐帧姿态。

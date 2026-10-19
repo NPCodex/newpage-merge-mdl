@@ -261,9 +261,7 @@
     "tag": "v1.2.34",
     "tag_object": "1130a5c292100f5f87b0ae09a72d8e7806de1f5f",
     "windows_asset": {
-      "id": 655135870,
       "name": "newpage-merge-mdl-win64.zip",
-      "size": 8990403,
       "digest_authority": "GitHub Release API; not duplicated inside the archive"
     },
     "c4d_helper_asset": {
