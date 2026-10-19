@@ -109,6 +109,15 @@ jobs:
       - name: Test killed processes and output rollback
         run: ctest --test-dir output-tests -C Release --output-on-failure
 
+      - name: Configure meshtool response tests
+        run: cmake -S tests/meshtool_response -B meshtool-response-tests -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build meshtool response tests
+        run: cmake --build meshtool-response-tests --config Release --parallel 2
+
+      - name: Test meshtool response publication
+        run: ctest --test-dir meshtool-response-tests -C Release --output-on-failure
+
       - name: Package with maintained source provenance
         shell: bash
         run: |
