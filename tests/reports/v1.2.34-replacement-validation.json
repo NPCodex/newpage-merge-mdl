@@ -15,12 +15,12 @@
     "binaries": {
       "NewPageMergeMDL-C4D.exe": "bdae1d70e79e01c785d93e2295e1a34a2840fdcfd52ed6f525ba7db1d8c2c43e",
       "NewPageMergeMDL-Decompiler.exe": "bf12b91c1c1be0393dd872b0ba1554a648ada82dfc4e12226047de0722979e94",
-      "NewPageMergeMDL.exe": "ce0c9a75ae096e1311e18da1e71ccaf9c636361c809cdffa1a69377c9b22edfe",
+      "NewPageMergeMDL.exe": "eec68fc62504ca259b0bf79fa55f2a89e3fd1dcd72af67369daeffb45c6e2d52",
       "NewPageVRMLtoX3D.exe": "9e878fe2926ca9a74713a0c79fb71c00c92b53cc5061eb7c03cbe9cef7a4a1f9",
-      "subtools/ag2proportions.exe": "74a5bc0db02914e2f8442af7891304773725bf2bfb97a73d22e3c3ba43f67223",
-      "subtools/l4d_animswap.exe": "f236d36f9e1b7f79c6dfa31171ec35882ab85ff5e6532fd7c8656ee895595393",
-      "subtools/meshtool.exe": "8572cff8018adbc24cc410f3c953c294803def6a77d53e8d4910f929790e22ab",
-      "subtools/vmd2valvebiped.exe": "211708b0d91d23d2384780044e53ea82a3b251a21df4cceb72ca5aaff57a7e3e"
+      "subtools/ag2proportions.exe": "0be912dfe3d9af14085c01d5f85cd1bfac7f29533d42fe680b94be54e8674f9c",
+      "subtools/l4d_animswap.exe": "4243ed09061db85bb1c76212942f45f8dc5034626b309eb095e360e668dc7ab4",
+      "subtools/meshtool.exe": "f8b0b5fc1aadd05a4b4330277076d8a0ba3c41871d3a12976cc04309483ce5ee",
+      "subtools/vmd2valvebiped.exe": "9f95ace559a38f9f2c8b650ee4ec6f70b6cb90a599dc1c1216a2e340b15ebdfa"
     },
     "final_hash_capture": "2026-10-18T09:05:46.297982+00:00",
     "linux_validation": "not-performed",
