@@ -264,7 +264,7 @@
       "id": 655135870,
       "name": "newpage-merge-mdl-win64.zip",
       "size": 8990403,
-      "sha256": "91fac88877e42e4ef26da078e6a55d415d7d0e7d5e483a34ef997d465fd2049"
+      "digest_authority": "GitHub Release API; not duplicated inside the archive"
     },
     "c4d_helper_asset": {
       "id": 653236378,
