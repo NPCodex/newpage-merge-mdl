@@ -19,6 +19,28 @@ OLD = (
 
 
 class Ag2Transaction(unittest.TestCase):
+    @staticmethod
+    def path_forms(path):
+        """Return path spellings Windows may use for one filesystem object."""
+        raw = os.path.normpath(str(path))
+        forms = {raw, raw.replace('\\', '/')}
+        if os.name == 'nt':
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            for function_name in ('GetLongPathNameW', 'GetShortPathNameW'):
+                function = getattr(kernel32, function_name)
+                function.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
+                function.restype = ctypes.c_uint32
+                buffer = ctypes.create_unicode_buffer(32768)
+                length = function(raw, buffer, len(buffer))
+                if length and length < len(buffer):
+                    forms.update((buffer.value, buffer.value.replace('\\', '/')))
+        return forms
+
+    def assert_path_in(self, path, text):
+        self.assertTrue(any(form in text for form in self.path_forms(path)),
+                        f'{path!s} not found in {text!r}')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name) / 'outputs'
@@ -106,7 +128,7 @@ class Ag2Transaction(unittest.TestCase):
         self.assertIn('Recovery retained', output)
         manifests = list(self.root.rglob('intent'))
         self.assertEqual(len(manifests), 1)
-        self.assertIn(str(manifests[0].parent), output)
+        self.assert_path_in(manifests[0].parent, output)
         backups = list(self.root.rglob('*.backup'))
         self.assertTrue(any(p.read_bytes() == b'old model.vmdl' for p in backups))
         self.assertEqual((self.root / 'model.vmdl/obstruction').read_bytes(), b'keep this evidence')

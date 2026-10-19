@@ -19,6 +19,28 @@ FILES = ('model.vmdl', 'sources/anims/proportions.dmx', 'sources/graphs/world.vn
 
 
 class PersistentOutputs(unittest.TestCase):
+    @staticmethod
+    def path_forms(path):
+        """Return path spellings Windows may use for one filesystem object."""
+        raw = os.path.normpath(str(path))
+        forms = {raw, raw.replace('\\', '/')}
+        if os.name == 'nt':
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            for function_name in ('GetLongPathNameW', 'GetShortPathNameW'):
+                function = getattr(kernel32, function_name)
+                function.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
+                function.restype = ctypes.c_uint32
+                buffer = ctypes.create_unicode_buffer(32768)
+                length = function(raw, buffer, len(buffer))
+                if length and length < len(buffer):
+                    forms.update((buffer.value, buffer.value.replace('\\', '/')))
+        return forms
+
+    def assert_path_in(self, path, text):
+        self.assertTrue(any(form in text for form in self.path_forms(path)),
+                        f'{path!s} not found in {text!r}')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name) / 'Unicode Ü 模型 output'
@@ -220,8 +242,8 @@ class PersistentOutputs(unittest.TestCase):
         outside = Path(self.temp.name) / 'user file.txt'
         outside.write_bytes(b'user data')
         text = intent.read_text(encoding='utf-8')
-        expected = (self.root / 'model.vmdl').as_posix()
-        self.assertIn(expected, text)
+        self.assert_path_in(self.root / 'model.vmdl', text)
+        expected = next(form for form in self.path_forms(self.root / 'model.vmdl') if form in text)
         intent.write_text(text.replace(expected, outside.as_posix(), 1), encoding='utf-8')
         before = self.files()
         self.assertIn('unsafe output recovery destination', self.run_tool('ag2', 'recover', code=1))
