@@ -10,6 +10,7 @@
 #include <stdexcept>
 
 #include "ag2.h"
+#include "rig_selection.h"
 #include "strcompat.h"
 #include "transaction.h"
 #include "uncompiled_outputs.h"
@@ -122,8 +123,7 @@ RigSource FindRig(kv::Value& vmdl, const Job& job, const Paths& paths, const std
     // A mesh on stock bone lengths (first-person arms) is only used
     // when every candidate is one.
     for (const auto* list : {&meshes, &files}) {
-        RigSource best, bestStock;
-        size_t bestCount = 0, bestStockCount = 0;
+        std::vector<RigCandidateRank> ranked;
         for (const RigSource& source : *list) {
             std::string err;
             auto dm = dmx::Datamodel::Load(source.path.u8string(), &err);
@@ -138,19 +138,13 @@ RigSource FindRig(kv::Value& vmdl, const Job& job, const Paths& paths, const std
             if (stockLengths) {
                 std::cout << "Skipping " << source.path.filename().u8string()
                           << ": its bone lengths match the stock skeletons\n";
-                if (count > bestStockCount) {
-                    bestStock = source;
-                    bestStockCount = count;
-                }
-            } else if (count > bestCount) {
-                best = source;
-                bestCount = count;
             }
+            ranked.push_back({source.path, source.scale, count, stockLengths});
         }
-        if (bestCount)
-            return best;
-        if (bestStockCount)
-            return bestStock;
+        if (const RigCandidateRank* best = SelectRigCandidate(ranked, false, "body"))
+            return {best->path, best->scale};
+        if (const RigCandidateRank* best = SelectRigCandidate(ranked, true, "stock-length fallback"))
+            return {best->path, best->scale};
     }
     throw runtime_error("no DMX import carries the CS2 body bones; set model_dmx in the job");
 }

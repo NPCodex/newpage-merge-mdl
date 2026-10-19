@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "meshoptimizer/meshoptimizer.h"
+#include "response_writer.h"
 
 namespace pulse::tool {
 namespace {
@@ -146,14 +147,7 @@ bool RunSimplify(const std::string& requestPath, const std::string& responsePath
             Put(response, simplified.data(), kept * sizeof(unsigned int));
     }
 
-    std::ofstream out(responsePath, std::ios::binary | std::ios::trunc);
-    if (!out)
-        return fail("cannot open the response file");
-    out.write(reinterpret_cast<const char*>(response.data()),
-              static_cast<std::streamsize>(response.size()));
-    if (!out)
-        return fail("cannot write the response file");
-    return true;
+    return detail::WriteResponseAtomically(responsePath, response.data(), response.size(), err);
 }
 
 } // namespace pulse::tool

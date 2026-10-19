@@ -221,6 +221,23 @@ struct CamKey {
     uint32_t fov = 30;
 };
 
+constexpr float kMaxVmdPosition = 1.0e7f;
+constexpr float kMaxVmdAngle = 1.0e4f;
+constexpr float kMaxVmdWeight = 1.0e6f;
+
+bool FiniteVector(const Vector3& v) {
+    return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+}
+
+bool BoundedVector(const Vector3& v, float limit) {
+    return FiniteVector(v) && std::fabs(v.x) <= limit && std::fabs(v.y) <= limit &&
+           std::fabs(v.z) <= limit;
+}
+
+bool ValidInterpolation(const uint8_t* values, size_t count) {
+    return std::all_of(values, values + count, [](uint8_t value) { return value <= 127; });
+}
+
 float Curve(float x1, float y1, float x2, float y2, float x) {
     if (x1 == y1 && x2 == y2)
         return x;
@@ -381,6 +398,29 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
         r.Skip(64);
         if (!r.ok)
             break;
+        const std::string record = "\"" + path + "\": bone key #" + std::to_string(i + 1) +
+                                   " (frame " + std::to_string(k.frame) + ")";
+        if (!BoundedVector(k.pos, kMaxVmdPosition)) {
+            err = record + " has a non-finite or out-of-range position";
+            return false;
+        }
+        const double norm2 = static_cast<double>(k.rot.x) * k.rot.x +
+                             static_cast<double>(k.rot.y) * k.rot.y +
+                             static_cast<double>(k.rot.z) * k.rot.z +
+                             static_cast<double>(k.rot.w) * k.rot.w;
+        if (!std::isfinite(norm2) || norm2 < 1.0e-12 || norm2 > 1.0e12) {
+            err = record + " has a non-finite, zero, or out-of-range quaternion";
+            return false;
+        }
+        const float inverseNorm = static_cast<float>(1.0 / std::sqrt(norm2));
+        k.rot.x *= inverseNorm;
+        k.rot.y *= inverseNorm;
+        k.rot.z *= inverseNorm;
+        k.rot.w *= inverseNorm;
+        if (!ValidInterpolation(k.interp, 16)) {
+            err = record + " has interpolation control points outside 0..127";
+            return false;
+        }
         out[name].push_back(k);
         lastFrame = std::max(lastFrame, k.frame);
     }
@@ -398,8 +438,14 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
         MorphKey k;
         k.frame = r.Get<uint32_t>();
         k.weight = r.Get<float>();
-        if (r.ok)
-            morphs[name].push_back(k);
+        if (!r.ok)
+            break;
+        if (!std::isfinite(k.weight) || std::fabs(k.weight) > kMaxVmdWeight) {
+            err = "\"" + path + "\": morph key #" + std::to_string(i + 1) +
+                  " (frame " + std::to_string(k.frame) + ") has a non-finite or out-of-range weight";
+            return false;
+        }
+        morphs[name].push_back(k);
     }
     const uint32_t ncam = r.ok && r.at < buf.size() ? r.Get<uint32_t>() : 0;
     for (uint32_t i = 0; i < ncam && r.ok; ++i) {
@@ -413,8 +459,28 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
         r.Skip(24);
         c.fov = r.Get<uint32_t>();
         r.Skip(1); // perspective flag
-        if (r.ok)
-            cams.push_back(c);
+        if (!r.ok)
+            break;
+        const std::string record = "\"" + path + "\": camera key #" + std::to_string(i + 1) +
+                                   " (frame " + std::to_string(c.frame) + ")";
+        if (!std::isfinite(c.dist) || std::fabs(c.dist) > kMaxVmdPosition ||
+            !BoundedVector(c.at, kMaxVmdPosition)) {
+            err = record + " has a non-finite or out-of-range distance/position";
+            return false;
+        }
+        if (!BoundedVector(c.rot, kMaxVmdAngle)) {
+            err = record + " has a non-finite or out-of-range rotation";
+            return false;
+        }
+        if (c.fov == 0 || c.fov > 180) {
+            err = record + " has an invalid field of view (expected 1..180 degrees)";
+            return false;
+        }
+        if (!ValidInterpolation(c.interp, sizeof(c.interp))) {
+            err = record + " has interpolation control points outside 0..127";
+            return false;
+        }
+        cams.push_back(c);
     }
     if (!r.ok) {
         err = "\"" + path + "\" is truncated in the morph or camera section";
@@ -768,9 +834,11 @@ bool ParseFaceOps(const std::string& text, FaceOps& ops) {
         const size_t eq = tok.find('=');
         if (eq == 0 || eq == std::string::npos)
             return false;
+        errno = 0;
         char* end = nullptr;
         const float w = std::strtof(tok.c_str() + eq + 1, &end);
-        if (end == tok.c_str() + eq + 1 || *end)
+        if (errno == ERANGE || end == tok.c_str() + eq + 1 || *end || !std::isfinite(w) ||
+            std::fabs(w) > kMaxVmdWeight)
             return false;
         ops.emplace_back(tok.substr(0, eq), w);
     }
@@ -809,9 +877,14 @@ bool LoadFaceMap(const std::string& path, FaceMap& map, std::string& err) {
             }
         std::getline(in, rest);
         if (!ParseFaceOps(rest, map[morph])) {
-            err = "\"" + path + "\" line " + std::to_string(line) + ": expected <controller>=<weight>";
+            err = "\"" + path + "\" line " + std::to_string(line) +
+                  ": expected <controller>=<finite weight within +/-1000000>";
             return false;
         }
+    }
+    if (f.bad()) {
+        err = "cannot read \"" + path + "\" after line " + std::to_string(line);
+        return false;
     }
     return true;
 }

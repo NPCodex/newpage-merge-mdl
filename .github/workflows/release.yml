@@ -3,6 +3,11 @@ name: Release
 # Manual only. Creates one DRAFT release with one complete ZIP per platform.
 on:
   workflow_dispatch:
+    inputs:
+      replace_tag:
+        description: Existing release tag to replace after both platform packages pass
+        type: string
+        required: false
 
 permissions:
   contents: write
@@ -13,6 +18,7 @@ jobs:
     outputs:
       tag: ${{ steps.rel.outputs.tag }}
       version: ${{ steps.rel.outputs.version }}
+      replace: ${{ steps.rel.outputs.replace }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -20,13 +26,37 @@ jobs:
       - name: Choose release revision tag
         id: rel
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           version=$(sed -n 's/^project(NewPageMergeMDL VERSION \([0-9.]*\) .*/\1/p' CMakeLists.txt)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          tag=$(git tag --list "v$version-r*" --sort=-v:refname | head -n 1)
-          [ -n "$tag" ] && revision=$((${tag##*-r} + 1)) || revision=1
-          echo "tag=v$version-r$revision" >> "$GITHUB_OUTPUT"
+          replace='${{ inputs.replace_tag }}'
+          if [ -n "$replace" ]; then
+            python3 - "$replace" "$version" <<'PY'
+          import json, re, subprocess, sys
+          tag, version = sys.argv[1:]
+          if not re.fullmatch(r'v\d+\.\d+\.\d+', tag):
+              raise SystemExit('replace_tag must be an existing stable vX.Y.Z tag')
+          completed = subprocess.run(['gh', 'release', 'view', tag, '--repo', __import__('os').environ['GITHUB_REPOSITORY'],
+                                      '--json', 'tagName,isDraft,isPrerelease'], text=True, capture_output=True)
+          if completed.returncode:
+              raise SystemExit('requested replacement release must already exist')
+          release = json.loads(completed.stdout)
+          if release['tagName'] != tag or release['isDraft'] or release['isPrerelease']:
+              raise SystemExit('replacement target must be an existing published stable release')
+          if tag[1:] != version:
+              raise SystemExit('replacement release version must match CMake project version')
+          PY
+            echo "tag=$replace" >> "$GITHUB_OUTPUT"
+            echo "replace=true" >> "$GITHUB_OUTPUT"
+          else
+            tag=$(git tag --list "v$version-r*" --sort=-v:refname | head -n 1)
+            [ -n "$tag" ] && revision=$((${tag##*-r} + 1)) || revision=1
+            echo "tag=v$version-r$revision" >> "$GITHUB_OUTPUT"
+            echo "replace=false" >> "$GITHUB_OUTPUT"
+          fi
 
   build:
     needs: prepare
@@ -54,6 +84,13 @@ jobs:
       - name: Build
         run: cmake --build build --config MinSizeRel --parallel 2
 
+      - name: Run standalone subtool regressions
+        shell: bash
+        run: |
+          python tests/vmd2valvebiped_input_test.py --bin-dir dist/subtools
+          python tests/l4d_retarget_names_test.py dist/NewPageMergeMDL${{ matrix.ext }} dist/subtools/l4d_animswap${{ matrix.ext }}
+          python tests/subtools_cli_arguments_test.py --bin-dir dist
+
       - name: Test pinned helper staging
         run: python -m unittest discover -s tests -p test_windows_extras.py -v
 
@@ -79,7 +116,12 @@ jobs:
           python .github/scripts/upstream_release.py package --source . --dist dist --platform ${{ matrix.plat }} --manifest upstream-manifest.json --output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip
 
       - name: Verify actual packaged binaries
-        run: python tests/verify_package.py newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip --manifest upstream-manifest.json --subtool-probe output-tests/bin/subtool_transaction_probe${{ matrix.ext }}
+        id: verify
+        shell: bash
+        run: |
+          probe=$(find output-tests -type f -name 'subtool_transaction_probe${{ matrix.ext }}' -print -quit)
+          test -n "$probe"
+          python tests/verify_package.py newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip --manifest upstream-manifest.json --subtool-probe "$probe"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -123,8 +165,43 @@ jobs:
           cat notes.txt
 
       - name: Create draft release
+        if: needs.prepare.outputs.replace != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ needs.prepare.outputs.tag }}" newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-win64.zip newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-linux64.zip --target "${{ github.sha }}" --title "${{ needs.prepare.outputs.tag }}" --notes-file notes.txt --draft
+
+      - name: Replace existing stable release assets
+        if: needs.prepare.outputs.replace == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          tag="${{ needs.prepare.outputs.tag }}"
+          before=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha')
+          test -n "$before"
+          cp "newpage-merge-mdl-$tag-win64.zip" newpage-merge-mdl-win64.zip
+          cp "newpage-merge-mdl-$tag-linux64.zip" newpage-merge-mdl-linux64.zip
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes.txt
+          gh release upload "$tag" newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip --clobber
+          python3 - <<'PY'
+          import hashlib, os, subprocess, json
+          tag = os.environ['RELEASE_TAG']
+          repository = os.environ['GITHUB_REPOSITORY']
+          release = json.loads(subprocess.check_output(
+              ['gh', 'release', 'view', tag, '--repo', repository, '--json', 'assets']).decode())
+          expected = {
+              'newpage-merge-mdl-win64.zip',
+              'newpage-merge-mdl-linux64.zip',
+          }
+          for name in expected:
+              local = name
+              sha = hashlib.sha256(open(local, 'rb').read()).hexdigest()
+              matches = [asset for asset in release['assets'] if asset['name'] == name]
+              if len(matches) != 1 or matches[0].get('digest') != 'sha256:' + sha:
+                  raise RuntimeError('Replacement asset digest mismatch: ' + name)
+          PY
+          after=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha')
+          test "$before" = "$after"

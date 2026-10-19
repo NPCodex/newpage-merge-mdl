@@ -581,7 +581,7 @@ struct Retargeter {
         return {};
     }
 
-    bool WriteClip(const std::string& clip, int fps,
+    bool WriteClip(const std::string& clip, float fps,
                    const std::vector<std::vector<dc::AnimPose>>& frames) {
         const std::string path = outputs->Stage(outDir + "/anims/" + clip + ".dmx");
         if (!dc::WriteAnimationDmx(rigMdl, path, clip, fps, frames)) {
@@ -617,7 +617,7 @@ struct Retargeter {
             } else {
                 f.push_back(dc::BindPose(m));
             }
-            if (!WriteClip(clip, 30, Remap(m, f)))
+            if (!WriteClip(clip, 30.0f, Remap(m, f)))
                 return {};
             pre.push_back("$animation " + Quote(animName) + " " + Quote("anims/" + clip + ".dmx") +
                           " { fps 30 ignorescale origin 0 0 0 ignoretransformbone angles "
@@ -657,7 +657,11 @@ struct Retargeter {
         if (delta && subtract.empty())
             return {};
         const std::string clip = OutputClip(name + tag);
-        const int fps = a.fps > 0.0f ? static_cast<int>(a.fps + 0.5f) : 30;
+        // Keep the source rate intact. DMX stores frameRate as a float for
+        // fractional clips, while the QC below already emits a.fps. Rounding
+        // here made the generated DMX duration disagree with the sequence's
+        // declared rate (for example 23.976 became 24).
+        const float fps = a.fps > 0.0f ? a.fps : 30.0f;
         if (!WriteClip(clip, fps, Remap(m, frames)))
             return {};
 
@@ -674,7 +678,7 @@ struct Retargeter {
         out.push_back("$sequence " + Quote(name) + " {");
         const auto opt = [&](const std::string& l) { out.push_back("    " + l); };
         opt(Quote("anims/" + clip + ".dmx") + "  // " + std::to_string(a.numframes) + " frames");
-        std::string first = "fps " + dc::F(a.fps);
+        std::string first = "fps " + dc::F(fps);
         if (a.flags & fm::STUDIO_LOOPING) first += " loop";
         if (a.flags & fm::STUDIO_NOFORCELOOP) first += " noforceloop";
         if (a.flags & fm::STUDIO_SNAP) first += " snap";

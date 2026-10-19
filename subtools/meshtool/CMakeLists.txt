@@ -4,6 +4,7 @@ add_executable(meshtool
     main.cpp
     mesh_simplify.cpp
     convex_decompose.cpp
+    response_writer.cpp
 )
 # subtools ship one folder down from the two main executables. The per-config
 # spellings stop a multi-config generator adding a Release/ under that.

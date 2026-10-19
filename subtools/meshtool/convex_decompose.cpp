@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "vhacd/vhacd_hull.h"
+#include "response_writer.h"
 
 namespace pulse::tool {
 namespace {
@@ -148,13 +149,7 @@ bool RunDecompose(const std::string& requestPath, const std::string& responsePat
     if (r.at != r.end)
         return fail("the request contains trailing data");
 
-    std::ofstream answer(responsePath, std::ios::binary | std::ios::trunc);
-    if (!answer)
-        return fail("could not open the response file");
-    answer.write(reinterpret_cast<const char*>(out.data()), static_cast<std::streamsize>(out.size()));
-    if (!answer)
-        return fail("could not write the response file");
-    return true;
+    return detail::WriteResponseAtomically(responsePath, out.data(), out.size(), err);
 }
 
 } // namespace pulse::tool
