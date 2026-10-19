@@ -7,7 +7,7 @@
   "report": "v1.2.34-replacement-validation.md",
   "scope": "Replacement of the initial v1.2.34 build; historical initial-release and REA reports retain their original measurements and hashes.",
   "upstream_commit": "0396e3d2263945896de7d3d4f457e5f47dfe0378",
-  "source_commit": "6861f866b04a190e8b8137e225452d390f903fef",
+  "source_commit": "15bbe1f7d10edae84c8bf006b8769417cbec0c21",
   "build": {
     "platform": "windows-x64",
     "configuration": "MinSizeRel + ThinLTO",
