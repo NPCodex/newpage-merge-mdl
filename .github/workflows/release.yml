@@ -193,6 +193,19 @@ jobs:
           test -n "$before"
           cp "newpage-merge-mdl-$tag-win64.zip" newpage-merge-mdl-win64.zip
           cp "newpage-merge-mdl-$tag-linux64.zip" newpage-merge-mdl-linux64.zip
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          tag = os.environ['RELEASE_TAG']
+          notes = Path('notes.txt')
+          text = notes.read_text(encoding='utf-8')
+          for platform in ('win64', 'linux64'):
+              text = text.replace(
+                  f'newpage-merge-mdl-{tag}-{platform}.zip',
+                  f'newpage-merge-mdl-{platform}.zip',
+              )
+          notes.write_text(text, encoding='utf-8')
+          PY
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes.txt
           gh release upload "$tag" newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip --clobber
           python3 - <<'PY'
