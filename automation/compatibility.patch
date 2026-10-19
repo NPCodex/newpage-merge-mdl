@@ -1131841,10 +1131841,32 @@ index 9d3da30..b898133 100644
  add_custom_command(TARGET ag2proportions POST_BUILD
      COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:ag2proportions>/licenses"
 diff --git a/subtools/ag2proportions/ag2.h b/subtools/ag2proportions/ag2.h
-index e09c348..c92f474 100644
+index e09c348..c46c2ce 100644
 --- a/subtools/ag2proportions/ag2.h
 +++ b/subtools/ag2proportions/ag2.h
-@@ -102,7 +102,9 @@ kv::Value WrapperGraph(const kv::Value& stockGraph, const std::string& stockPath
+@@ -9,6 +9,7 @@
+ #include <vector>
+ 
+ #include "dmx/dmx.h"
++#include "generated_assets.h"
+ #include "keyvalues3/kv3.h"
+ #include "math/math.h"
+ 
+@@ -24,13 +25,6 @@ inline constexpr const char* kStockSkeleton = "animation/skeletons/characters/wo
+ inline constexpr const char* kStockViewSkeleton = "animation/skeletons/characters/viewmodel.vnmskel";
+ 
+ // Generated assets, relative to the output folder.
+-inline constexpr const char* kWorldGraphFile = "graphs/proportions_worldmodel.vnmgraph";
+-inline constexpr const char* kUiGraphFile = "graphs/proportions_uimodel.vnmgraph";
+-inline constexpr const char* kClipFile = "anims/proportions.vnmclip";
+-inline constexpr const char* kProportionsFile = "anims/proportions.dmx";
+-inline constexpr const char* kReferenceFile = "anims/reference.dmx";
+-inline constexpr const char* kSkeletonFile = "dmx/ag2_skeleton.dmx";
+-
+ // One model to wrap. Paths are absolute once loaded; empty means "use the default".
+ struct Job {
+     fs::path vmdl;
+@@ -102,7 +96,9 @@ kv::Value WrapperGraph(const kv::Value& stockGraph, const std::string& stockPath
  void Generate(const Job& job, const Options& options);
  
  // compiler.cpp
@@ -1131917,11 +1131939,39 @@ index 6096fd3..679f31b 100644
          }
  
          const fs::path reportPath = paths.output / "debug/report.kv3";
+diff --git a/subtools/ag2proportions/generated_assets.h b/subtools/ag2proportions/generated_assets.h
+new file mode 100644
+index 0000000..bd20352
+--- /dev/null
++++ b/subtools/ag2proportions/generated_assets.h
+@@ -0,0 +1,12 @@
++#pragma once
++
++namespace ag2 {
++
++inline constexpr const char* kWorldGraphFile = "graphs/proportions_worldmodel.vnmgraph";
++inline constexpr const char* kUiGraphFile = "graphs/proportions_uimodel.vnmgraph";
++inline constexpr const char* kClipFile = "anims/proportions.vnmclip";
++inline constexpr const char* kProportionsFile = "anims/proportions.dmx";
++inline constexpr const char* kReferenceFile = "anims/reference.dmx";
++inline constexpr const char* kSkeletonFile = "dmx/ag2_skeleton.dmx";
++
++} // namespace ag2
 diff --git a/subtools/ag2proportions/main.cpp b/subtools/ag2proportions/main.cpp
-index 139170b..455efe1 100644
+index 139170b..3d45a55 100644
 --- a/subtools/ag2proportions/main.cpp
 +++ b/subtools/ag2proportions/main.cpp
-@@ -49,7 +49,7 @@ bool HasExtension(const path& file, const char* ext) {
+@@ -22,7 +22,8 @@ const char* const kUsage =
+     "  ag2proportions <model.vmdl> [...] [options]\n"
+     "  ag2proportions <job.kv3> [...] [options]\n\n"
+     "Options:\n"
+-    "  --generate-only          Write source assets without compiling them.\n"
++    "  --generate-only          Write source assets without compiling them. Existing generated\n"
++    "                           *_c files are removed; compile the sources before use.\n"
+     "  --debug                  Write debug/ files for issue reports.\n"
+     "  --compiler-runner wine   Run the Windows Resource Compiler through Wine\n"
+     "                           on Linux.\n"
+@@ -49,7 +50,7 @@ bool HasExtension(const path& file, const char* ext) {
  
  void PrintHeader() {
      std::cout << "-------------------------------\n"
@@ -1131930,7 +1131980,7 @@ index 139170b..455efe1 100644
                   "version:   " << PULSEMODEL_VERSION << '\n'
                << "developer: ToppiOfficial\n"
                   "-------------------------------\n";
-@@ -67,7 +67,9 @@ ag2::Job LoadJob(const path& file) {
+@@ -67,7 +68,9 @@ ag2::Job LoadJob(const path& file) {
      if (!doc.IsObject())
          throw std::runtime_error("the job file must be a KV3 object");
      const path base = file.parent_path();
@@ -1131941,7 +1131991,7 @@ index 139170b..455efe1 100644
          auto at = [&] { return ag2::fs::weakly_canonical(base / ag2::fs::u8path(value.String())); };
          if (key == "vmdl") job.vmdl = at();
          else if (key == "model_dmx") job.modelDmx = at();
-@@ -78,9 +80,8 @@ ag2::Job LoadJob(const path& file) {
+@@ -78,9 +81,8 @@ ag2::Job LoadJob(const path& file) {
      }
      if (job.vmdl.empty())
          throw std::runtime_error("the job has no vmdl");
@@ -1131971,6 +1132021,61 @@ index 5c810f8..fc236d5 100644
  }
  
  } // namespace
+diff --git a/subtools/ag2proportions/rig_selection.h b/subtools/ag2proportions/rig_selection.h
+new file mode 100644
+index 0000000..0858bbc
+--- /dev/null
++++ b/subtools/ag2proportions/rig_selection.h
+@@ -0,0 +1,49 @@
++#pragma once
++
++#include <algorithm>
++#include <filesystem>
++#include <sstream>
++#include <stdexcept>
++#include <string>
++#include <vector>
++
++namespace ag2 {
++
++struct RigCandidateRank {
++    std::filesystem::path path;
++    float scale = 1.0f;
++    size_t coreBoneCount = 0;
++    bool stockLengths = false;
++};
++
++inline const RigCandidateRank* SelectRigCandidate(const std::vector<RigCandidateRank>& candidates,
++                                                   bool stockLengths, const char* role) {
++    const RigCandidateRank* best = nullptr;
++    std::vector<const RigCandidateRank*> tied;
++    for (const RigCandidateRank& candidate : candidates) {
++        if (!candidate.coreBoneCount || candidate.stockLengths != stockLengths)
++            continue;
++        if (!best || candidate.coreBoneCount > best->coreBoneCount) {
++            best = &candidate;
++            tied.assign(1, best);
++        } else if (candidate.coreBoneCount == best->coreBoneCount) {
++            const bool duplicate = std::any_of(tied.begin(), tied.end(), [&](const RigCandidateRank* other) {
++                return other->path == candidate.path && other->scale == candidate.scale;
++            });
++            if (!duplicate)
++                tied.push_back(&candidate);
++        }
++    }
++    if (tied.size() > 1) {
++        std::ostringstream message;
++        message << "ambiguous automatic " << role << " rig selection ("
++                << best->coreBoneCount << " CS2 core bones):";
++        for (const RigCandidateRank* candidate : tied)
++            message << "\n  " << candidate->path.u8string() << " (import_scale " << candidate->scale << ')';
++        message << "\nset model_dmx in the job to choose the intended rig";
++        throw std::runtime_error(message.str());
++    }
++    return best;
++}
++
++} // namespace ag2
 diff --git a/subtools/ag2proportions/transaction.cpp b/subtools/ag2proportions/transaction.cpp
 new file mode 100644
 index 0000000..2f8d0d4
@@ -1132031,6 +1132136,30 @@ index 0000000..8ef0150
 +    std::unique_ptr<pulse::output::Transaction> transaction_;
 +};
 +} // namespace ag2
+diff --git a/subtools/ag2proportions/uncompiled_outputs.h b/subtools/ag2proportions/uncompiled_outputs.h
+new file mode 100644
+index 0000000..7901634
+--- /dev/null
++++ b/subtools/ag2proportions/uncompiled_outputs.h
+@@ -0,0 +1,18 @@
++#pragma once
++
++#include <filesystem>
++#include <initializer_list>
++#include <string>
++
++#include "generated_assets.h"
++#include "transaction.h"
++
++namespace ag2 {
++
++inline void RemoveUncompiledResources(OutputTransaction& transaction, const std::filesystem::path& output,
++                                      std::initializer_list<const char*> sources) {
++    for (const char* source : sources)
++        transaction.Remove(output / std::filesystem::u8path(std::string(source) + "_c"));
++}
++
++} // namespace ag2
 diff --git a/subtools/ag2proportions/version.rc.in b/subtools/ag2proportions/version.rc.in
 index 5b6b871..10aa5c8 100644
 --- a/subtools/ag2proportions/version.rc.in
@@ -1132064,18 +1132193,21 @@ index 5b6b871..10aa5c8 100644
      }
      BLOCK "VarFileInfo"
 diff --git a/subtools/ag2proportions/workflow.cpp b/subtools/ag2proportions/workflow.cpp
-index 3beba3a..81f86a4 100644
+index 3beba3a..27ab885 100644
 --- a/subtools/ag2proportions/workflow.cpp
 +++ b/subtools/ag2proportions/workflow.cpp
-@@ -11,6 +11,7 @@
+@@ -10,7 +10,10 @@
+ #include <stdexcept>
  
  #include "ag2.h"
++#include "rig_selection.h"
  #include "strcompat.h"
 +#include "transaction.h"
++#include "uncompiled_outputs.h"
  #include "vpk.h"
  
  namespace ag2 {
-@@ -19,7 +20,9 @@ namespace {
+@@ -19,7 +22,9 @@ namespace {
  namespace dmx = pulse::dmx;
  using std::runtime_error;
  
@@ -1132086,7 +1132218,7 @@ index 3beba3a..81f86a4 100644
  const char* const kGeneratedFiles[] = {
      kWorldGraphFile, kUiGraphFile, kClipFile, kProportionsFile, kReferenceFile, kSkeletonFile,
      "debug/skeleton_descriptor.kv3", "debug/report.kv3", "debug/MODEL_SETUP.txt",
-@@ -70,8 +73,6 @@ Paths Locate(const fs::path& vmdl) {
+@@ -70,8 +75,6 @@ Paths Locate(const fs::path& vmdl) {
      if (p.addon.empty())
          throw runtime_error("the VMDL is not inside content/csgo_addons/<addon>");
      p.cs2 = p.addon.parent_path().parent_path().parent_path();
@@ -1132095,7 +1132227,42 @@ index 3beba3a..81f86a4 100644
      p.output = vmdl.parent_path() / vmdl.stem();
      p.relative = p.output.lexically_relative(p.addon).generic_u8string();
      return p;
-@@ -245,10 +246,10 @@ kv::Value::Array StockBoneNodes(const std::vector<Bone>& bones, const std::vecto
+@@ -120,8 +123,7 @@ RigSource FindRig(kv::Value& vmdl, const Job& job, const Paths& paths, const std
+     // A mesh on stock bone lengths (first-person arms) is only used
+     // when every candidate is one.
+     for (const auto* list : {&meshes, &files}) {
+-        RigSource best, bestStock;
+-        size_t bestCount = 0, bestStockCount = 0;
++        std::vector<RigCandidateRank> ranked;
+         for (const RigSource& source : *list) {
+             std::string err;
+             auto dm = dmx::Datamodel::Load(source.path.u8string(), &err);
+@@ -136,19 +138,13 @@ RigSource FindRig(kv::Value& vmdl, const Job& job, const Paths& paths, const std
+             if (stockLengths) {
+                 std::cout << "Skipping " << source.path.filename().u8string()
+                           << ": its bone lengths match the stock skeletons\n";
+-                if (count > bestStockCount) {
+-                    bestStock = source;
+-                    bestStockCount = count;
+-                }
+-            } else if (count > bestCount) {
+-                best = source;
+-                bestCount = count;
+             }
++            ranked.push_back({source.path, source.scale, count, stockLengths});
+         }
+-        if (bestCount)
+-            return best;
+-        if (bestStockCount)
+-            return bestStock;
++        if (const RigCandidateRank* best = SelectRigCandidate(ranked, false, "body"))
++            return {best->path, best->scale};
++        if (const RigCandidateRank* best = SelectRigCandidate(ranked, true, "stock-length fallback"))
++            return {best->path, best->scale};
+     }
+     throw runtime_error("no DMX import carries the CS2 body bones; set model_dmx in the job");
+ }
+@@ -245,10 +241,10 @@ kv::Value::Array StockBoneNodes(const std::vector<Bone>& bones, const std::vecto
      return roots;
  }
  
@@ -1132109,7 +1132276,7 @@ index 3beba3a..81f86a4 100644
                 const kv::Value::Array& boneNodes) {
      const std::string skeletonFile = paths.relative + "/" + kSkeletonFile;
      // the generated SkeletonFile starts disabled; a rerun keeps the user's choice
-@@ -339,11 +340,7 @@ void EditModel(const std::string& originalText, kv::Value model, const Job& job,
+@@ -339,11 +335,7 @@ void EditModel(const std::string& originalText, kv::Value model, const Job& job,
      const size_t header = originalText.find("-->");
      if (header == std::string::npos)
          throw runtime_error("the VMDL has no KV3 header");
@@ -1132122,7 +1132289,29 @@ index 3beba3a..81f86a4 100644
  }
  
  std::string SetupNotes(const Paths& paths, const SkeletonBuild& skeleton, const std::vector<std::string>& warnings,
-@@ -426,6 +423,23 @@ void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::
+@@ -402,7 +394,7 @@ bool IsAxisNote(const std::string& warning) { return warning.rfind("bone axes di
+ 
+ // What the user has to do next, on the console; the full notes are --debug only.
+ void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::vector<std::string>& warnings,
+-                  const Job& job) {
++                  const Job& job, bool generateOnly) {
+     std::cout << "Skeleton " << paths.relative << "/" << kSkeletonFile << ": " << skeleton.added.size()
+               << " stock bones added, " << skeleton.reparented.size() << " moved under their stock parent\n";
+     if (job.writeModel)
+@@ -419,6 +411,12 @@ void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::
+     if (axes)
+         std::cout << "WARNING: " << axes << " bones have axes unlike stock and may be placed off "
+                   << "(--debug lists them)\n";
++    if (generateOnly) {
++        std::cout << "WARNING: Generated VMDL source assets were not compiled. Existing generated *_c files "
++                     "were removed; do not use *_c until these sources are compiled with ResourceCompiler.\n"
++                     "Next step: run this job again without --generate-only (or compile the generated sources "
++                     "in ModelDoc/ResourceCompiler).\n";
++    }
+ }
+ 
+ } // namespace
+@@ -426,6 +424,23 @@ void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::
  void Generate(const Job& job, const Options& options) {
      std::cout << "Processing " << job.vmdl.u8string() << '\n';
      const Paths paths = Locate(job.vmdl);
@@ -1132146,7 +1132335,7 @@ index 3beba3a..81f86a4 100644
      const std::string vmdlText = ReadText(job.vmdl);
      kv::Value vmdl = kv::ParseText(vmdlText);
      const Vpk package(paths.cs2 / "game/csgo/pak01_dir.vpk");
-@@ -503,46 +517,69 @@ void Generate(const Job& job, const Options& options) {
+@@ -503,46 +518,86 @@ void Generate(const Job& job, const Options& options) {
      if (change < 1e-3f)
          warnings.insert(warnings.begin(), "the target pose equals the stock skeleton, so the clip changes nothing");
  
@@ -1132213,6 +1132402,10 @@ index 3beba3a..81f86a4 100644
 +        kv::WriteFile((staged.output / "debug/MODEL_SETUP.txt").u8string(),
                        SetupNotes(paths, skeleton, warnings, job.writeModel));
      }
+-    PrintSummary(paths, skeleton, warnings, job);
+-
+-    if (!options.generateOnly)
+-        Compile(options, paths, skeletonBytes, graphBytes, uiGraphBytes, descriptor);
 +    if (!options.generateOnly) {
 +        const fs::path stagedCompiled = transaction.StageRoot() / "compiled";
 +        Compile(options, staged, skeletonBytes, graphBytes, uiGraphBytes, descriptor, stagedCompiled);
@@ -1132221,6 +1132414,12 @@ index 3beba3a..81f86a4 100644
 +            const fs::path name = fs::u8path(std::string(source) + "_c");
 +            transaction.Replace(stagedCompiled / name, published / name);
 +        }
++    } else {
++        // A previous full run may have left compiled resources beside these
++        // newly generated sources. Remove them in the same transaction so a
++        // caller cannot accidentally consume an *_c file made from an older
++        // VMDL/DMX/graph set.
++        RemoveUncompiledResources(transaction, compiledOutput, {kClipFile, kWorldGraphFile, kUiGraphFile});
 +    }
 +    for (const char* name : kGeneratedFiles) {
 +        if (fs::is_regular_file(staged.output / name)) {
@@ -1132237,13 +1132436,211 @@ index 3beba3a..81f86a4 100644
 +        }
 +    }
 +    transaction.Commit();
-     PrintSummary(paths, skeleton, warnings, job);
--
--    if (!options.generateOnly)
--        Compile(options, paths, skeletonBytes, graphBytes, uiGraphBytes, descriptor);
++    if (options.generateOnly) {
++        // Keep the addon tree tidy when the three generated files were the
++        // only contents of the old compiled-resource directory. Failure here
++        // is harmless: the transaction has already removed the stale files.
++        std::error_code ec;
++        fs::remove(compiledOutput / "anims", ec);
++        ec.clear();
++        fs::remove(compiledOutput / "graphs", ec);
++        ec.clear();
++        fs::remove(compiledOutput, ec);
++    }
++    PrintSummary(paths, skeleton, warnings, job, options.generateOnly);
      std::cout << "DONE: " << paths.output.u8string()
                << (options.generateOnly ? " (source assets only)\n" : " (graph and clip compiled)\n");
  }
+diff --git a/subtools/durable_output_transaction.h b/subtools/durable_output_transaction.h
+new file mode 100644
+index 0000000..f5eb40a
+--- /dev/null
++++ b/subtools/durable_output_transaction.h
+@@ -0,0 +1,184 @@
++// Batch publication for VMD conversion and L4D animation swaps. Generation
++// completes before any destination is moved; ordinary failures roll back the
++// whole batch and retain recovery files if rollback itself cannot complete.
++#pragma once
++
++#include <chrono>
++#include <cstdio>
++#include <filesystem>
++#include <fstream>
++#include <map>
++#include <random>
++#include <stdexcept>
++#include <string>
++#include <vector>
++#ifdef _WIN32
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#endif
++
++namespace subtool {
++namespace fs = std::filesystem;
++
++#ifdef NEWPAGE_SUBTOOL_TRANSACTION_TESTING
++void TransactionTestPoint(const char*, size_t);
++#else
++inline void TransactionTestPoint(const char*, size_t) {}
++#endif
++
++class DurableOutputTransaction {
++    struct Entry {
++        fs::path staged, destination, slot;
++        bool original = false, backedUp = false, published = false;
++    };
++    fs::path root_;
++    std::vector<Entry> entries_;
++    std::map<fs::path, size_t> destinations_;
++    std::map<fs::path, fs::path> directories_;
++    std::vector<fs::path> created_;
++    bool committed_ = false, preserve_ = false;
++
++    static fs::path Unique(const fs::path& parent, const char* prefix) {
++        std::random_device random;
++        for (int i = 0; i < 32; ++i) {
++            const fs::path path = parent / (std::string(prefix) + std::to_string(random()) + "-" +
++                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
++            if (fs::create_directory(path)) return path;
++        }
++        throw std::runtime_error("cannot create output staging directory in " + parent.u8string());
++    }
++    static bool ExistingFile(const fs::path& path) {
++        std::error_code ec;
++        const auto status = fs::symlink_status(path, ec);
++        if (ec && ec != std::errc::no_such_file_or_directory)
++            throw fs::filesystem_error("cannot inspect output", path, ec);
++        if (!fs::exists(status)) return false;
++        if (!fs::is_regular_file(status))
++            throw std::runtime_error("output is not a regular file: " + path.u8string());
++        return true;
++    }
++    static fs::path Destination(const fs::path& path) {
++        const fs::path absolute = fs::absolute(path).lexically_normal();
++        return fs::weakly_canonical(absolute.parent_path()) / absolute.filename();
++    }
++    void MakeParents(const fs::path& parent) {
++        if (fs::is_directory(parent)) return;
++        if (parent.empty() || parent == parent.parent_path())
++            throw std::runtime_error("cannot create output directory: " + parent.u8string());
++        MakeParents(parent.parent_path());
++        if (fs::create_directory(parent)) created_.push_back(parent);
++    }
++    void Add(const fs::path& staged, const fs::path& destination) {
++        if (committed_) throw std::runtime_error("output transaction already committed");
++        if (!destinations_.emplace(destination, entries_.size()).second)
++            throw std::runtime_error("duplicate output: " + destination.u8string());
++        entries_.push_back({staged, destination, {}});
++    }
++
++public:
++    DurableOutputTransaction() : root_(Unique(fs::temp_directory_path(), "newpage-subtool-stage-")) {}
++    DurableOutputTransaction(const DurableOutputTransaction&) = delete;
++    DurableOutputTransaction& operator=(const DurableOutputTransaction&) = delete;
++    ~DurableOutputTransaction() {
++        if (preserve_) return;
++        const auto remove = [](const fs::path& path) {
++            if (path.empty()) return;
++            std::error_code ec;
++            fs::remove_all(path, ec);
++            if (ec) std::fprintf(stderr, "warning: cannot remove staging directory %s: %s\n",
++                                 path.u8string().c_str(), ec.message().c_str());
++        };
++        for (const auto& entry : entries_) remove(entry.slot);
++        remove(root_);
++        if (!committed_)
++            for (auto it = created_.rbegin(); it != created_.rend(); ++it) {
++                std::error_code ec;
++                fs::remove(*it, ec);
++            }
++    }
++    const fs::path& Root() const { return root_; }
++    std::string Stage(const std::string& destination) {
++        const fs::path final = Destination(fs::u8path(destination));
++        const auto found = destinations_.find(final);
++        if (found != destinations_.end()) return entries_[found->second].staged.u8string();
++        ExistingFile(final);
++        const auto parent = final.parent_path();
++        auto directory = directories_.find(parent);
++        if (directory == directories_.end()) {
++            const auto path = root_ / ("directory-" + std::to_string(directories_.size()));
++            fs::create_directory(path);
++            directory = directories_.emplace(parent, path).first;
++        }
++        const fs::path staged = directory->second / final.filename();
++        Add(staged, final);
++        TransactionTestPoint("stage", entries_.size() - 1);
++        return staged.u8string();
++    }
++    void Replace(const fs::path& staged, const fs::path& destination) {
++        Add(staged, Destination(destination));
++    }
++    void Remove(const fs::path& destination) { Add({}, Destination(destination)); }
++    void Commit() {
++        if (committed_) throw std::runtime_error("output transaction already committed");
++        try {
++            for (size_t i = 0; i < entries_.size(); ++i) {
++                auto& entry = entries_[i];
++                entry.original = ExistingFile(entry.destination);
++                if (entry.staged.empty() && !entry.original) continue;
++                if (!entry.staged.empty() && !ExistingFile(entry.staged))
++                    throw std::runtime_error("staged output is missing: " + entry.staged.u8string());
++                MakeParents(entry.destination.parent_path());
++                entry.slot = Unique(entry.destination.parent_path(), ".newpage-subtool-publish-");
++                if (!entry.staged.empty()) fs::copy_file(entry.staged, entry.slot / "replacement");
++                TransactionTestPoint("prepared", i);
++            }
++            std::ofstream recovery(root_ / "RECOVERY.txt", std::ios::binary);
++            recovery << "Manual recovery locations (not a crash-recovery journal):\n";
++            for (const auto& entry : entries_)
++                recovery << entry.destination.u8string() << "\n  backup: "
++                         << (entry.slot / "previous").u8string() << '\n';
++            recovery.close();
++            if (!recovery) throw std::runtime_error("cannot write output recovery locations");
++            for (size_t i = 0; i < entries_.size(); ++i) {
++                auto& entry = entries_[i];
++                if (entry.slot.empty()) continue;
++                if (ExistingFile(entry.destination) != entry.original)
++                    throw std::runtime_error("output changed during publication: " + entry.destination.u8string());
++                if (entry.original) {
++                    fs::rename(entry.destination, entry.slot / "previous");
++                    entry.backedUp = true;
++                }
++                TransactionTestPoint("backed_up", i);
++                if (!entry.staged.empty()) {
++                    fs::rename(entry.slot / "replacement", entry.destination);
++                    entry.published = true;
++                }
++                TransactionTestPoint("published", i);
++            }
++            committed_ = true;
++        } catch (const std::exception& failure) {
++            std::string errors;
++            for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
++                try {
++                    if (it->published) { fs::remove(it->destination); it->published = false; }
++                    if (it->backedUp) {
++                        fs::rename(it->slot / "previous", it->destination);
++                        it->backedUp = false;
++                    }
++                } catch (const std::exception& e) {
++                    errors += "\n  " + it->destination.u8string() + ": " + e.what();
++                }
++            }
++            if (!errors.empty()) {
++                preserve_ = true;
++                throw std::runtime_error(std::string(failure.what()) + "\noutput rollback incomplete:" + errors +
++                    "\nStaging and backups retained; see " + (root_ / "RECOVERY.txt").u8string());
++            }
++            throw;
++        }
++    }
++};
++
++} // namespace subtool
 diff --git a/subtools/l4d_animswap/CMakeLists.txt b/subtools/l4d_animswap/CMakeLists.txt
 index 92c17dc..c120628 100644
 --- a/subtools/l4d_animswap/CMakeLists.txt
@@ -1132271,18 +1132668,24 @@ index 92c17dc..c120628 100644
  endif()
  target_link_libraries(l4d_animswap PRIVATE pulse_libs pulse_math pulse_dmx)
 diff --git a/subtools/l4d_animswap/main.cpp b/subtools/l4d_animswap/main.cpp
-index 1619ffe..ffc19d1 100644
+index 1619ffe..b89e6c6 100644
 --- a/subtools/l4d_animswap/main.cpp
 +++ b/subtools/l4d_animswap/main.cpp
-@@ -7,6 +7,7 @@
+@@ -6,17 +6,21 @@
+ // the matching animation from a donor survivor so the donor's include claims it.
  
  #include <algorithm>
++#include <cerrno>
  #include <cctype>
 +#include <cstdint>
  #include <cstdio>
  #include <cstdlib>
  #include <cstring>
-@@ -17,6 +18,7 @@
+ #include <filesystem>
+ #include <map>
++#include <climits>
+ #include <set>
+ #include <string>
  #include <utility>
  #include <vector>
  
@@ -1132290,7 +1132693,30 @@ index 1619ffe..ffc19d1 100644
  #include "animwrite.h"
  #include "dmxwrite.h"
  #include "format/mdl.h"
-@@ -106,26 +108,45 @@ bool LoadMdl(const std::string& path, Mdl& out) {
+@@ -27,6 +31,22 @@ namespace dc = mdldecompiler;
+ 
+ namespace {
+ 
++bool ParseIntOption(const char* text, int& value) {
++    if (!text || !*text || std::isspace(static_cast<unsigned char>(*text)))
++        return false;
++    errno = 0;
++    char* end = nullptr;
++    const long long parsed = std::strtoll(text, &end, 10);
++    if (errno == ERANGE || end == text || *end != '\0' || parsed < INT_MIN || parsed > INT_MAX)
++        return false;
++    value = static_cast<int>(parsed);
++    return true;
++}
++
++bool LooksLikeOption(const char* text) {
++    return text && text[0] == '-' && std::isalpha(static_cast<unsigned char>(text[1]));
++}
++
+ // Survivor name -> the codename Valve embeds in file and sequence names. Group
+ // picks the default donor chain: swapping inside a build-alike set keeps the
+ // retarget from stretching limbs.
+@@ -106,26 +126,45 @@ bool LoadMdl(const std::string& path, Mdl& out) {
  
      const char* base = out.bytes.data();
      const auto* hdr = reinterpret_cast<const fm::studiohdr_t*>(base);
@@ -1132345,7 +1132771,7 @@ index 1619ffe..ffc19d1 100644
                                : std::string();
          if (!act.empty()) act += " " + std::to_string(sd->actweight);
          out.acts.push_back(act);
-@@ -143,10 +164,11 @@ bool LoadMdl(const std::string& path, Mdl& out) {
+@@ -143,10 +182,11 @@ bool LoadMdl(const std::string& path, Mdl& out) {
      for (int i = 0; i < static_cast<int>(out.seqs.size()); ++i) {
          const size_t at = static_cast<size_t>(hdr->localseqindex) + i * sizeof(fm::mstudioseqdesc_t);
          const auto* sd = reinterpret_cast<const fm::mstudioseqdesc_t*>(base + at);
@@ -1132358,7 +1132784,7 @@ index 1619ffe..ffc19d1 100644
              const int s = reinterpret_cast<const fm::mstudioautolayer_t*>(base + la)->iSequence;
              if (s >= 0 && s < static_cast<int>(out.seqs.size())) out.autolayers.push_back(out.seqs[s]);
          }
-@@ -154,11 +176,12 @@ bool LoadMdl(const std::string& path, Mdl& out) {
+@@ -154,11 +194,12 @@ bool LoadMdl(const std::string& path, Mdl& out) {
      for (int i = 0; i < hdr->numincludemodels; ++i) {
          const size_t at =
              static_cast<size_t>(hdr->includemodelindex) + i * sizeof(fm::mstudiomodelgroup_t);
@@ -1132374,7 +1132800,7 @@ index 1619ffe..ffc19d1 100644
  }
  
  // One survivor's resolved slot list: the name at each index and, for the
-@@ -178,6 +201,7 @@ struct Resolver {
+@@ -178,6 +219,7 @@ struct Resolver {
      std::string dir;
      std::map<std::string, Mdl> cache;
      bool missing = false;
@@ -1132382,7 +1132808,7 @@ index 1619ffe..ffc19d1 100644
  
      const Mdl* Get(const std::string& modelPath) {
          const std::string leaf = Leaf(modelPath);
-@@ -195,6 +219,11 @@ struct Resolver {
+@@ -195,6 +237,11 @@ struct Resolver {
      }
  
      void Walk(const Mdl& m, Slots& order, std::map<std::string, size_t>& seen) {
@@ -1132394,7 +1132820,7 @@ index 1619ffe..ffc19d1 100644
          for (size_t i = 0; i < m.seqs.size(); ++i) {
              const std::string key = Lower(m.seqs[i]);
              const std::string act = i < m.acts.size() ? m.acts[i] : std::string();
-@@ -218,6 +247,7 @@ struct Resolver {
+@@ -218,6 +265,7 @@ struct Resolver {
          }
          for (const std::string& inc : m.includes)
              if (const Mdl* sub = Get(inc)) Walk(*sub, order, seen);
@@ -1132402,7 +1132828,7 @@ index 1619ffe..ffc19d1 100644
      }
  
      Slots Order(const Survivor& h) {
-@@ -409,8 +439,10 @@ std::string Quote(const std::string& s) { return "\"" + s + "\""; }
+@@ -409,8 +457,10 @@ std::string Quote(const std::string& s) { return "\"" + s + "\""; }
  struct Retargeter {
      std::string dir, outDir;
      const Survivor* rig = nullptr;
@@ -1132414,7 +1132840,7 @@ index 1619ffe..ffc19d1 100644
      std::map<std::string, dc::Mdl> cache;
      int written = 0;
  
-@@ -420,14 +452,19 @@ struct Retargeter {
+@@ -420,14 +470,19 @@ struct Retargeter {
          m.hdr = reinterpret_cast<const fm::studiohdr_t*>(m.buf.data());
          if (m.hdr->id != fm::kIdStudioHeader)
              return false;
@@ -1132437,7 +1132863,7 @@ index 1619ffe..ffc19d1 100644
          outDir = out;
          rigOk = Load("survivor_" + std::string(r.code) + ".mdl", rigMdl) && rigMdl.hdr->numbones > 0;
          if (!rigOk)
-@@ -435,6 +472,13 @@ struct Retargeter {
+@@ -435,6 +490,13 @@ struct Retargeter {
          return rigOk;
      }
  
@@ -1132451,7 +1132877,7 @@ index 1619ffe..ffc19d1 100644
      const dc::Mdl* Get(const std::string& leaf) {
          const std::string key = Lower(leaf);
          auto it = cache.find(key);
-@@ -503,8 +547,11 @@ struct Retargeter {
+@@ -503,8 +565,11 @@ struct Retargeter {
              return {};
          for (const std::string& inc : includes) {
              const dc::Mdl* m = Get(Leaf(inc));
@@ -1132465,9 +1132891,12 @@ index 1619ffe..ffc19d1 100644
              const fm::studiohdr_t& h = *m->hdr;
              const auto* seqs =
                  m->At<fm::mstudioseqdesc_t>(m->buf.data(), h.localseqindex, h.numlocalseq);
-@@ -518,9 +565,9 @@ struct Retargeter {
+@@ -516,11 +581,11 @@ struct Retargeter {
+         return {};
+     }
  
-     bool WriteClip(const std::string& clip, int fps,
+-    bool WriteClip(const std::string& clip, int fps,
++    bool WriteClip(const std::string& clip, float fps,
                     const std::vector<std::vector<dc::AnimPose>>& frames) {
 -        std::error_code ec;
 -        std::filesystem::create_directories(outDir + "/anims", ec);
@@ -1132478,7 +1132907,7 @@ index 1619ffe..ffc19d1 100644
              std::fprintf(stderr, "  -retarget: cannot write anims/%s.dmx\n", clip.c_str());
              return false;
          }
-@@ -539,12 +586,15 @@ struct Retargeter {
+@@ -539,17 +604,20 @@ struct Retargeter {
          // share one anims/ folder.
          const std::string animName = (real ? refs[base].name : std::string(dc::kBindPoseAnim)) +
                                       "_" + Lower(dc::StripExt(dc::BaseName(m.hdr->name)));
@@ -1132496,7 +1132925,13 @@ index 1619ffe..ffc19d1 100644
                  f.resize(1);
              } else {
                  f.push_back(dc::BindPose(m));
-@@ -579,7 +629,8 @@ struct Retargeter {
+             }
+-            if (!WriteClip(clip, 30, Remap(m, f)))
++            if (!WriteClip(clip, 30.0f, Remap(m, f)))
+                 return {};
+             pre.push_back("$animation " + Quote(animName) + " " + Quote("anims/" + clip + ".dmx") +
+                           " { fps 30 ignorescale origin 0 0 0 ignoretransformbone angles "
+@@ -579,7 +647,8 @@ struct Retargeter {
          if (delta && !deltas)
              return {};
          if (!dc::DecodeClip(m, grid[0], frames)) {
@@ -1132506,16 +1132941,31 @@ index 1619ffe..ffc19d1 100644
                           name.c_str());
              return {};
          }
-@@ -587,7 +638,7 @@ struct Retargeter {
+@@ -587,8 +656,12 @@ struct Retargeter {
          const std::string subtract = delta ? Base(m, grid[0], pre) : std::string();
          if (delta && subtract.empty())
              return {};
 -        const std::string clip = name + tag + "_retarget_" + rig->survivor;
+-        const int fps = a.fps > 0.0f ? static_cast<int>(a.fps + 0.5f) : 30;
 +        const std::string clip = OutputClip(name + tag);
-         const int fps = a.fps > 0.0f ? static_cast<int>(a.fps + 0.5f) : 30;
++        // Keep the source rate intact. DMX stores frameRate as a float for
++        // fractional clips, while the QC below already emits a.fps. Rounding
++        // here made the generated DMX duration disagree with the sequence's
++        // declared rate (for example 23.976 became 24).
++        const float fps = a.fps > 0.0f ? a.fps : 30.0f;
          if (!WriteClip(clip, fps, Remap(m, frames)))
              return {};
-@@ -733,7 +784,7 @@ struct Retargeter {
+ 
+@@ -605,7 +678,7 @@ struct Retargeter {
+         out.push_back("$sequence " + Quote(name) + " {");
+         const auto opt = [&](const std::string& l) { out.push_back("    " + l); };
+         opt(Quote("anims/" + clip + ".dmx") + "  // " + std::to_string(a.numframes) + " frames");
+-        std::string first = "fps " + dc::F(a.fps);
++        std::string first = "fps " + dc::F(fps);
+         if (a.flags & fm::STUDIO_LOOPING) first += " loop";
+         if (a.flags & fm::STUDIO_NOFORCELOOP) first += " noforceloop";
+         if (a.flags & fm::STUDIO_SNAP) first += " snap";
+@@ -733,7 +806,7 @@ struct Retargeter {
  bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
             const std::vector<const Survivor*>& chain, const Result& res, int skip, const Slots& order,
             Resolver& mdls, const std::string& ref, bool noanim, bool nofallback,
@@ -1132524,7 +1132974,7 @@ index 1619ffe..ffc19d1 100644
      nofallback = BlockFallback(nofallback, rig, tgt);
      std::vector<int> won(chain.size(), 0);
      int kept = 0;
-@@ -774,7 +825,8 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
+@@ -774,7 +847,8 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
              for (const std::string& s : m->autolayers) rigLayers.insert(Lower(s));
          }
  
@@ -1132534,7 +1132984,7 @@ index 1619ffe..ffc19d1 100644
      if (!f) {
          std::fprintf(stderr, "cannot write %s\n", path.c_str());
          return false;
-@@ -1028,9 +1080,12 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
+@@ -1028,9 +1102,12 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
      for (size_t d = 0; d < chain.size(); ++d)
          if (won[d]) include(*chain[d]); // a donor that filled nothing is dead weight
      include(tgt);                       // last resort for every slot no donor claimed
@@ -1132549,7 +1132999,7 @@ index 1619ffe..ffc19d1 100644
      for (size_t d = 0; d < chain.size(); ++d) std::printf("    %-10s %5d\n", chain[d]->survivor, won[d]);
      std::printf("    %-10s %5d (fallback)\n", tgt.survivor, kept);
      return true;
-@@ -1038,16 +1093,31 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
+@@ -1038,16 +1115,31 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
  
  // The target's map-placed survivor_<code>_light.mdl keeps every clip local with no
  // $includemodel, so its whole list is rebuilt on the rig, deltas included.
@@ -1132587,7 +1133037,7 @@ index 1619ffe..ffc19d1 100644
      if (!f) {
          std::fprintf(stderr, "cannot write %s\n", path.c_str());
          return false;
-@@ -1083,14 +1153,17 @@ bool WriteLight(const std::string& path, const Survivor& rig, const Survivor& tg
+@@ -1083,14 +1175,17 @@ bool WriteLight(const std::string& path, const Survivor& rig, const Survivor& tg
          for (const std::string& l : lines) std::fprintf(f, "%s\n", l.c_str());
          std::fputc('\n', f);
      }
@@ -1132608,7 +1133058,7 @@ index 1619ffe..ffc19d1 100644
      std::printf("version:   %s\n", PULSEMODEL_VERSION);
      std::printf("developer: Toppi\n");
      std::printf("-------------------------------\n");
-@@ -1118,7 +1191,7 @@ void Usage() {
+@@ -1118,7 +1213,7 @@ void Usage() {
          "  -retarget       rebuild the target's own campaign intros and dlc1_* scene\n"
          "                  clips (deltas excepted) on the rig's\n"
          "                  skeleton as local $sequence, clips written beside the .qci\n"
@@ -1132617,7 +1133067,45 @@ index 1619ffe..ffc19d1 100644
          "                  A francis/zoey target also gets <out>_Light.qci, the map\n"
          "                  _light model's whole list rebuilt on the rig\n"
          "  -dmxencoding <enc>  retargeted clips: binary (default) or keyvalues2\n"
-@@ -1206,7 +1279,7 @@ int SelfTest() {
+@@ -1129,18 +1224,31 @@ void Usage() {
+         "  survivors: bill francis louis zoey coach nick ellis rochelle\n");
+ }
+ 
++int Fail(const std::string& message) {
++    std::fprintf(stderr, "l4d_animswap: %s\n", message.c_str());
++    Usage();
++    return 2;
++}
++
+ std::vector<const Survivor*> ParseVia(const std::string& arg, bool& ok) {
+     std::vector<const Survivor*> v;
+     ok = true;
++    if (arg.empty()) {
++        std::fprintf(stderr, "-via requires at least one survivor\n");
++        ok = false;
++        return v;
++    }
+     for (size_t i = 0;;) {
+         const size_t e = arg.find(',', i);
+         const std::string one = arg.substr(i, (e == std::string::npos ? arg.size() : e) - i);
+-        if (!one.empty()) {
+-            if (const Survivor* h = FindSurvivor(one)) v.push_back(h);
+-            else {
+-                std::fprintf(stderr, "unknown survivor '%s'\n", one.c_str());
+-                ok = false;
+-            }
++        if (one.empty()) {
++            std::fprintf(stderr, "-via contains an empty survivor name\n");
++            ok = false;
++        } else if (const Survivor* h = FindSurvivor(one)) {
++            v.push_back(h);
++        } else {
++            std::fprintf(stderr, "unknown survivor '%s'\n", one.c_str());
++            ok = false;
+         }
+         if (e == std::string::npos) break;
+         i = e + 1;
+@@ -1206,7 +1314,7 @@ int SelfTest() {
  
  } // namespace
  
@@ -1132626,7 +1133114,89 @@ index 1619ffe..ffc19d1 100644
      PrintHeader();
      std::string dir, out, outdir = ".", viaArg, ref, dmxEncoding = "binary";
      const Survivor* rig = nullptr;
-@@ -1245,18 +1318,8 @@ int main(int argc, char** argv) {
+@@ -1216,28 +1324,66 @@ int main(int argc, char** argv) {
+ 
+     for (int i = 1; i < argc; ++i) {
+         const char* a = argv[i];
+-        const auto next = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
+-        if (!std::strcmp(a, "-vanilla")) dir = next();
+-        else if (!std::strcmp(a, "-rig")) rig = FindSurvivor(next());
+-        else if (!std::strcmp(a, "-replace")) tgt = FindSurvivor(next());
+-        else if (!std::strcmp(a, "-via")) { viaArg = next(); haveVia = true; }
+-        else if (!std::strcmp(a, "-skip")) skip = std::atoi(next());
+-        else if (!std::strcmp(a, "-o")) out = next();
+-        else if (!std::strcmp(a, "-outdir")) outdir = next();
+-        else if (!std::strcmp(a, "-ref")) ref = next();
++        std::string argumentError;
++        const auto next = [&]() -> const char* {
++            if (i + 1 >= argc || !argv[i + 1][0] || LooksLikeOption(argv[i + 1])) {
++                argumentError = std::string(a) + " requires a value";
++                return nullptr;
++            }
++            return argv[++i];
++        };
++        const auto stringArg = [&](std::string& value) {
++            const char* token = next();
++            if (!token) return false;
++            value = token;
++            return true;
++        };
++        const auto intArg = [&](int& value) {
++            const char* token = next();
++            if (!token) return false;
++            if (!ParseIntOption(token, value))
++                argumentError = std::string(a) + " requires a complete integer value";
++            return argumentError.empty();
++        };
++        if (!std::strcmp(a, "-vanilla")) { if (!stringArg(dir)) return Fail(argumentError); }
++        else if (!std::strcmp(a, "-rig")) {
++            std::string value;
++            if (!stringArg(value)) return Fail(argumentError);
++            rig = FindSurvivor(value);
++            if (!rig) return Fail("unknown -rig survivor \"" + value + "\"");
++        }
++        else if (!std::strcmp(a, "-replace")) {
++            std::string value;
++            if (!stringArg(value)) return Fail(argumentError);
++            tgt = FindSurvivor(value);
++            if (!tgt) return Fail("unknown -replace survivor \"" + value + "\"");
++        }
++        else if (!std::strcmp(a, "-via")) { if (!stringArg(viaArg)) return Fail(argumentError); haveVia = true; }
++        else if (!std::strcmp(a, "-skip")) { if (!intArg(skip)) return Fail(argumentError); }
++        else if (!std::strcmp(a, "-o")) { if (!stringArg(out)) return Fail(argumentError); }
++        else if (!std::strcmp(a, "-outdir")) { if (!stringArg(outdir)) return Fail(argumentError); }
++        else if (!std::strcmp(a, "-ref")) { if (!stringArg(ref)) return Fail(argumentError); }
+         else if (!std::strcmp(a, "-usenoanimation")) noanim = true;
+         else if (!std::strcmp(a, "-nofallbackanimation")) nofallback = true;
+         else if (!std::strcmp(a, "-keepintro")) keepintro = true;
+         else if (!std::strcmp(a, "-retarget")) retarget = true;
+-        else if (!std::strcmp(a, "-dmxencoding")) dmxEncoding = next();
+-        else if (!std::strcmp(a, "-dmxmodel")) dmxModel = std::atoi(next());
++        else if (!std::strcmp(a, "-dmxencoding")) { if (!stringArg(dmxEncoding)) return Fail(argumentError); }
++        else if (!std::strcmp(a, "-dmxmodel")) { if (!intArg(dmxModel)) return Fail(argumentError); }
+         else if (!std::strcmp(a, "-all")) all = true;
+-        else if (!std::strcmp(a, "-selftest")) return SelfTest();
+-        else { Usage(); return 1; }
++        else if (!std::strcmp(a, "-selftest")) {
++            if (argc != 2) return Fail("-selftest takes no additional arguments");
++            return SelfTest();
++        }
++        else return Fail(std::string("unknown option '") + a + "'");
+     }
+     if (dir.empty() || skip < 0 || (!all && (!rig || !tgt))) {
+-        Usage();
+-        return 1;
++        return Fail("-vanilla and non-negative -skip are required; -rig and -replace are required unless -all is used");
++    }
++    if (haveVia) {
++        bool ok = false;
++        const auto parsedVia = ParseVia(viaArg, ok);
++        if (!ok) return 2;
++        if (parsedVia.empty()) return Fail("-via requires at least one survivor");
+     }
+     if (const char* err = dc::SetDmxOutput(dmxEncoding, dmxModel)) {
+         std::fprintf(stderr, "%s\n", err);
+@@ -1245,18 +1391,8 @@ int main(int argc, char** argv) {
      }
  
      const std::set<std::string> codes = CodeTokens();
@@ -1132646,7 +1133216,7 @@ index 1619ffe..ffc19d1 100644
  
      std::vector<std::pair<const Survivor*, const Survivor*>> jobs;
      if (all) {
-@@ -1267,6 +1330,11 @@ int main(int argc, char** argv) {
+@@ -1267,6 +1403,11 @@ int main(int argc, char** argv) {
          jobs.emplace_back(rig, tgt);
      }
  
@@ -1132658,7 +1133228,7 @@ index 1619ffe..ffc19d1 100644
      for (const auto& job : jobs) {
          std::vector<const Survivor*> wanted{job.first};
          if (haveVia) {
-@@ -1285,6 +1353,28 @@ int main(int argc, char** argv) {
+@@ -1285,6 +1426,28 @@ int main(int argc, char** argv) {
          for (const Survivor* h : wanted)
              if (h != job.second && std::find(chain.begin(), chain.end(), h) == chain.end())
                  chain.push_back(h);
@@ -1132687,7 +1133257,7 @@ index 1619ffe..ffc19d1 100644
  
          std::vector<Index> idx(chain.size());
          for (size_t d = 0; d < chain.size(); ++d)
-@@ -1304,22 +1394,28 @@ int main(int argc, char** argv) {
+@@ -1304,22 +1467,28 @@ int main(int argc, char** argv) {
          }
          Retargeter rt;
          if (retarget) {
@@ -1132754,16 +1133324,17 @@ index 0aa1c02..d5a4f7a 100644
      BLOCK "VarFileInfo"
 diff --git a/subtools/meshtool/CMakeLists.txt b/subtools/meshtool/CMakeLists.txt
 new file mode 100644
-index 0000000..50aa800
+index 0000000..8d0a2e8
 --- /dev/null
 +++ b/subtools/meshtool/CMakeLists.txt
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,35 @@
 +# meshtool - meshoptimizer's simplifier and VHACD's decomposer behind one CLI.
 +
 +add_executable(meshtool
 +    main.cpp
 +    mesh_simplify.cpp
 +    convex_decompose.cpp
++    response_writer.cpp
 +)
 +# subtools ship one folder down from the two main executables. The per-config
 +# spellings stop a multi-config generator adding a Release/ under that.
@@ -1132794,18 +1133365,21 @@ index 0000000..50aa800
 +target_link_libraries(meshtool PRIVATE pulse_libs pulse_meshopt pulse_vhacd)
 diff --git a/subtools/meshtool/convex_decompose.cpp b/subtools/meshtool/convex_decompose.cpp
 new file mode 100644
-index 0000000..7b2782e
+index 0000000..7c35e8d
 --- /dev/null
 +++ b/subtools/meshtool/convex_decompose.cpp
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,155 @@
 +#include "convex_decompose.h"
 +
++#include <cmath>
 +#include <cstdint>
 +#include <cstring>
 +#include <fstream>
++#include <limits>
 +#include <vector>
 +
 +#include "vhacd/vhacd_hull.h"
++#include "response_writer.h"
 +
 +namespace pulse::tool {
 +namespace {
@@ -1132890,11 +1133464,15 @@ index 0000000..7b2782e
 +        std::uint32_t vertCount = 0;
 +        if (!r.U32(vertCount))
 +            return fail("a job is truncated");
++        if (vertCount > static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
++            return fail("a job has too many vertices");
 +        const auto* verts = static_cast<const float*>(
 +            r.Block(static_cast<std::size_t>(vertCount) * 3 * sizeof(float)));
 +        std::uint32_t triCount = 0;
 +        if (!verts || !r.U32(triCount))
 +            return fail("a job is truncated");
++        if (triCount > static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
++            return fail("a job has too many triangles");
 +        const auto* tris = static_cast<const std::int32_t*>(
 +            r.Block(static_cast<std::size_t>(triCount) * 3 * sizeof(std::int32_t)));
 +        float concavity = 0.0f, decimate = 0.0f;
@@ -1132902,15 +1133480,36 @@ index 0000000..7b2782e
 +        if (!tris || !r.F32(concavity) || !r.U32(maxHulls) || !r.F32(decimate) ||
 +            !r.U32(resolution))
 +            return fail("a job is truncated");
++        if (!std::isfinite(concavity) || !std::isfinite(decimate))
++            return fail("a job contains a non-finite decomposition parameter");
++        if (maxHulls > static_cast<std::uint32_t>(std::numeric_limits<int>::max()) ||
++            resolution > static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
++            return fail("a job contains an out-of-range integer parameter");
++
++        for (std::size_t i = 0; i < static_cast<std::size_t>(vertCount) * 3; ++i)
++            if (!std::isfinite(verts[i]))
++                return fail("a job contains a non-finite vertex position");
++
++        for (std::size_t i = 0; i < static_cast<std::size_t>(triCount) * 3; ++i)
++            if (tris[i] < 0 || static_cast<std::uint32_t>(tris[i]) >= vertCount)
++                return fail("a job contains an index outside its vertex pool");
++
++        // Empty geometry is a valid no-op in a batch. A partially empty mesh
++        // is malformed and must not be confused with VHACD failure.
++        if (vertCount == 0 && triCount == 0) {
++            PutU32(out, 0);
++            continue;
++        }
++        if (vertCount < 4 || triCount == 0)
++            return fail("a non-empty job needs at least four vertices and one triangle");
 +
 +        std::vector<VHACDHull::DecomposedHull> hulls;
-+        VHACDHull::DecomposeConvex(verts, static_cast<int>(vertCount), tris,
-+                                   static_cast<int>(triCount), concavity,
-+                                   static_cast<int>(maxHulls), decimate, hulls,
-+                                   static_cast<int>(resolution));
++        if (!VHACDHull::DecomposeConvex(verts, static_cast<int>(vertCount), tris,
++                                        static_cast<int>(triCount), concavity,
++                                        static_cast<int>(maxHulls), decimate, hulls,
++                                        static_cast<int>(resolution)))
++            return fail("VHACD could not decompose the job");
 +
-+        // A job that decomposes to nothing answers with no pieces rather than
-+        // failing the batch - the caller falls back to one hull for that body.
 +        PutU32(out, static_cast<std::uint32_t>(hulls.size()));
 +        for (const VHACDHull::DecomposedHull& hull : hulls) {
 +            const auto points = static_cast<std::uint32_t>(hull.vertices.size() / 3);
@@ -1132918,14 +1133517,10 @@ index 0000000..7b2782e
 +            Put(out, hull.vertices.data(), points * 3 * sizeof(float));
 +        }
 +    }
++    if (r.at != r.end)
++        return fail("the request contains trailing data");
 +
-+    std::ofstream answer(responsePath, std::ios::binary | std::ios::trunc);
-+    if (!answer)
-+        return fail("could not open the response file");
-+    answer.write(reinterpret_cast<const char*>(out.data()), static_cast<std::streamsize>(out.size()));
-+    if (!answer)
-+        return fail("could not write the response file");
-+    return true;
++    return detail::WriteResponseAtomically(responsePath, out.data(), out.size(), err);
 +}
 +
 +} // namespace pulse::tool
@@ -1133018,10 +1133613,10 @@ index 0000000..ec07d42
 +}
 diff --git a/subtools/meshtool/mesh_simplify.cpp b/subtools/meshtool/mesh_simplify.cpp
 new file mode 100644
-index 0000000..14d8f61
+index 0000000..a38b5a8
 --- /dev/null
 +++ b/subtools/meshtool/mesh_simplify.cpp
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,153 @@
 +#include "mesh_simplify.h"
 +
 +#include <cstdint>
@@ -1133031,6 +1133626,7 @@ index 0000000..14d8f61
 +#include <vector>
 +
 +#include "meshoptimizer/meshoptimizer.h"
++#include "response_writer.h"
 +
 +namespace pulse::tool {
 +namespace {
@@ -1133170,14 +1133766,7 @@ index 0000000..14d8f61
 +            Put(response, simplified.data(), kept * sizeof(unsigned int));
 +    }
 +
-+    std::ofstream out(responsePath, std::ios::binary | std::ios::trunc);
-+    if (!out)
-+        return fail("cannot open the response file");
-+    out.write(reinterpret_cast<const char*>(response.data()),
-+              static_cast<std::streamsize>(response.size()));
-+    if (!out)
-+        return fail("cannot write the response file");
-+    return true;
++    return detail::WriteResponseAtomically(responsePath, response.data(), response.size(), err);
 +}
 +
 +} // namespace pulse::tool
@@ -1133205,6 +1133794,243 @@ index 0000000..5862c31
 +                 std::string* err);
 +
 +} // namespace pulse::tool
+diff --git a/subtools/meshtool/response_writer.cpp b/subtools/meshtool/response_writer.cpp
+new file mode 100644
+index 0000000..4df661b
+--- /dev/null
++++ b/subtools/meshtool/response_writer.cpp
+@@ -0,0 +1,208 @@
++#include "response_writer.h"
++
++#include <atomic>
++#include <cerrno>
++#include <cstdint>
++#include <filesystem>
++#include <string>
++#include <system_error>
++
++#ifdef _WIN32
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#else
++#include <fcntl.h>
++#include <sys/types.h>
++#include <unistd.h>
++#endif
++
++namespace pulse::tool::detail {
++namespace {
++
++namespace fs = std::filesystem;
++std::atomic<std::uint64_t> nextTemporary{0};
++
++void SetError(std::string* err, const std::string& message) {
++    if (err)
++        *err = message;
++}
++
++std::string SystemError() {
++#ifdef _WIN32
++    return std::system_category().message(static_cast<int>(GetLastError()));
++#else
++    return std::system_category().message(errno);
++#endif
++}
++
++struct TempFile {
++#ifdef _WIN32
++    HANDLE handle = INVALID_HANDLE_VALUE;
++#else
++    int handle = -1;
++#endif
++    fs::path path;
++
++    bool Open(const fs::path& destination) {
++        const fs::path parent = destination.has_parent_path() ? destination.parent_path() : fs::path(".");
++        const std::string filename = destination.filename().u8string();
++        for (unsigned attempt = 0; attempt < 64; ++attempt) {
++            const auto serial = nextTemporary.fetch_add(1, std::memory_order_relaxed);
++#ifdef _WIN32
++            const auto process = static_cast<unsigned long long>(GetCurrentProcessId());
++#else
++            const auto process = static_cast<unsigned long long>(getpid());
++#endif
++            path = parent / fs::u8path(filename + ".meshtool-" + std::to_string(process) + "-" +
++                                      std::to_string(serial) + ".tmp");
++#ifdef _WIN32
++            handle = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
++                                 FILE_ATTRIBUTE_TEMPORARY, nullptr);
++            if (handle != INVALID_HANDLE_VALUE)
++                return true;
++            if (GetLastError() != ERROR_FILE_EXISTS && GetLastError() != ERROR_ALREADY_EXISTS)
++                return false;
++#else
++            handle = open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL
++#ifdef O_CLOEXEC
++                          | O_CLOEXEC
++#endif
++                          , 0666);
++            if (handle >= 0)
++                return true;
++            if (errno != EEXIST)
++                return false;
++#endif
++        }
++        errno = EEXIST;
++        return false;
++    }
++
++    bool Write(const unsigned char* bytes, std::size_t size) {
++        while (size > 0) {
++#ifdef _WIN32
++            const DWORD chunk = static_cast<DWORD>(size > 0x7fffffffu ? 0x7fffffffu : size);
++            DWORD written = 0;
++            if (!WriteFile(handle, bytes, chunk, &written, nullptr) || written == 0)
++                return false;
++            bytes += written;
++            size -= written;
++#else
++            const ssize_t written = ::write(handle, bytes, size);
++            if (written < 0) {
++                if (errno == EINTR)
++                    continue;
++                return false;
++            }
++            if (written == 0) {
++                errno = EIO;
++                return false;
++            }
++            bytes += written;
++            size -= static_cast<std::size_t>(written);
++#endif
++        }
++        return true;
++    }
++
++    bool Flush() {
++#ifdef _WIN32
++        return FlushFileBuffers(handle) != 0;
++#else
++        int result;
++        do {
++            result = fsync(handle);
++        } while (result != 0 && errno == EINTR);
++        return result == 0;
++#endif
++    }
++
++    bool Close() {
++#ifdef _WIN32
++        HANDLE current = handle;
++        handle = INVALID_HANDLE_VALUE;
++        return CloseHandle(current) != 0;
++#else
++        const int current = handle;
++        handle = -1;
++        return ::close(current) == 0;
++#endif
++    }
++
++    bool Replace(const fs::path& destination) {
++#ifdef _WIN32
++        return MoveFileExW(path.c_str(), destination.c_str(),
++                           MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
++#else
++        return ::rename(path.c_str(), destination.c_str()) == 0;
++#endif
++    }
++
++    void Remove() {
++        if (path.empty())
++            return;
++#ifdef _WIN32
++        DeleteFileW(path.c_str());
++#else
++        ::unlink(path.c_str());
++#endif
++    }
++
++    ~TempFile() {
++#ifdef _WIN32
++        if (handle != INVALID_HANDLE_VALUE)
++            CloseHandle(handle);
++#else
++        if (handle >= 0)
++            ::close(handle);
++#endif
++        Remove();
++    }
++};
++
++} // namespace
++
++bool WriteResponseAtomically(const std::string& responsePath, const void* data,
++                             std::size_t size, std::string* err) {
++    const fs::path destination = fs::u8path(responsePath);
++    TempFile temporary;
++    if (!temporary.Open(destination)) {
++        SetError(err, "cannot create a temporary response file: " + SystemError());
++        return false;
++    }
++
++    const auto* bytes = static_cast<const unsigned char*>(data);
++    if (!temporary.Write(bytes, size) || ResponseWriteTestFail("write")) {
++        const std::string reason = SystemError();
++        temporary.Close();
++        temporary.Remove();
++        SetError(err, "cannot write the temporary response file: " + reason);
++        return false;
++    }
++    if (!temporary.Flush() || ResponseWriteTestFail("flush")) {
++        const std::string reason = SystemError();
++        temporary.Close();
++        temporary.Remove();
++        SetError(err, "cannot flush the temporary response file: " + reason);
++        return false;
++    }
++    const bool closed = temporary.Close();
++    if (!closed || ResponseWriteTestFail("close")) {
++        const std::string reason = SystemError();
++        temporary.Remove();
++        SetError(err, "cannot close the temporary response file: " + reason);
++        return false;
++    }
++    if (ResponseWriteTestFail("replace") || !temporary.Replace(destination)) {
++        const std::string reason = SystemError();
++        temporary.Remove();
++        SetError(err, "cannot replace the response file: " + reason);
++        return false;
++    }
++    temporary.path.clear();
++    return true;
++}
++
++} // namespace pulse::tool::detail
+diff --git a/subtools/meshtool/response_writer.h b/subtools/meshtool/response_writer.h
+new file mode 100644
+index 0000000..d244cf0
+--- /dev/null
++++ b/subtools/meshtool/response_writer.h
+@@ -0,0 +1,17 @@
++#pragma once
++
++#include <cstddef>
++#include <string>
++
++namespace pulse::tool::detail {
++
++#ifdef PULSE_MESHTOOL_RESPONSE_TESTING
++bool ResponseWriteTestFail(const char* stage);
++#else
++inline bool ResponseWriteTestFail(const char*) { return false; }
++#endif
++
++bool WriteResponseAtomically(const std::string& responsePath, const void* data,
++                             std::size_t size, std::string* err);
++
++} // namespace pulse::tool::detail
 diff --git a/subtools/meshtool/version.rc.in b/subtools/meshtool/version.rc.in
 new file mode 100644
 index 0000000..8b672f2
@@ -1133382,10 +1134208,19 @@ index 0000000..c742810
 +}
 +} // namespace vmdtool
 diff --git a/subtools/vmd2valvebiped/main.cpp b/subtools/vmd2valvebiped/main.cpp
-index 0117649..e3e2f07 100644
+index 0117649..65c6b4b 100644
 --- a/subtools/vmd2valvebiped/main.cpp
 +++ b/subtools/vmd2valvebiped/main.cpp
-@@ -19,6 +19,13 @@
+@@ -5,6 +5,8 @@
+ // follow the MMD foot IK through the target model's own $ikchain data.
+ 
+ #include <algorithm>
++#include <cerrno>
++#include <climits>
+ #include <cmath>
+ #include <cstdint>
+ #include <cstdio>
+@@ -19,6 +21,13 @@
  #include <string>
  #include <vector>
  
@@ -1133399,7 +1134234,7 @@ index 0117649..e3e2f07 100644
  #include "dmxwrite.h"
  #include "dr_mp3.h"
  #include "dr_wav.h"
-@@ -36,6 +43,19 @@ using pm::Vector3;
+@@ -36,6 +45,19 @@ using pm::Vector3;
  
  namespace {
  
@@ -1133419,7 +1134254,139 @@ index 0117649..e3e2f07 100644
  // ------------------------------------------------------------------ vector ops
  
  Vector3 Add(const Vector3& a, const Vector3& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
-@@ -890,7 +910,7 @@ struct Leg {
+@@ -199,6 +221,23 @@ struct CamKey {
+     uint32_t fov = 30;
+ };
+ 
++constexpr float kMaxVmdPosition = 1.0e7f;
++constexpr float kMaxVmdAngle = 1.0e4f;
++constexpr float kMaxVmdWeight = 1.0e6f;
++
++bool FiniteVector(const Vector3& v) {
++    return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
++}
++
++bool BoundedVector(const Vector3& v, float limit) {
++    return FiniteVector(v) && std::fabs(v.x) <= limit && std::fabs(v.y) <= limit &&
++           std::fabs(v.z) <= limit;
++}
++
++bool ValidInterpolation(const uint8_t* values, size_t count) {
++    return std::all_of(values, values + count, [](uint8_t value) { return value <= 127; });
++}
++
+ float Curve(float x1, float y1, float x2, float y2, float x) {
+     if (x1 == y1 && x2 == y2)
+         return x;
+@@ -359,6 +398,29 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
+         r.Skip(64);
+         if (!r.ok)
+             break;
++        const std::string record = "\"" + path + "\": bone key #" + std::to_string(i + 1) +
++                                   " (frame " + std::to_string(k.frame) + ")";
++        if (!BoundedVector(k.pos, kMaxVmdPosition)) {
++            err = record + " has a non-finite or out-of-range position";
++            return false;
++        }
++        const double norm2 = static_cast<double>(k.rot.x) * k.rot.x +
++                             static_cast<double>(k.rot.y) * k.rot.y +
++                             static_cast<double>(k.rot.z) * k.rot.z +
++                             static_cast<double>(k.rot.w) * k.rot.w;
++        if (!std::isfinite(norm2) || norm2 < 1.0e-12 || norm2 > 1.0e12) {
++            err = record + " has a non-finite, zero, or out-of-range quaternion";
++            return false;
++        }
++        const float inverseNorm = static_cast<float>(1.0 / std::sqrt(norm2));
++        k.rot.x *= inverseNorm;
++        k.rot.y *= inverseNorm;
++        k.rot.z *= inverseNorm;
++        k.rot.w *= inverseNorm;
++        if (!ValidInterpolation(k.interp, 16)) {
++            err = record + " has interpolation control points outside 0..127";
++            return false;
++        }
+         out[name].push_back(k);
+         lastFrame = std::max(lastFrame, k.frame);
+     }
+@@ -376,8 +438,14 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
+         MorphKey k;
+         k.frame = r.Get<uint32_t>();
+         k.weight = r.Get<float>();
+-        if (r.ok)
+-            morphs[name].push_back(k);
++        if (!r.ok)
++            break;
++        if (!std::isfinite(k.weight) || std::fabs(k.weight) > kMaxVmdWeight) {
++            err = "\"" + path + "\": morph key #" + std::to_string(i + 1) +
++                  " (frame " + std::to_string(k.frame) + ") has a non-finite or out-of-range weight";
++            return false;
++        }
++        morphs[name].push_back(k);
+     }
+     const uint32_t ncam = r.ok && r.at < buf.size() ? r.Get<uint32_t>() : 0;
+     for (uint32_t i = 0; i < ncam && r.ok; ++i) {
+@@ -391,8 +459,28 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
+         r.Skip(24);
+         c.fov = r.Get<uint32_t>();
+         r.Skip(1); // perspective flag
+-        if (r.ok)
+-            cams.push_back(c);
++        if (!r.ok)
++            break;
++        const std::string record = "\"" + path + "\": camera key #" + std::to_string(i + 1) +
++                                   " (frame " + std::to_string(c.frame) + ")";
++        if (!std::isfinite(c.dist) || std::fabs(c.dist) > kMaxVmdPosition ||
++            !BoundedVector(c.at, kMaxVmdPosition)) {
++            err = record + " has a non-finite or out-of-range distance/position";
++            return false;
++        }
++        if (!BoundedVector(c.rot, kMaxVmdAngle)) {
++            err = record + " has a non-finite or out-of-range rotation";
++            return false;
++        }
++        if (c.fov == 0 || c.fov > 180) {
++            err = record + " has an invalid field of view (expected 1..180 degrees)";
++            return false;
++        }
++        if (!ValidInterpolation(c.interp, sizeof(c.interp))) {
++            err = record + " has interpolation control points outside 0..127";
++            return false;
++        }
++        cams.push_back(c);
+     }
+     if (!r.ok) {
+         err = "\"" + path + "\" is truncated in the morph or camera section";
+@@ -746,9 +834,11 @@ bool ParseFaceOps(const std::string& text, FaceOps& ops) {
+         const size_t eq = tok.find('=');
+         if (eq == 0 || eq == std::string::npos)
+             return false;
++        errno = 0;
+         char* end = nullptr;
+         const float w = std::strtof(tok.c_str() + eq + 1, &end);
+-        if (end == tok.c_str() + eq + 1 || *end)
++        if (errno == ERANGE || end == tok.c_str() + eq + 1 || *end || !std::isfinite(w) ||
++            std::fabs(w) > kMaxVmdWeight)
+             return false;
+         ops.emplace_back(tok.substr(0, eq), w);
+     }
+@@ -787,10 +877,15 @@ bool LoadFaceMap(const std::string& path, FaceMap& map, std::string& err) {
+             }
+         std::getline(in, rest);
+         if (!ParseFaceOps(rest, map[morph])) {
+-            err = "\"" + path + "\" line " + std::to_string(line) + ": expected <controller>=<weight>";
++            err = "\"" + path + "\" line " + std::to_string(line) +
++                  ": expected <controller>=<finite weight within +/-1000000>";
+             return false;
+         }
+     }
++    if (f.bad()) {
++        err = "cannot read \"" + path + "\" after line " + std::to_string(line);
++        return false;
++    }
+     return true;
+ }
+ 
+@@ -890,7 +985,7 @@ struct Leg {
  
  void PrintHeader() {
      std::printf("-------------------------------\n");
@@ -1133428,7 +1134395,7 @@ index 0117649..e3e2f07 100644
      std::printf("version:   %s\n", PULSEMODEL_VERSION);
      std::printf("developer: Toppi\n");
      std::printf("-------------------------------\n");
-@@ -908,7 +928,7 @@ int Usage() {
+@@ -908,7 +1003,7 @@ int Usage() {
          "  -armangle <deg>  built-in rest arm droop below horizontal (default 35)\n"
          "  -o <file>        output .dmx for a single -vmd (default: the .vmd's name,\n"
          "                   beside it)\n"
@@ -1133437,7 +1134404,50 @@ index 0117649..e3e2f07 100644
          "                   <name> is its $modelname (e.g. survivors/anim_mmd.mdl);\n"
          "                   clips and .qc go in <name>_src beside the first .vmd\n"
          "  -srcdir <dir>    where -compile writes its clips and .qc (default\n"
-@@ -982,18 +1002,6 @@ std::string ClipName(const std::string& path) {
+@@ -966,6 +1061,42 @@ int Fail(const std::string& err) {
+     return 1;
+ }
+ 
++bool ParseLongOption(const char* text, long& value) {
++    if (!text || !*text || std::isspace(static_cast<unsigned char>(*text)))
++        return false;
++    errno = 0;
++    char* end = nullptr;
++    const long long parsed = std::strtoll(text, &end, 10);
++    if (errno == ERANGE || end == text || *end != '\0' || parsed < LONG_MIN || parsed > LONG_MAX)
++        return false;
++    value = static_cast<long>(parsed);
++    return true;
++}
++
++bool ParseIntOption(const char* text, int& value) {
++    long parsed = 0;
++    if (!ParseLongOption(text, parsed) || parsed < INT_MIN || parsed > INT_MAX)
++        return false;
++    value = static_cast<int>(parsed);
++    return true;
++}
++
++bool ParseFloatOption(const char* text, float& value) {
++    if (!text || !*text || std::isspace(static_cast<unsigned char>(*text)))
++        return false;
++    errno = 0;
++    char* end = nullptr;
++    const float parsed = std::strtof(text, &end);
++    if (errno == ERANGE || end == text || *end != '\0' || !std::isfinite(parsed))
++        return false;
++    value = parsed;
++    return true;
++}
++
++bool LooksLikeOption(const char* text) {
++    return text && text[0] == '-' && std::isalpha(static_cast<unsigned char>(text[1]));
++}
++
+ // Sequence/file name from a path: each run of spaces, punctuation or non-ASCII
+ // becomes one '_'.
+ std::string ClipName(const std::string& path) {
+@@ -982,22 +1113,10 @@ std::string ClipName(const std::string& path) {
      return s.empty() ? std::string("clip") : s;
  }
  
@@ -1133456,7 +1134466,12 @@ index 0117649..e3e2f07 100644
  
  struct Clip {
      std::string name;
-@@ -1056,7 +1064,8 @@ const char* const kCameraFovBone = "mmd_camera_fov";
+-    int fps = 30;
++    float fps = 30.0f;
+     std::string sound; // path under sound/, empty for none
+     bool camera = false; // an .smd holding only kCameraBone
+     std::string walk;    // walkframe options for its $sequence
+@@ -1056,7 +1175,8 @@ const char* const kCameraFovBone = "mmd_camera_fov";
  
  bool WriteCameraSmd(const std::string& path, const std::vector<AnimPose>& frames,
                      const std::vector<float>* fov) {
@@ -1133466,7 +1134481,7 @@ index 0117649..e3e2f07 100644
      if (!f)
          return false;
      std::fprintf(f, "version 1\nnodes\n0 \"%s\" -1\n", kCameraBone);
-@@ -1070,7 +1079,7 @@ bool WriteCameraSmd(const std::string& path, const std::vector<AnimPose>& frames
+@@ -1070,7 +1190,7 @@ bool WriteCameraSmd(const std::string& path, const std::vector<AnimPose>& frames
              std::fprintf(f, "1 %f 0 0 0 0 0\n", (*fov)[k]);
      }
      std::fprintf(f, "end\n");
@@ -1133475,7 +1134490,7 @@ index 0117649..e3e2f07 100644
  }
  
  // Decodes a .wav or .mp3 and writes it as the PCM wav the engine plays: 16-bit,
-@@ -1083,7 +1092,7 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
+@@ -1083,7 +1203,7 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
      unsigned ch = 0, rate = 0;
      drwav_uint64 frames = 0;
      int16_t* pcm = nullptr;
@@ -1133484,7 +1134499,7 @@ index 0117649..e3e2f07 100644
      if (mp3) {
          drmp3_config cfg{};
          drmp3_uint64 n = 0;
-@@ -1135,7 +1144,8 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
+@@ -1135,7 +1255,8 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
      }
      mp3 ? drmp3_free(pcm, nullptr) : drwav_free(pcm, nullptr);
  
@@ -1133494,7 +1134509,7 @@ index 0117649..e3e2f07 100644
      if (!f)
          return "cannot write \"" + dst + "\"";
      const uint32_t bytes = static_cast<uint32_t>(out.size() * 2);
-@@ -1154,7 +1164,7 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
+@@ -1154,7 +1275,7 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
      std::fwrite("data", 1, 4, f);
      u32(bytes);
      std::fwrite(out.data(), 2, out.size(), f);
@@ -1133503,7 +1134518,7 @@ index 0117649..e3e2f07 100644
  
      note = std::string(mp3 ? "mp3" : "wav") + " " + std::to_string(rate) + " Hz " +
             std::to_string(ch) + "ch -> wav " + std::to_string(outRate) + " Hz 16-bit " +
-@@ -1166,7 +1176,8 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
+@@ -1166,7 +1287,8 @@ std::string ConvertAudio(const std::string& src, const std::string& dst, std::st
  // $sequence per clip. Joints go out exactly as the decompiler writes them.
  bool WriteAnimQc(const std::string& path, const Mdl& m, const std::string& modelname,
                   const std::vector<Clip>& clips, bool fovBone) {
@@ -1133513,7 +1134528,15 @@ index 0117649..e3e2f07 100644
      if (!f)
          return false;
      const fm::studiohdr_t& h = *m.hdr;
-@@ -1210,13 +1221,12 @@ bool WriteAnimQc(const std::string& path, const Mdl& m, const std::string& model
+@@ -1203,26 +1325,26 @@ bool WriteAnimQc(const std::string& path, const Mdl& m, const std::string& model
+     }
+     std::fprintf(f, "\n$animblocksize 64\n\n");
+     for (const Clip& c : clips) {
+-        std::fprintf(f, "$sequence \"%s\" \"%s.%s\" fps %d%s", c.name.c_str(), c.name.c_str(),
++        std::fprintf(f, "$sequence \"%s\" \"%s.%s\" fps %.9g%s", c.name.c_str(), c.name.c_str(),
+                      c.camera ? "smd" : "dmx", c.fps, c.walk.c_str());
+         // client-side, fires at sequence start; a .wav/.mp3 name skips soundscripts
+         if (!c.sound.empty())
              std::fprintf(f, " {\n    event AE_CL_PLAYSOUND 0 \"%s\"\n}", c.sound.c_str());
          std::fputc('\n', f);
      }
@@ -1133529,7 +1134552,127 @@ index 0117649..e3e2f07 100644
      PrintHeader();
      std::vector<std::string> vmdPaths;
      std::string mdlPath, pmxPath, outPath, compileName, gameDir, srcArg, faceMapPath;
-@@ -1479,14 +1489,116 @@ int main(int argc, char** argv) {
+     std::string faceSet = "facs", cameraFov;
+     float armAngle = 35.0f, eyeRange = 30.0f;
+     long startArg = -1, endArg = -1;
++    bool haveStart = false, haveEnd = false;
+     long walkEvery = -1;
+     float walkTol = 4.0f;
+     bool uncompress = false, sound = false;
+@@ -1230,39 +1352,81 @@ int main(int argc, char** argv) {
+     int dmxModel = 15;
+     for (int i = 1; i < argc; ++i) {
+         const char* a = argv[i];
+-        const auto next = [&]() -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
+-        if (!_stricmp(a, "-vmd")) vmdPaths.push_back(next());
+-        else if (!_stricmp(a, "-mdl")) mdlPath = next();
+-        else if (!_stricmp(a, "-pmx")) pmxPath = next();
+-        else if (!_stricmp(a, "-o")) outPath = next();
+-        else if (!_stricmp(a, "-compile")) compileName = next();
+-        else if (!_stricmp(a, "-srcdir")) srcArg = next();
+-        else if (!_stricmp(a, "-game")) gameDir = next();
+-        else if (!_stricmp(a, "-armangle")) armAngle = static_cast<float>(std::atof(next()));
+-        else if (!_stricmp(a, "-eyerange")) eyeRange = static_cast<float>(std::atof(next()));
+-        else if (!_stricmp(a, "-start")) startArg = std::atol(next());
+-        else if (!_stricmp(a, "-end")) endArg = std::atol(next());
++        std::string argumentError;
++        const auto next = [&]() -> const char* {
++            if (i + 1 >= argc || !argv[i + 1][0] || LooksLikeOption(argv[i + 1])) {
++                argumentError = std::string(a) + " requires a value";
++                return nullptr;
++            }
++            return argv[++i];
++        };
++        const auto stringArg = [&](std::string& value) {
++            const char* token = next();
++            if (!token) return false;
++            value = token;
++            return true;
++        };
++        const auto longArg = [&](long& value) {
++            const char* token = next();
++            if (!token) return false;
++            if (!ParseLongOption(token, value))
++                argumentError = std::string(a) + " requires a complete integer value";
++            return argumentError.empty();
++        };
++        const auto intArg = [&](int& value) {
++            const char* token = next();
++            if (!token) return false;
++            if (!ParseIntOption(token, value))
++                argumentError = std::string(a) + " requires a complete integer value";
++            return argumentError.empty();
++        };
++        const auto floatArg = [&](float& value) {
++            const char* token = next();
++            if (!token) return false;
++            if (!ParseFloatOption(token, value))
++                argumentError = std::string(a) + " requires a finite numeric value";
++            return argumentError.empty();
++        };
++        if (!_stricmp(a, "-vmd")) {
++            std::string value;
++            if (!stringArg(value)) return Fail(argumentError);
++            vmdPaths.push_back(std::move(value));
++        }
++        else if (!_stricmp(a, "-mdl")) { if (!stringArg(mdlPath)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-pmx")) { if (!stringArg(pmxPath)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-o")) { if (!stringArg(outPath)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-compile")) { if (!stringArg(compileName)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-srcdir")) { if (!stringArg(srcArg)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-game")) { if (!stringArg(gameDir)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-armangle")) { if (!floatArg(armAngle)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-eyerange")) { if (!floatArg(eyeRange)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-start")) { if (!longArg(startArg)) return Fail(argumentError); haveStart = true; }
++        else if (!_stricmp(a, "-end")) { if (!longArg(endArg)) return Fail(argumentError); haveEnd = true; }
+         else if (!_stricmp(a, "-uncompressanim")) uncompress = true;
+         else if (!_stricmp(a, "-walkframe")) {
+-            walkEvery = std::atol(next());
++            if (!longArg(walkEvery)) return Fail(argumentError);
+             if (walkEvery < 0)
+                 return Fail("-walkframe must be 0 (auto) or more frames");
+         }
+-        else if (!_stricmp(a, "-walktolerance")) walkTol = static_cast<float>(std::atof(next()));
++        else if (!_stricmp(a, "-walktolerance")) { if (!floatArg(walkTol)) return Fail(argumentError); }
+         else if (!_stricmp(a, "-sound")) sound = true;
+-        else if (!_stricmp(a, "-dmxencoding")) dmxEncoding = next();
+-        else if (!_stricmp(a, "-dmxmodel")) dmxModel = std::atoi(next());
+-        else if (!_stricmp(a, "-facemap")) faceMapPath = next();
+-        else if (!_stricmp(a, "-faceset")) faceSet = next();
+-        else if (!_stricmp(a, "-camerafov")) cameraFov = next();
++        else if (!_stricmp(a, "-dmxencoding")) { if (!stringArg(dmxEncoding)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-dmxmodel")) { if (!intArg(dmxModel)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-facemap")) { if (!stringArg(faceMapPath)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-faceset")) { if (!stringArg(faceSet)) return Fail(argumentError); }
++        else if (!_stricmp(a, "-camerafov")) { if (!stringArg(cameraFov)) return Fail(argumentError); }
+         else return Usage();
+     }
+     if (vmdPaths.empty() || mdlPath.empty())
+         return Usage();
++    if ((haveStart && startArg < 0) || (haveEnd && endArg < 0))
++        return Fail("-start and -end must be non-negative frame numbers");
+     if (!outPath.empty() && (vmdPaths.size() > 1 || !compileName.empty()))
+         return Fail("-o names one .dmx; it cannot be used with several -vmd or with -compile");
++    if (armAngle < 0.0f || armAngle > 180.0f)
++        return Fail("-armangle must be between 0 and 180 degrees");
+     if (walkTol <= 0.0f)
+-        return Fail("-walktolerance must be above 0");
++        return Fail("-walktolerance must be finite and above 0");
+     if (sound && compileName.empty())
+         return Fail("-sound writes a sequence event, so it needs -compile");
+     if (const char* e = mdldecompiler::SetDmxOutput(dmxEncoding, dmxModel))
+@@ -1278,8 +1442,8 @@ int main(int argc, char** argv) {
+         return Fail(err);
+     if (faceSet != "facs" && faceSet != "visemes")
+         return Fail("unknown -faceset \"" + faceSet + "\" (facs or visemes)");
+-    if (eyeRange <= 0.0f)
+-        return Fail("-eyerange must be above 0 degrees");
++    if (eyeRange <= 0.0f || eyeRange > 180.0f)
++        return Fail("-eyerange must be above 0 and no more than 180 degrees");
+     FaceMap faceMap = BuiltinFaceMap(faceSet == "visemes");
+     if (!faceMapPath.empty() && !LoadFaceMap(faceMapPath, faceMap, err))
+         return Fail(err);
+@@ -1479,14 +1643,116 @@ int main(int argc, char** argv) {
      std::string srcDir;
      if (!compileName.empty()) {
          if (gameDir.empty())
@@ -1133652,7 +1134795,7 @@ index 0117649..e3e2f07 100644
      std::set<std::string> faceMissing;
  
      const int lower = mmd.Find("lower");
-@@ -1497,7 +1609,8 @@ int main(int argc, char** argv) {
+@@ -1497,7 +1763,8 @@ int main(int argc, char** argv) {
      std::vector<Clip> clips;
      std::vector<matrix3x4> G(mmd.bones.size()), W(t.n), L(t.n);
  
@@ -1133662,7 +1134805,38 @@ index 0117649..e3e2f07 100644
          std::map<std::string, std::vector<Key>> keys;
          Morphs morphs;
          std::vector<CamKey> cams;
-@@ -1602,23 +1715,12 @@ int main(int argc, char** argv) {
+@@ -1519,23 +1786,24 @@ int main(int argc, char** argv) {
+             continue;
+         }
+ 
+-        // Frame budget: past the engine limit the clip is resampled over the same
+-        // duration at a lower integer fps, never cut.
++        // Frame budget: resample over the same duration at the exact fractional
++        // rate needed to fit, never cut or shorten the clip.
+         const long first = startArg >= 0 ? startArg : 0;
+         const long last = endArg >= 0 ? std::min<long>(endArg, lastFrame) : static_cast<long>(lastFrame);
+         if (last < first)
+             return Fail("\"" + vmdPath + "\": -start is past -end or the motion's last key");
+         const long span = last - first;
+-        int fps = 30;
++        float fps = 30.0f;
+         long count = span + 1;
+         if (count > limit && !uncompress) {
+-            fps = std::max(1, static_cast<int>(30 * (limit - 1) / span));
+-            count = span * fps / 30 + 1;
++            count = limit;
++            fps = static_cast<float>(30.0 * static_cast<double>(count - 1) / span);
+         }
+ 
+         std::vector<float> times;
++        const double sampleStep = count > 1 ? static_cast<double>(span) / (count - 1) : 0.0;
+         for (long k = 0; k < count; ++k)
+-            times.push_back(static_cast<float>(first) + static_cast<float>(k) * 30.0f / fps);
++            times.push_back(static_cast<float>(static_cast<double>(first) + k * sampleStep));
+ 
+         std::vector<std::vector<AnimPose>> frames;
+         frames.reserve(static_cast<size_t>(count));
+@@ -1602,23 +1870,12 @@ int main(int argc, char** argv) {
              frames.push_back(std::move(fr));
          }
  
@@ -1133689,7 +1134863,7 @@ index 0117649..e3e2f07 100644
          if (faceFile) {
              std::map<std::string, std::vector<Key>> unusedKeys;
              std::vector<CamKey> unusedCams;
-@@ -1639,7 +1741,7 @@ int main(int argc, char** argv) {
+@@ -1639,7 +1896,7 @@ int main(int argc, char** argv) {
          AddEyeTracks(keys, ctrls, times, eyeRange, face);
          const std::vector<mdldecompiler::FlexTrack>* flex = face.empty() ? nullptr : &face;
  
@@ -1133698,16 +1134872,20 @@ index 0117649..e3e2f07 100644
                                                dmxModel == 22 && srcDir.empty() ? flex : nullptr))
              return Fail("cannot write \"" + path + "\"");
          int root = pelvis;
-@@ -1648,7 +1750,7 @@ int main(int argc, char** argv) {
+@@ -1648,9 +1905,9 @@ int main(int argc, char** argv) {
          const std::string walkOpts = walkEvery >= 0 ? WalkFrames(frames, root, walkEvery, walkTol) : std::string();
          clips.push_back({clip, fps, std::string(), false, walkOpts});
  
 -        std::printf("wrote %s\n", path.c_str());
+-        std::printf("  %ld frame%s at %d fps", count, count == 1 ? "" : "s", fps);
+-        if (fps != 30)
 +        std::printf("prepared %s\n", path.c_str());
-         std::printf("  %ld frame%s at %d fps", count, count == 1 ? "" : "s", fps);
-         if (fps != 30)
++        std::printf("  %ld frame%s at %.9g fps", count, count == 1 ? "" : "s", fps);
++        if (fps != 30.0f)
              std::printf(" (resampled from %ld MMD frames to fit the %ld-frame limit)", span + 1, limit);
-@@ -1665,20 +1767,20 @@ int main(int argc, char** argv) {
+         std::printf("\n  %d MMD bones keyed, %d target bones mapped, legs by $ikchain\n", keyed, mapped);
+         if (!morphs.empty())
+@@ -1665,20 +1922,20 @@ int main(int argc, char** argv) {
  
          // -compile: the SFM / PulseWorkshop copy, always model 22
          if (!dataDir.empty()) {
@@ -1133732,7 +1134910,16 @@ index 0117649..e3e2f07 100644
          if (camFile) {
              std::map<std::string, std::vector<Key>> unused;
              uint32_t camLast = 0;
-@@ -1707,12 +1809,12 @@ int main(int argc, char** argv) {
+@@ -1691,7 +1948,7 @@ int main(int argc, char** argv) {
+             std::vector<AnimPose> cf(static_cast<size_t>(count));
+             std::vector<float> fov(static_cast<size_t>(count));
+             for (long k = 0; k < count; ++k) {
+-                const float f = static_cast<float>(first) + static_cast<float>(k) * 30.0f / fps;
++                const float f = times[static_cast<size_t>(k)];
+                 Vector3 eye, look, up;
+                 SampleCamera(cams, f, eye, look, up, fov[static_cast<size_t>(k)]);
+                 look = pm::VectorRotate(look, M);
+@@ -1707,27 +1964,26 @@ int main(int argc, char** argv) {
                  pm::MatrixAngles(cm, cf[static_cast<size_t>(k)].rot, cf[static_cast<size_t>(k)].pos);
              }
              const std::string camClip = clip + "_camera";
@@ -1133747,8 +1134934,11 @@ index 0117649..e3e2f07 100644
 +            std::printf("prepared %s\n  %zu camera keys from %s, fov %g-%g degrees\n", camPath.c_str(),
                          cams.size(), camFile ? camVmd.c_str() : "the motion", *fovLo, *fovHi);
              if (srcDir.empty()) {
-                 std::printf("  $sequence \"%s\" \"%s.smd\" fps %d - needs $definebone \"%s\" \"\" 0 0 0 0 0 0  0 0 0 0 0 0\n",
-@@ -1722,12 +1824,11 @@ int main(int argc, char** argv) {
+-                std::printf("  $sequence \"%s\" \"%s.smd\" fps %d - needs $definebone \"%s\" \"\" 0 0 0 0 0 0  0 0 0 0 0 0\n",
++                std::printf("  $sequence \"%s\" \"%s.smd\" fps %.9g - needs $definebone \"%s\" \"\" 0 0 0 0 0 0  0 0 0 0 0 0\n",
+                             camClip.c_str(), camClip.c_str(), fps, kCameraBone);
+                 if (fovBone)
+                     std::printf("  and $definebone \"%s\" \"%s\" 0 0 0 0 0 0  0 0 0 0 0 0\n", kCameraFovBone,
                                  kCameraBone);
              }
              if (cameraFov == "dmx") {
@@ -1133765,7 +1134955,7 @@ index 0117649..e3e2f07 100644
              }
          }
  
-@@ -1736,7 +1837,7 @@ int main(int argc, char** argv) {
+@@ -1736,7 +1992,7 @@ int main(int argc, char** argv) {
          if (sound) {
              std::string audio;
              for (const char* ext : {".wav", ".mp3"})
@@ -1133774,7 +1134964,7 @@ index 0117649..e3e2f07 100644
                      audio = mdldecompiler::StripExt(vmdPath) + ext;
                      break;
                  }
-@@ -1748,14 +1849,13 @@ int main(int argc, char** argv) {
+@@ -1748,19 +2004,18 @@ int main(int argc, char** argv) {
              if (rel.size() > 64)
                  return Fail("sound path \"" + rel + "\" is over the 64-character event limit - "
                              "rename the .vmd shorter");
@@ -1133792,7 +1134982,13 @@ index 0117649..e3e2f07 100644
              if (first > 0)
                  std::printf("  warning: -start trims the motion but not the audio - they will not line up\n");
          }
-@@ -1773,20 +1873,45 @@ int main(int argc, char** argv) {
+         if (srcDir.empty())
+-            std::printf("  $sequence \"%s\" \"%s\" fps %d%s\n", clip.c_str(),
++            std::printf("  $sequence \"%s\" \"%s\" fps %.9g%s\n", clip.c_str(),
+                         mdldecompiler::BaseName(path).c_str(), fps, walkOpts.c_str());
+     }
+     if (clips.empty())
+@@ -1773,20 +2028,45 @@ int main(int argc, char** argv) {
              std::printf(" %s", c.c_str());
          std::printf("\n");
      }
@@ -1133855,40 +1135051,20 @@ index 0117649..e3e2f07 100644
  }
 diff --git a/subtools/vmd2valvebiped/output_transaction.h b/subtools/vmd2valvebiped/output_transaction.h
 new file mode 100644
-index 0000000..03d5c59
+index 0000000..f7099d2
 --- /dev/null
 +++ b/subtools/vmd2valvebiped/output_transaction.h
-@@ -0,0 +1,226 @@
-+// Batch publication for VMD conversion and L4D animation swaps. All generation
-+// finishes before destination files are moved. Ordinary errors roll back the
-+// entire batch; power loss and concurrent writers require manual recovery.
+@@ -0,0 +1,41 @@
++// Batch publication for VMD conversion and L4D animation swaps.
 +#pragma once
 +
-+#include <chrono>
 +#include <cstdio>
 +#include <filesystem>
-+#include <fstream>
-+#include <map>
-+#include <random>
-+#include <stdexcept>
 +#include <string>
-+#include <vector>
-+#ifdef _WIN32
-+#ifndef NOMINMAX
-+#define NOMINMAX
-+#endif
-+#include <windows.h>
-+#endif
++#include "../durable_output_transaction.h"
 +
 +namespace subtool {
 +namespace fs = std::filesystem;
-+
-+// Defined only by the standalone fault-injection regression harness.
-+#ifdef NEWPAGE_SUBTOOL_TRANSACTION_TESTING
-+void TransactionTestPoint(const char*, size_t);
-+#else
-+inline void TransactionTestPoint(const char*, size_t) {}
-+#endif
 +
 +inline bool CloseFile(std::FILE* file) {
 +    // ferror remembers short/failed writes even if fclose itself succeeds.
@@ -1133918,172 +1135094,7 @@ index 0000000..03d5c59
 +    }
 +};
 +
-+struct PathLess {
-+    bool operator()(const fs::path& a, const fs::path& b) const {
-+#ifdef _WIN32
-+        return CompareStringOrdinal(a.c_str(), static_cast<int>(a.native().size()),
-+                                    b.c_str(), static_cast<int>(b.native().size()), TRUE) == CSTR_LESS_THAN;
-+#else
-+        return a < b;
-+#endif
-+    }
-+};
-+
-+class OutputTransaction {
-+    struct Entry {
-+        fs::path staged, destination, slot;
-+        bool original = false, backedUp = false, published = false;
-+    };
-+    fs::path root_;
-+    std::vector<Entry> entries_;
-+    std::map<fs::path, size_t, PathLess> destinations_;
-+    std::map<fs::path, fs::path, PathLess> directories_;
-+    std::vector<fs::path> created_;
-+    bool committed_ = false, preserve_ = false;
-+
-+    static fs::path Unique(const fs::path& parent, const char* prefix) {
-+        std::random_device random;
-+        for (int i = 0; i < 32; ++i) {
-+            const fs::path path = parent / (std::string(prefix) + std::to_string(random()) + "-" +
-+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-+            if (fs::create_directory(path)) return path;
-+        }
-+        throw std::runtime_error("cannot create output staging directory in " + parent.u8string());
-+    }
-+    static bool ExistingFile(const fs::path& path) {
-+        std::error_code ec;
-+        const auto status = fs::symlink_status(path, ec);
-+        if (ec && ec != std::errc::no_such_file_or_directory)
-+            throw fs::filesystem_error("cannot inspect output", path, ec);
-+        if (!fs::exists(status)) return false;
-+        if (!fs::is_regular_file(status))
-+            throw std::runtime_error("output is not a regular file: " + path.u8string());
-+        return true;
-+    }
-+    static fs::path Destination(const fs::path& path) {
-+        const fs::path absolute = fs::absolute(path).lexically_normal();
-+        // Resolve parent aliases without following a destination file symlink.
-+        return fs::weakly_canonical(absolute.parent_path()) / absolute.filename();
-+    }
-+    void MakeParents(const fs::path& parent) {
-+        if (fs::is_directory(parent)) return;
-+        if (parent.empty() || parent == parent.parent_path())
-+            throw std::runtime_error("cannot create output directory: " + parent.u8string());
-+        MakeParents(parent.parent_path());
-+        if (fs::create_directory(parent)) created_.push_back(parent);
-+    }
-+    void Add(const fs::path& staged, const fs::path& destination) {
-+        if (committed_) throw std::runtime_error("output transaction already committed");
-+        if (!destinations_.emplace(destination, entries_.size()).second)
-+            throw std::runtime_error("duplicate output: " + destination.u8string());
-+        entries_.push_back({staged, destination, {}});
-+    }
-+public:
-+    OutputTransaction() : root_(Unique(fs::temp_directory_path(), "newpage-subtool-stage-")) {}
-+    OutputTransaction(const OutputTransaction&) = delete;
-+    OutputTransaction& operator=(const OutputTransaction&) = delete;
-+    ~OutputTransaction() {
-+        if (preserve_) return;
-+        const auto remove = [](const fs::path& path) {
-+            if (path.empty()) return;
-+            std::error_code ec;
-+            fs::remove_all(path, ec);
-+            if (ec) std::fprintf(stderr, "warning: cannot remove staging directory %s: %s\n",
-+                                 path.u8string().c_str(), ec.message().c_str());
-+        };
-+        for (const auto& entry : entries_) remove(entry.slot);
-+        remove(root_);
-+        if (!committed_)
-+            for (auto it = created_.rbegin(); it != created_.rend(); ++it) {
-+                std::error_code ec;
-+                fs::remove(*it, ec); // Never remove a nonempty user directory.
-+            }
-+    }
-+    const fs::path& Root() const { return root_; }
-+    // Files in one final directory share a staging directory, preserving QC's
-+    // relative references. L4D -all may regenerate the same shared clip.
-+    std::string Stage(const std::string& destination) {
-+        const fs::path final = Destination(fs::u8path(destination));
-+        const auto found = destinations_.find(final);
-+        if (found != destinations_.end()) return entries_[found->second].staged.u8string();
-+        ExistingFile(final);
-+        const auto parent = final.parent_path();
-+        auto directory = directories_.find(parent);
-+        if (directory == directories_.end()) {
-+            const auto path = root_ / ("directory-" + std::to_string(directories_.size()));
-+            fs::create_directory(path);
-+            directory = directories_.emplace(parent, path).first;
-+        }
-+        const fs::path staged = directory->second / final.filename();
-+        Add(staged, final);
-+        TransactionTestPoint("stage", entries_.size() - 1);
-+        return staged.u8string();
-+    }
-+    void Replace(const fs::path& staged, const fs::path& destination) {
-+        Add(staged, Destination(destination));
-+    }
-+    void Remove(const fs::path& destination) { Add({}, Destination(destination)); }
-+    void Commit() {
-+        if (committed_) throw std::runtime_error("output transaction already committed");
-+        try {
-+            // Copy onto each destination volume before modifying any original.
-+            for (size_t i = 0; i < entries_.size(); ++i) {
-+                auto& entry = entries_[i];
-+                entry.original = ExistingFile(entry.destination);
-+                if (entry.staged.empty() && !entry.original) continue;
-+                if (!entry.staged.empty() && !ExistingFile(entry.staged))
-+                    throw std::runtime_error("staged output is missing: " + entry.staged.u8string());
-+                MakeParents(entry.destination.parent_path());
-+                entry.slot = Unique(entry.destination.parent_path(), ".newpage-subtool-publish-");
-+                if (!entry.staged.empty()) fs::copy_file(entry.staged, entry.slot / "replacement");
-+                TransactionTestPoint("prepared", i);
-+            }
-+            std::ofstream recovery(root_ / "RECOVERY.txt", std::ios::binary);
-+            recovery << "Manual recovery locations (not a crash-recovery journal):\n";
-+            for (const auto& entry : entries_)
-+                recovery << entry.destination.u8string() << "\n  backup: "
-+                         << (entry.slot / "previous").u8string() << '\n';
-+            recovery.close();
-+            if (!recovery) throw std::runtime_error("cannot write output recovery locations");
-+            for (size_t i = 0; i < entries_.size(); ++i) {
-+                auto& entry = entries_[i];
-+                if (entry.slot.empty()) continue;
-+                if (ExistingFile(entry.destination) != entry.original)
-+                    throw std::runtime_error("output changed during publication: " + entry.destination.u8string());
-+                if (entry.original) {
-+                    fs::rename(entry.destination, entry.slot / "previous");
-+                    entry.backedUp = true;
-+                }
-+                TransactionTestPoint("backed_up", i);
-+                if (!entry.staged.empty()) {
-+                    fs::rename(entry.slot / "replacement", entry.destination);
-+                    entry.published = true;
-+                }
-+                TransactionTestPoint("published", i);
-+            }
-+            committed_ = true;
-+        } catch (const std::exception& failure) {
-+            std::string errors;
-+            for (auto it = entries_.rbegin(); it != entries_.rend(); ++it) {
-+                try {
-+                    if (it->published) { fs::remove(it->destination); it->published = false; }
-+                    if (it->backedUp) {
-+                        fs::rename(it->slot / "previous", it->destination);
-+                        it->backedUp = false;
-+                    }
-+                } catch (const std::exception& e) {
-+                    errors += "\n  " + it->destination.u8string() + ": " + e.what();
-+                }
-+            }
-+            if (!errors.empty()) {
-+                preserve_ = true;
-+                throw std::runtime_error(std::string(failure.what()) + "\noutput rollback incomplete:" + errors +
-+                    "\nStaging and backups retained; see " + (root_ / "RECOVERY.txt").u8string());
-+            }
-+            throw;
-+        }
-+    }
-+};
++using OutputTransaction = DurableOutputTransaction;
 +} // namespace subtool
 diff --git a/subtools/vmd2valvebiped/version.rc.in b/subtools/vmd2valvebiped/version.rc.in
 index 67add67..66db944 100644
