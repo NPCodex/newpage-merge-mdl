@@ -255,7 +255,6 @@ def prepare(args):
     state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     (work / 'upstream-manifest.json').write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
     notes = (
-        f"# NewPageMergeMDL v{state['project_version']} automatic build\n\n"
         f"PulseModel source: `{state['pulsemodel']['sha']}`\n\n"
         f"StudioMDL-CE reference: `{ce['sha']}`\n\n"
         'Tools++ reference assets: ' + ', '.join(a['name'] for a in state['studiomdl_plusplus']['assets']) + '\n\n'
