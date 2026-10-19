@@ -1,12 +1,13 @@
 {
   "schema": 1,
-  "date": "2026-10-18",
+  "date": "2026-10-19",
   "timezone": "Asia/Shanghai",
   "project_version": "1.2.34",
-  "status": "final-build-checks-passed-final-package-pending",
+  "status": "final-build-checks-passed-and-v1.2.34-published",
   "report": "v1.2.34-replacement-validation.md",
   "scope": "Replacement of the initial v1.2.34 build; historical initial-release and REA reports retain their original measurements and hashes.",
   "upstream_commit": "0396e3d2263945896de7d3d4f457e5f47dfe0378",
+  "source_commit": "6861f866b04a190e8b8137e225452d390f903fef",
   "build": {
     "platform": "windows-x64",
     "configuration": "MinSizeRel + ThinLTO",
@@ -248,14 +249,30 @@
     }
   },
   "final_package_validation": {
-    "status": "passed",
+    "status": "passed_and_published",
     "scope": "Final Windows archive was extracted and verified against the validated eight executable hashes, source archive, provenance, licenses, package inventory and 402 compatibility regressions.",
     "verified_by": "local-build/v1.2.34-replacement/prepare_release.py",
     "package_verifier_exit_code": 0
   },
   "release_publication": {
-    "status": "tracked_remotely",
-    "scope": "The report is included in the package and does not self-certify publication; the GitHub v1.2.34 release metadata is the source of truth for the replacement tag and assets."
+    "status": "published_replacement_verified",
+    "scope": "The GitHub v1.2.34 release metadata is the source of truth for the replacement tag and assets; the tag object was preserved while the canonical Windows asset and release notes were replaced.",
+    "release_url": "https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.34",
+    "tag": "v1.2.34",
+    "tag_object": "1130a5c292100f5f87b0ae09a72d8e7806de1f5f",
+    "windows_asset": {
+      "id": 655135870,
+      "name": "newpage-merge-mdl-win64.zip",
+      "size": 8990403,
+      "sha256": "91fac88877e42e4ef26da078e6a55d415d7d0e7d5e483a34ef997d465fd2049"
+    },
+    "c4d_helper_asset": {
+      "id": 653236378,
+      "name": "NewPageMergeMDL-C4D-v1.2.34-win64.zip",
+      "size": 1258997,
+      "sha256": "aa57ad48cb35dac0479370c092077c4abbacffdec59c091f2d06055a928fecfa"
+    },
+    "linux_asset": "not replaced: no verifiable Linux build environment"
   },
   "limitations": [
     "Persistent recovery and process locks for AG2/decompiler do not provide an absolute hardware/power-loss guarantee or an atomic snapshot for external readers.",

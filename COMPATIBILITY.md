@@ -123,7 +123,7 @@ The default segment count is 6. These shapes can coexist with other physics shap
 
 ### Shared DMX/KV3 support and experimental CS2 tool
 
-Compiler and decompiler use the shared `libs/dmx/` library. `libs/keyvalues3/` and the zstd decompressor support the new `subtools/ag2proportions` helper. All bundled tools use project version `1.2.28`; source-library consolidation does not expand supported Source1 DMX operators or remove their documented rejection rules.
+Compiler and decompiler use the shared `libs/dmx/` library. `libs/keyvalues3/` and the zstd decompressor support the `subtools/ag2proportions` helper. All bundled tools use project version `1.2.34`; source-library consolidation does not expand supported Source1 DMX operators or remove their documented rejection rules.
 
 `ag2proportions` adapts CS2 AnimGraph2 proportions and remains experimental. It generates skeleton, held-pose DMX and graph assets; its clip changes translations and does not repair bind axes or re-rig meshes. It is outside the fixed five-compiler Source1 integration scope and is not a fix for GMod/CSGO arms. Direct `.vmdl` input edits the model in place and preserves its first `.vmdl.bak`; a KV3 job defaults to `write_model=false`. `--generate-only` skips resource compilation, not model editing when requested. The installed CS2 data is still required; compiling generated resources also needs compatible Workshop Tools binaries (or the documented Wine runner on Linux). See [INSTALL.md](INSTALL.md), `subtools/ag2proportions --help`, and generated setup notes. Building, packaging and help/version smoke checks do not certify a real CS2 model or game session.
 
