@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.36。
+可用的模型编译功能整合到 NewPageMergeMDL。当前源码版本：v1.2.37。
 
 **每次生产编译都必须将 `-game` 指向目标游戏/模组中包含正确 `gameinfo.txt` 的目录。** `-OutDir` 只设置输出，不替代目标识别或资源挂载；请保留原始输入，并隔离输出进行验证。详细条件见 [编译前必读](README.md#编译前必读)。
 
@@ -36,6 +36,8 @@ v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 本轮 CSGO 固定范围 A1–A7/B1–B4 共 11 包已全部完成；原可选扩展 B 区已获授权并交付。完整范围与排除项见 [CSGO_PORTING_SCOPE.md](CSGO_PORTING_SCOPE.md)，新增布料语法见 [CSGO_CLOTH_AUTHORING.md](CSGO_CLOTH_AUTHORING.md)。
 
 ## 当前辅助工具与反编译契约
+
+本轮输入完整性、动画时序、辅助工具及发布流程修复的固定范围与验证状态见 [2026-10-20 修复报告](tests/reports/toolkit-fixes-20261020.md)。源码版本不代表已经发布。
 
 VMD 按每帧左右腿 IK 开关选择 IK/FK，关闭时保留 Thigh/Calf/Foot 的 FK；PMX、绑定姿态、比例与最终姿态拒绝非有限数值。正交相机尚无支持的输出表示，会在写入前明确失败，非法 perspective 标记也拒绝。AG2 校验完整资源及 preload CRC32。反编译保留各 LOD 独立权重并检查伴随文件 checksum、结构和解码范围；存在但损坏的 PHY 失败，缺 PHY 时明确警告无法证明碰撞完整性。
 

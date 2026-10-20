@@ -12,8 +12,8 @@
 | F4 | 错配 VVD/VTX | 核对头部、LOD/模型数量和 MDL checksum，错配失败且不发布部分结果。 |
 | F5 | DMX DAG 循环 | 骨架/网格路径检测循环、多父级及深度；自环、深链、重复子级有明确诊断。 |
 | F6 | 坏 attachment/hitbox/PHY | 非空坏表、错误骨引用和损坏 PHY 明确失败；缺 PHY 单独警告无法验证碰撞完整性，MDL 本身不能证明曾有碰撞。 |
-| F7 | Release 日志复发 | 以既有包的 manifest 源提交取增量，隐藏提交标识去重，清除 CI 标记；不再从可能陈旧的标签盲目追加。 |
-| F8 | 文档一致性 | 精确源码统一指向包内源码归档及 manifest；区分原生工具持久恢复与 Python helper 的普通失败回滚。 |
+| F7 | Release 日志复发 | 以现用平台包内 manifest 源提交取增量，跨平台核对来源，隐藏提交标识去重并清除 CI 标记；上传前保存旧正文/来源检查点，首次或部分替换失败后重试仍保留完整增量，不从旧标签盲目追加。 |
+| F8 | 文档一致性 | 精确源码统一指向包内源码归档及 manifest；区分原生工具持久恢复与 Python helper 的普通失败回滚；补齐包内 Markdown 验证报告，避免文档链接失效。 |
 | F9 | 同模型内部输出覆盖 | 一次分配根网格及完整 LOD 名称族，预留 physics/joints，动画独立命名且预留合成绑定动画；大小写别名不覆盖，QC 引用一致。 |
 | F10 | 平台条件否定 | 解析受支持的平台条件、否定与布尔组合；未知/损坏表达式不静默启用。 |
 | F11 | SMD/VTA 宽松数值 | 全段校验数值完整性、范围及有限性并报告文件/行；保留合法行尾注释和 VTA 帧标签。 |
@@ -31,11 +31,13 @@
 
 ## 验证边界
 
-- Windows 主编译器兼容测试 421/421 通过；包括本次 9 组输入、时序与平台条件回归。
+- Windows 实际 ZIP 解压后的整包验证通过：兼容测试 421/421（包括本次 9 组输入、时序与平台条件回归）、其他 unittest 70 项，以及 subtools integrity 61、CLI 63、publication 21 项均通过；清单/SHA256、版本和 VRML 转换 smoke 同时通过。
+- 本机 Windows 候选使用 MSVC Release、IPO 关闭、动态 CRT（MultiThreadedDLL），需要 VC++ 运行库。这是本机验证候选；正式发布流程仍使用静态 CRT 配置。首次整包验证源码为 `02bccf6`，后续仅日志流程、打包和文档修订不改变这组已验证的原生源码。
 - VMD 新功能 7 组及既有 18 种错误输入通过；VPK v1/v2、preload/正文组合共 36 例通过。
 - 已保存的 Plum 原始文件副本（131 文件，约 151 MB）内容哈希未变。native/CE/Neko 三模式均编译、结构校验和完整反编译通过；原 `Desktop/gmod` 目录目前已不存在，使用的是先前保存且有原始哈希的精确副本。
 - 新反编译专项覆盖真实权重往返、同模型输出冲突及损坏输入时旧输出保留；没有将所有外部 MDL 的任意损坏组合宣称为已经验证。
 - Python helper 的普通失败回滚不承诺强杀/断电后的持久恢复；既有 VMD/L4D 原生事务恢复不受此修复缩减。
-- Linux 全工具、归档及实际执行验证进行中；结果补入后方可称通过。
+- Linux GCC、Clang 均已完成全工具构建、恢复与格式测试、实际归档验证及 ELF/依赖/执行权限 smoke；首轮 [CI 39410334048](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39410334048) 对应 `02bccf6`。后续仅发布重试、报告打包和显式 Lua 回归的收尾修改正在验证。
+- Release 重试 14 项、automation 48 项、真实 Lua 5.1 元数据/数学 13 项及三份 workflow 语法检查通过。正式流程固定 Python 3.12 / Lupa 2.6 并显式导入 Lua 5.1，避免依赖缺失时跳过测试。
 
 复现及机器日志保留在本机 `.diagnostics/toolkit-audit-20261020` 与 `.diagnostics/toolkit-fixes-20261020`。长期自动回归位于 `tests/compiler_input_cases.py`、`tests/decompiler_roundtrip_test.py`、`tests/vmd_motion_features_test.py`、`tests/ag2_vpk_test.cpp`、`tests/helpers_publication_test.py`、`tests/runtime_metadata_test.py` 和 `tests/test_replacement_notes.py`。

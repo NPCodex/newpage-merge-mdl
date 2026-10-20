@@ -204,7 +204,8 @@ class AutomationTests(unittest.TestCase):
             manifest = sync.published_manifest('o/r')
             self.assertEqual(manifest['fingerprint'], 'built')
             self.assertEqual(sync.release_version('1.2.25', manifest, 'built'), ('1.2.25', 'v1.2.25-r1'))
-            download.assert_called_once_with(asset(identifier=2)['url'], accept='application/octet-stream')
+            self.assertEqual(download.call_count, 2)
+            self.assertEqual(download.call_args_list[0].args[0], asset(identifier=2)['url'])
 
     def test_legacy_package_without_manifest_falls_back_to_older_release(self):
         payload = io.BytesIO()
@@ -216,6 +217,24 @@ class AutomationTests(unittest.TestCase):
                          assets=[asset('upstream-manifest.json')])]
         with patch.object(sync, 'api', return_value=releases), patch.object(sync, 'fetch', side_effect=[payload.getvalue(), b'{}']):
             self.assertEqual(sync.published_manifest('o/r')['release_tag'], 'v1.2.24')
+
+    def test_published_packages_override_old_external_manifest_and_must_agree(self):
+        payloads = {}
+        for identifier, fingerprint in ((1, 'current'), (2, 'other')):
+            stream = io.BytesIO()
+            with zipfile.ZipFile(stream, 'w') as archive:
+                archive.writestr('NewPageMergeMDL/upstream-manifest.json',
+                                 json.dumps(dict(controller_sha='a'*40, fingerprint=fingerprint)))
+            payloads[asset(identifier=identifier)['url']] = stream.getvalue()
+        release = dict(draft=False, tag_name='v1.2.37', assets=[
+            asset('upstream-manifest.json', 3), asset('newpage-merge-mdl-linux64.zip', 1)])
+        with patch.object(sync, 'api', return_value=[release]), \
+             patch.object(sync, 'fetch', side_effect=lambda url, **_: payloads[url]) as download:
+            self.assertEqual(sync.published_manifest('o/r')['fingerprint'], 'current')
+            self.assertEqual(download.call_count, 1)
+            release['assets'].append(asset('newpage-merge-mdl-win64.zip', 2))
+            with self.assertRaisesRegex(ValueError, 'different source identities'):
+                sync.published_manifest('o/r')
 
     def test_source_archive_versions_match_release(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -403,6 +422,9 @@ class AutomationTests(unittest.TestCase):
                 archive.writestr('NewPageMergeMDL/main.cpp', 'exact merged input')
             (source / 'integration/gmod').mkdir(parents=True)
             (source / 'integration/gmod/newpage_vertexanim.lua').write_text('playback helper')
+            (source / 'tests/reports').mkdir(parents=True)
+            for name in ('report.json', 'report.md', 'private.log'):
+                (source / 'tests/reports' / name).write_text('validation evidence')
             (root / 'StudioMDL-CE.exe').write_text('reference only')
             sync.package(argparse.Namespace(dist=dist, source=source, output=root / 'out.zip',
                                             platform='win64', manifest=root / 'manifest.json', source_archive=root / 'source.zip'))
@@ -422,6 +444,9 @@ class AutomationTests(unittest.TestCase):
                 self.assertIn('NewPageMergeMDL/VALIDATION.md', archive.namelist())
                 self.assertIn('NewPageMergeMDL/FEATURE_MATRIX.md', archive.namelist())
                 self.assertIn('NewPageMergeMDL/integration/gmod/newpage_vertexanim.lua', archive.namelist())
+                self.assertIn('NewPageMergeMDL/tests/reports/report.md', archive.namelist())
+                self.assertIn('NewPageMergeMDL/tests/reports/report.json', archive.namelist())
+                self.assertNotIn('NewPageMergeMDL/tests/reports/private.log', archive.namelist())
                 self.assertIn('NewPageMergeMDL/libs/vendor/LICENSE', archive.namelist())
                 for name in ('zstd.txt', 'ValveResourceFormat.txt'):
                     self.assertEqual(archive.read('NewPageMergeMDL/subtools/licenses/' + name),
@@ -648,6 +673,8 @@ class PackageValidationTests(unittest.TestCase):
                 '.github/images/newpage-compiler.png','.github/images/newpage-decompiler.png',
                 'assets/branding/NewPage-logo.png','assets/branding/generate_icons.py','assets/branding/README.md',
                 'FIVE_COMPILER_COMPLETION.md','O5_FORMAT_IMPORTS.md','MESH_STATE_WORKFLOW.md','VRM_RUNTIME.md',
+                'tests/reports/toolkit-fixes-20261020.md','tests/reports/2026-10-18-rea-second-pass.md',
+                'tests/reports/v1.2.34-replacement-validation.md','tests/reports/v1.2.36-replacement-validation.md',
                 'integration/gmod/newpage_vertexanim.lua','integration/gmod/newpage_meshstates.lua',
                 'integration/gmod/newpage_vrm.lua','integration/gmod/newpage_vrm_materials.lua',
                 'tools/mesh_states.py','tools/vrm_runtime.py','tools/vrml_import.py','tools/output_transaction.py',
@@ -689,7 +716,9 @@ class PackageValidationTests(unittest.TestCase):
         for name in ('subtools/licenses/zstd.txt', 'subtools/licenses/ValveResourceFormat.txt',
                      '.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
                      'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
-                     'assets/branding/README.md', 'subtools/meshtool-protocol.md'):
+                     'assets/branding/README.md', 'subtools/meshtool-protocol.md',
+                     'tests/reports/toolkit-fixes-20261020.md', 'tests/reports/2026-10-18-rea-second-pass.md',
+                     'tests/reports/v1.2.34-replacement-validation.md', 'tests/reports/v1.2.36-replacement-validation.md'):
             for mode in ('omit', 'empty'):
                 with self.subTest(file=name, mode=mode), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)

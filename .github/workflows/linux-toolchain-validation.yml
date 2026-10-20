@@ -2,8 +2,17 @@ name: Linux toolchain validation
 
 on:
   workflow_dispatch:
+    inputs:
+      include-gcc:
+        description: Also validate GCC and retain standalone validation packages
+        type: boolean
+        default: true
   workflow_call:
     inputs:
+      include-gcc:
+        description: Also validate GCC and retain standalone validation packages
+        type: boolean
+        default: false
       source-artifact:
         description: Optional artifact containing the exact merged source
         type: string
@@ -17,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        compiler: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["clang", "gcc"]' || '["clang"]') }}
+        compiler: ${{ fromJSON(inputs.include-gcc && '["clang", "gcc"]' || '["clang"]') }}
     name: Linux ${{ matrix.compiler }} validation
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -28,6 +37,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - uses: actions/download-artifact@v8
         if: inputs.source-artifact != ''
         with:
@@ -46,6 +58,13 @@ jobs:
             git archive --format=zip --prefix=NewPageMergeMDL/ --output=prepared/NewPageMergeMDL-source.zip HEAD
             echo "VALIDATION_SOURCE=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
           fi
+
+      - name: Test Lua runtime metadata and math
+        run: |
+          python -m pip install lupa==2.6
+          python -c "from lupa.lua51 import LuaRuntime; LuaRuntime()"
+          python "$VALIDATION_SOURCE/tests/runtime_metadata_test.py"
+          python "$VALIDATION_SOURCE/tests/vrm_runtime_lua_test.py"
 
       - name: Verify unavailable IPO falls back to ordinary linking
         shell: bash
@@ -104,7 +123,7 @@ jobs:
           python "$VALIDATION_SOURCE/tests/verify_package.py" clang-validation.zip --manifest prepared/upstream-manifest.json --subtool-probe clang-output-tests/bin/subtool_transaction_probe
           python "$VALIDATION_SOURCE/tests/linux_package_smoke.py" clang-validation.zip
       - uses: actions/upload-artifact@v7
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs.include-gcc
         with:
           name: linux-${{ matrix.compiler }}-validation
           path: clang-validation.zip

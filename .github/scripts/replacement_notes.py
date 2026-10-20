@@ -11,34 +11,87 @@ import zipfile
 from upstream_release import api, fetch, append_release_notes
 
 
+def recorded_source(release):
+    recorded = re.findall(r'<!-- newpage-source:([0-9a-f]{40}) -->', release.get('body') or '')
+    return recorded[-1] if recorded else None
+
+
 def manifest_for_release(release):
+    packages = []
+    for platform in ('win64', 'linux64'):
+        candidates = [a for a in release['assets'] if re.fullmatch(
+            r'newpage-merge-mdl-(?:v[\w.-]+-)?' + platform + r'\.zip', a['name'])]
+        # Same-tag replacement uses unversioned names. Old versioned archives
+        # can still be present, but are no longer the active platform package.
+        current = [a for a in candidates if a['name'] == 'newpage-merge-mdl-' + platform + '.zip']
+        selected = current or candidates
+        if len(selected) > 1:
+            raise ValueError('Ambiguous previous platform package: ' + platform)
+        packages.extend(selected)
+    if packages:
+        manifests = []
+        for asset in packages:
+            data = fetch(asset['url'], accept='application/octet-stream')
+            digest = asset.get('digest')
+            if digest and digest != 'sha256:' + hashlib.sha256(data).hexdigest():
+                raise ValueError('Previous release package digest mismatch: ' + asset['name'])
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                manifest = json.loads(archive.read('NewPageMergeMDL/upstream-manifest.json'))
+            sha = manifest.get('controller_sha', '')
+            if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}', sha):
+                raise ValueError('Invalid release source commit: ' + asset['name'])
+            manifests.append(manifest)
+        sources = sorted({m['controller_sha'] for m in manifests})
+        for source in sources:
+            identities = {json.dumps({k: m.get(k) for k in ('fingerprint', 'project_version', 'pulsemodel',
+                          'overlay_sha256', 'configuration_sha256', 'build_overlay_sha256', 'source_kind')}, sort_keys=True)
+                          for m in manifests if m['controller_sha'] == source}
+            if len(identities) > 1:
+                raise ValueError('Platform package source identities differ at the same controller commit')
+        if len(sources) > 1 and not recorded_source(release):
+            raise ValueError('Platform package sources differ and no release checkpoint exists')
+        return dict(manifests[0], controller_sha=recorded_source(release) or sources[0],
+                    package_controller_shas=sources)
     direct = [a for a in release['assets'] if a['name'] == 'upstream-manifest.json']
     if len(direct) == 1:
-        return json.loads(fetch(direct[0]['url'], accept='application/octet-stream'))
-    packages = sorted((a for a in release['assets'] if re.fullmatch(r'newpage-merge-mdl-(?:v[\w.-]+-)?(?:win64|linux64)\.zip', a['name'])),
-                      key=lambda a: (a['size'], a['name']))
-    if not packages:
-        raise ValueError('Previous release has no package manifest; cannot establish the incremental source range')
-    data = fetch(packages[0]['url'], accept='application/octet-stream')
-    digest = packages[0].get('digest')
-    if digest and digest != 'sha256:' + hashlib.sha256(data).hexdigest():
-        raise ValueError('Previous release package digest mismatch')
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        return json.loads(archive.read('NewPageMergeMDL/upstream-manifest.json'))
+        data = fetch(direct[0]['url'], accept='application/octet-stream')
+        digest = direct[0].get('digest')
+        if digest and digest != 'sha256:' + hashlib.sha256(data).hexdigest():
+            raise ValueError('Previous release manifest digest mismatch')
+        return json.loads(data)
+    raise ValueError('Previous release has no package manifest; cannot establish the incremental source range')
+
+
+def source_base(release, manifest, head, git=subprocess.check_output):
+    base = manifest.get('controller_sha', '')
+    sources = manifest.get('package_controller_shas', [base])
+    if not isinstance(sources, list) or not sources or any(
+            not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}', sha)
+            for sha in [base, head, *sources]):
+        raise ValueError('Invalid release source commit')
+    for source in sources:
+        git(['git', 'merge-base', '--is-ancestor', source, head])
+    recorded = recorded_source(release)
+    if recorded:
+        # All packages must be at or after this notes checkpoint. A partial
+        # upload can have two source SHAs; neither silently becomes the base.
+        for source in sources:
+            git(['git', 'merge-base', '--is-ancestor', recorded, source])
+        base = recorded
+    return base
+
+
+def checkpoint_body(release, manifest, head, git=subprocess.check_output):
+    base = source_base(release, manifest, head, git)
+    previous = release.get('body') or ''
+    if recorded_source(release) == base:
+        return previous
+    return previous + ('\n\n' if previous else '') + '<!-- newpage-source:' + base + ' -->\n'
 
 
 def incremental_notes(release, manifest, head, checksums, git=subprocess.check_output):
-    base = manifest.get('controller_sha', '')
-    if not re.fullmatch(r'[0-9a-f]{40}', base) or not re.fullmatch(r'[0-9a-f]{40}', head):
-        raise ValueError('Invalid release source commit')
-    git(['git', 'merge-base', '--is-ancestor', base, head])
+    base = source_base(release, manifest, head, git)
     previous = release.get('body') or ''
-    recorded = re.findall(r'<!-- newpage-source:([0-9a-f]{40}) -->', previous)
-    if recorded:
-        # If uploading finished but editing the body failed, the package may
-        # already be newer than the last recorded notes. Resume that range.
-        base = recorded[-1]
-        git(['git', 'merge-base', '--is-ancestor', base, head])
     seen = re.findall(r'<!-- newpage-commit:([0-9a-f]{40}) -->', previous)
     log = git(['git', 'log', '--reverse', '--pretty=format:%x00%H%x1f%B', base + '..' + head]).decode('utf-8')
     spec = importlib.util.spec_from_file_location('notes_renderer', Path(__file__).with_name('release-notes.py'))
@@ -59,15 +112,19 @@ def main():
     parser.add_argument('--tag', required=True)
     parser.add_argument('--head', required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--checkpoint', type=Path, required=True,
+                        help='Old body plus source checkpoint; publish this before replacing any asset')
     parser.add_argument('packages', type=Path, nargs='+')
     args = parser.parse_args()
-    if not re.fullmatch(r'v\d+\.\d+\.\d+', args.tag):
+    if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-r\d+)?', args.tag):
         raise ValueError('Expected a stable replacement tag')
     release = api(f'repos/{args.repo}/releases/tags/{args.tag}')
     manifest = manifest_for_release(release)
     checksums = '\n'.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name for p in sorted(args.packages))
     body = incremental_notes(release, manifest, args.head, checksums)
+    checkpoint = checkpoint_body(release, manifest, args.head)
     args.output.write_text(body.rstrip() + '\n', encoding='utf-8')
+    args.checkpoint.write_text(checkpoint, encoding='utf-8')
 
 
 if __name__ == '__main__':

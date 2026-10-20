@@ -93,23 +93,38 @@ def published_manifest(repo):
         if release['draft'] or not (release['tag_name'].startswith('newpage-auto-') or
                                   re.fullmatch(r'v\d+\.\d+(?:\.\d+)?(?:-auto-[\w-]+|-r\d+)?', release['tag_name'])):
             continue
-        for asset in release['assets']:
-            if asset['name'] == 'upstream-manifest.json':
-                # The API endpoint supports GITHUB_TOKEN for private repositories.
-                manifest = json.loads(fetch(asset['url'], accept='application/octet-stream'))
-                manifest.setdefault('release_tag', release['tag_name'])
-                return manifest
-        # New releases ship provenance inside the single platform package.
-        # Prefer Linux's smaller archive; keep the external format readable for
-        # historical releases and use the authenticated asset API for both.
+        # Installed packages take precedence over obsolete standalone manifests.
+        # Read both platforms: different source identities cannot safely drive
+        # automatic version selection from an arbitrary platform's snapshot.
         packages = sorted((a for a in release['assets']
                            if re.search(r'-(?:linux64|win64)\.zip$', a['name'], re.I)),
                           key=lambda a: ('linux64' not in a['name'].lower(), a['name']))
+        current = {platform: [a for a in packages if a['name'] == 'newpage-merge-mdl-' + platform + '.zip']
+                   for platform in ('linux64', 'win64')}
+        packages = [a for a in packages if not current['linux64' if 'linux64' in a['name'].lower() else 'win64']
+                    or a in current['linux64' if 'linux64' in a['name'].lower() else 'win64']]
+        manifests = []
         for asset in packages:
-            with zipfile.ZipFile(io.BytesIO(fetch(asset['url'], accept='application/octet-stream'))) as archive:
+            data = fetch(asset['url'], accept='application/octet-stream')
+            if asset.get('digest') and asset['digest'] != 'sha256:' + hashlib.sha256(data).hexdigest():
+                raise ValueError('Published package digest mismatch: ' + asset['name'])
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 if 'NewPageMergeMDL/upstream-manifest.json' not in archive.namelist():
                     continue
                 manifest = json.loads(archive.read('NewPageMergeMDL/upstream-manifest.json'))
+                manifest.setdefault('release_tag', release['tag_name'])
+                manifests.append(manifest)
+        if manifests:
+            fields = ('controller_sha', 'fingerprint', 'project_version', 'pulsemodel',
+                      'overlay_sha256', 'configuration_sha256', 'build_overlay_sha256', 'source_kind')
+            identities = {json.dumps({k: m.get(k) for k in fields}, sort_keys=True) for m in manifests}
+            if len(identities) != 1:
+                raise ValueError('Published platform packages have different source identities: ' + release['tag_name'])
+            return manifests[0]
+        for asset in release['assets']:
+            if asset['name'] == 'upstream-manifest.json':
+                # Legacy releases without embedded provenance remain readable.
+                manifest = json.loads(fetch(asset['url'], accept='application/octet-stream'))
                 manifest.setdefault('release_tag', release['tag_name'])
                 return manifest
     return None
@@ -477,8 +492,9 @@ def package(args):
                      'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
             if (Path(args.source) / name).is_file():
                 archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
-        for path in sorted((Path(args.source) / 'tests/reports').glob('*.json')):
-            archive.write(path, 'NewPageMergeMDL/tests/reports/' + path.name)
+        for path in sorted((Path(args.source) / 'tests/reports').glob('*')):
+            if path.is_file() and path.suffix in ('.json', '.md'):
+                archive.write(path, 'NewPageMergeMDL/tests/reports/' + path.name)
         for path in sorted((Path(args.source) / 'integration').rglob('*')):
             if path.is_file():
                 archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())

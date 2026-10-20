@@ -78,6 +78,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Test Lua metadata and runtime math
+        run: |
+          python -m pip install lupa==2.6
+          python -c "from lupa.lua51 import LuaRuntime; LuaRuntime()"
+          python tests/runtime_metadata_test.py
+          python tests/vrm_runtime_lua_test.py
 
       - name: Test packaging and update detection
         run: |
@@ -217,7 +227,8 @@ jobs:
           test -n "$before"
           cp "newpage-merge-mdl-$tag-win64.zip" newpage-merge-mdl-win64.zip
           cp "newpage-merge-mdl-$tag-linux64.zip" newpage-merge-mdl-linux64.zip
-          python3 .github/scripts/replacement_notes.py --repo "$GITHUB_REPOSITORY" --tag "$tag" --head "$GITHUB_SHA" --output notes.txt newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip
+          python3 .github/scripts/replacement_notes.py --repo "$GITHUB_REPOSITORY" --tag "$tag" --head "$GITHUB_SHA" --output notes.txt --checkpoint replacement-checkpoint.txt newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file replacement-checkpoint.txt
           gh release upload "$tag" newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip --clobber
           python3 - <<'PY'
           import hashlib, os, subprocess, json

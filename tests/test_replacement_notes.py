@@ -1,9 +1,15 @@
 """Replacement notes resume from packaged source rather than an unmoved tag."""
 import importlib.util
+import hashlib
+import io
 import json
 from pathlib import Path
+import subprocess
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'.github/scripts'))
@@ -82,6 +88,104 @@ class ReplacementNotes(unittest.TestCase):
         text=append_release_notes(previous,current,'v1.2.36','c'*40)
         self.assertNotIn('后续更新',text)
         self.assertIn('<!-- newpage-commit:',text)
+
+
+class ReplacementStates(unittest.TestCase):
+    """Real commit ancestry and actual ZIP manifests across interrupted uploads."""
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='release-notes-states-')
+        self.addCleanup(self.temporary.cleanup)
+        self.repo = Path(self.temporary.name)
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True)
+        self.old = self.commit('Old package')
+        self.head = self.commit('Preserve helper outputs [skip ci]')
+        self.payloads = {}
+
+    def git(self, command):
+        return subprocess.check_output(['git', '-C', str(self.repo), *command[1:]], stderr=subprocess.PIPE)
+
+    def commit(self, message):
+        subprocess.run(['git', '-C', str(self.repo), '-c', 'user.name=Release test',
+                        '-c', 'user.email=release-test@example.invalid', 'commit', '-q',
+                        '--allow-empty', '-m', message], check=True)
+        return self.git(['git', 'rev-parse', 'HEAD']).decode().strip()
+
+    def asset(self, platform, sha, fingerprint=None):
+        data = io.BytesIO()
+        manifest = dict(controller_sha=sha, project_version='1.2.37', fingerprint=fingerprint or sha)
+        with zipfile.ZipFile(data, 'w') as archive:
+            archive.writestr('NewPageMergeMDL/upstream-manifest.json', json.dumps(manifest))
+        payload = data.getvalue()
+        url = 'asset:' + platform + ':' + sha + ':' + manifest['fingerprint']
+        self.payloads[url] = payload
+        return dict(name='newpage-merge-mdl-' + platform + '.zip', url=url, size=len(payload),
+                    digest='sha256:' + hashlib.sha256(payload).hexdigest())
+
+    def manifest(self, release):
+        with patch.object(replacement_notes, 'fetch', side_effect=lambda url, **_: self.payloads[url]):
+            return replacement_notes.manifest_for_release(release)
+
+    def test_packages_override_stale_standalone_manifest(self):
+        stale = dict(name='upstream-manifest.json', url='stale')
+        self.payloads['stale'] = json.dumps(dict(controller_sha='f'*40)).encode()
+        release = dict(body='', assets=[stale, self.asset('win64', self.old), self.asset('linux64', self.old)])
+        with patch.object(replacement_notes, 'fetch', side_effect=lambda url, **_: self.payloads[url]) as fetch:
+            manifest = replacement_notes.manifest_for_release(release)
+        self.assertEqual(manifest['controller_sha'], self.old)
+        self.assertEqual({call.args[0] for call in fetch.call_args_list}, {a['url'] for a in release['assets'][1:]})
+
+    def test_initial_checkpoint_recovers_partial_upload_and_failed_body_edit(self):
+        original = '原有日志\n\n- Existing reviewed fix\n'
+        release = dict(tag_name='v1.2.37', body=original,
+                       assets=[self.asset('win64', self.old), self.asset('linux64', self.old)])
+        manifest = self.manifest(release)
+        expected = replacement_notes.incremental_notes(release, manifest, self.head, 'a'*64+'  win.zip', self.git)
+        checkpoint = replacement_notes.checkpoint_body(release, manifest, self.head, self.git)
+        self.assertTrue(checkpoint.startswith(original))
+        self.assertNotIn('Preserve helper outputs', checkpoint)
+        self.assertEqual(replacement_notes.checkpoint_body(dict(release, body=checkpoint), manifest, self.head, self.git), checkpoint)
+        release['body'] = checkpoint
+        # The first upload succeeded, the second failed. Both manifests must be
+        # read, and the saved old source (not whichever ZIP is smaller) wins.
+        release['assets'][0] = self.asset('win64', self.head)
+        partial = replacement_notes.incremental_notes(release, self.manifest(release), self.head, 'a'*64+'  win.zip', self.git)
+        self.assertEqual(partial.count('- Preserve helper outputs'), 1)
+        release['assets'][1] = self.asset('linux64', self.head)
+        # Now both uploads succeeded, but editing the final body failed.
+        retry = replacement_notes.incremental_notes(release, self.manifest(release), self.head, 'a'*64+'  win.zip', self.git)
+        self.assertEqual(retry.count('- Preserve helper outputs'), 1)
+        self.assertIn('- Existing reviewed fix', retry)
+        self.assertNotIn('[skip ci]', retry)
+        release['body'] = retry
+        again = replacement_notes.incremental_notes(release, self.manifest(release), self.head, 'b'*64+'  win.zip', self.git)
+        self.assertEqual(again.count('- Preserve helper outputs'), 1)
+        self.assertNotIn('a'*64, again)
+        self.assertIn('b'*64, again)
+        self.assertIn('- Preserve helper outputs', expected)
+
+    def test_mixed_packages_without_checkpoint_fail(self):
+        release = dict(body='Old notes', assets=[self.asset('win64', self.old), self.asset('linux64', self.head)])
+        with self.assertRaisesRegex(ValueError, 'sources differ'):
+            self.manifest(release)
+
+    def test_checkpoint_must_precede_every_package(self):
+        release = dict(body='<!-- newpage-source:'+self.head+' -->',
+                       assets=[self.asset('win64', self.old), self.asset('linux64', self.head)])
+        with self.assertRaises(subprocess.CalledProcessError):
+            replacement_notes.source_base(release, self.manifest(release), self.head, self.git)
+
+    def test_same_commit_with_different_source_fingerprints_fails(self):
+        release = dict(body='<!-- newpage-source:'+self.old+' -->',
+                       assets=[self.asset('win64', self.old, 'first'), self.asset('linux64', self.old, 'second')])
+        with self.assertRaisesRegex(ValueError, 'source identities differ'):
+            self.manifest(release)
+
+    def test_bad_package_is_not_hidden_by_legacy_manifest_or_checkpoint(self):
+        bad = self.asset('win64', self.old); bad['digest'] = 'sha256:'+'0'*64
+        release = dict(body='<!-- newpage-source:'+self.old+' -->', assets=[bad,
+                       dict(name='upstream-manifest.json', url='stale')])
+        with self.assertRaisesRegex(ValueError, 'digest mismatch'):
+            self.manifest(release)
 
 
 if __name__ == '__main__':
