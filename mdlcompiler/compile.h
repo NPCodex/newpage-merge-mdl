@@ -360,7 +360,10 @@ struct Bone {
     int flags = 0;
     int group = 0; // hitgroup
     bool isNonSkeletal = false;
-    bool bPreDefined = false;  // created by a locked $definebone (not a source)
+    bool bPreDefined = false;  // created by a $definebone (not a source)
+    // A $definebone parent may be supplied by a later source or unlocked
+    // definition. Kept until the complete global bone table exists.
+    std::string predefinedParent;
     bool bDontCollapse = false;
     bool bPreAligned = false;  // $definebone provided the realign - RealignBones skips it
     int physicsbone = 0;       // index into the .phy solid list; 0 with no physics
@@ -369,8 +372,8 @@ struct Bone {
     matrix3x4 rawLocal;
     matrix3x4 boneToPose;
     matrix3x4 poseToBone;
-    // RealignBones always computes this, even with no $realignbones: it is
-    // Invert(boneToPose)*boneToPose - a NOISY near-identity, not exact.
+    // Identity unless an authored pre-alignment or an explicit bone/IK edit
+    // changes the source basis.
     matrix3x4 srcRealign;
     Vector3 posscale{1.0f / 32.0f, 1.0f / 32.0f, 1.0f / 32.0f};
     Vector3 rotscale{1.0f / 32.0f, 1.0f / 32.0f, 1.0f / 32.0f};

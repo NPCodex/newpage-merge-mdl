@@ -5,6 +5,7 @@
 #include <iostream>
 #include <iterator>
 #include <cstdint>
+#include <thread>
 #ifdef _WIN32
 #include <io.h>
 #endif
@@ -15,6 +16,19 @@ static size_t failIndex = 1;
 static fs::path corruptRollback;
 
 void subtool::TransactionTestPoint(const char* point, size_t index) {
+    const char* pausePoint = std::getenv("NEWPAGE_SUBTOOL_PAUSE_POINT");
+    const char* pauseIndex = std::getenv("NEWPAGE_SUBTOOL_PAUSE_INDEX");
+    if (pausePoint && pausePoint == std::string(point) &&
+        index == static_cast<size_t>(pauseIndex ? std::stoul(pauseIndex) : 0)) {
+#ifdef _WIN32
+        const auto ready = fs::path(_wgetenv(L"NEWPAGE_SUBTOOL_READY"));
+#else
+        const auto ready = fs::u8path(std::getenv("NEWPAGE_SUBTOOL_READY"));
+#endif
+        std::ofstream marker(ready, std::ios::binary);
+        marker << point; marker.close();
+        for (;;) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
     if (failPoint == point && failIndex == index) {
         if (!corruptRollback.empty()) {
             fs::remove(corruptRollback);
@@ -50,6 +64,29 @@ static void Record(const fs::path& path, const std::vector<std::string>& argumen
     Require(bool(file), "argument recording failed");
 }
 static int Run(const std::vector<std::string>& arguments) {
+    if (arguments.size() > 2 && arguments[1] == "--durable-lock") {
+        const auto destination = subtool::txdetail::Destination(fs::u8path(arguments[2]));
+        subtool::txdetail::Digest identity;
+        subtool::txdetail::Hash(identity, subtool::txdetail::Key(destination));
+        subtool::txdetail::Lock lock(fs::canonical(fs::temp_directory_path()) /
+            ("newpage-subtool-lock-" + subtool::txdetail::Hex(identity.hash) + ".lock"));
+        subtool::TransactionTestPoint("locked", 0);
+        return 0;
+    }
+    if (arguments.size() > 2 && arguments[1] == "--durable-write") {
+        const auto work = fs::u8path(arguments[2]);
+        subtool::OutputTransaction output;
+        Write(fs::u8path(output.Stage((work / "a").u8string())), "new a");
+        Write(fs::u8path(output.Stage((work / "b").u8string())), "new b");
+        output.Remove(work / "old.ani");
+        output.Commit();
+        return 0;
+    }
+    if (arguments.size() > 2 && arguments[1] == "--durable-recover") {
+        subtool::OutputTransaction output;
+        output.Stage(arguments[2]);
+        return 0;
+    }
     // A fake NewPageMergeMDL used by the Python integration test to verify
     // exact child argv, failure status and no accidental use of mdlcompiler.
     if (arguments.size() > 1 && arguments[1] == "-game") {
@@ -119,6 +156,23 @@ static int Run(const std::vector<std::string>& arguments) {
         ++passed;
     }
     {
+        // A second transaction targeting the same output must be rejected
+        // while the first process still owns its OS-backed lock.
+        const fs::path work = root / "same-target-lock";
+        fs::create_directory(work);
+        subtool::OutputTransaction first;
+        Write(fs::u8path(first.Stage((work / "shared.dmx").u8string())), "first");
+        bool rejected = false;
+        try {
+            subtool::OutputTransaction second;
+            second.Stage((work / "shared.dmx").u8string());
+        } catch (const std::exception& error) {
+            rejected = std::string(error.what()).find("locked") != std::string::npos;
+        }
+        Require(rejected, "same-target transaction was not rejected");
+        ++passed;
+    }
+    {
         const fs::path work = root / "success";
         Write(work / "a", "old"); Write(work / "old.ani", "stale");
         subtool::OutputTransaction output;
@@ -146,7 +200,7 @@ static int Run(const std::vector<std::string>& arguments) {
         failPoint.clear(); corruptRollback.clear();
         Require(error.find("rollback incomplete") != std::string::npos &&
                 fs::is_regular_file(staging / "RECOVERY.txt"), "recovery evidence not retained");
-        Require(Read(work / "b") == "old b", "unblocked output was not restored");
+        Require(Read(work / "b") == "new b", "conflict preflight partially restored batch");
         ++passed;
     }
     {

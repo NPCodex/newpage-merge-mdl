@@ -36,6 +36,8 @@ add_test(NAME persistent_output COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT
 add_test(NAME ag2_transaction COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../ag2_transaction_test.py" $<TARGET_FILE:ag2_transaction_harness>)
 add_test(NAME ag2_generate_only COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../ag2_generate_only_test.py" $<TARGET_FILE:ag2_generate_only_harness>)
 add_test(NAME subtool_transaction COMMAND "${Python3_EXECUTABLE}" -c "import pathlib,subprocess,sys,tempfile; work=tempfile.TemporaryDirectory(prefix='newpage-subtool-probe-'); subprocess.run([sys.argv[1],str(pathlib.Path(work.name)/'checks')],check=True)" $<TARGET_FILE:subtool_transaction_probe>)
+add_test(NAME subtool_durable COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../subtool_durable_test.py" $<TARGET_FILE:subtool_transaction_probe>)
 add_test(NAME compiler_output_transaction COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../output_transaction_test.py" $<TARGET_FILE:output_transaction_harness>)
 add_test(NAME ag2_rig_selection COMMAND $<TARGET_FILE:ag2_rig_selection_test>)
 set_tests_properties(persistent_output ag2_transaction ag2_generate_only subtool_transaction compiler_output_transaction ag2_rig_selection PROPERTIES TIMEOUT 180)
+set_tests_properties(subtool_durable PROPERTIES TIMEOUT 180)

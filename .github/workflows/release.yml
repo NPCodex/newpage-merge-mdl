@@ -79,7 +79,10 @@ jobs:
 
       - name: Configure
         # no -G: use whatever toolchain the runner image ships
-        run: cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
+        shell: bash
+        run: |
+          if [ "${{ matrix.plat }}" = "linux64" ]; then export CC=gcc CXX=g++; fi
+          cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
 
       - name: Build
         run: cmake --build build --config MinSizeRel --parallel 2
@@ -121,8 +124,10 @@ jobs:
       - name: Package with maintained source provenance
         shell: bash
         run: |
-          python -c 'import json; json.dump({"project_version":"${{ needs.prepare.outputs.version }}","controller_sha":"${{ github.sha }}","release_tag":"${{ needs.prepare.outputs.tag }}","source_kind":"maintained checkout","build":"MinSizeRel with interprocedural optimization"},open("upstream-manifest.json","w"))'
-          python .github/scripts/upstream_release.py package --source . --dist dist --platform ${{ matrix.plat }} --manifest upstream-manifest.json --output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip
+          git archive --format=zip --prefix=NewPageMergeMDL/ --output="$RUNNER_TEMP/NewPageMergeMDL-source.zip" HEAD
+          python .github/scripts/upstream_release.py maintained-manifest --source . --output upstream-manifest.json --tag "${{ needs.prepare.outputs.tag }}"
+          python .github/scripts/upstream_release.py record-build --manifest upstream-manifest.json --cache build/CMakeCache.txt --configuration MinSizeRel
+          python .github/scripts/upstream_release.py package --source . --dist dist --platform ${{ matrix.plat }} --manifest upstream-manifest.json --source-archive "$RUNNER_TEMP/NewPageMergeMDL-source.zip" --output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip
 
       - name: Verify actual packaged binaries
         id: verify
@@ -131,6 +136,9 @@ jobs:
           probe=$(find output-tests -type f -name 'subtool_transaction_probe${{ matrix.ext }}' -print -quit)
           test -n "$probe"
           python tests/verify_package.py newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip --manifest upstream-manifest.json --subtool-probe "$probe"
+          if [ "${{ matrix.plat }}" = "linux64" ]; then
+            python tests/linux_package_smoke.py newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip
+          fi
 
       - uses: actions/upload-artifact@v7
         with:
@@ -138,8 +146,14 @@ jobs:
           path: newpage-merge-mdl-*.zip
           if-no-files-found: error
 
+  linux-clang:
+    needs: prepare
+    uses: ./.github/workflows/linux-toolchain-validation.yml
+    permissions:
+      contents: read
+
   publish:
-    needs: [prepare, build]
+    needs: [prepare, build, linux-clang]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -160,15 +174,9 @@ jobs:
           import hashlib
           from pathlib import Path
           notes = Path('notes.txt')
-          intro = ('Download one ZIP for your operating system and extract the entire folder. '
-                   'Windows includes the C4D and VRML converters; Linux includes the tools supported on Linux. '
-                   'Read INSTALL.md inside the package and always set -game to the directory containing '
-                   'the correct target gameinfo.txt before compiling. No separate update or helper package is needed.\n\n'
-                   '下载对应系统的一个 ZIP，完整解压即可使用；编译前务必设置正确的 gameinfo.txt 所在目录。'
-                   '安装说明、校验清单和验证记录均在包内。\n\n')
           checksums = '\n'.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}'
                                 for p in sorted(Path('.').glob('newpage-merge-mdl-*.zip')))
-          notes.write_text(intro + notes.read_text(encoding='utf-8') + '\n\nZIP SHA256:\n```text\n'
+          notes.write_text(notes.read_text(encoding='utf-8').rstrip() + '\n\nZIP SHA256:\n```text\n'
                            + checksums + '\n```\n', encoding='utf-8')
           PY
           cat notes.txt
@@ -193,9 +201,12 @@ jobs:
           test -n "$before"
           cp "newpage-merge-mdl-$tag-win64.zip" newpage-merge-mdl-win64.zip
           cp "newpage-merge-mdl-$tag-linux64.zip" newpage-merge-mdl-linux64.zip
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body > existing-release-notes.txt
           python3 - <<'PY'
           from pathlib import Path
-          import os
+          import os, sys
+          sys.path.insert(0, str(Path('.github/scripts').resolve()))
+          from upstream_release import append_release_notes
           tag = os.environ['RELEASE_TAG']
           notes = Path('notes.txt')
           text = notes.read_text(encoding='utf-8')
@@ -204,6 +215,8 @@ jobs:
                   f'newpage-merge-mdl-{tag}-{platform}.zip',
                   f'newpage-merge-mdl-{platform}.zip',
               )
+          previous = Path('existing-release-notes.txt').read_text(encoding='utf-8').strip()
+          text = append_release_notes(previous, text, tag)
           notes.write_text(text, encoding='utf-8')
           PY
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes.txt

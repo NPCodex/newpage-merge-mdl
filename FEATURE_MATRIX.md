@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.34。
+可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.36。
 
 **每次生产编译都必须将 `-game` 指向目标游戏/模组中包含正确 `gameinfo.txt` 的目录。** `-OutDir` 只设置输出，不替代目标识别或资源挂载；请保留原始输入，并隔离输出进行验证。详细条件见 [编译前必读](README.md#编译前必读)。
 
@@ -34,6 +34,10 @@ v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 本轮五编译器 R/E/V/S/O 固定总账及 H 边界见 [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md)。所有已知类别均在该表结账；未公开参考信息保留未知，不伪装兼容。
 
 本轮 CSGO 固定范围 A1–A7/B1–B4 共 11 包已全部完成；原可选扩展 B 区已获授权并交付。完整范围与排除项见 [CSGO_PORTING_SCOPE.md](CSGO_PORTING_SCOPE.md)，新增布料语法见 [CSGO_CLOTH_AUTHORING.md](CSGO_CLOTH_AUTHORING.md)。
+
+## v1.2.36 替换构建
+
+本轮处理 VMD/L4D 持久事务、后置骨骼父级、无需 realign 时的变换、meshtool 协议边界及 Linux 发布验证。具体实现和本轮实际测试见 [验证报告](tests/reports/v1.2.36-replacement-validation.md)。历史报告保留原版本、日期和散列，不以旧构建通过代替当前包验证。C4D 仍只随 Windows 包提供；Linux 用户需先在 Windows 转换 C4D 为 GLB。
 
 ## v1.2.34 替换版：完整性修复与补充验证
 

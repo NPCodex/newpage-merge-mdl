@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.34
+# NewPageMergeMDL v1.2.36
 
 <p>
 <img src=".github/images/newpage-compiler.png" width="80" alt="NewPage compiler">

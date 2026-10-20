@@ -52,16 +52,17 @@ deterministic; no significant production-model speedup is claimed.
 ## 仍需具体处理的范围 / Remaining scope
 
 - Hair 材质仍未找到；Claudia 的成功不能代替 Hair 的完整着色验证。
-- 蒙皮 `EXT_mesh_gpu_instancing`、网格动画切换、VRM spring bone/专有
-  表情映射等完整语义尚未实现。基础几何/蒙皮/形态键导入和烘焙回归
-  不等于完整 VRM 运行时支持。
+- `EXT_mesh_gpu_instancing` 的无蒙皮实例和正向均匀缩放蒙皮实例已展开；
+  非均匀/负缩放、剪切、复杂蒙皮动画和实例级运行时切换仍有限。基础几何、
+  蒙皮/形态键导入和烘焙回归不等于完整 VRM 运行时支持。
 - 采样烘焙仍依赖采样率和播放器；任意 FBX 层级、复杂生产面部及其他
   游戏需有具体输入和引擎实测，不能从这 28 项样例推断全部兼容。
 - 输出完整性检查不能证明每种可表示数据都有正确游戏表现。
   阶段计时可能嵌套，不能将所有 `stages.ms` 相加当作总耗时。
 
-Remaining work includes missing Hair materials, skinned instancing, mesh swaps,
-complete VRM-specific runtime semantics, arbitrary complex rigs and other engines.
+Remaining work includes missing Hair materials, non-uniform or animated skinned
+instancing, mesh swaps, complete VRM-specific runtime semantics, arbitrary
+complex rigs and other engines.
 Serialized integrity checks do not certify every possible engine behavior.
 
 ## 复现 / Reproduction

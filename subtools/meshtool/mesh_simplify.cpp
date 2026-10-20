@@ -4,10 +4,12 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <vector>
 
 #include "meshoptimizer/meshoptimizer.h"
 #include "response_writer.h"
+#include "binary_platform.h"
 
 namespace pulse::tool {
 namespace {
@@ -15,6 +17,10 @@ namespace {
 constexpr std::uint32_t kMagic = 0x4D535750u; // "PWSM"
 constexpr std::uint32_t kVersion = 1u;
 constexpr std::uint32_t kLockBorder = 1u;
+constexpr std::size_t kMaxRequestBytes = 512u * 1024u * 1024u;
+constexpr std::uint32_t kMaxVertices = 4u * 1024u * 1024u;
+constexpr std::uint32_t kMaxRuns = 1u * 1024u * 1024u;
+constexpr std::uint32_t kMaxIndicesPerRun = 16u * 1024u * 1024u;
 
 // The reference's own target error, from mdlcompiler's SimplifyFaces: the face
 // budget is the constraint and the error is left free.
@@ -27,7 +33,8 @@ struct Reader {
     bool U32(std::uint32_t& out) {
         if (end - at < 4)
             return false;
-        std::memcpy(&out, at, 4);
+        out = std::uint32_t(at[0]) | (std::uint32_t(at[1]) << 8) |
+              (std::uint32_t(at[2]) << 16) | (std::uint32_t(at[3]) << 24);
         at += 4;
         return true;
     }
@@ -43,13 +50,23 @@ struct Reader {
     }
 };
 
+bool CheckedBytes(std::uint32_t count, std::size_t element, std::size_t& bytes) {
+    if (element && count > std::numeric_limits<std::size_t>::max() / element)
+        return false;
+    bytes = static_cast<std::size_t>(count) * element;
+    return true;
+}
+
 void Put(std::vector<std::uint8_t>& out, const void* data, std::size_t bytes) {
     const auto* p = static_cast<const std::uint8_t*>(data);
     out.insert(out.end(), p, p + bytes);
 }
 
 void PutU32(std::vector<std::uint8_t>& out, std::uint32_t value) {
-    Put(out, &value, 4);
+    out.push_back(static_cast<std::uint8_t>(value));
+    out.push_back(static_cast<std::uint8_t>(value >> 8));
+    out.push_back(static_cast<std::uint8_t>(value >> 16));
+    out.push_back(static_cast<std::uint8_t>(value >> 24));
 }
 
 } // namespace
@@ -62,11 +79,15 @@ bool RunSimplify(const std::string& requestPath, const std::string& responsePath
         return false;
     };
 
+    if (!detail::SupportsBinaryProtocol())
+        return fail("the binary protocol requires a little-endian host");
     std::ifstream in(requestPath, std::ios::binary | std::ios::ate);
     if (!in)
         return fail("cannot open the request file");
     const std::streamoff size = in.tellg();
-    if (size <= 0)
+    if (size <= 0 || static_cast<std::uintmax_t>(size) > kMaxRequestBytes)
+        return fail("the request file is empty or exceeds the size limit");
+    if (static_cast<std::uintmax_t>(size) > std::numeric_limits<std::size_t>::max())
         return fail("the request file is empty");
     std::vector<std::uint8_t> request(static_cast<std::size_t>(size));
     in.seekg(0);
@@ -83,8 +104,12 @@ bool RunSimplify(const std::string& requestPath, const std::string& responsePath
     if (!r.U32(vertexCount))
         return fail("the request ends before its vertex count");
 
-    const auto* positions = static_cast<const float*>(
-        r.Block(static_cast<std::size_t>(vertexCount) * 3u * sizeof(float)));
+    if (vertexCount > kMaxVertices)
+        return fail("the request exceeds the vertex limit");
+    std::size_t positionBytes = 0;
+    if (!CheckedBytes(vertexCount, 3u * sizeof(float), positionBytes))
+        return fail("the vertex block is too large");
+    const auto* positions = static_cast<const float*>(r.Block(positionBytes));
     if (vertexCount > 0 && !positions)
         return fail("the request ends inside its positions");
     for (std::size_t i = 0; i < static_cast<std::size_t>(vertexCount) * 3; ++i)
@@ -92,6 +117,8 @@ bool RunSimplify(const std::string& requestPath, const std::string& responsePath
             return fail("the request contains a non-finite vertex position");
     if (!r.U32(runCount))
         return fail("the request ends before its run count");
+    if (runCount > kMaxRuns)
+        return fail("the request exceeds the run limit");
 
     // Validate the whole request before entering meshoptimizer. Its API assumes
     // triangle lists and valid indices, and malformed data can otherwise crash
@@ -107,12 +134,16 @@ bool RunSimplify(const std::string& requestPath, const std::string& responsePath
             return fail("the request ends inside a run header");
         if (indexCount % 3 != 0)
             return fail("a run's index count is not a multiple of three");
+        if (indexCount > kMaxIndicesPerRun)
+            return fail("a run exceeds the index limit");
         if (target > indexCount)
             return fail("a run's target exceeds its index count");
         if (flags & ~kLockBorder)
             return fail("a run contains unsupported simplify flags");
-        const auto* indices = static_cast<const unsigned int*>(
-            r.Block(static_cast<std::size_t>(indexCount) * sizeof(unsigned int)));
+        std::size_t indexBytes = 0;
+        if (!CheckedBytes(indexCount, sizeof(unsigned int), indexBytes))
+            return fail("the index block is too large");
+        const auto* indices = static_cast<const unsigned int*>(r.Block(indexBytes));
         if (indexCount > 0 && !indices)
             return fail("the request ends inside a run's indices");
         for (std::uint32_t i = 0; i < indexCount; ++i)

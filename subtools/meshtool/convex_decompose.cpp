@@ -9,12 +9,17 @@
 
 #include "vhacd/vhacd_hull.h"
 #include "response_writer.h"
+#include "binary_platform.h"
 
 namespace pulse::tool {
 namespace {
 
 constexpr std::uint32_t kMagic = 0x44435750u; // "PWCD"
 constexpr std::uint32_t kVersion = 2u;
+constexpr std::size_t kMaxRequestBytes = 512u * 1024u * 1024u;
+constexpr std::uint32_t kMaxJobs = 256u * 1024u;
+constexpr std::uint32_t kMaxVertices = 4u * 1024u * 1024u;
+constexpr std::uint32_t kMaxTriangles = 8u * 1024u * 1024u;
 
 struct Reader {
     const std::uint8_t* at;
@@ -23,16 +28,17 @@ struct Reader {
     bool U32(std::uint32_t& out) {
         if (end - at < 4)
             return false;
-        std::memcpy(&out, at, 4);
+        out = std::uint32_t(at[0]) | (std::uint32_t(at[1]) << 8) |
+              (std::uint32_t(at[2]) << 16) | (std::uint32_t(at[3]) << 24);
         at += 4;
         return true;
     }
 
     bool F32(float& out) {
-        if (end - at < 4)
+        std::uint32_t bits = 0;
+        if (!U32(bits))
             return false;
-        std::memcpy(&out, at, 4);
-        at += 4;
+        std::memcpy(&out, &bits, 4);
         return true;
     }
 
@@ -53,7 +59,10 @@ void Put(std::vector<std::uint8_t>& out, const void* data, std::size_t bytes) {
 }
 
 void PutU32(std::vector<std::uint8_t>& out, std::uint32_t value) {
-    Put(out, &value, 4);
+    out.push_back(static_cast<std::uint8_t>(value));
+    out.push_back(static_cast<std::uint8_t>(value >> 8));
+    out.push_back(static_cast<std::uint8_t>(value >> 16));
+    out.push_back(static_cast<std::uint8_t>(value >> 24));
 }
 
 } // namespace
@@ -66,12 +75,14 @@ bool RunDecompose(const std::string& requestPath, const std::string& responsePat
         return false;
     };
 
+    if (!detail::SupportsBinaryProtocol())
+        return fail("the binary protocol requires a little-endian host");
     std::ifstream in(requestPath, std::ios::binary | std::ios::ate);
     if (!in)
         return fail("could not open the request file");
     const std::streamoff size = in.tellg();
-    if (size < 12)
-        return fail("the request file is too short");
+    if (size < 12 || static_cast<std::uintmax_t>(size) > kMaxRequestBytes)
+        return fail("the request file is too short or exceeds the size limit");
     std::vector<std::uint8_t> buffer(static_cast<std::size_t>(size));
     in.seekg(0);
     in.read(reinterpret_cast<char*>(buffer.data()), size);
@@ -82,7 +93,7 @@ bool RunDecompose(const std::string& requestPath, const std::string& responsePat
     std::uint32_t magic = 0, version = 0, jobCount = 0;
     if (!r.U32(magic) || !r.U32(version) || !r.U32(jobCount))
         return fail("the request file is truncated");
-    if (magic != kMagic || version != kVersion)
+    if (magic != kMagic || version != kVersion || jobCount > kMaxJobs)
         return fail("the request file is not a decompose request");
 
     std::vector<std::uint8_t> out;
@@ -93,6 +104,8 @@ bool RunDecompose(const std::string& requestPath, const std::string& responsePat
         std::uint32_t vertCount = 0;
         if (!r.U32(vertCount))
             return fail("a job is truncated");
+        if (vertCount > kMaxVertices)
+            return fail("a job exceeds the vertex limit");
         if (vertCount > static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
             return fail("a job has too many vertices");
         const auto* verts = static_cast<const float*>(
@@ -100,6 +113,8 @@ bool RunDecompose(const std::string& requestPath, const std::string& responsePat
         std::uint32_t triCount = 0;
         if (!verts || !r.U32(triCount))
             return fail("a job is truncated");
+        if (triCount > kMaxTriangles)
+            return fail("a job exceeds the triangle limit");
         if (triCount > static_cast<std::uint32_t>(std::numeric_limits<int>::max()))
             return fail("a job has too many triangles");
         const auto* tris = static_cast<const std::int32_t*>(

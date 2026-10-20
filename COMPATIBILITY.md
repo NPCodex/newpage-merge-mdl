@@ -19,6 +19,14 @@ Current version: **v1.2.34**. All **A1–A7 and B1–B4** packages in the [fixed
 
 Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Automatic upstream releases embed their exact merged project source at `sources/NewPageMergeMDL-source.zip`; manual releases use the repository source at the release tag. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
 
+## v1.2.36 replacement scope
+
+VMD/L4D output batches use a durable manifest with one commit decision, per-target process locks and content fingerprints. Recovery checks the whole batch before changing files; conflicting external edits retain the recovery evidence. Process termination and interrupted recovery are tested separately from ordinary exceptions. This does not promise hardware power-loss safety or an atomic snapshot to external readers.
+
+Imported bone parents are resolved after the locked, source and unlocked bone passes. Missing parents and cycles fail explicitly; parent-first ordering updates every child reference. Bones needed as declared parents survive source culling. Explicit realignment, IK and jiggle behavior remains supported; a rig without a realignment request avoids an unnecessary matrix decomposition/recomposition.
+
+The meshtool file interface retains simplify v1/decompose v2, with explicit little-endian scalar fields, supported-host checks, bounded requests and unchanged exit statuses. See [protocol](subtools/meshtool/PROTOCOL.md) for layouts and limits. Linux package checks cover ELF x86-64, loader/dependency availability, archive executable permissions and actual CLI launches; C4D conversion remains Windows-only. Current measured results are in [VALIDATION.md](VALIDATION.md); older sections below retain their original scope.
+
 ## v1.2.34 replacement: combined normals, arguments and C4D materials
 
 The [2026-10-18 REA report](tests/reports/2026-10-18-rea-second-pass.md) describes

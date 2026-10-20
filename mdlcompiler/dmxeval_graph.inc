@@ -124,7 +124,14 @@ class Graph {
         }
         if(c=="DmeRigTwistConstraintOperator") {
             const auto* ts=e->GetElementArray("targets"),*slaves=e->GetElementArray("twistJoints");if(!ts||ts->size()!=2||!slaves||slaves->empty())throw EvalError("Twist requires two targets and slaves");
-            const E* a=target((*ts)[0]),*b=target((*ts)[1]);const auto parent=world(a),child=pm::ConcatTransforms(pm::MatrixInvert(parent),world(b));
+            const E* a=target((*ts)[0]),*b=target((*ts)[1]);
+            const auto parent=world(a),childWorld=world(b);
+            auto child=pm::ConcatTransforms(pm::MatrixInvert(parent),childWorld);
+            // Subtract positions before rotating. Multiplying two full affine
+            // transforms subtracts rounded, rotated world positions instead,
+            // turning coincident joints into a small arbitrary twist axis.
+            const auto displacement=pm::VectorIRotate(sub(pos(childWorld),pos(parent)),parent);
+            child.m[0][3]=displacement.x;child.m[1][3]=displacement.y;child.m[2][3]=displacement.z;
             const bool inverse=number(e,"inverse")!=0;const auto base=quaternion(e,inverse?"parentBindRotation":"childBindRotation");
             const auto localParent=pm::ConcatTransforms(pm::MatrixInvert(parentWorld(a)),parent);
             const auto relative=qmul(inv(base),inverse?orient(localParent):orient(child));

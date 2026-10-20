@@ -396,6 +396,186 @@ class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,
     def mdl(self, name):
         return (self.root / "models" / (name + ".mdl")).read_bytes()
 
+    def mdl_bones(self, name):
+        """Return (name, parent, local-position, local-angles) for each bone."""
+        data = self.mdl(name)
+        count, index = struct.unpack_from('<2i', data, 156)
+        bones = []
+        for i in range(count):
+            offset = index + i * 216
+            name_offset = offset + struct.unpack_from('<i', data, offset)[0]
+            bone_name = data[name_offset:data.index(b'\0', name_offset)].decode()
+            parent = struct.unpack_from('<i', data, offset + 4)[0]
+            position = struct.unpack_from('<3f', data, offset + 32)
+            angles = struct.unpack_from('<3f', data, offset + 60)
+            bones.append((bone_name, parent, position, angles))
+        return bones
+
+    def test_definebone_later_parent_is_resolved_before_child(self):
+        qc = ('$modelname later_parent\n$bonecullmethod none\n'
+              '$definebone db_child db_parent 0 0 1 0 0 0 0 0 0 0 0 0\n'
+              '$definebone db_parent "" 0 0 0 0 0 0 0 0 0 0 0 0\n')
+        self.run_qc(qc)
+        bones = self.mdl_bones('later_parent')
+        indices = {name: i for i, (name, _, _, _) in enumerate(bones)}
+        self.assertLess(indices['db_parent'], indices['db_child'])
+        self.assertEqual(bones[indices['db_child']][1], indices['db_parent'])
+
+    def test_definebone_parent_from_smd_is_resolved_after_locked_pass(self):
+        qc = ('$modelname source_parent\n$bonecullmethod none\n'
+              '$definebone db_child root 0 0 1 0 0 0 0 0 0 0 0 0\n')
+        self.run_qc(qc)
+        bones = self.mdl_bones('source_parent')
+        indices = {name: i for i, (name, _, _, _) in enumerate(bones)}
+        self.assertEqual(bones[indices['db_child']][1], indices['root'])
+
+    def test_definebone_missing_parent_fails_without_output(self):
+        qc = ('$modelname missing_parent\n$bonecullmethod none\n'
+              '$definebone orphan absent_parent 0 0 0 0 0 0 0 0 0 0 0 0\n')
+        output = self.run_qc(qc, success=False)
+        self.assertIn('unknown parent', output)
+        self.assertFalse((self.root / 'models' / 'missing_parent.mdl').exists())
+
+    def test_definebone_parent_cycle_fails_without_output(self):
+        qc = ('$modelname parent_cycle\n$bonecullmethod none\n'
+              '$definebone cycle_a cycle_b 0 0 0 0 0 0 0 0 0 0 0 0\n'
+              '$definebone cycle_b cycle_a 0 0 0 0 0 0 0 0 0 0 0 0\n')
+        output = self.run_qc(qc, success=False)
+        self.assertIn('circular bone hierarchy', output)
+        self.assertFalse((self.root / 'models' / 'parent_cycle.mdl').exists())
+
+    def test_definebone_mixed_lock_order_and_source_parent_preserve_bind(self):
+        # The locked child is inserted before source union, while its parent
+        # may arrive in the unlocked pass or as an unskinned source bone.
+        for parent_definition in (
+                '$definebone later "" unlocked 2 3 4 0 0 0\n',
+                '$definebone later "" locked 2 3 4 0 0 0\n'):
+            with self.subTest(parent_definition=parent_definition):
+                self.run_qc('$modelname mixed\n$bonecullmethod none\n'
+                            '$definebone child later locked 0 0 1 0 0 0\n' + parent_definition)
+                bones = self.mdl_bones('mixed')
+                indices = {bone[0]: i for i, bone in enumerate(bones)}
+                self.assertLess(indices['later'], indices['child'])
+                self.assertEqual(bones[indices['child']][1], indices['later'])
+                self.assertEqual(bones[indices['child']][2], (0, 0, 1))
+                self.assertEqual(bones[indices['later']][2], (2, 3, 4))
+        self.run_qc('$modelname source_precedence\n'
+                    '$definebone child unused_child locked 0 0 2 0 0 0\n'
+                    '$definebone unused_child missing_fallback unlocked 90 80 70 0 0 0\n')
+        bones = self.mdl_bones('source_precedence')
+        indices = {bone[0]: i for i, bone in enumerate(bones)}
+        self.assertEqual(bones[indices['child']][1], indices['unused_child'])
+        self.assertEqual(bones[indices['unused_child']][1], indices['root'])
+        self.assertEqual(bones[indices['unused_child']][2], (0, 0, 1))
+
+    def test_definebone_and_hierarchy_cycles_preserve_previous_output(self):
+        self.run_qc('$modelname cycles\n$bonecullmethod none\n')
+        original = self.mdl('cycles')
+        definitions = (
+            '$definebone same SAME 0 0 0 0 0 0\n',
+            '$definebone a b locked 0 0 0 0 0 0\n'
+            '$definebone b a unlocked 0 0 0 0 0 0\n',
+            '$definebone root unused_child 0 0 0 0 0 0\n',
+            '$hierarchy root root\n',
+            '$hierarchy root unused_child\n',
+        )
+        for definition in definitions:
+            with self.subTest(definition=definition):
+                output = self.run_qc('$modelname cycles\n$bonecullmethod none\n' + definition,
+                                     success=False)
+                self.assertIn('circular bone hierarchy', output)
+                self.assertEqual(self.mdl('cycles'), original)
+
+    def test_hierarchy_reorder_preserves_all_children_and_world_bind(self):
+        qc = ('$modelname reordered\n$bonecullmethod none\n'
+              '$definebone a "" 1 0 0 0 0 0\n'
+              '$definebone b a 0 2 0 0 0 0\n'
+              '$definebone c a 0 0 3 0 0 0\n'
+              '$definebone d "" 10 0 0 0 0 0\n'
+              '$hierarchy a d\n')
+        self.run_qc(qc)
+        bones = self.mdl_bones('reordered')
+        indices = {bone[0]: i for i, bone in enumerate(bones)}
+        for child, parent in (('a', 'd'), ('b', 'a'), ('c', 'a')):
+            self.assertLess(indices[parent], indices[child])
+            self.assertEqual(bones[indices[child]][1], indices[parent])
+        self.assertEqual(bones[indices['a']][2], (-9, 0, 0))
+        self.assertEqual(bones[indices['b']][2], (0, 2, 0))
+        self.assertEqual(bones[indices['c']][2], (0, 0, 3))
+
+    def test_realign_opt_in_and_ik_preserve_render_geometry(self):
+        self.write('chain.smd',
+                   'version 1\nnodes\n0 "hip" -1\n1 "knee" 0\n2 "foot" 1\nend\n'
+                   'skeleton\ntime 0\n0 2 3 4 .17 .23 .31\n1 0 2 0 0 0 0\n'
+                   '2 0 2 .5 0 0 0\nend\ntriangles\nmaterial\n'
+                   '2 0 0 0 0 0 1 0 0\n2 1 0 0 0 0 1 1 0\n'
+                   '2 0 1 0 0 0 1 0 1\nend\n')
+        plain_points, plain_angles = None, None
+        for directives in ('', '$realignbones\n', '$ikchain leg foot\n',
+                           '$forcerealign hip rotate 17 23 29\n'):
+            with self.subTest(directives=directives):
+                self.scene_qc('$modelname realign_modes\n$body m chain.smd\n' + directives)
+                bones = self.mdl_bones('realign_modes')
+                self.assertEqual([b[0] for b in bones], ['hip', 'knee', 'foot'])
+                vvd = (self.root / 'models/realign_modes.vvd').read_bytes()
+                start = struct.unpack_from('<i', vvd, 56)[0]
+                points = [struct.unpack_from('<3f', vvd, start + i * 48 + 16) for i in range(3)]
+                if not directives:
+                    plain_points, plain_angles = points, bones[0][3]
+                    for actual, expected in zip(bones[1][2], (0, 2, 0)):
+                        self.assertAlmostEqual(actual, expected, places=5)
+                else:
+                    self.assertNotEqual(bones[0][3], plain_angles)
+                    for actual, expected in zip(points, plain_points):
+                        for x, y in zip(actual, expected):
+                            self.assertAlmostEqual(x, y, places=4)
+                if directives in ('$realignbones\n', '$ikchain leg foot\n'):
+                    for actual, expected in zip(bones[1][2], (2, 0, 0)):
+                        self.assertAlmostEqual(actual, expected, places=5)
+
+    def test_prealigned_definebone_survives_explicit_realign(self):
+        # The second sextet is the authored srcRealign.  $realignbones may
+        # rotate the single-child source chain, but must leave this explicit
+        # bind pose and its pre-alignment basis intact.
+        baseline = None
+        for realign in ('', '$realignbones\n'):
+            self.run_qc('$modelname prealigned\n$bonecullmethod none\n' + realign +
+                        '$definebone root "" 1 2 3 0 0 0 0 0 0 0 0 90\n')
+            bones = self.mdl_bones('prealigned')
+            root = next(bone for bone in bones if bone[0] == 'root')
+            for actual, expected in zip(root[2], (1.0, 2.0, 3.0)):
+                self.assertAlmostEqual(actual, expected, places=5)
+            self.assertEqual(root[1], -1)
+            self.assertEqual(root[3], (0, 0, 0))
+            vvd = (self.root / 'models/prealigned.vvd').read_bytes()
+            start = struct.unpack_from('<i', vvd, 56)[0]
+            geometry = [struct.unpack_from('<6f', vvd, start + i * 48 + 16) for i in range(3)]
+            if baseline is None:
+                baseline = geometry
+            else:
+                for actual, expected in zip(geometry, baseline):
+                    for x, y in zip(actual, expected):
+                        self.assertAlmostEqual(x, y, places=5)
+
+    def test_twist_small_nonzero_axis_is_not_treated_as_coincident(self):
+        from procedural_cases import POSITIONS, ROTATIONS, euler, reference_twist, multiply, dot
+        positions = list(POSITIONS)
+        positions[2] = tuple(v * .0001 for v in positions[2])
+        frames, _ = self.twist_compile(positions=positions)
+        worlds = self.all_animation_poses('twist', 'motion')
+        for frame, rotations in enumerate(frames):
+            twist = reference_twist(euler(rotations[1]), positions[2], euler(rotations[2]),
+                                    euler(ROTATIONS[2]), (0, 1, 0), .25,
+                                    euler(ROTATIONS[3]), False)
+            parent = multiply(euler(rotations[0]), euler(rotations[1]))
+            expected = multiply(parent, twist)
+            actual = worlds[frame]['twistA'][1]
+            self.assertAlmostEqual(abs(dot(actual, expected)), 1, delta=.0002)
+            if frame:
+                fallback = multiply(parent, euler(ROTATIONS[3]))
+                self.assertLess(abs(dot(actual, fallback)),
+                                (1 + abs(dot(expected, fallback))) / 2)
+
     def sequences(self, name):
         data = self.mdl(name)
         count, index = struct.unpack_from('<2i', data, 188)

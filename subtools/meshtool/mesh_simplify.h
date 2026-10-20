@@ -3,7 +3,8 @@
 // Runs meshoptimizer's simplifier over one or more index runs sharing a vertex
 // pool, which is what $lod's decimatemodel / decimateallmodel and $rendermesh's
 // $decimate ask for. Request and response are binary files: the caller writes
-// one, names both on the command line, and reads the other back.
+// one, names both on the command line, and reads the other back. The wire
+// format is little-endian and bounded by the implementation's request limits.
 
 #pragma once
 

@@ -182,18 +182,92 @@ def stamp_version(candidate, base, version):
     config_path.write_text(json.dumps(config, indent=2) + '\n', encoding='utf-8')
 
 
-def prepare(args):
-    config = json.loads((ROOT / 'automation/upstreams.json').read_text())
-    overlay = ROOT / 'automation/compatibility.patch'
-    controller = os.environ.get('GITHUB_SHA') or subprocess.check_output(
-        ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+def release_changes(state, previous, repository):
+    """Record only the revisions introduced since the preceding package.
+
+    PulseModel is a default-branch source revision, not an upstream stable or
+    preview release. CE/Tools++ are reference metadata and never feature notes.
+    """
+    previous = previous or {}
+    sources = (
+        ('NewPage', repository, previous.get('controller_sha'), state['controller_sha']),
+        ('PulseModel 默认分支源码', state['pulsemodel']['repo'],
+         previous.get('pulsemodel', {}).get('sha'), state['pulsemodel']['sha']),
+    )
+    changes = []
+    for label, repo, before, after in sources:
+        if before == after:
+            continue
+        change = dict(label=label, repository=repo, before=before, after=after)
+        changes.append(change)
+        if not repo or not before:
+            change['status'] = 'baseline-unavailable'
+            continue
+        change['url'] = f'https://github.com/{repo}/compare/{before}...{after}'
+        try:
+            comparison = api(f'repos/{repo}/compare/{before}...{after}?per_page=100')
+            change['status'] = comparison['status']
+            change['total_commits'] = comparison['total_commits']
+            change['subjects'] = [commit['commit']['message'].splitlines()[0]
+                                  for commit in comparison['commits']]
+        except (urllib.error.URLError, TimeoutError, KeyError, TypeError, ValueError):
+            # A release-note lookup is not evidence of an empty source diff.
+            change['status'] = 'comparison-unavailable'
+    return changes
+
+
+def concise_release_notes(changes):
+    """Human-facing deltas only; full revisions and references stay in manifest."""
+    def plain(value):
+        # Commit subjects are display data. Prevent Markdown/HTML formatting.
+        value = ' '.join(str(value).split())[:180]
+        return re.sub(r'([\\`*_{}\[\]<>])', r'\\\1', value)
+
+    lines = []
+    for change in changes:
+        label = change['label']
+        if change['status'] == 'baseline-unavailable':
+            lines.append(f'- {label}：首次记录构建来源，无法确认相对上一发行包的变更。')
+            continue
+        link = f"[提交差异]({change['url']})"
+        if change['status'] == 'comparison-unavailable':
+            lines.append(f'- {label}：源码版本已变化，具体变更暂未核实（{link}）。')
+            continue
+        subjects = change.get('subjects', [])
+        for subject in subjects[:5]:
+            lines.append(f'- {label}：{plain(subject)}')
+        if change['status'] != 'ahead':
+            lines.append(f'- {label}：源码历史已变化（{link}）。')
+        elif len(subjects) > 5 or change.get('total_commits', 0) > len(subjects):
+            lines.append(f'- {label}：共 {change["total_commits"]} 项提交，完整内容见{link}。')
+        elif subjects:
+            lines.append(f'\n{label}：{link}')
+    if not lines:
+        return '按现有源码重新构建；没有新增源码提交。\n'
+    return '\n'.join(lines).strip() + '\n'
+
+
+def append_release_notes(previous, current, tag):
+    """Preserve earlier change entries while replacing obsolete ZIP digests."""
+    previous = previous.replace('\r\n', '\n')
+    previous = re.sub(
+        r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?ZIP SHA-?256:[ \t]*\n\s*```(?:text)?[ \t]*\n'
+        r'(?:[a-f0-9]{64}[ \t]+[^\n]+\n)+```[ \t]*(?:\n|$)', '', previous).strip()
+    if previous:
+        return previous + '\n\n## ' + tag + ' 后续更新\n\n' + current.lstrip()
+    return current
+
+
+def source_state(config, controller, pulse_revision, source):
+    """Canonical rebuild identity shared by maintained and upstream packages."""
+    source = Path(source)
     state = {
         'schema': 1,
         'project_version': config.get('project_version', '1.2.0'),
         'controller_sha': controller,
-        'overlay_sha256': sha256(overlay),
-        'configuration_sha256': sha256(ROOT / 'automation/upstreams.json'),
-        'pulsemodel': {'repo': config['pulsemodel'], 'sha': latest_commit(config['pulsemodel'])},
+        'overlay_sha256': sha256(source / 'automation/compatibility.patch'),
+        'configuration_sha256': sha256(source / 'automation/upstreams.json'),
+        'pulsemodel': {'repo': config['pulsemodel'], 'sha': pulse_revision},
         'integration': {
             'pulsemodel': 'source patch overlay',
             'studiomdl_ce': 'reference download; new functionality not automatically ported',
@@ -201,6 +275,29 @@ def prepare(args):
         }
     }
     state['fingerprint'] = fingerprint(state)
+    return state
+
+
+def maintained_manifest(args):
+    source = Path(args.source).resolve()
+    config = json.loads((source / 'automation/upstreams.json').read_text(encoding='utf-8'))
+    controller = os.environ.get('GITHUB_SHA') or subprocess.check_output(
+        ['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip()
+    version = re.search(r'project\(NewPageMergeMDL VERSION ([0-9.]+)',
+                        (source / 'CMakeLists.txt').read_text(encoding='utf-8'))[1]
+    state = source_state(config, controller, config['pulse_base'], source)
+    state.update(version_base=state['project_version'], project_version=version,
+                 release_tag=args.tag, source_kind='maintained checkout',
+                 generated_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
+    Path(args.output).write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
+
+
+def prepare(args):
+    config = json.loads((ROOT / 'automation/upstreams.json').read_text())
+    overlay = ROOT / 'automation/compatibility.patch'
+    controller = os.environ.get('GITHUB_SHA') or subprocess.check_output(
+        ['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    state = source_state(config, controller, latest_commit(config['pulsemodel']), ROOT)
     previous = published_manifest(os.environ.get('GITHUB_REPOSITORY'))
     base_version = state['project_version']
     state['project_version'], tag = release_version(base_version, previous, state['fingerprint'])
@@ -253,64 +350,9 @@ def prepare(args):
     run(sys.executable, candidate / '.github/scripts/refresh_overlay.py', '--base-repository', candidate)
     state['build_overlay_sha256'] = sha256(candidate / 'automation/compatibility.patch')
     state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    state['release_changes'] = release_changes(state, previous, os.environ.get('GITHUB_REPOSITORY'))
     (work / 'upstream-manifest.json').write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
-    notes = (
-        f"PulseModel source: `{state['pulsemodel']['sha']}`\n\n"
-        f"StudioMDL-CE reference: `{ce['sha']}`\n\n"
-        'Tools++ reference assets: ' + ', '.join(a['name'] for a in state['studiomdl_plusplus']['assets']) + '\n\n'
-        'PulseModel was integrated using the maintained compatibility overlay. '
-        'StudioMDL-CE and StudioMDL++ were downloaded for version tracking only; '
-        'their new closed-source functionality is not automatically integrated. '
-        'Their binaries are not included in this release.\n\n'
-        'The v1.2.31 baseline incorporates upstream deprecated importqc cleanup. '
-        'NewPage retains the previously shipped meshtool source, build target and executable '
-        'as a maintained extension despite its upstream removal. NewPage application icons '
-        'and existing model-compilation behavior are preserved.\n\n'
-        'The v1.2.29 correction preserves independent procedural ragdoll bodies and explicit '
-        'physics bone dependencies. Runtime setup flags prevent uncomputed collision-only '
-        'transforms, and missing-child constraints no longer overwrite directly authored '
-        'parent axes. The original Plum QC restores three separate hair bodies; bounded '
-        'GMod prop/NPC tests and compatibility regressions are recorded in VALIDATION.md.\n\n'
-        'The v1.2.28 merge adds faster per-bone sequence bounds with '
-        '-legacysequencebounds for the previous vertex-skinning algorithm; default bounds may be wider. '
-        'It includes DMX physics primitives, inline $physicsshape primitive box/sphere/capsule, '
-        'ragdoll $origin support and inheritance from DMX attachments. Shared DMX/KV3/zstd '
-        'libraries retain project compatibility extensions, SubD round trips and default skin hierarchy retention. '
-        'See VALIDATION.md for completed checks and their limits.\n\n'
-        'Both platform archives now include subtools/ag2proportions, an experimental CS2 AnimGraph2 '
-        'proportion helper using the project version. It is not ordinary Source1 MDL compilation '
-        'or a GMod/CSGO arms fix. Installed CS2 data is required; compiling generated resources '
-        'also requires compatible Workshop Tools. Direct VMDL input edits the model in place; '
-        'read INSTALL.md and --help before use. Help/version smoke checks do not certify '
-        'CS2 ModelDoc or in-game behavior. Its third-party notices are bundled under subtools/licenses/.\n\n'
-        'Includes independently implemented NekoMDL compatibility based on the supplied Chinese v2.3.0 changelog: '
-        'scene import, Neko model/driver syntax, jiggle options and QC extensions. '
-        'Neko binaries are not redistributed; reference updates are reviewed manually. '
-        'See both READMEs and COMPATIBILITY.md for remaining differences.\n\n'
-        'Includes NvTriStrip legacy ordering, LOD replacement validation, '
-        'DMX finite-number checks, safe oversized animation encoding and long PHY strings. '
-        'Includes checked body/skin capacity, synchronized global clamping, local-hierarchy retention, DMX corner validation and opt-in concave collision decomposition. '
-        'Includes model-scoped material merging, meshopt glTF decoding and static unskinned GPU instance expansion. '
-        'see RESEARCH.md for measured performance and validation scope.\n\n'
-        'Restores legacy Neko prefer_fbx/forcecapsules script acceptance and the usenvtristrip alias. See FEATURE_MATRIX.md for five-compiler integration status. '
-        'Adds explicit CE/Neko flex compatibility profiles, expanded facial/rig differential tests, real-material GMod face/decimated-LOD validation, macro provenance, repeated-joint weight fixes, serialized output checks and detailed performance JSON. Retains procedural ragdoll fixes, explicit copy weightlists and packaged-binary regression gates. Includes ordered AppID/VPK resource mounting, direct Draco glTF import, '
-        'sampled scale/morph-weight vertex animation with a GMod Lua playback helper, '
-        'per-bone ragdoll decomposition, expanded reference differentials, actual GMod '
-        'geometry/LOD/facial/physics checks and phase/memory benchmark reports. '
-        'See VALIDATION.md for usage and bounded verification results.\n\n'
-        'The v1.2.23 fixed five-compiler ledger is in FIVE_COMPILER_COMPLETION.md. '
-        'It adds explicit QC/weight/FBX policies, true FBX bind poses, expanded flex capacity, '
-        'scene interpolation, PMX morphs, skinned instancing, mesh-state/VRM consumers and '
-        'journaled output recovery. M3D and pinned USD import are built in; VRML uses a '
-        'separate GPL converter with corresponding source. The complete Windows package '
-        'includes the validated C4D helper. See O5_FORMAT_IMPORTS.md for format and license scope.\n\n'
-        'Both platform builds and compatibility tests must pass before publication. '
-        'Download one ZIP for your platform, extract the entire folder, then set -game '
-        'to the target game directory containing gameinfo.txt (including CSGO/MCV). '
-        'See INSTALL.md inside the package. Reports, provenance and file checksums are included. '
-        'sources/NewPageMergeMDL-source.zip inside each package is the actual merged build input; '
-        'GitHub-generated source archives correspond to the controller commit.\n'
-    )
+    notes = concise_release_notes(state['release_changes'])
     (work / 'release-notes.md').write_text(notes, encoding='utf-8')
     emit(changed=True, tag=tag)
 
@@ -322,6 +364,29 @@ def source_archive(args):
             relative = path.relative_to(source)
             if path.is_file() and not any(p in {'.git', '__pycache__', 'build', 'out', 'dist'} for p in relative.parts):
                 archive.write(path, (Path('NewPageMergeMDL') / relative).as_posix())
+
+
+def record_build(args):
+    """Record the configuration actually selected, including IPO fallback."""
+    cache = {}
+    for line in Path(args.cache).read_text(encoding='utf-8').splitlines():
+        match = re.match(r'([^#/:][^:]*):[^=]+=(.*)$', line)
+        if match:
+            cache[match[1]] = match[2]
+    compiler = cache.get('NEWPAGE_BUILD_CXX_COMPILER') or cache.get('CMAKE_CXX_COMPILER')
+    if not compiler or 'CMAKE_INTERPROCEDURAL_OPTIMIZATION' not in cache:
+        raise ValueError('Build cache must identify its compiler and explicit IPO setting')
+    manifest = Path(args.manifest)
+    state = json.loads(manifest.read_text(encoding='utf-8'))
+    state['build'] = {
+        'configuration': args.configuration,
+        'c_compiler': cache.get('NEWPAGE_BUILD_C_COMPILER') or cache.get('CMAKE_C_COMPILER'),
+        'cxx_compiler': compiler,
+        'compiler_id': cache.get('NEWPAGE_BUILD_CXX_COMPILER_ID'),
+        'compiler_version': cache.get('NEWPAGE_BUILD_CXX_COMPILER_VERSION'),
+        'interprocedural_optimization': cache['CMAKE_INTERPROCEDURAL_OPTIMIZATION'].upper() in ('ON', 'TRUE', '1', 'YES'),
+    }
+    manifest.write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
 
 
 def write_inventory(archive):
@@ -371,6 +436,8 @@ def package(args):
                         info.external_attr = 0o100755 << 16
         for name in ('LICENSE', 'README.md', 'README.en.md', 'INSTALL.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
             archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
+        archive.write(Path(args.source) / 'subtools/meshtool/PROTOCOL.md',
+                      'NewPageMergeMDL/subtools/meshtool-protocol.md')
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         # Keep README previews usable after extraction and retain the editable
         # brand source. Do not bundle workflow files with the runtime tools.
@@ -427,10 +494,17 @@ if __name__ == '__main__':
     commands = parser.add_subparsers(dest='command', required=True)
     p = commands.add_parser('prepare'); p.add_argument('--work', required=True); p.add_argument('--force', action='store_true')
     p = commands.add_parser('source-archive'); p.add_argument('--source', required=True); p.add_argument('--output', required=True)
+    p = commands.add_parser('maintained-manifest')
+    p.add_argument('--source', default='.'); p.add_argument('--output', required=True)
+    p.add_argument('--tag', required=True)
+    p = commands.add_parser('record-build')
+    p.add_argument('--manifest', required=True); p.add_argument('--cache', required=True)
+    p.add_argument('--configuration', required=True)
     p = commands.add_parser('package'); p.add_argument('--source', required=True); p.add_argument('--dist', required=True)
     p.add_argument('--platform', choices=['win64', 'linux64'], required=True); p.add_argument('--output', required=True)
     p.add_argument('--manifest', required=True)
     p.add_argument('--source-archive', help='Exact merged build input for automatic upstream releases')
     p = commands.add_parser('checksums'); p.add_argument('--folder', required=True)
     args = parser.parse_args()
-    {'prepare': prepare, 'source-archive': source_archive, 'package': package, 'checksums': checksums}[args.command](args)
+    {'prepare': prepare, 'source-archive': source_archive, 'maintained-manifest': maintained_manifest, 'record-build': record_build,
+     'package': package, 'checksums': checksums}[args.command](args)

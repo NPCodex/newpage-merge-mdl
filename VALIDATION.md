@@ -1,4 +1,12 @@
-# v1.2.34 当前验证
+# v1.2.36 验证记录
+
+本轮验证范围、实测状态和发布包门禁见 [替换构建报告](tests/reports/v1.2.36-replacement-validation.md) 及 [机器摘要](tests/reports/v1.2.36-replacement-validation.json)。Linux 的 GCC/Clang、IPO 降级、ELF 依赖、ZIP 权限及工具启动由当前 CI 构建验证；过去的 Linux 成功运行不计为本轮验证。
+
+发布流程在两个平台的实际归档验证成功后替换同一个 `v1.2.36` Release。包内 `upstream-manifest.json` 记录实际源码提交及构建配置；当前下载文件的 ID、大小和 digest 以 [GitHub Release](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.36) 为准。归档自身的存在不代表游戏内行为已经认证。
+
+以下保留原始历史证据。其中“本轮”“最终”等用语仅针对原记录的 v1.2.34，不描述 v1.2.36。
+
+# v1.2.34 历史验证
 
 ## 2026-10-18 替换版验证
 

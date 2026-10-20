@@ -151,6 +151,9 @@ def main():
             offset += 12
         assert offset == len(result)
         invalid = {
+            "bad_magic": b"BAD!" + simplify_request()[4:],
+            "bad_version": simplify_request()[:4] + struct.pack("<I", 99) + simplify_request()[8:],
+            "big_endian_header": struct.pack(">IIII", 0x4D535750, 1, 0, 0),
             "index_out_of_range": simplify_request((0, 1, 0x7FFFFFFF)),
             "non_triangular": simplify_request((0, 1, 2, 0)),
             "target_out_of_range": simplify_request(target=4),
@@ -163,6 +166,10 @@ def main():
             "bad_second_run": simplify_request(runs=[((0, 1, 2), 3, 0), ((0, 1, 9), 0, 0)]),
             "unsupported_flags": simplify_request(runs=[((0, 1, 2), 3, 2)]),
             "trailing_data": simplify_request() + b"garbage",
+            "vertex_limit": struct.pack("<III", 0x4D535750, 1, 4 * 1024 * 1024 + 1),
+            "run_limit": struct.pack("<IIII", 0x4D535750, 1, 0, 1024 * 1024 + 1),
+            "index_limit": struct.pack("<IIIIIII", 0x4D535750, 1, 0, 1,
+                                        16 * 1024 * 1024 + 2, 0, 0),
         }
         for name, data in invalid.items():
             request.write_bytes(data)
@@ -176,6 +183,7 @@ def main():
         # and malformed or unusable geometry, and never replaces an old answer
         # unless every job has been processed successfully.
         decompose_response = root / "decompose.response"
+        sentinel = b"previous decompose response must survive"
         empty_job = ((), (), 0.1, 4, 1.0, 10000)
         request.write_bytes(decompose_request([empty_job]))
         run("mesh_decompose_empty_job", "meshtool", ["decompose", request, decompose_response])
@@ -210,7 +218,36 @@ def main():
             "vhacd_degenerate_mesh": (
                 tetra_vertices, (0, 0, 0), 0.1, 4, 1.0, 10000),
         }
-        sentinel = b"previous decompose response must survive"
+        malformed_decompose = {
+            "bad_magic": b"BAD!" + decompose_request([empty_job])[4:],
+            "bad_version": struct.pack("<III", 0x44435750, 99, 0),
+            "big_endian_header": struct.pack(">III", 0x44435750, 2, 0),
+            "job_limit": struct.pack("<III", 0x44435750, 2, 256 * 1024 + 1),
+            "vertex_limit": struct.pack("<IIII", 0x44435750, 2, 1, 4 * 1024 * 1024 + 1),
+            "triangle_limit": struct.pack("<IIIII", 0x44435750, 2, 1, 0, 8 * 1024 * 1024 + 1),
+            "truncated_job": decompose_request([empty_job])[:-1],
+            "trailing_data": decompose_request([empty_job]) + b"garbage",
+        }
+        for name, data in malformed_decompose.items():
+            request.write_bytes(data)
+            decompose_response.write_bytes(sentinel)
+            run("mesh_decompose_" + name, "meshtool", ["decompose", request, decompose_response],
+                1, [decompose_response], "decompose:")
+        # Oversized sparse requests must fail before attempting a multi-GiB
+        # allocation. Mark the Windows file sparse before extending it.
+        with request.open("wb") as sparse:
+            if os.name == "nt":
+                import msvcrt
+                handle = msvcrt.get_osfhandle(sparse.fileno())
+                returned = ctypes.c_ulong()
+                assert ctypes.windll.kernel32.DeviceIoControl(
+                    ctypes.c_void_p(handle), 0x900C4, None, 0, None, 0,
+                    ctypes.byref(returned), None), "cannot create sparse request fixture"
+            sparse.truncate((1 << 32) + 16)
+        for operation in ("simplify", "decompose"):
+            decompose_response.write_bytes(sentinel)
+            run("mesh_" + operation + "_file_size_limit", "meshtool",
+                [operation, request, decompose_response], 1, [decompose_response], "size limit")
         for name, job in bad_decompose_jobs.items():
             request.write_bytes(decompose_request([job]))
             decompose_response.write_bytes(sentinel)

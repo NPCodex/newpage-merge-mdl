@@ -20,6 +20,7 @@ on:
       - '.github/scripts/refresh_overlay.py'
       - '.github/scripts/publish_release.py'
       - '.github/workflows/upstream-release.yml'
+      - '.github/workflows/linux-toolchain-validation.yml'
       - '.github/images/newpage-*.png'
       - 'assets/branding/**'
       - 'tests/**'
@@ -112,7 +113,10 @@ jobs:
       - name: Extract source
         run: python -m zipfile -e prepared/NewPageMergeMDL-source.zip candidate
       - name: Configure
-        run: cmake -S candidate/NewPageMergeMDL -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist"
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "linux64" ]; then export CC=gcc CXX=g++; fi
+          cmake -S candidate/NewPageMergeMDL -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist"
       - name: Build every tool
         run: cmake --build build --config MinSizeRel --parallel 2
       - name: Test pipeline helpers
@@ -131,9 +135,14 @@ jobs:
       - name: Test killed processes and output rollback
         run: ctest --test-dir output-tests -C Release --output-on-failure
       - name: Package with source provenance
-        run: python .github/scripts/upstream_release.py package --source candidate/NewPageMergeMDL --dist dist --platform ${{ matrix.platform }} --manifest prepared/upstream-manifest.json --source-archive prepared/NewPageMergeMDL-source.zip --output newpage-merge-mdl-${{ matrix.platform }}.zip
+        run: |
+          python .github/scripts/upstream_release.py record-build --manifest prepared/upstream-manifest.json --cache build/CMakeCache.txt --configuration MinSizeRel
+          python .github/scripts/upstream_release.py package --source candidate/NewPageMergeMDL --dist dist --platform ${{ matrix.platform }} --manifest prepared/upstream-manifest.json --source-archive prepared/NewPageMergeMDL-source.zip --output newpage-merge-mdl-${{ matrix.platform }}.zip
       - name: Verify packaged binaries before release
         run: python candidate/NewPageMergeMDL/tests/verify_package.py newpage-merge-mdl-${{ matrix.platform }}.zip --manifest prepared/upstream-manifest.json --subtool-probe output-tests/bin/subtool_transaction_probe${{ matrix.ext }}
+      - name: Verify Linux executable metadata and launch probes
+        if: matrix.platform == 'linux64'
+        run: python candidate/NewPageMergeMDL/tests/linux_package_smoke.py newpage-merge-mdl-${{ matrix.platform }}.zip
       - uses: actions/upload-artifact@v7
         with:
           name: tested-${{ matrix.platform }}
@@ -141,8 +150,17 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  linux-clang:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    uses: ./.github/workflows/linux-toolchain-validation.yml
+    with:
+      source-artifact: merged-source
+    permissions:
+      contents: read
+
   publish:
-    needs: [prepare, build]
+    needs: [prepare, build, linux-clang]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -160,24 +178,16 @@ jobs:
           pattern: tested-*
           merge-multiple: true
           path: release-files
-      - name: Add single-package installation and ZIP checksums to release notes
+      - name: Add ZIP checksums to release notes
         shell: bash
         run: |
           python3 - <<'PY'
           import hashlib
           from pathlib import Path
           notes = Path('prepared/release-notes.md')
-          intro = ('Download one ZIP for your operating system and extract the entire folder. '
-                   'Windows includes the C4D and VRML converters; Linux includes the tools supported on Linux. '
-                   'Read INSTALL.md inside the package and always set -game to the directory containing '
-                   'the correct target gameinfo.txt before compiling. No separate source, update or helper '
-                   'download is needed: exact merged source, provenance, checksums and validation reports '
-                   'are included in each package.\n\n'
-                   '下载对应系统的一个 ZIP，完整解压即可使用；编译前务必设置正确的 gameinfo.txt 所在目录。'
-                   '安装说明、源码、校验清单和验证记录均在包内。\n\n')
           checksums = '\n'.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}'
                                 for p in sorted(Path('release-files').glob('newpage-merge-mdl-*.zip')))
-          notes.write_text(intro + notes.read_text(encoding='utf-8') + '\n\nZIP SHA256:\n```text\n'
+          notes.write_text(notes.read_text(encoding='utf-8').rstrip() + '\n\nZIP SHA256:\n```text\n'
                            + checksums + '\n```\n', encoding='utf-8')
           PY
       - name: Publish complete tested release

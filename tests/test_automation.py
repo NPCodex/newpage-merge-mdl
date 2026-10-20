@@ -20,6 +20,9 @@ spec.loader.exec_module(sync)
 spec = importlib.util.spec_from_file_location('publish_release', ROOT / '.github/scripts/publish_release.py')
 publisher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(publisher)
+spec = importlib.util.spec_from_file_location('release_notes', ROOT / '.github/scripts/release-notes.py')
+notes = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(notes)
 
 
 def asset(name='tools.zip', identifier=1):
@@ -29,6 +32,147 @@ def asset(name='tools.zip', identifier=1):
 
 
 class AutomationTests(unittest.TestCase):
+    def test_maintained_package_prevents_redundant_scheduled_release(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'automation').mkdir()
+            config = dict(project_version='1.2.36', pulsemodel='official/pulse', pulse_base='pulse',
+                          studiomdl_ce='official/ce', tools_repository='official/tools', tools_tag='v1',
+                          tools_assets=['tools.zip'])
+            (root / 'automation/upstreams.json').write_text(json.dumps(config))
+            (root / 'automation/compatibility.patch').write_text('maintained patch')
+            (root / 'CMakeLists.txt').write_text('project(NewPageMergeMDL VERSION 1.2.36 LANGUAGES CXX C)')
+            manifest = root / 'manifest.json'
+            with patch.dict(os.environ, GITHUB_SHA='controller'):
+                sync.maintained_manifest(argparse.Namespace(source=root, output=manifest, tag='v1.2.36'))
+            previous = json.loads(manifest.read_text())
+            canonical = sync.source_state(config, 'controller', 'pulse', root)
+            self.assertEqual(previous['fingerprint'], canonical['fingerprint'])
+            self.assertEqual(previous['version_base'], '1.2.36')
+            self.assertNotEqual(previous['fingerprint'], sync.source_state(config, 'new-code', 'pulse', root)['fingerprint'])
+            self.assertNotEqual(previous['fingerprint'], sync.source_state(config, 'controller', 'new-pulse', root)['fingerprint'])
+            cache = root / 'CMakeCache.txt'
+            cache.write_text('CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/g++\nCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF\n')
+            sync.record_build(argparse.Namespace(manifest=manifest, cache=cache, configuration='MinSizeRel'))
+            recorded = json.loads(manifest.read_text())
+            self.assertEqual(recorded['fingerprint'], previous['fingerprint'])
+            with patch.object(sync, 'ROOT', root), patch.dict(os.environ, GITHUB_SHA='controller', GITHUB_REPOSITORY='o/r'), \
+                 patch.object(sync, 'latest_commit', return_value='pulse'), \
+                 patch.object(sync, 'published_manifest', return_value=recorded), \
+                 patch.object(sync, 'fetch') as fetch, patch.object(sync, 'create_source') as merge, \
+                 patch.object(sync, 'emit') as emit:
+                sync.prepare(argparse.Namespace(work=root / 'work', force=False))
+            emit.assert_called_once_with(changed=False, tag='v1.2.36')
+            fetch.assert_not_called()
+            merge.assert_not_called()
+            self.assertFalse((root / 'work').exists())
+
+    def test_release_notes_only_describe_changes_since_previous_package(self):
+        old = dict(controller_sha='old', pulsemodel=dict(sha='pulse'))
+        new = dict(controller_sha='new', pulsemodel=dict(repo='official/pulse', sha='pulse'),
+                   studiomdl_ce=dict(sha='new-reference'), studiomdl_plusplus=dict(tag='v2'))
+        comparison = dict(status='ahead', total_commits=2, commits=[
+            {'commit': {'message': 'Fix output recovery\n\nImplementation details'}},
+            {'commit': {'message': 'Correct release checksums'}}])
+        with patch.object(sync, 'api', return_value=comparison) as api:
+            changes = sync.release_changes(new, old, 'owner/project')
+        api.assert_called_once_with('repos/owner/project/compare/old...new?per_page=100')
+        body = sync.concise_release_notes(changes)
+        self.assertIn('Fix output recovery', body)
+        self.assertIn('Correct release checksums', body)
+        self.assertIn('https://github.com/owner/project/compare/old...new', body)
+        for text in ('Implementation details', 'PulseModel', 'StudioMDL', 'Tools++', 'automatic build'):
+            self.assertNotIn(text, body)
+
+    def test_release_notes_do_not_label_source_commits_as_stable_or_preview_releases(self):
+        old = dict(controller_sha='same', pulsemodel=dict(sha='old'))
+        new = dict(controller_sha='same', pulsemodel=dict(repo='official/pulse', sha='new'))
+        comparison = dict(status='ahead', total_commits=1, commits=[
+            {'commit': {'message': 'Fix [mesh] <format>'}}])
+        with patch.object(sync, 'api', return_value=comparison):
+            body = sync.concise_release_notes(sync.release_changes(new, old, 'owner/project'))
+        self.assertIn('PulseModel 默认分支源码', body)
+        self.assertIn(r'Fix \[mesh\] \<format\>', body)
+        self.assertNotIn('稳定版', body)
+        self.assertNotIn('预发布', body)
+
+    def test_release_notes_bound_large_deltas_and_keep_comparison_link(self):
+        change = dict(label='NewPage', status='ahead', url='https://github.com/o/r/compare/a...b',
+                      total_commits=99, subjects=['Fix ' + str(index) for index in range(20)])
+        body = sync.concise_release_notes([change])
+        self.assertIn('Fix 4', body)
+        self.assertNotIn('Fix 5', body)
+        self.assertIn('99', body)
+        self.assertIn(change['url'], body)
+        self.assertLess(len(body), 500)
+
+    def test_release_note_lookup_failure_and_missing_baseline_are_not_no_changes(self):
+        new = dict(controller_sha='new', pulsemodel=dict(repo='official/pulse', sha='pulse'))
+        old = dict(controller_sha='old', pulsemodel=dict(sha='pulse'))
+        with patch.object(sync, 'api', side_effect=urllib.error.URLError('offline')):
+            failed = sync.release_changes(new, old, 'owner/project')
+        self.assertIn('暂未核实', sync.concise_release_notes(failed))
+        with patch.object(sync, 'api') as api:
+            initial = sync.release_changes(new, None, 'owner/project')
+        api.assert_not_called()
+        self.assertIn('无法确认', sync.concise_release_notes(initial))
+        with patch.object(sync, 'api') as api:
+            unchanged = sync.release_changes(new, new, 'owner/project')
+        api.assert_not_called()
+        self.assertIn('没有新增源码提交', sync.concise_release_notes(unchanged))
+
+    def test_manual_release_notes_keep_subtools_platform_and_plain_commits(self):
+        body = notes.render('\0Fix toolchain\n\nmdlcompiler:\n- Fix bones\n'
+                            'subtools:\n- Recover VMD batches\nplatform:\n- Test Clang\n'
+                            'Internal:\n- private implementation note\n'
+                            '\0Fix checksum filenames\n')
+        for text in ('Fix bones', 'Recover VMD batches', 'Test Clang', 'Fix checksum filenames'):
+            self.assertIn(text, body)
+        self.assertNotIn('private implementation note', body)
+        self.assertNotIn('- Fix toolchain', body)
+
+    def test_replacement_notes_preserve_changes_but_replace_old_zip_checksums(self):
+        old = ('## Original fixes\r\n\r\n- Keep this fix.\r\n\r\nZIP SHA-256:\r\n\r\n```text\r\n'
+               + 'a' * 64 + '  newpage-merge-mdl-win64.zip\r\n```\r\n\r\n'
+               '## Later fixes\n\n- Keep this other fix.\n\nZIP SHA256:\n```text\n'
+               + 'b' * 64 + '  newpage-merge-mdl-linux64.zip\n```\n')
+        new = '- Recover interrupted output.\n\nZIP SHA256:\n```text\n' + 'c' * 64 + '  newpage-merge-mdl-win64.zip\n```\n'
+        merged = sync.append_release_notes(old, new, 'v1.2.36')
+        for text in ('Keep this fix.', 'Keep this other fix.', 'Recover interrupted output.', 'c' * 64):
+            self.assertIn(text, merged)
+        self.assertNotIn('a' * 64, merged)
+        self.assertNotIn('b' * 64, merged)
+        self.assertEqual(merged.count('ZIP SHA'), 1)
+        self.assertEqual(sync.append_release_notes('', new, 'v1.2.36'), new)
+
+    def test_build_manifest_records_actual_ipo_setting(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            manifest, cache = root / 'manifest.json', root / 'CMakeCache.txt'
+            for ipo in ('ON', 'OFF'):
+                manifest.write_text('{"project_version":"1.2.36","build":"requested IPO"}')
+                cache.write_text('CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++\n'
+                                 'CMAKE_C_COMPILER:FILEPATH=/usr/bin/clang\n'
+                                 f'CMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL={ipo}\n')
+                sync.record_build(argparse.Namespace(manifest=manifest, cache=cache, configuration='MinSizeRel'))
+                recorded = json.loads(manifest.read_text())
+                self.assertEqual(recorded['project_version'], '1.2.36')
+                self.assertEqual(recorded['build']['interprocedural_optimization'], ipo == 'ON')
+                self.assertEqual(recorded['build']['cxx_compiler'], '/usr/bin/clang++')
+            cache.write_text('NEWPAGE_BUILD_CXX_COMPILER:INTERNAL=C:/VS/cl.exe\n'
+                             'NEWPAGE_BUILD_CXX_COMPILER_ID:INTERNAL=MSVC\n'
+                             'NEWPAGE_BUILD_CXX_COMPILER_VERSION:INTERNAL=19.51\n'
+                             'CMAKE_INTERPROCEDURAL_OPTIMIZATION:UNINITIALIZED=ON\n')
+            sync.record_build(argparse.Namespace(manifest=manifest, cache=cache, configuration='MinSizeRel'))
+            recorded = json.loads(manifest.read_text())
+            self.assertEqual(recorded['build']['cxx_compiler'], 'C:/VS/cl.exe')
+            self.assertEqual(recorded['build']['compiler_id'], 'MSVC')
+            cache.write_text('CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/clang++\n')
+            before = manifest.read_bytes()
+            with self.assertRaises(ValueError):
+                sync.record_build(argparse.Namespace(manifest=manifest, cache=cache, configuration='MinSizeRel'))
+            self.assertEqual(manifest.read_bytes(), before)
+
     def test_release_versions_increment_and_respect_manual_floor(self):
         self.assertEqual(sync.release_version('1.2.0', None, 'new'), ('1.2.0', 'v1.2.0'))
         old = dict(project_version='1.1', fingerprint='old')
@@ -228,6 +372,8 @@ class AutomationTests(unittest.TestCase):
                 (dist / 'subtools/licenses' / name).write_text('AG2 dependency notice: ' + name)
             for name in ('LICENSE', 'README.md', 'README.en.md', 'INSTALL.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
                 (source / name).write_text(name)
+            (source / 'subtools/meshtool').mkdir(parents=True)
+            (source / 'subtools/meshtool/PROTOCOL.md').write_text('Binary protocol limits')
             branding = ('.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
                         'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
                         'assets/branding/README.md')
@@ -262,6 +408,7 @@ class AutomationTests(unittest.TestCase):
                                             platform='win64', manifest=root / 'manifest.json', source_archive=root / 'source.zip'))
             with zipfile.ZipFile(root / 'out.zip') as archive:
                 self.assertEqual(archive.read('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'), (root / 'source.zip').read_bytes())
+                self.assertEqual(archive.read('NewPageMergeMDL/subtools/meshtool-protocol.md'), b'Binary protocol limits')
                 for name in branding:
                     self.assertEqual(archive.read('NewPageMergeMDL/' + name), (source / name).read_bytes())
                 self.assertIn('NewPageMergeMDL/INSTALL.md', archive.namelist())
@@ -297,6 +444,7 @@ class AutomationTests(unittest.TestCase):
             sync.package(argparse.Namespace(dist=dist, source=source, output=root / 'linux.zip',
                                             platform='linux64', manifest=root / 'manifest.json'))
             with zipfile.ZipFile(root / 'linux.zip') as archive:
+                self.assertEqual(archive.read('NewPageMergeMDL/subtools/meshtool-protocol.md'), b'Binary protocol limits')
                 for name in branding:
                     self.assertEqual(archive.read('NewPageMergeMDL/' + name), (source / name).read_bytes())
                 for name in ('NewPageMergeMDL', 'subtools/ag2proportions', 'subtools/meshtool'):
@@ -512,6 +660,7 @@ class PackageValidationTests(unittest.TestCase):
                 'libs/tinyusdz/LICENSE','libs/tinyusdz/LICENSE-APACHE-2.0',
                 'libs/tinyusdz/SOURCE.md','libs/tinyusdz/THIRD_PARTY_NOTICES.md',
                 'subtools/licenses/zstd.txt','subtools/licenses/ValveResourceFormat.txt',
+                'subtools/meshtool-protocol.md',
             ):
                 if name != omit:
                     z.writestr('NewPageMergeMDL/'+name, '' if name == empty else 'fixture')
@@ -540,7 +689,7 @@ class PackageValidationTests(unittest.TestCase):
         for name in ('subtools/licenses/zstd.txt', 'subtools/licenses/ValveResourceFormat.txt',
                      '.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
                      'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
-                     'assets/branding/README.md'):
+                     'assets/branding/README.md', 'subtools/meshtool-protocol.md'):
             for mode in ('omit', 'empty'):
                 with self.subTest(file=name, mode=mode), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)

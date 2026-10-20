@@ -3,7 +3,8 @@
 // Runs VHACD's convex decomposition over one or more closed triangle meshes,
 // which is what $physicsshape fromrender asks for. Request and response are
 // binary files: the caller writes one, names both on the command line, and
-// reads the other back. Each job answers with its pieces as point clouds - the
+// reads the other back. The wire format is little-endian and bounded by the
+// implementation's request limits. Each job answers with its pieces as point clouds - the
 // caller re-hulls them, exactly as mdlcompiler does.
 
 #pragma once

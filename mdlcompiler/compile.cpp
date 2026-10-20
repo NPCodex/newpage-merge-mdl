@@ -305,7 +305,7 @@ void TranslateAnimations(const Ctx& ctx, const src::Source* pSource,
                 pm::AngleMatrix(m.bones[k].rot, m.bones[k].pos, destBoneToWorld[k]);
             }
         } else {
-            // srcRealign: the noisy near-identity RealignBones always builds
+            // Apply the explicit/script-generated source realignment, if any.
             destBoneToWorld[k] =
                 pm::ConcatTransforms(srcBoneToWorld[q], m.bones[k].srcRealign);
         }
@@ -1609,6 +1609,13 @@ void TagUsedBones(Ctx& ctx) {
                 break;
             }
         };
+        // A definition may depend on an otherwise unused source parent. Keep
+        // unlocked source bones too: their authored source bind pose must win
+        // over the fallback definition, even when no vertices reference them.
+        for (const ImportBone& ib : ctx.in->importbones) {
+            keepProceduralBone(ib.name);
+            keepProceduralBone(ib.parent);
+        }
         // Motion is also a real reference. The initial union must retain a
         // source bone that changes in a surviving animation even when it has
         // no skin/hitbox/attachment; CollapseBones still applies force rules.
@@ -1661,29 +1668,22 @@ void TagUsedBones(Ctx& ctx) {
 void InsertPredefinedBones(Ctx& ctx, bool bUnlocked) {
     CompiledModel& m = *ctx.out;
 
+    // Locked entries are inserted before sources; unlocked entries only fill
+    // holes in the source union. Resolve parent names after both passes, so a
+    // later definition (or a source-only parent) has the same semantics as an
+    // earlier definition. Existing source bind poses and parents keep priority.
     for (const ImportBone& ib : ctx.in->importbones) {
-        if (ib.bUnlocked != bUnlocked)
-            continue;
-
+        if (ib.bUnlocked != bUnlocked) continue;
         int k = FindGlobalBone(m, ib.name);
         if (k == -1) {
             Bone b;
             b.name = ib.name;
-            if (ib.parent.empty()) {
-                b.parent = -1;
-            } else {
-                // reference FIXME kept for parity: a parent that is itself a
-                // later import bone is not found yet
-                b.parent = FindGlobalBone(m, ib.parent);
-                if (b.parent == -1) {
-                    fprintf(stderr, "WARNING: Imported bone %s tried to access parent bone %s and failed!\n",
-                            ib.name.c_str(), ib.parent.c_str());
-                }
-            }
+            b.parent = ib.parent.empty() ? -1 : FindGlobalBone(m, ib.parent);
+            b.predefinedParent = ib.parent;
             b.bPreDefined = true;
             b.rawLocal = ib.rawLocal;
             k = static_cast<int>(m.bones.size());
-            m.bones.push_back(b);
+            m.bones.push_back(std::move(b));
         }
         m.bones[k].bDontCollapse = true;
         m.bones[k].srcRealign = ib.srcRealign;
@@ -1698,6 +1698,64 @@ void InsertPredefinedBones(Ctx& ctx, bool bUnlocked) {
 }
 
 // ---------------------------------------------------------------------------
+bool ResolvePredefinedParents(Ctx& ctx, std::string* err) {
+    CompiledModel& m = *ctx.out;
+    for (Bone& bone : m.bones) {
+        if (bone.predefinedParent.empty()) continue;
+        const int parent = FindGlobalBone(m, bone.predefinedParent);
+        if (parent < 0) {
+            if (err) *err = "imported bone \"" + bone.name + "\" has unknown parent \"" +
+                            bone.predefinedParent + "\"";
+            return false;
+        }
+        bone.parent = parent;
+    }
+    return true;
+}
+
+// SortBoneHierarchy puts each parent before its children. It is needed before
+// bind poses are built because a delayed $definebone parent can arrive from a
+// source or from the unlocked definition pass.
+bool SortBoneHierarchy(CompiledModel& m, std::string* err) {
+    const int n = static_cast<int>(m.bones.size());
+    std::vector<unsigned char> state(n, 0);
+    std::vector<int> order;
+    order.reserve(n);
+    for (int start = 0; start < n; ++start) {
+        std::vector<int> chain;
+        int bone = start;
+        while (bone != -1) {
+            if (bone < 0 || bone >= n) {
+                if (err) *err = "invalid bone parent index";
+                return false;
+            }
+            if (state[bone] == 2) break;
+            if (state[bone] == 1) {
+                if (err) *err = "circular bone hierarchy at \"" + m.bones[bone].name + "\"";
+                return false;
+            }
+            state[bone] = 1;
+            chain.push_back(bone);
+            bone = m.bones[bone].parent;
+        }
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            state[*it] = 2;
+            order.push_back(*it);
+        }
+    }
+    std::vector<int> remap(n);
+    for (int i = 0; i < n; ++i) remap[order[i]] = i;
+    std::vector<Bone> sorted;
+    sorted.reserve(n);
+    for (int old : order) {
+        Bone bone = std::move(m.bones[old]);
+        if (bone.parent != -1) bone.parent = remap[bone.parent];
+        sorted.push_back(std::move(bone));
+    }
+    m.bones = std::move(sorted);
+    return true;
+}
+
 // EnforceHierarchy: $hierarchy relinks a bone's parent. It runs after
 // boneToPose is built and RebuildLocalPose re-derives the locals afterwards, so
 // the bone keeps its world placement and only the parent changes. The table is
@@ -1722,30 +1780,7 @@ bool EnforceHierarchy(Ctx& ctx, std::string* err) {
         m.bones[k].parent = j;
     }
 
-    // resort hierarchy - swap any bone that precedes its own parent, relinking
-    // from the swap point on (the reference relinks from i, not from 0)
-    const int n = static_cast<int>(m.bones.size());
-    for (int count = 0, sorted = 0; !sorted;) {
-        if (++count > 1000) {
-            if (err) *err = "circular bone hierarchy";
-            return false;
-        }
-        sorted = 1;
-        for (int i = 0; i < n; i++) {
-            const int j = m.bones[i].parent;
-            if (j <= i)
-                continue;
-            std::swap(m.bones[i], m.bones[j]);
-            for (int k = i; k < n; k++) {
-                if (m.bones[k].parent == i)
-                    m.bones[k].parent = j;
-                else if (m.bones[k].parent == j)
-                    m.bones[k].parent = i;
-            }
-            sorted = 0;
-        }
-    }
-    return true;
+    return SortBoneHierarchy(m, err);
 }
 
 // ---------------------------------------------------------------------------
@@ -1827,6 +1862,9 @@ bool BuildGlobalBonetable(Ctx& ctx, std::string* err) {
     }
 
     InsertPredefinedBones(ctx, true);
+
+    if (!ResolvePredefinedParents(ctx, err) || !SortBoneHierarchy(m, err))
+        return false;
 
     // BuildGlobalBoneToPose
     for (size_t k = 0; k < m.bones.size(); k++) {
@@ -2417,12 +2455,10 @@ void PopAnimSrcRealignOverride(Ctx& ctx, const std::vector<SrcRealignSave>& save
         ctx.out->bones[s.bone].srcRealign = s.saved;
 }
 
-// TODO: why tf it runs unconditionally?
-// RealignBones - runs UNCONDITIONALLY. With no $realignbones or IK
-// chains it still (a) builds srcRealign = Invert(boneToPose)*boneToPose (a
-// float-noise near-identity), (b) re-derives rot/pos from boneToPose, and
-// (c) REBUILDS boneToPose = AngleMatrix(rot,pos) - one extra euler round-trip
-// that every downstream matrix inherits. Parity-critical.
+// RealignBones is only needed when a script or an IK chain requests a
+// realignment.  The old unconditional pass rebuilt every bind matrix through
+// Euler angles and introduced a small, avoidable float perturbation into
+// otherwise untouched models.
 //
 // With realign_bones set, every bone whose parent has exactly one child is
 // additionally rotated so its X axis aims at that child.
@@ -2430,6 +2466,9 @@ void PopAnimSrcRealignOverride(Ctx& ctx, const std::vector<SrcRealignSave>& save
 // srcRealign survives verbatim.
 bool RealignBones(Ctx& ctx, std::string* err) {
     CompiledModel& m = *ctx.out;
+    if (!ctx.in->realignBones && m.ikchains.empty() && !ctx.in->jiggleRealignSet &&
+        ctx.in->csgo.forcedRealign.empty())
+        return true;
     size_t numbones = m.bones.size();
 
     std::vector<int> childbone(numbones, -1);
@@ -12496,7 +12535,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     if (!ApplyBoneTransformEdits(ctx, err))
         return false;
 
-    { PULSE_TIME_PASS("RealignBones"); // unconditional; rebuilds boneToPose + srcRealign
+    { PULSE_TIME_PASS("RealignBones"); // only for explicit realign/IK inputs
       if (!RealignBones(ctx, err)) return false; }
 
     // Push the animconstraint triggers/poses through the realign. The reference

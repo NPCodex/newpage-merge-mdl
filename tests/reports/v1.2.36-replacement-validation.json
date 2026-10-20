@@ -1,0 +1,106 @@
+{
+  "schema": 2,
+  "date": "2026-10-20",
+  "project_version": "1.2.36",
+  "status": "local-validation-passed; hosted release gates enforced by workflow",
+  "upstream_commit": "0396e3d2263945896de7d3d4f457e5f47dfe0378",
+  "source_identity": "Package upstream-manifest.json controller_sha and embedded exact source archive",
+  "release_target": "https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.36",
+  "historical_report": "v1.2.34-replacement-validation.json",
+  "checks": {
+    "local_windows_package": {
+      "passed": true,
+      "compiler": "LLVM MinGW Clang 23.1.2",
+      "configuration": "Release, IPO OFF",
+      "log": "local-build/v1.2.36-replacement/local-package-verification.log",
+      "suites": {
+        "compatibility": 412,
+        "c4d_bridge": 10,
+        "ce_morph_normals": 6,
+        "cli_framerate": 6,
+        "compiler_integrity": 6,
+        "decompiler_integrity": 13,
+        "subtools_integrity": 61,
+        "subtools_cli": 63,
+        "subtool_publication": 21,
+        "l4d_retarget": 2
+      }
+    },
+    "msvc_output_transactions": {
+      "passed": true,
+      "ctest_targets": 7,
+      "new_forced_process_cases": 77,
+      "ordinary_subtool_checks": 17,
+      "log": "build-tests-20261019b/Testing/Temporary/LastTest.log"
+    },
+    "msvc_compatibility": {
+      "passed": true,
+      "count": 412,
+      "log": "build-local-20261019/compatibility-bones-final.log"
+    },
+    "plum_differential": {
+      "passed": true,
+      "profiles": [
+        "native",
+        "ce",
+        "neko"
+      ],
+      "before_after_compiles": 6,
+      "bones": 131,
+      "vertices": 572277,
+      "unchanged_original_files": 131,
+      "unchanged_gameinfo": true,
+      "evidence": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/bone-validation-20261020/production.json",
+      "baseline_sha256": "eec68fc62504ca259b0bf79fa55f2a89e3fd1dcd72af67369daeffb45c6e2d52",
+      "tested_msvc_sha256": "310f256808d2fffe682d509fee945a1423d1fa7ca8de1f950a958e46bf21ff6e"
+    },
+    "no_realign_fixture": {
+      "passed": true,
+      "max_pose_inverse_delta": 9.54e-07,
+      "max_vertex_position_delta": 1.43e-06,
+      "max_normal_delta": 8.2e-08,
+      "two_frame_world_animation_equal": true,
+      "scope": "Before/after compiler comparison, not a closed-source reference or game rendering test"
+    },
+    "automation": {
+      "passed": true,
+      "count": 47
+    },
+    "pinned_windows_helper": {
+      "passed": true,
+      "count": 14
+    },
+    "overlay": {
+      "passed": true,
+      "command": "python .github/scripts/refresh_overlay.py --check"
+    }
+  },
+  "limits": [
+    "No new certification of CS2 player SetModel, reload, crouch, first-person or attachments.",
+    "Process-kill recovery is not an absolute hardware power-loss guarantee or an atomic snapshot for external readers.",
+    "Linux does not include the Windows-only C4D helper."
+  ],
+  "local_binaries": {
+    "NewPageMergeMDL-C4D.exe": "bdae1d70e79e01c785d93e2295e1a34a2840fdcfd52ed6f525ba7db1d8c2c43e",
+    "NewPageMergeMDL-Decompiler.exe": "cf612fde8dafb0d33ca5b409c1c717ec677c33786ce3c0174832d11e8359f846",
+    "NewPageMergeMDL.exe": "84c0d5dd584ab37815ad079fdc5c688e0a45f5c780fbfbc41d5b28e1d70b1bb9",
+    "NewPageVRMLtoX3D.exe": "14358d533538eb701576039a3d79b09727bc5ffd89ad179c75ce4039421b95d3",
+    "subtools/ag2proportions.exe": "f36721da035b2504e0c090193e7c8f129810924f406b10591daf08cd260cf5ed",
+    "subtools/l4d_animswap.exe": "a4770dccc16e0a7771a5e5358447d1c69687433a33478f4f2735113b0f3594bd",
+    "subtools/meshtool.exe": "ec7ff5f676915a641ada7135e96c54de5a825620df9ac2861e5568e9c329cc27",
+    "subtools/vmd2valvebiped.exe": "fe8af890931b0172bc5b7b9cd3a6a850b5d39fd00b41fc48c8e3dea3eda1c3d8"
+  },
+  "hosted_release_gate": {
+    "workflow": ".github/workflows/release.yml",
+    "target": "v1.2.36",
+    "required": [
+      "Windows MSVC MinSizeRel actual package verification",
+      "Linux GCC MinSizeRel actual package verification",
+      "Linux Clang without IPO actual package verification",
+      "Forced unavailable IPO configure fallback",
+      "ELF/loader/shared dependencies, ZIP execute permissions and seven tool CLI probes",
+      "Asset digests equal built archives; existing tag object unchanged"
+    ],
+    "evidence_location": "Release notes and GitHub Actions for the package controller_sha; no prior run is counted as this build."
+  }
+}

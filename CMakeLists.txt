@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 # Distributed tools share the NewPageMergeMDL project version.
 # Upstream TOOL_VERSION declarations remain as merge context only.
 # C is enabled only for vendored dependencies; toolkit code is C++.
-project(NewPageMergeMDL VERSION 1.2.34 LANGUAGES CXX C)
+project(NewPageMergeMDL VERSION 1.2.36 LANGUAGES CXX C)
 
 # Keep all Windows tools portable, including helpers without Assimp's runtime
 # link settings. MSVC distribution builds select MultiThreaded in their preset.
@@ -28,6 +28,23 @@ endif()
 
 # Distribution builds use MinSizeRel with LTO (the x64-compact preset).
 # Ordinary Release remains available for development without LTO's link cost.
+if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT NEWPAGE_IPO_SUPPORTED OUTPUT NEWPAGE_IPO_ERROR
+                        LANGUAGES C CXX)
+    if(NOT NEWPAGE_IPO_SUPPORTED)
+        message(WARNING "IPO is unavailable; building without LTO: ${NEWPAGE_IPO_ERROR}")
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL
+            "Enable interprocedural optimization when the toolchain supports it" FORCE)
+    endif()
+endif()
+message(STATUS "NewPage IPO enabled: ${CMAKE_INTERPROCEDURAL_OPTIMIZATION}")
+# Visual Studio generators do not cache CMAKE_<LANG>_COMPILER themselves.
+# Keep the actual compiler identity available to the package manifest writer.
+set(NEWPAGE_BUILD_C_COMPILER "${CMAKE_C_COMPILER}" CACHE INTERNAL "Configured C compiler" FORCE)
+set(NEWPAGE_BUILD_CXX_COMPILER "${CMAKE_CXX_COMPILER}" CACHE INTERNAL "Configured C++ compiler" FORCE)
+set(NEWPAGE_BUILD_CXX_COMPILER_ID "${CMAKE_CXX_COMPILER_ID}" CACHE INTERNAL "Configured C++ compiler family" FORCE)
+set(NEWPAGE_BUILD_CXX_COMPILER_VERSION "${CMAKE_CXX_COMPILER_VERSION}" CACHE INTERNAL "Configured C++ compiler version" FORCE)
 
 # C++17: inline constexpr + nested namespaces (used by libs/pulselimits.h).
 set(CMAKE_CXX_STANDARD 17)
