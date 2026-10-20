@@ -17,6 +17,10 @@ import time
 
 
 def main():
+    # CTest captures stdout using the runner's Windows locale. Keep Unicode
+    # fixture names readable even when that locale cannot encode them.
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(errors='backslashreplace')
     probe = Path(sys.argv[1]).resolve()
     passed = []
     with tempfile.TemporaryDirectory(prefix='newpage-subtool-crash-') as temporary:
