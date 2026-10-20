@@ -114,7 +114,7 @@ $cs2 = "D:/SteamLibrary/steamapps/common/Counter-Strike Global Offensive"
 
 Job 中的路径相对 job 文件；可选 `model_dmx` 指定骨架、`proportions` 指定保持姿态的 DMX。`--generate-only` 仅跳过资源编译，仍需 CS2 数据；是否修改 VMDL 由 `write_model` 决定。`--help` 查看完整参数。
 
-此工具不用于 Source1 MDL 手臂修复。比例 clip 主要调整平移，不重做骨轴或蒙皮；资源编译验证不代表完整人物或游戏动作已认证。暂存、进程中断恢复和同目标并发保护的范围见 [安装指南](INSTALL.md)，具体实测见 [验证记录](VALIDATION.md)。
+此工具不用于 Source1 MDL 手臂修复。比例 clip 主要调整平移，不重做骨轴或蒙皮。暂存、进程中断恢复和并发保护见 [安装指南](INSTALL.md)；[SAS 实机验证](tests/reports/ag2-gameplay-20261020.md) 仅覆盖报告列出的模型与动作，第一人称为原版图的无回归对照。
 
 ## 详细文档
 

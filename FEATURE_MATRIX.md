@@ -43,6 +43,8 @@ VMD 按每帧左右腿 IK 开关选择 IK/FK，关闭时保留 Thigh/Calf/Foot �
 
 Python 准备脚本统一暂存模型及运行时 JSON，普通写入失败整体回滚，并禁止输入/生成输出别名；此 Python 事务不等同原生工具的持久强杀恢复。Lua VRM/vertexanim 在使用前校验元数据及时间，拒绝模型不匹配。
 
+AG2 的 [SAS 实机验证](tests/reports/ag2-gameplay-20261020.md) 已覆盖完整人物、原比例/缩放骨架对照、手枪/步枪持握、射击、重载和蹲伏。第一人称仅为原版 viewmodel 图的无回归观察；生成第一人称图与实时图节点调试仍未认证，工具保持实验性。
+
 ## v1.2.36 替换构建
 
 本轮处理 VMD/L4D 持久事务、后置骨骼父级、无需 realign 时的变换、meshtool 协议边界及 Linux 发布验证。具体实现和本轮实际测试见 [验证报告](tests/reports/v1.2.36-replacement-validation.md)。历史报告保留原版本、日期和散列，不以旧构建通过代替当前包验证。C4D 仍只随 Windows 包提供；Linux 用户需先在 Windows 转换 C4D 为 GLB。

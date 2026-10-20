@@ -26,7 +26,7 @@
 | F18 | AG2 VPK CRC | 对 preload 与资源正文拼接后的完整资源核对 CRC32；真实官方资源正确 CRC 通过，篡改 CRC 失败且保留旧输出。 |
 | E1 | VMD IK/FK | 解析逐帧开关并保持到下一键，左右腿独立；关闭时使用腿/膝/足 FK，重新启用恢复 IK。 |
 | E2 | 相机投影 | 当前 SMD/pulsecamera 输出端不能保留正交，遇正交键明确失败；未伪称已增加正交渲染支持。 |
-| E3 | AG2 完整模型与实机 | 重新生成并编译完整带网格 SAS 原比例及 1.1 比例模型；玩家替换与动作验收仍在核实，不把资源成功当成运行成功。 |
+| E3 | AG2 完整模型与实机 | 完整带网格 SAS 原比例/1.1 比例模型均已实际进入本地 CS2；同机位骨架对照显示比例差异，P2000/M4A4 持握、射击、重载、蹲伏/起立观察通过。第一人称仅为原版 viewmodel 无回归对照；没有宣称生成第一人称图或 live graph 节点调试通过。 |
 | E4 | 默认动画时序 | 未显式指定播放 FPS 时继承有时序的源动画采样率；显式 QC FPS/默认 FPS 覆盖保持有效。 |
 
 ## 验证边界
@@ -37,7 +37,8 @@
 - 已保存的 Plum 原始文件副本（131 文件，约 151 MB）内容哈希未变。native/CE/Neko 三模式均编译、结构校验和完整反编译通过；原 `Desktop/gmod` 目录目前已不存在，使用的是先前保存且有原始哈希的精确副本。
 - 新反编译专项覆盖真实权重往返、同模型输出冲突及损坏输入时旧输出保留；没有将所有外部 MDL 的任意损坏组合宣称为已经验证。
 - Python helper 的普通失败回滚不承诺强杀/断电后的持久恢复；既有 VMD/L4D 原生事务恢复不受此修复缩减。
-- Linux GCC、Clang 均已完成全工具构建、恢复与格式测试、实际归档验证及 ELF/依赖/执行权限 smoke；首轮 [CI 39410334048](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39410334048) 对应 `02bccf6`。后续仅发布重试、报告打包和显式 Lua 回归的收尾修改正在验证。
+- AG2 的 [完整人物实机报告](ag2-gameplay-20261020.md) 记录有效对照、动作截图、资源来源和限制。它仍为实验性工具：当前安装缺少 `animgraph2_editor`，不扩为任意自定义骨架、全部武器或生成第一人称图认证。CS2/VConsole 已退出，原配置和官方目录 VPK 哈希不变；隔离 addon 仅通过显式测试参数加载。
+- Linux GCC、Clang 均已完成全工具构建、恢复与格式测试、实际归档验证及 ELF/依赖/执行权限 smoke，每套均通过 421 项兼容测试。首轮 [CI 39410334048](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39410334048) 对应 `02bccf6`；包含发布/打包收尾及 Python 3.12 / Lua 5.1 回归的最终 [CI 39411422872](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39411422872) 对应 `78aa1e5`，两套均成功。最终仅补充实机报告与链接，不修改这组已验证的原生源码。
 - Release 重试 14 项、automation 48 项、真实 Lua 5.1 元数据/数学 13 项及三份 workflow 语法检查通过。正式流程固定 Python 3.12 / Lupa 2.6 并显式导入 Lua 5.1，避免依赖缺失时跳过测试。
 
 复现及机器日志保留在本机 `.diagnostics/toolkit-audit-20261020` 与 `.diagnostics/toolkit-fixes-20261020`。长期自动回归位于 `tests/compiler_input_cases.py`、`tests/decompiler_roundtrip_test.py`、`tests/vmd_motion_features_test.py`、`tests/ag2_vpk_test.cpp`、`tests/helpers_publication_test.py`、`tests/runtime_metadata_test.py` 和 `tests/test_replacement_notes.py`。

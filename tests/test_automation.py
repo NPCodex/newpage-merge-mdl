@@ -674,6 +674,7 @@ class PackageValidationTests(unittest.TestCase):
                 'assets/branding/NewPage-logo.png','assets/branding/generate_icons.py','assets/branding/README.md',
                 'FIVE_COMPILER_COMPLETION.md','O5_FORMAT_IMPORTS.md','MESH_STATE_WORKFLOW.md','VRM_RUNTIME.md',
                 'tests/reports/toolkit-fixes-20261020.md','tests/reports/2026-10-18-rea-second-pass.md',
+                'tests/reports/ag2-gameplay-20261020.md',
                 'tests/reports/v1.2.34-replacement-validation.md','tests/reports/v1.2.36-replacement-validation.md',
                 'integration/gmod/newpage_vertexanim.lua','integration/gmod/newpage_meshstates.lua',
                 'integration/gmod/newpage_vrm.lua','integration/gmod/newpage_vrm_materials.lua',
@@ -718,6 +719,7 @@ class PackageValidationTests(unittest.TestCase):
                      'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
                      'assets/branding/README.md', 'subtools/meshtool-protocol.md',
                      'tests/reports/toolkit-fixes-20261020.md', 'tests/reports/2026-10-18-rea-second-pass.md',
+                     'tests/reports/ag2-gameplay-20261020.md',
                      'tests/reports/v1.2.34-replacement-validation.md', 'tests/reports/v1.2.36-replacement-validation.md'):
             for mode in ('omit', 'empty'):
                 with self.subTest(file=name, mode=mode), tempfile.TemporaryDirectory() as directory:

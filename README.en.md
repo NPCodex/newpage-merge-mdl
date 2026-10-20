@@ -181,9 +181,10 @@ not disable model editing when `write_model` is true. Job paths are relative to
 the job file; optional `model_dmx` selects a skeleton and `proportions` a pose DMX.
 This is a CS2 tool, not a Source1 MDL arm fix. It adapts translation proportions,
 not bind axes or mesh rigging. Finish in ModelDoc and check the complete
-model and its actions in game. Resource-level validation does not certify those
-results. See [installation](INSTALL.md) for staging, process-interruption recovery
-and same-target locking, [validation](VALIDATION.md) for tested scopes, and
+model and its actions in game. See [installation](INSTALL.md) for staging,
+process-interruption recovery and same-target locking. The bounded
+[SAS gameplay validation](tests/reports/ag2-gameplay-20261020.md) covers only the
+listed model/actions; first-person checks use the stock graph. Use
 `--help` for further options, including the Linux compiler runner.
 
 ## Documentation

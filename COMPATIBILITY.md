@@ -27,6 +27,8 @@ VMD conversion follows each frame's left/right leg IK enable state; disabled IK 
 
 AG2 validates resource preload CRC32 as well as the complete resource data. Decompilation retains per-LOD vertex weights and checks model-companion checksums and decoder bounds. A present but corrupt PHY fails; a missing PHY warns that collision completeness cannot be established, because an MDL alone does not reliably establish whether physics data was authored.
 
+Bounded [SAS gameplay validation](tests/reports/ag2-gameplay-20261020.md) covers the complete model, visible plain/scaled proportions, pistol/rifle holding, shooting, reload and crouch. First-person observations use the stock viewmodel graph; generated first-person graphs and live graph-node debugging are not certified. AG2 remains experimental.
+
 Python helper compilation stages model companions and runtime JSON together and rolls back ordinary publication failures. It does not yet provide the native tools' durable interrupted-process recovery. VRM inputs cannot alias generated files. GMod VRM and vertex-animation consumers reject malformed sidecars, non-finite times and incompatible model identities before modifying an entity.
 
 ## v1.2.36 replacement scope
