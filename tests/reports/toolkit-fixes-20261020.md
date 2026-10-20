@@ -40,5 +40,6 @@
 - AG2 的 [完整人物实机报告](ag2-gameplay-20261020.md) 记录有效对照、动作截图、资源来源和限制。它仍为实验性工具：当前安装缺少 `animgraph2_editor`，不扩为任意自定义骨架、全部武器或生成第一人称图认证。CS2/VConsole 已退出，原配置和官方目录 VPK 哈希不变；隔离 addon 仅通过显式测试参数加载。
 - Linux GCC、Clang 均已完成全工具构建、恢复与格式测试、实际归档验证及 ELF/依赖/执行权限 smoke，每套均通过 421 项兼容测试。首轮 [CI 39410334048](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39410334048) 对应 `02bccf6`；包含发布/打包收尾及 Python 3.12 / Lua 5.1 回归的最终 [CI 39411422872](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39411422872) 对应 `78aa1e5`，两套均成功。之后补充发布元数据换行兼容、ZIP 来源回归及实机报告，不修改这组已验证的原生源码。
 - Release 来源/重试 24 项、automation 49 项、真实 Lua 5.1 元数据/数学 13 项及三份 workflow 语法检查通过。已使用实际 Windows/Linux 候选验证同一内嵌源码的 LF/CRLF 指纹一致；历史配置版本与构建版本不同、自动合并盖写版本和补丁、内容篡改均有 ZIP 实例回归。正式流程固定 Python 3.12 / Lupa 2.6 并显式导入 Lua 5.1，避免依赖缺失时跳过测试。
+- 发布前验证补充：手动构建与 Linux 验证工作流生成精确源码归档时显式固定 LF；Windows/Linux Git 换行配置对照产生相同归档。helper 回滚测试按解析后的实际路径匹配，修复 Windows 8.3 短路径导致故障注入未触发的问题；完整 11 项本机测试通过，包括两个实际短路径用例（未跳过）、恰好一次注入、旧结果逐字节恢复及成功重试。这些变更仅涉及封装与验证，未修改工具运行时代码。
 
 复现及机器日志保留在本机 `.diagnostics/toolkit-audit-20261020` 与 `.diagnostics/toolkit-fixes-20261020`。长期自动回归位于 `tests/compiler_input_cases.py`、`tests/decompiler_roundtrip_test.py`、`tests/vmd_motion_features_test.py`、`tests/ag2_vpk_test.cpp`、`tests/helpers_publication_test.py`、`tests/runtime_metadata_test.py` 和 `tests/test_replacement_notes.py`。

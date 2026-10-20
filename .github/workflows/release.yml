@@ -150,7 +150,7 @@ jobs:
       - name: Package with maintained source provenance
         shell: bash
         run: |
-          git archive --format=zip --prefix=NewPageMergeMDL/ --output="$RUNNER_TEMP/NewPageMergeMDL-source.zip" HEAD
+          git -c core.autocrlf=false -c core.eol=lf archive --format=zip --prefix=NewPageMergeMDL/ --output="$RUNNER_TEMP/NewPageMergeMDL-source.zip" HEAD
           python .github/scripts/upstream_release.py maintained-manifest --source . --output upstream-manifest.json --tag "${{ needs.prepare.outputs.tag }}"
           python .github/scripts/upstream_release.py record-build --manifest upstream-manifest.json --cache build/CMakeCache.txt --configuration MinSizeRel
           python .github/scripts/upstream_release.py package --source . --dist dist --platform ${{ matrix.plat }} --manifest upstream-manifest.json --source-archive "$RUNNER_TEMP/NewPageMergeMDL-source.zip" --output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip

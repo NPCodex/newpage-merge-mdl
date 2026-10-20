@@ -55,7 +55,7 @@ jobs:
             echo "VALIDATION_SOURCE=$GITHUB_WORKSPACE/candidate/NewPageMergeMDL" >> "$GITHUB_ENV"
           else
             mkdir -p prepared
-            git archive --format=zip --prefix=NewPageMergeMDL/ --output=prepared/NewPageMergeMDL-source.zip HEAD
+            git -c core.autocrlf=false -c core.eol=lf archive --format=zip --prefix=NewPageMergeMDL/ --output=prepared/NewPageMergeMDL-source.zip HEAD
             echo "VALIDATION_SOURCE=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
           fi
 

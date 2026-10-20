@@ -46,21 +46,44 @@ class HelperPublication(unittest.TestCase):
 
     def blocked_publication(self, target, call):
         old = self.snapshot()
+        # Helpers resolve their output paths. Windows temp directories may use
+        # 8.3 aliases; cache the canonical target before publication moves it.
+        target = target.resolve()
         replace = os.replace
         failed = []
 
         def inject(source, destination):
-            if Path(destination) == target and '.newpage-helper-new-' in str(source) and not failed:
+            if Path(destination).resolve() == target and '.newpage-helper-new-' in str(source) and not failed:
                 failed.append(True)
                 raise PermissionError('injected runtime JSON publication failure')
             return replace(source, destination)
 
         with patch.object(output_transaction.os, 'replace', side_effect=inject):
-            self.assertEqual(call(), 2)
-        self.assertTrue(failed, 'failure must occur during publication, after actual compilation')
+            status = call()
+        self.assertEqual(len(failed), 1, 'failure must occur during publication, after actual compilation')
+        self.assertEqual(status, 2)
         self.assertEqual(self.snapshot(), old, 'all old generated inputs/model/JSON must survive')
 
-    def test_mesh_state_publication_failure_restores_model_and_json(self):
+    def use_short_root(self):
+        long_root = self.root.resolve()
+        get_short_path = ctypes.windll.kernel32.GetShortPathNameW
+        get_short_path.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint32]
+        get_short_path.restype = ctypes.c_uint32
+        required = get_short_path(str(long_root), None, 0)
+        if not required:
+            raise ctypes.WinError()
+        buffer = ctypes.create_unicode_buffer(required)
+        written = get_short_path(str(long_root), buffer, required)
+        if not written or written >= required:
+            raise ctypes.WinError()
+        short_root = Path(buffer.value)
+        if short_root == long_root:
+            self.skipTest('temporary volume does not provide a distinct Windows 8.3 alias')
+        self.assertTrue(os.path.samefile(short_root, long_root))
+        self.assertEqual(short_root.resolve(), long_root)
+        self.root = short_root
+
+    def check_mesh_state_publication_failure(self):
         (self.root / 'mesh.smd').write_text(MESH)
         source = self.root / 'states.json'
         spec = dict(modelname='audit/states', states=[dict(name='one', source='mesh.smd')], fps=1)
@@ -72,7 +95,15 @@ class HelperPublication(unittest.TestCase):
         self.assertEqual(mesh_states.main(argv), 0)
         self.assertEqual(len(json.loads((self.root/'game/models/audit/states.meshstates.json').read_text())['states']), 2)
 
-    def test_vrm_publication_failure_restores_generated_sources_and_model(self):
+    def test_mesh_state_publication_failure_restores_model_and_json(self):
+        self.check_mesh_state_publication_failure()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 8.3 path aliases')
+    def test_mesh_state_publication_failure_with_short_path_alias(self):
+        self.use_short_root()
+        self.check_mesh_state_publication_failure()
+
+    def check_vrm_publication_failure(self):
         source = self.root/'input.gltf'
         doc = IntegrationVrmCases().vrm_fixture(); source.write_text(json.dumps(doc))
         argv = [str(source), '--out', str(self.root/'out'), '--compiler', str(COMPILER), '--game', str(self.root/'game'), '--scale', '1']
@@ -81,6 +112,14 @@ class HelperPublication(unittest.TestCase):
         self.blocked_publication(self.root/'game/models/vrm/avatar.vrm.json', lambda: vrm_runtime.main(argv))
         self.assertEqual(vrm_runtime.main(argv), 0)
         self.assertNotIn('blink', json.loads((self.root/'game/models/vrm/avatar.vrm.json').read_text())['expressions'])
+
+    def test_vrm_publication_failure_restores_generated_sources_and_model(self):
+        self.check_vrm_publication_failure()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 8.3 path aliases')
+    def test_vrm_publication_failure_with_short_path_alias(self):
+        self.use_short_root()
+        self.check_vrm_publication_failure()
 
     def test_vrm_input_aliases_are_rejected_without_writing(self):
         original = json.dumps(IntegrationVrmCases().vrm_fixture())
