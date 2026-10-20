@@ -11,6 +11,12 @@ python tools/vrm_runtime.py avatar.vrm --out generated/avatar --modelname avatar
 
 The tool accepts GLB/VRM and JSON glTF containing VRM metadata. It writes an
 editable `avatar.gltf`, `avatar.qc`, and `models/avatars/example.vrm.json`.
+Input/output aliases are rejected before writing, including an input named
+`avatar.gltf` inside `--out`; choose a separate output directory. Generation,
+optional compilation and runtime JSON are staged together. Ordinary publication
+failures restore the previous output set, and concurrent helper writers are
+rejected. This Python transaction does not guarantee forced-termination or
+power-loss recovery.
 `--scale` defaults to 39.3700787402 (metres to Source inches). The generated QC
 cancels the compiler's default 90-degree yaw and converts glTF Y-up to Source
 Z-up. Keep these transforms if using the associated physics metadata.

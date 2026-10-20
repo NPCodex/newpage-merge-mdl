@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from output_transaction import Publication, different_paths
 
 
 def number(value, label, positive=False):
@@ -152,19 +153,27 @@ def main(argv=None):
         if bool(args.compiler)!=bool(args.game):
             raise ValueError('--compiler and --game must be supplied together')
         manifest=args.manifest.resolve()
-        qc,clip=prepare(json.loads(manifest.read_text(encoding='utf-8-sig')),manifest.parent)
+        spec=json.loads(manifest.read_text(encoding='utf-8-sig'))
+        qc,clip=prepare(spec,manifest.parent)
         out=(args.out or manifest.parent/'meshstates-build').resolve()
         qc_path=out/(manifest.stem+'.qc')
-        write_atomic(qc_path,qc)
         target=(args.game.resolve() if args.game else out)/PurePosixPath(clip['model']).with_suffix('.meshstates.json')
-        if args.compiler:
-            result=subprocess.run([str(args.compiler.resolve()),str(qc_path),'-game',str(args.game.resolve())])
-            if result.returncode:
-                return result.returncode
-            model=args.game.resolve()/PurePosixPath(clip['model'])
-            if not model.is_file():
-                raise ValueError('compiler succeeded without the expected model: '+str(model))
-        write_atomic(target,json.dumps(clip,ensure_ascii=False,indent=2)+'\n')
+        inputs=[manifest]+[(manifest.parent/state['source']).resolve()
+                           for state in spec['states'] if 'source' in state]
+        different_paths(inputs,[qc_path,target])
+        with Publication(inputs) as publication:
+            publication.reserve(qc_path);publication.reserve(target)
+            staged=publication.work/manifest.with_suffix('.qc').name
+            staged.write_text(qc,encoding='utf-8')
+            publication.add(staged,qc_path)
+            if args.compiler:
+                different_paths(inputs,[args.game.resolve()/clip['model']])
+                result=publication.compile(args.compiler,staged,args.game,clip['model'])
+                if result:return result
+            metadata=publication.work/'metadata.json'
+            metadata.write_text(json.dumps(clip,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+            publication.add(metadata,target)
+            publication.commit()
         print('QC: '+str(qc_path));print('Playback metadata: '+str(target))
         return 0
     except (ValueError,OSError,json.JSONDecodeError) as error:

@@ -11,6 +11,7 @@ import struct
 import subprocess
 import sys
 from mesh_states import number, quoted, write_atomic
+from output_transaction import Publication, different_paths
 
 
 def vector(value, label, default=None):
@@ -333,14 +334,27 @@ def main(argv=None):
         if bool(args.compiler)!=bool(args.game):raise ValueError('--compiler and --game must be supplied together')
         doc,metadata,qc=prepare(load_document(args.source),args.source.resolve().parent,args.modelname,args.scale)
         if args.expression_clip:metadata['clip']=bake_expressions(metadata,json.loads(args.expression_clip.read_text()),args.fps)
-        out=args.out.resolve();write_atomic(out/'avatar.gltf',json.dumps(doc,ensure_ascii=False))
-        write_atomic(out/'avatar.qc',qc)
-        if args.compiler:
-            result=subprocess.run([str(args.compiler.resolve()),str(out/'avatar.qc'),'-game',str(args.game.resolve())])
-            if result.returncode:return result.returncode
-            if not (args.game.resolve()/metadata['model']).is_file():raise ValueError('expected compiled model is missing')
+        out=args.out.resolve()
         target=(args.game.resolve() if args.game else out)/PurePosixPath(metadata['model']).with_suffix('.vrm.json')
-        write_atomic(target,json.dumps(metadata,ensure_ascii=False,indent=2)+'\n')
+        inputs=[args.source]+([args.expression_clip] if args.expression_clip else [])
+        inputs.extend(Path(item['uri']) for collection in ('buffers','images') for item in doc.get(collection,[])
+                      if item.get('uri') and not item['uri'].startswith('data:'))
+        # Normalization changes names and removes VRM extensions: never replace
+        # the caller's original document, including case/symlink/hardlink aliases.
+        different_paths(inputs,[out/'avatar.gltf',out/'avatar.qc',target])
+        with Publication(inputs) as publication:
+            for destination in (out/'avatar.gltf',out/'avatar.qc',target):publication.reserve(destination)
+            scene=publication.work/'avatar.gltf';scene.write_text(json.dumps(doc,ensure_ascii=False),encoding='utf-8')
+            staged_qc=publication.work/'avatar.qc';staged_qc.write_text(qc,encoding='utf-8')
+            publication.add(scene,out/'avatar.gltf');publication.add(staged_qc,out/'avatar.qc')
+            if args.compiler:
+                different_paths(inputs,[args.game.resolve()/metadata['model']])
+                result=publication.compile(args.compiler,staged_qc,args.game,metadata['model'])
+                if result:return result
+            sidecar=publication.work/'metadata.json'
+            sidecar.write_text(json.dumps(metadata,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+            publication.add(sidecar,target)
+            publication.commit()
         for warning in metadata['warnings']:print('warning: '+warning)
         print('QC: '+str(out/'avatar.qc'));print('VRM runtime metadata: '+str(target));return 0
     except (OSError,ValueError,KeyError,TypeError) as e:

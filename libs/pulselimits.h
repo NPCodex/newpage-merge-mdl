@@ -67,6 +67,8 @@ inline constexpr int kMaxNumLods       = 8; // [format] numLODVertexes[8]
 inline constexpr int kMaxBones     = 1024;
 inline constexpr int kMaxBoneBits  = 10; // must match kMaxBones (2^10)
 inline constexpr int kMaxSrcBones  = kUncapped; // [file] pre-collapse, never written as-is
+// [tool] Recursive DMX skeleton/mesh loading follows authored child dags.
+inline constexpr int kMaxDmxDagDepth = 256;
 inline constexpr int kMaxBoneCtrls = 4; // [tool] mstudiobone_t has 6 slots, every engine networks 4
 inline constexpr int kMaxAttachments = kUncapped; // [file] 92 bytes each
 inline constexpr int kMaxJiggleBones = kMaxBones; // one per bone
@@ -105,6 +107,8 @@ inline constexpr int kMaxEyeballs = 4; // [tool] engine-side eyeball arrays are 
 // motion across 6 channels. Sectioning ($sectionframes) is what buys headroom
 // past that, so this stays a budget rather than rising to the int32 count.
 inline constexpr int kMaxAnimFrames = 5000;
+// [tool] Shared decoder allocation budget, independent of compiler frame limits.
+inline constexpr uint64_t kMaxDecodedAnimationBytes = 512ULL * 1024 * 1024;
 inline constexpr int kMaxAnims      = INT16_MAX; // [format] sequence blend anim indices are int16
 inline constexpr int kMaxSequences  = INT16_MAX; // [format] mstudioautolayer_t::iSequence int16
 inline constexpr int kMaxAnimBlocks = kUncapped; // [file] 8 bytes each

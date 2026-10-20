@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 _tool_path=Path(__file__).resolve().parents[1]/'tools/mesh_states.py'
+sys.path.insert(0,str(_tool_path.parent))
 _spec=importlib.util.spec_from_file_location('newpage_mesh_states',_tool_path)
 mesh_states=importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(mesh_states)

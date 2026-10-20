@@ -29,6 +29,9 @@ std::vector<std::string> Tokens(const std::string& text) {
  while(i<text.size()) {
   if(std::isspace(static_cast<unsigned char>(text[i]))){++i;continue;}
   if(text.compare(i,2,"//")==0){while(i<text.size()&&text[i]!='\n')++i;continue;}
+  if(text[i]=='['){const size_t begin=i++;while(i<text.size()&&text[i]!=']')++i;
+   if(i==text.size())throw std::runtime_error("unterminated KeyValues condition");
+   out.push_back(text.substr(begin,++i-begin));continue;}
   if(text[i]=='{'||text[i]=='}'){out.push_back(text.substr(i++,1));continue;}
   std::string s;
   if(text[i]=='"'){++i;while(i<text.size()&&text[i]!='"'){
@@ -38,19 +41,47 @@ std::vector<std::string> Tokens(const std::string& text) {
   out.push_back(std::move(s));
  }return out;
 }
+// Conditions belong to the preceding value/block. Parse the complete expression
+// so negation and whitespace cannot silently turn a disabled mount into a live one.
+class Condition {
+ const std::string text;size_t at=0;
+ void Space(){while(at<text.size()&&std::isspace(static_cast<unsigned char>(text[at])))++at;}
+ bool Take(const char* token){Space();const auto n=std::strlen(token);if(text.compare(at,n,token))return false;at+=n;return true;}
+ bool Symbol(const std::string& name) {
+#ifdef _WIN32
+  if(name=="win32"||name=="windows"||name=="win64")return true;
+#elif defined(__linux__)
+  if(name=="linux"||name=="posix")return true;
+#elif defined(__APPLE__)
+  if(name=="osx"||name=="macos"||name=="posix")return true;
+#endif
+  return name=="pc"; // unrecognized or console-only symbols are unset
+ }
+ bool Unary(int depth){
+  if(depth>64)throw std::runtime_error("KeyValues condition nesting limit exceeded");
+  if(Take("!"))return !Unary(depth+1);
+  if(Take("(")){const bool v=Or(depth+1);if(!Take(")"))throw std::runtime_error("missing KeyValues condition parenthesis");return v;}
+  if(!Take("$"))throw std::runtime_error("expected platform symbol in KeyValues condition");
+  const auto begin=at;while(at<text.size()&&(std::isalnum(static_cast<unsigned char>(text[at]))||text[at]=='_'))++at;
+  if(begin==at)throw std::runtime_error("empty KeyValues condition symbol");
+  return Symbol(text.substr(begin,at-begin));
+ }
+ bool And(int depth){bool v=Unary(depth);while(Take("&&")){const bool rhs=Unary(depth);v=v&&rhs;}return v;}
+ bool Or(int depth){bool v=And(depth);while(Take("||")){const bool rhs=And(depth);v=v||rhs;}return v;}
+public:
+ explicit Condition(std::string value):text(Lower(std::move(value))){}
+ bool Evaluate(){if(!Take("["))throw std::runtime_error("invalid KeyValues condition");const bool v=Or(0);
+  if(!Take("]")){throw std::runtime_error("invalid KeyValues condition expression");}Space();
+  if(at!=text.size())throw std::runtime_error("trailing KeyValues condition data");return v;}
+};
 std::vector<KV> Parse(const std::vector<std::string>& ts,size_t& i,bool nested=false,int depth=0) {
  if(depth>64)throw std::runtime_error("KeyValues nesting limit exceeded");std::vector<KV> out;
  while(i<ts.size()&&ts[i]!="}") {
   KV n;n.key=ts[i++];if(i==ts.size())throw std::runtime_error("missing KeyValues value");
   if(ts[i]=="{"){++i;n.children=Parse(ts,i,true,depth+1);}else n.value=ts[i++];
   bool enabled=true;
-  if(i<ts.size()&&!ts[i].empty()&&ts[i][0]=='['){const auto condition=Lower(ts[i++]);
-#ifdef _WIN32
-   enabled=condition!="[$linux]"&&condition!="[$posix]";
-#else
-   enabled=condition!="[$win32]"&&condition!="[$windows]";
-#endif
-  }if(enabled)out.push_back(std::move(n));
+  while(i<ts.size()&&!ts[i].empty()&&ts[i][0]=='['){const bool value=Condition(ts[i++]).Evaluate();enabled=enabled&&value;}
+  if(enabled)out.push_back(std::move(n));
  }if(nested){if(i==ts.size())throw std::runtime_error("missing KeyValues closing brace");++i;}return out;
 }
 std::vector<KV> ReadKV(const fs::path& path) {

@@ -23,11 +23,14 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <limits>
+#include <stdexcept>
 #include <system_error>
 #include <vector>
 
 #include "dmxwrite.h"
 #include "math/compressed.h"
+#include "pulselimits.h"
 
 namespace mdldecompiler {
 namespace {
@@ -36,6 +39,13 @@ using Pose = AnimPose;
 
 bool g_smd = false;
 
+struct AnimationDataError : std::runtime_error {
+    explicit AnimationDataError(const char* reason)
+        : std::runtime_error(std::string("invalid animation data: ") + reason) {}
+};
+
+bool MultipleBits(uint8_t value) { return (value & (value - 1)) != 0; }
+
 // A block of animation data plus the bounds it has to stay inside. Sections may
 // live in the .mdl or in the .ani, so both files come through here.
 struct Block {
@@ -43,12 +53,20 @@ struct Block {
     const char* end = nullptr;
 
     template <typename T>
-    const T* At(const void* from, int32_t off, int count = 1) const {
-        const char* p = static_cast<const char*>(from) + off;
-        if (p < base || p > end || sizeof(T) * static_cast<size_t>(count) >
-                                       static_cast<size_t>(end - p))
-            return nullptr;
-        return reinterpret_cast<const T*>(p);
+    const T* At(const void* from, int64_t off, int count = 1) const {
+        const uintptr_t b = reinterpret_cast<uintptr_t>(base), e = reinterpret_cast<uintptr_t>(end);
+        const uintptr_t f = reinterpret_cast<uintptr_t>(from);
+        if (!base || !end || e < b || f < b || f > e || count < 0) return nullptr;
+        const int64_t at = static_cast<int64_t>(f - b) + off;
+        if (at < 0 || static_cast<uint64_t>(at) > e - b ||
+            static_cast<size_t>(count) > (e - b - static_cast<size_t>(at)) / sizeof(T)) return nullptr;
+        return reinterpret_cast<const T*>(base + at);
+    }
+    template <typename T>
+    const T* Require(const void* from, int64_t off, int count = 1) const {
+        const auto* result = At<T>(from, off, count);
+        if (!result) throw AnimationDataError("record offset or byte range is out of bounds");
+        return result;
     }
 };
 
@@ -56,21 +74,21 @@ struct Block {
 // by `valid` int16s. A frame past `valid` but inside `total` holds the last
 // value; a frame past `total` moves on to the next header.
 float ExtractAnimValue(const Block& blk, const fm::mstudioanimvalue_t* p, int frame) {
-    for (int guard = 0; guard < 1024; ++guard) {
-        if (!blk.At<fm::mstudioanimvalue_t>(p, 0))
-            return 0.0f;
+    if (frame < 0) throw AnimationDataError("negative RLE frame");
+    // Each valid run consumes at least one frame, so frame+1 bounds traversal.
+    while (true) {
+        blk.Require<fm::mstudioanimvalue_t>(p, 0);
         const int total = p->num.total, valid = p->num.valid;
-        if (total == 0)
-            return 0.0f;
+        if (total == 0 || valid == 0 || valid > total)
+            throw AnimationDataError("invalid RLE valid/total counts");
+        blk.Require<fm::mstudioanimvalue_t>(p, 0, valid + 1);
         if (frame < total) {
             const int k = (valid > frame) ? frame + 1 : valid;
-            const fm::mstudioanimvalue_t* v = blk.At<fm::mstudioanimvalue_t>(p, k * 2);
-            return v ? static_cast<float>(v->value) : 0.0f;
+            return static_cast<float>(p[k].value);
         }
         frame -= total;
-        p += valid + 1;
+        p = blk.Require<fm::mstudioanimvalue_t>(p, (valid + 1) * 2);
     }
-    return 0.0f;
 }
 
 // One RLE section -> `out` for the frames it covers. `local` is the frame
@@ -78,16 +96,20 @@ float ExtractAnimValue(const Block& blk, const fm::mstudioanimvalue_t* p, int fr
 void DecodeRle(const Block& blk, const char* sect, const fm::mstudiobone_t* bones, int numbones,
                bool delta, int local, std::vector<Pose>& out) {
     const char* p = sect;
+    std::vector<bool> visited(static_cast<size_t>(numbones));
     for (int guard = 0; guard <= numbones; ++guard) {
-        const auto* e = blk.At<fm::mstudio_rle_anim_t>(p, 0);
-        if (!e)
-            return;
+        const auto* e = blk.Require<fm::mstudio_rle_anim_t>(p, 0);
+        if (e->bone == 255 && e->flags == 0 && e->nextoffset == 0) return; // empty stream
         if (e->bone >= numbones) {
-            if (e->nextoffset == 0)
-                return;
-            p += e->nextoffset;
-            continue;
+            throw AnimationDataError("RLE bone index is out of range");
         }
+        if (visited[e->bone]) throw AnimationDataError("duplicate or cyclic RLE bone record");
+        visited[e->bone] = true;
+        if ((e->flags & ~(fm::STUDIO_ANIM_RAWPOS | fm::STUDIO_ANIM_RAWROT | fm::STUDIO_ANIM_ANIMPOS |
+                         fm::STUDIO_ANIM_ANIMROT | fm::STUDIO_ANIM_DELTA | fm::STUDIO_ANIM_RAWROT2)) ||
+            MultipleBits(e->flags & (fm::STUDIO_ANIM_RAWPOS | fm::STUDIO_ANIM_ANIMPOS)) ||
+            MultipleBits(e->flags & (fm::STUDIO_ANIM_RAWROT | fm::STUDIO_ANIM_RAWROT2 | fm::STUDIO_ANIM_ANIMROT)))
+            throw AnimationDataError("invalid RLE channel flags");
         const fm::mstudiobone_t& b = bones[e->bone];
         Pose& o = out[e->bone];
         const char* d = p + sizeof(fm::mstudio_rle_anim_t);
@@ -95,28 +117,29 @@ void DecodeRle(const Block& blk, const char* sect, const fm::mstudiobone_t* bone
         // rotation always comes first, raw or as a value-pointer block
         const fm::mstudioanim_valueptr_t* rotv = nullptr;
         if (e->flags & fm::STUDIO_ANIM_RAWROT2) {
-            if (const auto* raw = blk.At<char>(d, 0, sizeof(pm::Quaternion64))) {
+            if (const auto* raw = blk.Require<char>(d, 0, sizeof(pm::Quaternion64))) {
                 pm::Quaternion64 q;
                 std::memcpy(&q, raw, sizeof(q));
                 pm::QuaternionAngles(q.Get(), o.rot);
             }
             d += sizeof(pm::Quaternion64);
         } else if (e->flags & fm::STUDIO_ANIM_RAWROT) {
-            if (const auto* q = blk.At<pm::Quaternion48>(d, 0))
+            if (const auto* q = blk.Require<pm::Quaternion48>(d, 0))
                 pm::QuaternionAngles(q->Get(), o.rot);
             d += sizeof(pm::Quaternion48);
         } else if (e->flags & fm::STUDIO_ANIM_ANIMROT) {
-            rotv = blk.At<fm::mstudioanim_valueptr_t>(d, 0);
+            rotv = blk.Require<fm::mstudioanim_valueptr_t>(d, 0);
             d += sizeof(fm::mstudioanim_valueptr_t);
         }
 
         const fm::mstudioanim_valueptr_t* posv = nullptr;
         if (e->flags & fm::STUDIO_ANIM_RAWPOS) {
-            if (const auto* v = blk.At<pm::Vector48>(d, 0))
+            if (const auto* v = blk.Require<pm::Vector48>(d, 0))
                 o.pos = v->Get();
             d += sizeof(pm::Vector48);
         } else if (e->flags & fm::STUDIO_ANIM_ANIMPOS) {
-            posv = blk.At<fm::mstudioanim_valueptr_t>(d, 0);
+            posv = blk.Require<fm::mstudioanim_valueptr_t>(d, 0);
+            d += sizeof(fm::mstudioanim_valueptr_t);
         }
 
         // A stream value is an offset from the bone's STORED pos/rot in scale
@@ -128,47 +151,54 @@ void DecodeRle(const Block& blk, const char* sect, const fm::mstudiobone_t* bone
         for (int k = 0; k < 3 && rotv; ++k) {
             if (!rotv->offset[k])
                 continue;
-            const auto* s = blk.At<fm::mstudioanimvalue_t>(rotv, rotv->offset[k]);
-            if (!s)
-                continue;
+            if (rotv->offset[k] < static_cast<int>(sizeof(*rotv)))
+                throw AnimationDataError("invalid RLE rotation stream offset");
+            const auto* s = blk.Require<fm::mstudioanimvalue_t>(rotv, rotv->offset[k]);
             (&o.rot.x)[k] = (delta ? 0.0f : (&b.rot.x)[k]) +
                             ExtractAnimValue(blk, s, local) * (&b.rotscale.x)[k];
         }
         for (int k = 0; k < 3 && posv; ++k) {
             if (!posv->offset[k])
                 continue;
-            const auto* s = blk.At<fm::mstudioanimvalue_t>(posv, posv->offset[k]);
-            if (!s)
-                continue;
+            if (posv->offset[k] < static_cast<int>(sizeof(*posv)))
+                throw AnimationDataError("invalid RLE position stream offset");
+            const auto* s = blk.Require<fm::mstudioanimvalue_t>(posv, posv->offset[k]);
             (&o.pos.x)[k] = (delta ? 0.0f : (&b.pos.x)[k]) +
                             ExtractAnimValue(blk, s, local) * (&b.posscale.x)[k];
         }
 
         if (e->nextoffset == 0)
             return;
-        p += e->nextoffset;
+        if (e->nextoffset < d - p)
+            throw AnimationDataError("invalid RLE next offset");
+        p = blk.Require<char>(p, e->nextoffset);
     }
+    throw AnimationDataError("RLE record chain does not terminate");
 }
 
 // One STUDIO_FRAMEANIM section. Values are absolute, so the bind pose is only
 // the fallback for a bone the section says nothing about.
 void DecodeFrameAnim(const Block& blk, const char* sect, int numbones, int local,
                      std::vector<Pose>& out) {
-    const auto* fa = blk.At<fm::mstudio_frame_anim_t>(sect, 0);
-    if (!fa)
-        return;
-    const uint8_t* flags = blk.At<uint8_t>(fa, sizeof(fm::mstudio_frame_anim_t), numbones);
-    if (!flags)
-        return;
+    const auto* fa = blk.Require<fm::mstudio_frame_anim_t>(sect, 0);
+    const uint8_t* flags = blk.Require<uint8_t>(fa, sizeof(fm::mstudio_frame_anim_t), numbones);
+    if (fa->constantsoffset < 0 || fa->frameoffset < 0 || fa->framelength < 0 || local < 0)
+        throw AnimationDataError("negative frame-animation offset or stride");
+    for (int j = 0; j < numbones; ++j)
+        if (MultipleBits(flags[j] & (fm::STUDIO_FRAME_CONST_ROT | fm::STUDIO_FRAME_CONST_ROT2 |
+                                    fm::STUDIO_FRAME_ANIM_ROT | fm::STUDIO_FRAME_ANIM_ROT2)) ||
+            MultipleBits(flags[j] & (fm::STUDIO_FRAME_CONST_POS | fm::STUDIO_FRAME_CONST_POS2 |
+                                    fm::STUDIO_FRAME_ANIM_POS | fm::STUDIO_FRAME_ANIM_POS2)))
+            throw AnimationDataError("conflicting frame-animation channel flags");
 
     auto rot = [&](const char* d, Pose& o, uint8_t f) -> int {
         if (f & fm::STUDIO_FRAME_CONST_ROT2 || f & fm::STUDIO_FRAME_ANIM_ROT2) {
-            if (const auto* q = blk.At<pm::Quaternion48S>(d, 0))
+            if (const auto* q = blk.Require<pm::Quaternion48S>(d, 0))
                 pm::QuaternionAngles(q->Get(), o.rot);
             return sizeof(pm::Quaternion48S);
         }
         if (f & fm::STUDIO_FRAME_CONST_ROT || f & fm::STUDIO_FRAME_ANIM_ROT) {
-            if (const auto* q = blk.At<pm::Quaternion48>(d, 0))
+            if (const auto* q = blk.Require<pm::Quaternion48>(d, 0))
                 pm::QuaternionAngles(q->Get(), o.rot);
             return sizeof(pm::Quaternion48);
         }
@@ -176,19 +206,19 @@ void DecodeFrameAnim(const Block& blk, const char* sect, int numbones, int local
     };
     auto pos = [&](const char* d, Pose& o, uint8_t f) -> int {
         if (f & fm::STUDIO_FRAME_CONST_POS2 || f & fm::STUDIO_FRAME_ANIM_POS2) {
-            if (const auto* v = blk.At<pm::Vector3>(d, 0))
+            if (const auto* v = blk.Require<pm::Vector3>(d, 0))
                 o.pos = *v;
             return sizeof(pm::Vector3);
         }
         if (f & fm::STUDIO_FRAME_CONST_POS || f & fm::STUDIO_FRAME_ANIM_POS) {
-            if (const auto* v = blk.At<pm::Vector48>(d, 0))
+            if (const auto* v = blk.Require<pm::Vector48>(d, 0))
                 o.pos = v->Get();
             return sizeof(pm::Vector48);
         }
         return 0;
     };
 
-    const char* c = reinterpret_cast<const char*>(fa) + fa->constantsoffset;
+    const char* c = blk.Require<char>(fa, fa->constantsoffset, 0);
     for (int j = 0; j < numbones; ++j) {
         const uint8_t f = flags[j] & (fm::STUDIO_FRAME_CONST_ROT | fm::STUDIO_FRAME_CONST_ROT2 |
                                       fm::STUDIO_FRAME_CONST_POS | fm::STUDIO_FRAME_CONST_POS2);
@@ -196,14 +226,17 @@ void DecodeFrameAnim(const Block& blk, const char* sect, int numbones, int local
         c += pos(c, out[j], f);
     }
 
-    const char* fr = reinterpret_cast<const char*>(fa) + fa->frameoffset +
-                     static_cast<size_t>(fa->framelength) * local;
+    const char* fr = blk.Require<char>(fa, static_cast<int64_t>(fa->frameoffset) +
+                                      static_cast<int64_t>(fa->framelength) * local, fa->framelength);
+    const char* frameStart = fr;
     for (int j = 0; j < numbones; ++j) {
         const uint8_t f = flags[j] & (fm::STUDIO_FRAME_ANIM_ROT | fm::STUDIO_FRAME_ANIM_ROT2 |
                                       fm::STUDIO_FRAME_ANIM_POS | fm::STUDIO_FRAME_ANIM_POS2);
         fr += rot(fr, out[j], f);
         fr += pos(fr, out[j], f);
     }
+    if (fr - frameStart != fa->framelength)
+        throw AnimationDataError("frame-animation channel sizes do not match the stride");
 }
 
 // All frames of one clip, in the space the .mdl stores them. Returns false when
@@ -212,7 +245,14 @@ bool DecodeAnim(const Mdl& m, const fm::mstudioanimdesc_t& a, const fm::mstudiob
                 int numbones, const Block& local, const Block& ext,
                 const fm::mstudioanimblock_t* blocks, int numblocks,
                 std::vector<std::vector<Pose>>& frames) {
-    const int numframes = a.numframes > 0 ? a.numframes : 1;
+    if (a.numframes <= 0 ||
+        numbones < 0 || numbones > pulse::limits::kMaxBones || (numbones > 0 && !bones) ||
+        a.sectionframes < 0 || a.animblock < 0 || !std::isfinite(a.fps) || a.fps <= 0)
+        throw AnimationDataError("invalid frame count, frame rate, bone count or section size");
+    const size_t perFrame = sizeof(std::vector<Pose>) + sizeof(Pose) * static_cast<size_t>(numbones);
+    if (static_cast<uint64_t>(a.numframes) > pulse::limits::kMaxDecodedAnimationBytes / perFrame)
+        throw AnimationDataError("decoded animation exceeds the memory budget");
+    const int numframes = a.numframes;
     const bool delta = (a.flags & fm::STUDIO_DELTA) != 0;
     const bool frameanim = (a.flags & fm::STUDIO_FRAMEANIM) != 0;
 
@@ -220,6 +260,8 @@ bool DecodeAnim(const Mdl& m, const fm::mstudioanimdesc_t& a, const fm::mstudiob
         a.sectionframes > 0 ? m.At<fm::mstudioanimsections_t>(&a, a.sectionindex,
                                                               numframes / a.sectionframes + 2)
                             : nullptr;
+    if (a.sectionframes > 0 && !sections)
+        throw AnimationDataError("invalid animation section table");
 
     frames.assign(static_cast<size_t>(numframes),
                   std::vector<Pose>(static_cast<size_t>(numbones)));
@@ -240,12 +282,19 @@ bool DecodeAnim(const Mdl& m, const fm::mstudioanimdesc_t& a, const fm::mstudiob
         }
 
         const Block* blk = &local;
+        Block sectionBlock;
         const char* base = nullptr;
         if (block == 0) {
-            base = reinterpret_cast<const char*>(&a) + index;
-        } else if (ext.base && blocks && block < numblocks) {
-            blk = &ext;
-            base = ext.base + blocks[block].datastart + index;
+            if (index <= 0) throw AnimationDataError("missing local animation offset");
+            base = local.Require<char>(&a, index);
+        } else if (block > 0 && ext.base && blocks && block < numblocks) {
+            const auto& entry = blocks[block];
+            if (entry.datastart < 0 || entry.dataend < entry.datastart || index < 0)
+                throw AnimationDataError("invalid external animation block");
+            const auto* begin = ext.Require<char>(ext.base, entry.datastart, entry.dataend - entry.datastart);
+            sectionBlock = {begin, begin + (entry.dataend - entry.datastart)};
+            blk = &sectionBlock;
+            base = blk->Require<char>(begin, index);
         } else {
             return false;
         }
@@ -271,9 +320,22 @@ void RestoreMotion(const Mdl& m, const fm::mstudioanimdesc_t& a, const fm::mstud
                    int numbones, std::vector<std::vector<Pose>>& frames) {
     const fm::mstudiomovement_t* mv =
         m.At<fm::mstudiomovement_t>(&a, a.movementindex, a.nummovements);
-    if (!mv || a.nummovements <= 0 || frames.empty())
+    if (a.nummovements < 0 || (a.nummovements > 0 && !mv))
+        throw AnimationDataError("invalid movement table");
+    if (a.nummovements == 0 || frames.empty())
         return;
     const int last = static_cast<int>(frames.size()) - 1;
+    int previousEnd = -1;
+    for (int i = 0; i < a.nummovements; ++i) {
+        if (mv[i].endframe < 0 || mv[i].endframe > last || mv[i].endframe <= previousEnd)
+            throw AnimationDataError("movement endframe is negative, out of range or unordered");
+        previousEnd = mv[i].endframe;
+        if (!std::isfinite(mv[i].v0) || !std::isfinite(mv[i].v1) || !std::isfinite(mv[i].angle))
+            throw AnimationDataError("non-finite movement velocity or angle");
+        for (int k = 0; k < 3; ++k)
+            if (!std::isfinite((&mv[i].position.x)[k]) || !std::isfinite((&mv[i].vector.x)[k]))
+                throw AnimationDataError("non-finite movement position or vector");
+    }
 
     pm::matrix3x4 prev, ident;
     pm::AngleMatrix(pm::RadianEuler{0.0f, 0.0f, 0.0f}, pm::Vector3{0.0f, 0.0f, 0.0f}, ident);
@@ -350,7 +412,10 @@ bool RecoverIkBase(const Mdl& m, const std::string& mdlPath, std::vector<pm::Vec
             return -1;
         const auto* links =
             m.At<fm::mstudioiklink_t>(&chains[c], chains[c].linkindex, chains[c].numlinks);
-        return (links && chains[c].numlinks >= 3) ? links[2].bone : -1;
+        if (!links || chains[c].numlinks < 3) return -1;
+        if (links[2].bone < 0 || links[2].bone >= h.numbones)
+            throw AnimationDataError("IK chain end bone is out of range");
+        return links[2].bone;
     };
 
     struct Target {
@@ -379,8 +444,15 @@ bool RecoverIkBase(const Mdl& m, const std::string& mdlPath, std::vector<pm::Vec
             if (rules[r].type != fm::IK_SELF || rules[r].compressedikerrorindex == 0 || hand < 0 ||
                 rules[r].bone < -1 || rules[r].bone >= h.numbones)
                 continue;
-            targets.push_back({i, rules[r].bone, hand, static_cast<int>(std::lround(rules[r].start * lf)),
-                               static_cast<int>(std::lround(rules[r].end * lf)), &rules[r], rblk});
+            auto frame = [&](float phase) {
+                const double value = std::round(double(phase) * lf);
+                if (!std::isfinite(value) || value < std::numeric_limits<int>::min() ||
+                    value > std::numeric_limits<int>::max())
+                    throw AnimationDataError("IK phase is not a representable frame");
+                return static_cast<int>(value);
+            };
+            targets.push_back({i, rules[r].bone, hand, frame(rules[r].start),
+                               frame(rules[r].end), &rules[r], rblk});
         }
     }
     if (targets.empty())
@@ -393,6 +465,8 @@ bool RecoverIkBase(const Mdl& m, const std::string& mdlPath, std::vector<pm::Vec
                        clipFrames[t.clip]);
 
     auto storedError = [&](const Target& t, int frame, pm::Vector3& ep, pm::RadianEuler& er) -> bool {
+        const int64_t localFrame = static_cast<int64_t>(frame) - t.start;
+        if (localFrame < 0 || localFrame > std::numeric_limits<int>::max()) return false;
         const auto* cie =
             t.blk.At<fm::mstudiocompressedikerror_t>(t.rule, t.rule->compressedikerrorindex);
         if (!cie)
@@ -401,9 +475,11 @@ bool RecoverIkBase(const Mdl& m, const std::string& mdlPath, std::vector<pm::Vec
         for (int c = 0; c < 6; ++c) {
             if (!cie->offset[c])
                 continue;
+            if (cie->offset[c] < static_cast<int>(sizeof(*cie)))
+                throw AnimationDataError("invalid compressed IK stream offset");
             const auto* s = t.blk.At<fm::mstudioanimvalue_t>(cie, cie->offset[c]);
             if (s)
-                v[c] = ExtractAnimValue(t.blk, s, frame - t.start) * cie->scale[c];
+                v[c] = ExtractAnimValue(t.blk, s, static_cast<int>(localFrame)) * cie->scale[c];
         }
         ep = {v[0], v[1], v[2]};
         er = {v[3], v[4], v[5]};
@@ -428,7 +504,7 @@ bool RecoverIkBase(const Mdl& m, const std::string& mdlPath, std::vector<pm::Vec
             if (it == clipFrames.end() || it->second.empty())
                 continue;
             const auto& df = it->second;
-            for (int fr : {t.start, (t.start + t.end) / 2, t.end}) {
+            for (int fr : {t.start, static_cast<int>((static_cast<int64_t>(t.start) + t.end) / 2), t.end}) {
                 if (fr < 0 || fr >= static_cast<int>(df.size()))
                     continue;
                 std::vector<pm::matrix3x4> world(static_cast<size_t>(h.numbones));
@@ -487,7 +563,7 @@ bool RecoverIkBase(const Mdl& m, const std::string& mdlPath, std::vector<pm::Vec
 
 } // namespace
 
-void ComputeIkBaseRecovery(Mdl& m, const std::string& mdlPath) {
+void ComputeIkBaseRecovery(Mdl& m, const std::string& mdlPath) try {
     std::vector<pm::Vector3> pos;
     std::vector<pm::RadianEuler> rot;
     if (RecoverIkBase(m, mdlPath, pos, rot)) {
@@ -495,6 +571,8 @@ void ComputeIkBaseRecovery(Mdl& m, const std::string& mdlPath) {
         m.ikBasePos = std::move(pos);
         m.ikBaseRot = std::move(rot);
     }
+} catch (const AnimationDataError& e) {
+    ExtractionError(e.what());
 }
 
 void SetAnimFormat(bool smd) { g_smd = smd; }
@@ -536,6 +614,17 @@ struct ClipSource {
         }
         if (!Valid())
             return;
+        for (int j = 0; j < h.numbones; ++j) {
+            int parent = j;
+            for (int depth = 0; parent >= 0; ++depth) {
+                if (parent >= h.numbones || depth >= h.numbones || bones[parent].parent < -1)
+                    throw AnimationDataError("invalid bone parent or cyclic hierarchy");
+                parent = bones[parent].parent;
+            }
+            for (int k = 0; k < 3; ++k)
+                if (!std::isfinite((&bones[j].pos.x)[k]) || !std::isfinite((&bones[j].rot.x)[k]))
+                    throw AnimationDataError("non-finite bind pose");
+        }
 
         // A delta clip is stored already subtracted, but the .pulseqc rebuilds it
         // with `subtract "<base>" 0` - so the SMD has to carry the pose BEFORE the
@@ -553,15 +642,16 @@ struct ClipSource {
                 bindPose[j] = Pose{m.ikBasePos[j], m.ikBaseRot[j]};
         if (baseIndex >= 0) {
             std::vector<std::vector<Pose>> f;
-            if (DecodeAnim(m, descs[baseIndex], bones, h.numbones, local, ext, blocks,
-                           h.numanimblocks, f) &&
-                !f.empty())
-                realBase = f[0];
+            if (!DecodeAnim(m, descs[baseIndex], bones, h.numbones, local, ext, blocks,
+                            h.numanimblocks, f) || f.empty())
+                throw AnimationDataError("cannot decode subtract base (check ANI sidecar)");
+            realBase = f[0];
         }
     }
 
     bool Valid() const {
         return descs && m.hdr->numlocalanim > 0 && m.hdr->numbones >= 0 &&
+               m.hdr->numbones <= pulse::limits::kMaxBones &&
                (m.hdr->numbones == 0 || bones);
     }
 
@@ -607,17 +697,26 @@ struct ClipSource {
         // before the yaw comes off
         RestoreMotion(m, a, bones, h.numbones, frames);
 
-        for (std::vector<Pose>& fr : frames)
+        for (std::vector<Pose>& fr : frames) {
             UnyawRoots(fr);
+            for (const auto& pose : fr)
+                for (int k = 0; k < 3; ++k)
+                    if (!std::isfinite((&pose.pos.x)[k]) || !std::isfinite((&pose.rot.x)[k]))
+                        throw AnimationDataError("decoded pose is not finite");
+        }
         return true;
     }
 };
 
 } // namespace
 
-bool DecodeClip(const Mdl& m, int anim, std::vector<std::vector<AnimPose>>& frames) {
+bool DecodeClip(const Mdl& m, int anim, std::vector<std::vector<AnimPose>>& frames) try {
     const ClipSource src(m, m.ani);
     return src.Valid() && anim >= 0 && anim < m.hdr->numlocalanim && src.Decode(anim, frames);
+} catch (const AnimationDataError& e) {
+    frames.clear();
+    ExtractionError(e.what());
+    return false;
 }
 
 std::vector<AnimPose> BindPose(const Mdl& m) {
@@ -630,7 +729,7 @@ std::vector<AnimPose> BindPose(const Mdl& m) {
     return pose;
 }
 
-void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::string& dir) {
+void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::string& dir) try {
     const fm::studiohdr_t& h = *m.hdr;
     // demand-loaded sections live in the sibling .ani, addressed through the
     // block table; without it those clips are skipped rather than half written
@@ -732,6 +831,8 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
                     animDir.c_str());
     if (skipped)
         std::printf("  %d animation%s could not be extracted\n", skipped, skipped == 1 ? "" : "s");
+} catch (const AnimationDataError& e) {
+    ExtractionError(e.what());
 }
 
 } // namespace mdldecompiler

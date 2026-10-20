@@ -219,7 +219,35 @@ struct CamKey {
     Vector3 at, rot;
     uint8_t interp[24] = {};
     uint32_t fov = 30;
+    bool orthographic = false;
 };
+
+struct IkKey {
+    uint32_t frame = 0;
+    bool enabled = true;
+};
+using IkKeys = std::map<std::string, std::vector<IkKey>>;
+
+// IK switches are held, not interpolated. Before the first switch MMD uses IK.
+bool IkEnabled(const IkKeys& switches, const std::string& name, float frame) {
+    const auto found = switches.find(name);
+    if (found == switches.end()) return true;
+    const auto& keys = found->second;
+    const auto next = std::upper_bound(keys.begin(), keys.end(), frame,
+                                      [](float f, const IkKey& key) { return f < key.frame; });
+    return next == keys.begin() || (next - 1)->enabled;
+}
+
+bool CameraProjectionSupported(const std::vector<CamKey>& keys, const std::string& path,
+                               std::string& err) {
+    for (const CamKey& key : keys) {
+        if (!key.orthographic) continue;
+        err = "\"" + path + "\": orthographic camera at frame " + std::to_string(key.frame) +
+              " cannot be preserved by camera SMD or pulsecamera 1 DMX; use perspective camera keys";
+        return false;
+    }
+    return true;
+}
 
 constexpr float kMaxVmdPosition = 1.0e7f;
 constexpr float kMaxVmdAngle = 1.0e4f;
@@ -227,6 +255,18 @@ constexpr float kMaxVmdWeight = 1.0e6f;
 
 bool FiniteVector(const Vector3& v) {
     return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+}
+
+bool FiniteMatrix(const matrix3x4& matrix) {
+    for (const auto& row : matrix.m)
+        for (float value : row)
+            if (!std::isfinite(value)) return false;
+    return true;
+}
+
+bool FinitePose(const AnimPose& pose) {
+    return FiniteVector(pose.pos) && std::isfinite(pose.rot.x) &&
+           std::isfinite(pose.rot.y) && std::isfinite(pose.rot.z);
 }
 
 bool BoundedVector(const Vector3& v, float limit) {
@@ -364,7 +404,8 @@ void Sample(const std::vector<Key>& keys, float f, Vector3& pos, pm::Quaternion&
 
 // Bone and morph keys by raw Shift-JIS name, and the camera keys if the file has any.
 bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& out,
-             Morphs& morphs, std::vector<CamKey>& cams, uint32_t& lastFrame, std::string& err) {
+             Morphs& morphs, std::vector<CamKey>& cams, uint32_t& lastFrame, std::string& err,
+             IkKeys* ikKeys = nullptr) {
     std::vector<char> buf;
     if (!mdldecompiler::ReadWhole(path, buf)) {
         err = "cannot read \"" + path + "\"";
@@ -458,11 +499,16 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
             std::memcpy(c.interp, buf.data() + r.at, 24);
         r.Skip(24);
         c.fov = r.Get<uint32_t>();
-        r.Skip(1); // perspective flag
+        const uint8_t projection = r.Get<uint8_t>(); // 0 = perspective, 1 = orthographic
+        c.orthographic = projection == 1;
         if (!r.ok)
             break;
         const std::string record = "\"" + path + "\": camera key #" + std::to_string(i + 1) +
                                    " (frame " + std::to_string(c.frame) + ")";
+        if (projection > 1) {
+            err = record + " has an invalid perspective flag (expected 0 or 1)";
+            return false;
+        }
         if (!std::isfinite(c.dist) || std::fabs(c.dist) > kMaxVmdPosition ||
             !BoundedVector(c.at, kMaxVmdPosition)) {
             err = record + " has a non-finite or out-of-range distance/position";
@@ -489,6 +535,42 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
     SortKeys(cams);
     for (auto& [name, keys] : morphs)
         SortKeys(keys);
+
+    // Optional sections after cameras: lights, self-shadow, then model display/IK.
+    // Older VMD writers may end at any section boundary. Read the preceding
+    // fixed-size records even though this converter does not export lighting.
+    const uint32_t lights = r.at < buf.size() ? r.Get<uint32_t>() : 0;
+    r.Skip(static_cast<size_t>(lights) * 28);
+    const uint32_t shadows = r.ok && r.at < buf.size() ? r.Get<uint32_t>() : 0;
+    r.Skip(static_cast<size_t>(shadows) * 9);
+    const uint32_t displays = r.ok && r.at < buf.size() ? r.Get<uint32_t>() : 0;
+    for (uint32_t i = 0; i < displays && r.ok; ++i) {
+        const uint32_t frame = r.Get<uint32_t>();
+        const uint8_t visible = r.Get<uint8_t>();
+        const uint32_t count = r.Get<uint32_t>();
+        if (!r.ok) break;
+        if (visible > 1) {
+            err = "\"" + path + "\": invalid visibility flag in the IK section";
+            return false;
+        }
+        for (uint32_t j = 0; j < count && r.ok; ++j) {
+            const std::string name = r.Fixed(20);
+            const uint8_t enabled = r.Get<uint8_t>();
+            if (!r.ok) break;
+            if (enabled > 1) {
+                err = "\"" + path + "\": invalid IK enable flag at frame " + std::to_string(frame);
+                return false;
+            }
+            if (ikKeys) (*ikKeys)[name].push_back({frame, enabled != 0});
+            lastFrame = std::max(lastFrame, frame);
+        }
+    }
+    if (!r.ok) {
+        err = "\"" + path + "\" is truncated in the light, self-shadow or IK section";
+        return false;
+    }
+    if (ikKeys)
+        for (auto& [name, keys] : *ikKeys) SortKeys(keys);
     return true;
 }
 
@@ -688,6 +770,11 @@ bool LoadPmxRest(const std::string& path, MmdSkel& s, std::string& err) {
         const std::string name = text();
         text();
         const Vector3 pos = r.V3();
+        if (r.ok && !BoundedVector(pos, kMaxVmdPosition)) {
+            err = "\"" + path + "\": PMX bone #" + std::to_string(i + 1) +
+                  " (" + name + ") has a non-finite or out-of-range rest position";
+            return false;
+        }
         r.Skip(boneSize + 4);
         const uint16_t flags = r.Get<uint16_t>();
         r.Skip((flags & 0x1) ? boneSize : 12);
@@ -757,13 +844,14 @@ bool LoadMdl(const std::string& path, Mdl& m, std::string& err) {
     return true;
 }
 
-// Target bone <- MMD bone. Legs are not here: the IK solve places them.
+// Target bone <- MMD bone. Legs keep these FK rotations when their IK is disabled.
 struct MapDef {
     const char* valve;
     const char* mmd;
     bool sided;
 };
 const MapDef kMap[] = {
+    {"Thigh", "leg", true},       {"Calf", "knee", true},       {"Foot", "ankle", true},
     {"Pelvis", "lower", false},   {"Spine", "upper", false},     {"Spine1", "upper", false},
     {"Spine2", "upper2", false},  {"Spine4", "upper2", false},   {"Neck1", "neck", false},
     {"Head1", "head", false},     {"Clavicle", "shoulder", true}, {"UpperArm", "arm", true},
@@ -1044,9 +1132,12 @@ int Usage() {
         "  .mdl's controllers, in model 22\n"
         "  only: the clip itself with -dmxmodel 22, and with -compile a model 22 copy\n"
         "  of every clip in <game>/datamodel/flex_anims/.\n\n"
+        "  Leg IK enable keys are held per frame; disabled legs use their FK bone keys.\n\n"
         "  Camera keys from <vmd name>_camera.vmd beside each .vmd, else from the .vmd\n"
         "  itself, go out as a <clip>_camera .smd moving only the root bone\n"
         "  \"mmd_camera\": origin at the eye, +X along the view, +Z up.\n"
+        "  Orthographic camera keys are rejected: SMD and pulsecamera 1 cannot\n"
+        "  preserve their projection.\n"
         "  -camerafov <mode> also carries MMD's vertical fov (degrees):\n"
         "                   bone - child bone \"mmd_camera_fov\", its local X is the fov\n"
         "                   dmx  - <clip>_camera.dmx, `format pulsecamera 1`, for\n"
@@ -1473,6 +1564,8 @@ int main(int argc, char** argv) try {
         t.parent[i] = (p >= 0 && p < i) ? p : -1;
         pm::AngleMatrix(poses[i].rot, poses[i].pos, t.local[i]);
         t.world[i] = t.parent[i] >= 0 ? pm::ConcatTransforms(t.world[t.parent[i]], t.local[i]) : t.local[i];
+        if (!FiniteMatrix(t.local[i]) || !FiniteMatrix(t.world[i]))
+            return Fail("\"" + mdlPath + "\": non-finite bind transform for bone " + t.names[i]);
     }
 
     const int pelvis = t.Find("Pelvis");
@@ -1582,9 +1675,11 @@ int main(int argc, char** argv) try {
                          Len(Sub(restOf("ankle", 0), restOf("knee", 0)));
     const float tgtLeg = Len(Sub(Origin(t.world[legs[0].knee]), Origin(t.world[legs[0].thigh]))) +
                          Len(Sub(Origin(t.world[legs[0].foot]), Origin(t.world[legs[0].knee])));
-    if (mmdLeg < 1e-4f || tgtLeg < 1e-4f)
-        return Fail("zero-length leg, cannot derive the motion scale");
+    if (!std::isfinite(mmdLeg) || !std::isfinite(tgtLeg) || mmdLeg < 1e-4f || tgtLeg < 1e-4f)
+        return Fail("non-finite or zero-length leg, cannot derive the motion scale");
     const float scale = tgtLeg / mmdLeg;
+    if (!std::isfinite(scale) || scale <= 0.0f)
+        return Fail("non-finite or invalid motion scale");
 
     // Per target bone: its MMD source and the rest alignment O that poses the
     // target's arms into the MMD rest pose. Fingers take the hand's O.
@@ -1731,6 +1826,8 @@ int main(int argc, char** argv) try {
             if (!LoadVmd(camVmd, camKeys, camMorphs, cams, camLast, err)) return Fail(err);
         }
         if (!cams.empty()) {
+            if (!CameraProjectionSupported(cams, fs::exists(fs::u8path(camVmd), ec) ? camVmd : vmdPath, err))
+                return Fail(err);
             const std::string camClip = plan.clip + "_camera";
             if (!srcDir.empty() && !sequenceNames.insert(sequenceKey(camClip)).second)
                 return Fail("sequence name collision: \"" + camClip + "\" (camera from " + vmdPath + ")");
@@ -1760,6 +1857,7 @@ int main(int argc, char** argv) try {
     const long limit = pulse::limits::kMaxAnimFrames;
     // MMD space -> target: the MMD lower-body rest lands on the bind Pelvis
     const Vector3 camAnchor = Sub(Origin(t.world[pelvis]), Mul(pm::VectorRotate(lowerRest, M), scale));
+    if (!FiniteVector(camAnchor)) return Fail("non-finite camera anchor after motion scaling");
     std::vector<Clip> clips;
     std::vector<matrix3x4> G(mmd.bones.size()), W(t.n), L(t.n);
 
@@ -1768,8 +1866,9 @@ int main(int argc, char** argv) try {
         std::map<std::string, std::vector<Key>> keys;
         Morphs morphs;
         std::vector<CamKey> cams;
+        IkKeys ikKeys;
         uint32_t lastFrame = 0;
-        if (!LoadVmd(vmdPath, keys, morphs, cams, lastFrame, err))
+        if (!LoadVmd(vmdPath, keys, morphs, cams, lastFrame, err, &ikKeys))
             return Fail(err);
         std::vector<const std::vector<Key>*> mmdKeys(mmd.bones.size(), nullptr);
         int keyed = 0;
@@ -1840,6 +1939,10 @@ int main(int argc, char** argv) try {
 
             for (int side = 0; side < 2; ++side) {
                 const Leg& g = legs[side];
+                if (!IkEnabled(ikKeys, mmd.bones[g.ik].sj, f)) {
+                    lastBend[side] = {};
+                    continue;
+                }
                 const Vector3 ikRest = mmd.bones[g.ik].rest;
                 const Vector3 goal = Add(Origin(t.world[g.foot]),
                                          Mul(pm::VectorRotate(Sub(Origin(G[g.ik]), ikRest), M), scale));
@@ -1865,8 +1968,15 @@ int main(int argc, char** argv) try {
             // Roots stay in the stored bind space, the frame the model's own
             // decompiled clips use - no inverse compile yaw.
             std::vector<AnimPose> fr(static_cast<size_t>(t.n));
-            for (int i = 0; i < t.n; ++i)
+            for (int i = 0; i < t.n; ++i) {
+                if (!FiniteMatrix(L[i]) || !FiniteMatrix(W[i]))
+                    return Fail("\"" + vmdPath + "\": non-finite retargeted transform at frame " +
+                                std::to_string(f) + " for bone " + t.names[i]);
                 pm::MatrixAngles(L[i], fr[i].rot, fr[i].pos);
+                if (!FinitePose(fr[i]))
+                    return Fail("\"" + vmdPath + "\": non-finite final pose at frame " +
+                                std::to_string(f) + " for bone " + t.names[i]);
+            }
             frames.push_back(std::move(fr));
         }
 
@@ -1945,6 +2055,7 @@ int main(int argc, char** argv) try {
                 return Fail(err);
         }
         if (!cams.empty()) {
+            if (!CameraProjectionSupported(cams, camFile ? camVmd : vmdPath, err)) return Fail(err);
             std::vector<AnimPose> cf(static_cast<size_t>(count));
             std::vector<float> fov(static_cast<size_t>(count));
             for (long k = 0; k < count; ++k) {
@@ -1962,6 +2073,10 @@ int main(int argc, char** argv) try {
                 }
                 SetOrigin(cm, Add(camAnchor, Mul(pm::VectorRotate(eye, M), scale)));
                 pm::MatrixAngles(cm, cf[static_cast<size_t>(k)].rot, cf[static_cast<size_t>(k)].pos);
+                if (!FiniteMatrix(cm) || !FinitePose(cf[static_cast<size_t>(k)]) ||
+                    !std::isfinite(fov[static_cast<size_t>(k)]))
+                    return Fail("\"" + (camFile ? camVmd : vmdPath) +
+                                "\": non-finite final camera pose at frame " + std::to_string(f));
             }
             const std::string camClip = clip + "_camera";
             const std::string camPath = (fs::u8path(path).parent_path() / (camClip + ".smd")).u8string();

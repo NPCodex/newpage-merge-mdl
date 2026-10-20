@@ -92,11 +92,60 @@ bool ReadAllLines(const std::string& path, LineReader& r, std::string* err) {
     return true;
 }
 
+// A conversion must consume one complete token. strtof/strtol alone silently
+// accept both missing fields and prefixes such as "0.5oops".
+struct LineTokens {
+    const char* p;
+    const LineReader& reader;
+    std::string* error;
+    const char* context = "SMD triangle";
+    bool hashComments = false; // VTA frame labels use `time N # name`
+    void Space() { while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p; }
+    bool Done() { Space(); return !*p || (p[0] == '/' && p[1] == '/') || (hashComments && *p == '#'); }
+    bool Fail(const std::string& field) {
+        if (error) *error = reader.path + ":" + std::to_string(reader.lineNo) +
+            ": invalid or missing " + std::string(context) + " " + field;
+        return false;
+    }
+    bool Boundary(const char* end) const {
+        return !*end || *end == ' ' || *end == '\t' || *end == '\r' || *end == '\n' ||
+            (end[0] == '/' && end[1] == '/') || (hashComments && *end == '#');
+    }
+    bool Keyword(const char* word) {
+        Space(); const size_t n = std::strlen(word);
+        if (_strnicmp(p, word, n) != 0 || !Boundary(p + n)) return false;
+        p += n; return true;
+    }
+    bool Quoted(std::string& value, const std::string& field) {
+        Space(); if (*p != '"') return Fail(field);
+        const char* first = ++p;
+        while (*p && *p != '"') ++p;
+        if (*p != '"' || !Boundary(p + 1)) return Fail(field);
+        value.assign(first, p++);
+        return !value.empty() || Fail(field);
+    }
+    bool Integer(int& value, const std::string& field) {
+        Space(); char* end = nullptr; errno = 0;
+        const long result = std::strtol(p, &end, 10);
+        if (end == p || !Boundary(end) || errno == ERANGE || result < INT_MIN || result > INT_MAX)
+            return Fail(field);
+        value = static_cast<int>(result); p = end; return true;
+    }
+    bool Float(float& value, const std::string& field) {
+        Space(); char* end = nullptr; errno = 0;
+        value = std::strtof(p, &end);
+        // Finite underflow (subnormal or rounded zero) is legitimate; overflow
+        // and explicit NaN/Inf are rejected by the finiteness check.
+        if (end == p || !Boundary(end) || !std::isfinite(value)) return Fail(field);
+        p = end; return true;
+    }
+};
+
 // ---------------------------------------------------------------------------
 // nodes (reference Grab_Nodes): lines `index "name" parent`. numbones is the
 // highest index + 1; a gap keeps parent -1 (never created as a joint). No
 // trailing "defaultRoot" - that is a DMX-loader autoskin artifact the SMD path
-// does not have. A non-matching line ends the block (and is consumed).
+// does not have. Malformed records must not silently terminate the block.
 // ---------------------------------------------------------------------------
 bool GrabNodes(LineReader& r, Source& out, std::string* err) {
     std::vector<LocalBone> bones;
@@ -108,22 +157,23 @@ bool GrabNodes(LineReader& r, Source& out, std::string* err) {
             if (err) *err = "unexpected EOF in nodes block";
             return false;
         }
-        int index = 0, parent = 0;
-        char name[1024] = {0};
-        if (std::sscanf(line->c_str(), "%d \"%1023[^\"]\" %d", &index, name, &parent) == 3) {
-            if (index < 0) {
-                if (err) *err = "negative bone index in nodes block";
-                return false;
-            }
-            if (index >= static_cast<int>(bones.size()))
-                bones.resize(index + 1); // gaps default to parent -1
-            bones[index].name = name;
-            bones[index].parent = parent;
-            if (index > maxIndex)
-                maxIndex = index;
-            continue;
+        LineTokens tokens{line->c_str(), r, err, "SMD nodes"};
+        if (tokens.Done()) continue;
+        if (tokens.Keyword("end")) {
+            if (!tokens.Done()) return tokens.Fail("trailing data");
+            break;
         }
-        break; // end of block (the "end" line, or anything non-matching)
+        int index = 0, parent = 0;
+        std::string name;
+        if (!tokens.Integer(index, "bone index") || !tokens.Quoted(name, "bone name") ||
+            !tokens.Integer(parent, "parent index")) return false;
+        if (!tokens.Done()) return tokens.Fail("trailing data");
+        if (index < 0 || index >= lim::kMaxSrcBones) return tokens.Fail("bone index (out of range)");
+        if (index >= static_cast<int>(bones.size())) bones.resize(index + 1);
+        if (!bones[index].name.empty()) return tokens.Fail("duplicate bone index");
+        bones[index].name = std::move(name);
+        bones[index].parent = parent;
+        maxIndex = std::max(maxIndex, index);
     }
 
     out.numbones = maxIndex + 1;
@@ -171,69 +221,48 @@ bool GrabAnimation(LineReader& r, float scale, Source& out, std::string* err) {
             return false;
         }
 
-        int index = 0;
-        float p0, p1, p2, e0, e1, e2;
-        if (std::sscanf(line->c_str(), "%d %f %f %f %f %f %f", &index, &p0, &p1, &p2, &e0, &e1,
-                        &e2) == 7) {
-            if (!std::isfinite(p0 * scale) || !std::isfinite(p1 * scale) || !std::isfinite(p2 * scale) ||
-                !std::isfinite(e0) || !std::isfinite(e1) || !std::isfinite(e2)) {
-                if (err) *err = "non-finite SMD bone pose";
-                return false;
-            }
-            if (startframe < 0) {
-                if (err) *err = "bone data before the first `time` in skeleton block";
-                return false;
-            }
-            if (index < 0 || index >= numbones) {
-                if (err) *err = "bogus bone index in skeleton block";
-                return false;
-            }
-            SrcBonePose& pose = frames[curT][index];
-            pose.pos = pm::Vector3{p0 * scale, p1 * scale, p2 * scale};
-            pose.rot = pm::RadianEuler{e0, e1, e2};
-            continue;
+        LineTokens tokens{line->c_str(), r, err, "SMD skeleton"};
+        if (tokens.Done()) continue;
+        if (tokens.Keyword("end")) {
+            if (!tokens.Done()) return tokens.Fail("trailing data");
+            break;
         }
-
-        char cmd[1024] = {0};
-        int idx2 = 0;
-        int n = std::sscanf(line->c_str(), "%1023s %d", cmd, &idx2);
-        if (n <= 0) {
-            if (err) *err = "malformed line in skeleton block";
-            return false;
-        }
-
-        if (_stricmp(cmd, "time") == 0) {
-            const int t = idx2;
-            if (startframe == -1)
-                startframe = t;
-            if (t < startframe) {
-                if (err) *err = "frame time went backwards in skeleton block";
-                return false;
-            }
-            if (t > endframe)
-                endframe = t;
-
-            const int tl = t - startframe;
+        if (tokens.Keyword("time")) {
+            int t = 0;
+            if (!tokens.Integer(t, "frame time")) return false;
+            if (!tokens.Done()) return tokens.Fail("trailing data");
+            if (t < 0) return tokens.Fail("negative frame time");
+            if (startframe == -1) startframe = t;
+            if (t < startframe) return tokens.Fail("frame time went backwards");
+            const int64_t offset = int64_t(t) - startframe;
+            if (offset >= lim::kMaxAnimFrames) return tokens.Fail("frame count exceeds limit");
+            endframe = std::max(endframe, t);
+            const int tl = static_cast<int>(offset);
             curT = tl;
             if (tl >= static_cast<int>(frames.size())) {
-                frames.resize(tl + 1);       // gap frames stay unset
+                frames.resize(tl + 1);
                 frameSet.resize(tl + 1, 0);
             }
-            if (frameSet[tl])
-                continue; // frame already present: keep filling it (reference)
-
+            if (frameSet[tl]) continue; // reference allows filling an existing time
             frames[tl].assign(numbones, SrcBonePose{});
             frameSet[tl] = 1;
-            if (tl > 0 && frameSet[tl - 1])
-                frames[tl] = frames[tl - 1]; // duplicate previous frame's keys
+            if (tl > 0 && frameSet[tl - 1]) frames[tl] = frames[tl - 1];
             continue;
         }
-
-        if (_stricmp(cmd, "end") == 0)
-            break;
-
-        if (err) *err = "unknown token \"" + std::string(cmd) + "\" in skeleton block";
-        return false;
+        int index = 0;
+        pm::Vector3 pos;
+        pm::RadianEuler rot;
+        if (!tokens.Integer(index, "bone index") ||
+            !tokens.Float(pos.x, "position X") || !tokens.Float(pos.y, "position Y") || !tokens.Float(pos.z, "position Z") ||
+            !tokens.Float(rot.x, "rotation X") || !tokens.Float(rot.y, "rotation Y") || !tokens.Float(rot.z, "rotation Z")) return false;
+        if (!tokens.Done()) return tokens.Fail("trailing data");
+        if (startframe < 0) return tokens.Fail("bone data before first time");
+        if (index < 0 || index >= numbones) return tokens.Fail("bone index (out of range)");
+        pos.x *= scale; pos.y *= scale; pos.z *= scale;
+        if (!std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z))
+            return tokens.Fail("non-finite scaled bone pose");
+        frames[curT][index].pos = pos;
+        frames[curT][index].rot = rot;
     }
 
     if (startframe < 0) {
@@ -384,40 +413,6 @@ int LookupIndex(TriState& st, int material, const pm::Vector3& pos, const pm::Ve
     return numvlist;
 }
 
-// A conversion must consume one complete token. strtof/strtol alone silently
-// accept both missing fields and prefixes such as "0.5oops".
-struct VertexTokens {
-    const char* p;
-    const LineReader& reader;
-    std::string* error;
-    void Space() { while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p; }
-    bool Done() { Space(); return !*p || (p[0] == '/' && p[1] == '/'); }
-    bool Fail(const std::string& field) {
-        if (error) *error = reader.path + ":" + std::to_string(reader.lineNo) +
-            ": invalid or missing SMD triangle " + field;
-        return false;
-    }
-    bool Boundary(const char* end) const {
-        return !*end || *end == ' ' || *end == '\t' || *end == '\r' || *end == '\n' ||
-            (end[0] == '/' && end[1] == '/');
-    }
-    bool Integer(int& value, const std::string& field) {
-        Space(); char* end = nullptr; errno = 0;
-        const long result = std::strtol(p, &end, 10);
-        if (end == p || !Boundary(end) || errno == ERANGE || result < INT_MIN || result > INT_MAX)
-            return Fail(field);
-        value = static_cast<int>(result); p = end; return true;
-    }
-    bool Float(float& value, const std::string& field) {
-        Space(); char* end = nullptr; errno = 0;
-        value = std::strtof(p, &end);
-        // Finite underflow (subnormal or rounded zero) is legitimate; overflow
-        // and explicit NaN/Inf are rejected by the finiteness check.
-        if (end == p || !Boundary(end) || !std::isfinite(value)) return Fail(field);
-        p = end; return true;
-    }
-};
-
 // reference ParseFaceData: read the 3 corner lines of one triangle. The unify
 // itself is deferred to BuildUnifiedMeshes, which the FBX loader shares.
 bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int material,
@@ -428,7 +423,7 @@ bool ParseFaceData(LineReader& r, int numbones, int version, float scale, int ma
             if (err) *err = r.path + ":" + std::to_string(r.lineNo + 1) + ": unexpected EOF reading a triangle";
             return false;
         }
-        VertexTokens tokens{line->c_str(), r, err};
+        LineTokens tokens{line->c_str(), r, err};
         int bone = 0;
         pm::Vector3 pos, nrm;
         pm::Vector2 tc;
@@ -725,11 +720,10 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
             continue; // blank line
 
         if (_stricmp(cmd, "version") == 0) {
-            if (numRead < 2 || option < 1 || option > 3) {
-                if (err) *err = "bad SMD version (expected 1-3)";
-                return false;
-            }
-            version = option;
+            LineTokens tokens{line->c_str(), r, err, "SMD version"};
+            tokens.Keyword("version");
+            if (!tokens.Integer(version, "number")) return false;
+            if (!tokens.Done() || version < 1 || version > 3) return tokens.Fail("number (expected 1-3)");
         } else if (_stricmp(cmd, "nodes") == 0) {
             if (!GrabNodes(r, out, err))
                 return false;
@@ -812,45 +806,33 @@ bool GrabVertexAnimation(LineReader& r, float scale, std::vector<VtaFrame>& out,
             return false;
         }
 
-        int index = 0;
-        VtaVert v;
-        if (std::sscanf(line->c_str(), "%d %f %f %f %f %f %f", &index, &v.pos.x, &v.pos.y, &v.pos.z,
-                        &v.normal.x, &v.normal.y, &v.normal.z) == 7) {
-            if (out.empty()) {
-                if (err) *err = "vertex data before the first `time` in vertexanimation block";
-                return false;
-            }
-            if (index < 0) {
-                if (err) *err = "negative vertex index in vertexanimation block";
-                return false;
-            }
-            v.pos.x *= scale; v.pos.y *= scale; v.pos.z *= scale;
-            if (!std::isfinite(v.pos.x) || !std::isfinite(v.pos.y) || !std::isfinite(v.pos.z) ||
-                !std::isfinite(v.normal.x) || !std::isfinite(v.normal.y) || !std::isfinite(v.normal.z)) {
-                if (err) *err = "non-finite VTA vertex";
-                return false;
-            }
-            out.back().verts.push_back({index, v});
+        LineTokens tokens{line->c_str(), r, err, "VTA vertexanimation", true};
+        if (tokens.Done()) continue;
+        if (tokens.Keyword("end")) {
+            if (!tokens.Done()) return tokens.Fail("trailing data");
+            return true;
+        }
+        if (tokens.Keyword("time")) {
+            VtaFrame frame;
+            if (!tokens.Integer(frame.time, "frame time")) return false;
+            if (!tokens.Done()) return tokens.Fail("trailing data");
+            if (frame.time < 0) return tokens.Fail("negative frame time");
+            frame.comment = FrameComment(*line);
+            out.push_back(std::move(frame));
             continue;
         }
-
-        char cmd[1024] = {0};
-        int t = 0;
-        const int n = std::sscanf(line->c_str(), "%1023s %d", cmd, &t);
-        if (n <= 0) {
-            if (err) *err = "malformed line in vertexanimation block";
-            return false;
-        }
-        if (_stricmp(cmd, "end") == 0)
-            return true;
-        if (n < 2 || _stricmp(cmd, "time") != 0) {
-            if (err) *err = "unknown token \"" + std::string(cmd) + "\" in vertexanimation block";
-            return false;
-        }
-        VtaFrame f;
-        f.time = t;
-        f.comment = FrameComment(*line);
-        out.push_back(std::move(f));
+        int index = 0;
+        VtaVert v;
+        if (!tokens.Integer(index, "vertex index") ||
+            !tokens.Float(v.pos.x, "position X") || !tokens.Float(v.pos.y, "position Y") || !tokens.Float(v.pos.z, "position Z") ||
+            !tokens.Float(v.normal.x, "normal X") || !tokens.Float(v.normal.y, "normal Y") || !tokens.Float(v.normal.z, "normal Z")) return false;
+        if (!tokens.Done()) return tokens.Fail("trailing data");
+        if (out.empty()) return tokens.Fail("vertex data before first time");
+        if (index < 0 || index >= lim::kMaxVerts) return tokens.Fail("vertex index (out of range)");
+        v.pos.x *= scale; v.pos.y *= scale; v.pos.z *= scale;
+        if (!std::isfinite(v.pos.x) || !std::isfinite(v.pos.y) || !std::isfinite(v.pos.z))
+            return tokens.Fail("non-finite scaled vertex");
+        out.back().verts.push_back({index, v});
     }
 }
 
@@ -959,7 +941,13 @@ bool BindVta(const std::string& path, const Source& mesh, float scale, VtaBind& 
         char cmd[1024] = {0};
         if (std::sscanf(line->c_str(), "%1023s", cmd) != 1)
             continue;
-        if (_stricmp(cmd, "vertexanimation") == 0) {
+        if (_stricmp(cmd, "version") == 0) {
+            LineTokens tokens{line->c_str(), r, err, "VTA version", true};
+            tokens.Keyword("version");
+            int version = 0;
+            if (!tokens.Integer(version, "number")) return false;
+            if (!tokens.Done() || version != 1) return tokens.Fail("number (expected 1)");
+        } else if (_stricmp(cmd, "vertexanimation") == 0) {
             if (!GrabVertexAnimation(r, scale, bind.frames, err))
                 return false;
             sawBlock = true;

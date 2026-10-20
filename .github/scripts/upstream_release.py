@@ -12,7 +12,7 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import urllib.error
@@ -29,6 +29,92 @@ def sha256(path):
         for chunk in iter(lambda: stream.read(1024 * 1024), b''):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def source_text_sha256(data):
+    """Only source identity ignores CRLF; asset/inventory hashes remain raw."""
+    return hashlib.sha256(data.replace(b'\r\n', b'\n')).hexdigest()
+
+
+def checked_source_text_hash(data, declared, label):
+    canonical = data.replace(b'\r\n', b'\n')
+    equivalents = {hashlib.sha256(value).hexdigest() for value in
+                   (data, canonical, canonical.replace(b'\n', b'\r\n'))}
+    if declared not in equivalents:
+        raise ValueError('Source snapshot does not match declared ' + label)
+    return source_text_sha256(data)
+
+
+def verified_package_manifest(package, manifest):
+    """Migrate historical text hashes only when the embedded source proves it.
+
+    Maintained source is unstamped and can verify both controller input hashes.
+    A merged snapshot has a refreshed overlay and stamped configuration: only
+    its build_overlay hash is directly verifiable. Its original controller
+    overlay/config declarations must continue to agree exactly across platforms.
+    """
+    source_name = 'NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'
+    if source_name not in package.namelist():
+        return dict(manifest)  # Legacy packages retain strict manifest equality.
+    result = dict(manifest)
+    controller = manifest.get('controller_sha', '')
+    if not isinstance(controller, str) or not re.fullmatch(r'[0-9a-f]{40}', controller):
+        raise ValueError('Invalid source snapshot controller commit')
+    text_paths = {'automation/compatibility.patch', 'automation/upstreams.json'}
+    with zipfile.ZipFile(io.BytesIO(package.read(source_name))) as source:
+        if source.comment and source.comment != controller.encode('ascii'):
+            raise ValueError('Source archive comment does not match controller commit')
+        files, identity = {}, []
+        for info in source.infolist():
+            path = PurePosixPath(info.filename)
+            if (path.is_absolute() or '..' in path.parts or '\\' in info.filename or ':' in info.filename
+                    or not path.parts or path.parts[0] != 'NewPageMergeMDL'):
+                raise ValueError('Unsafe source archive member: ' + info.filename)
+            if info.is_dir():
+                continue
+            relative = path.relative_to('NewPageMergeMDL').as_posix()
+            if relative in files:
+                raise ValueError('Duplicate source archive member: ' + relative)
+            data = source.read(info)
+            files[relative] = data
+            # All other source and binary files are compared byte-for-byte.
+            value = data.replace(b'\r\n', b'\n') if relative in text_paths else data
+            identity.append((relative, hashlib.sha256(value).hexdigest()))
+        result['_verified_source_tree_sha256'] = fingerprint(sorted(identity))
+        required_files = ('CMakeLists.txt', 'automation/compatibility.patch', 'automation/upstreams.json')
+        if any(path not in files for path in required_files):
+            raise ValueError('Source snapshot is missing required identity files')
+        payload_keys = ('schema', 'controller_sha', 'overlay_sha256', 'configuration_sha256', 'pulsemodel', 'integration')
+        if any(key not in manifest for key in (*payload_keys, 'project_version', 'fingerprint')):
+            raise ValueError('Source manifest is missing required identity fields')
+        payload = {key: manifest[key] for key in payload_keys}
+        payload['project_version'] = manifest.get('version_base', manifest['project_version'])
+        if manifest['fingerprint'] != fingerprint(payload):
+            raise ValueError('Declared source fingerprint does not match its identity fields')
+        version = re.search(rb'project\(NewPageMergeMDL VERSION ([0-9.]+)', files['CMakeLists.txt'])
+        if not version or version[1].decode('ascii') != manifest['project_version']:
+            raise ValueError('Source snapshot CMake version does not match manifest')
+        if manifest.get('source_kind') == 'maintained checkout':
+            for field, path in (('overlay_sha256', 'automation/compatibility.patch'),
+                                ('configuration_sha256', 'automation/upstreams.json')):
+                payload[field] = result[field] = checked_source_text_hash(files[path], manifest[field], field)
+            config = json.loads(files['automation/upstreams.json'])
+            if (config.get('pulsemodel') != manifest['pulsemodel']['repo'] or
+                    config.get('pulse_base') != manifest['pulsemodel']['sha'] or
+                    config.get('project_version', '1.2.0') != payload['project_version']):
+                raise ValueError('Source snapshot configuration does not match maintained manifest')
+            result['fingerprint'] = fingerprint(payload)
+        if manifest.get('build_overlay_sha256') is not None:
+            result['build_overlay_sha256'] = checked_source_text_hash(
+                files['automation/compatibility.patch'], manifest['build_overlay_sha256'], 'build_overlay_sha256')
+    return result
+
+
+def package_source_identity(manifest):
+    fields = ('controller_sha', 'fingerprint', 'project_version', 'pulsemodel',
+              'overlay_sha256', 'configuration_sha256', 'build_overlay_sha256', 'source_kind',
+              '_verified_source_tree_sha256')
+    return json.dumps({key: manifest.get(key) for key in fields}, sort_keys=True)
 
 
 class GitHubRedirect(urllib.request.HTTPRedirectHandler):
@@ -93,23 +179,37 @@ def published_manifest(repo):
         if release['draft'] or not (release['tag_name'].startswith('newpage-auto-') or
                                   re.fullmatch(r'v\d+\.\d+(?:\.\d+)?(?:-auto-[\w-]+|-r\d+)?', release['tag_name'])):
             continue
-        for asset in release['assets']:
-            if asset['name'] == 'upstream-manifest.json':
-                # The API endpoint supports GITHUB_TOKEN for private repositories.
-                manifest = json.loads(fetch(asset['url'], accept='application/octet-stream'))
-                manifest.setdefault('release_tag', release['tag_name'])
-                return manifest
-        # New releases ship provenance inside the single platform package.
-        # Prefer Linux's smaller archive; keep the external format readable for
-        # historical releases and use the authenticated asset API for both.
+        # Installed packages take precedence over obsolete standalone manifests.
+        # Read both platforms: different source identities cannot safely drive
+        # automatic version selection from an arbitrary platform's snapshot.
         packages = sorted((a for a in release['assets']
                            if re.search(r'-(?:linux64|win64)\.zip$', a['name'], re.I)),
                           key=lambda a: ('linux64' not in a['name'].lower(), a['name']))
+        current = {platform: [a for a in packages if a['name'] == 'newpage-merge-mdl-' + platform + '.zip']
+                   for platform in ('linux64', 'win64')}
+        packages = [a for a in packages if not current['linux64' if 'linux64' in a['name'].lower() else 'win64']
+                    or a in current['linux64' if 'linux64' in a['name'].lower() else 'win64']]
+        manifests = []
         for asset in packages:
-            with zipfile.ZipFile(io.BytesIO(fetch(asset['url'], accept='application/octet-stream'))) as archive:
+            data = fetch(asset['url'], accept='application/octet-stream')
+            if asset.get('digest') and asset['digest'] != 'sha256:' + hashlib.sha256(data).hexdigest():
+                raise ValueError('Published package digest mismatch: ' + asset['name'])
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 if 'NewPageMergeMDL/upstream-manifest.json' not in archive.namelist():
                     continue
                 manifest = json.loads(archive.read('NewPageMergeMDL/upstream-manifest.json'))
+                manifest = verified_package_manifest(archive, manifest)
+                manifest.setdefault('release_tag', release['tag_name'])
+                manifests.append(manifest)
+        if manifests:
+            identities = {package_source_identity(m) for m in manifests}
+            if len(identities) != 1:
+                raise ValueError('Published platform packages have different source identities: ' + release['tag_name'])
+            return manifests[0]
+        for asset in release['assets']:
+            if asset['name'] == 'upstream-manifest.json':
+                # Legacy releases without embedded provenance remain readable.
+                manifest = json.loads(fetch(asset['url'], accept='application/octet-stream'))
                 manifest.setdefault('release_tag', release['tag_name'])
                 return manifest
     return None
@@ -247,14 +347,38 @@ def concise_release_notes(changes):
     return '\n'.join(lines).strip() + '\n'
 
 
-def append_release_notes(previous, current, tag):
+def append_release_notes(previous, current, tag, source_sha=None):
     """Preserve earlier change entries while replacing obsolete ZIP digests."""
     previous = previous.replace('\r\n', '\n')
     previous = re.sub(
         r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?ZIP SHA-?256:[ \t]*\n\s*```(?:text)?[ \t]*\n'
         r'(?:[a-f0-9]{64}[ \t]+[^\n]+\n)+```[ \t]*(?:\n|$)', '', previous).strip()
     if previous:
-        return previous + '\n\n## ' + tag + ' 后续更新\n\n' + current.lstrip()
+        # A replacement tag deliberately stays fixed. Retrying publication must
+        # not append its entire commit range or duplicate an earlier bullet.
+        previous_bullets = {line.strip() for line in previous.splitlines() if line.lstrip().startswith(('- ', '* '))}
+        blocks = []
+        for block in current.strip().split('\n\n'):
+            lines = block.splitlines()
+            lines = [line for line in lines if line.strip() not in previous_bullets]
+            if lines and not (len(lines) == 1 and lines[0].startswith('**') and lines[0].endswith('**')):
+                blocks.append('\n'.join(lines))
+        current = '\n\n'.join(blocks)
+        marker = '<!-- newpage-source:' + source_sha + ' -->' if source_sha else None
+        if marker and marker in previous:
+            # Keep the previously reviewed prose; only refresh the digests.
+            checksum = re.search(r'(?ims)^ZIP SHA-?256:.*$', current)
+            return previous + ('\n\n' + checksum[0] if checksum else '')
+        if not current:
+            return previous
+        if marker:
+            current += '\n\n' + marker
+        visible = re.sub(r'<!--.*?-->', '', current, flags=re.S)
+        visible = re.sub(r'(?ims)^ZIP SHA-?256:.*$', '', visible).strip()
+        heading = '\n\n## ' + tag + ' 后续更新' if visible else ''
+        return previous + heading + '\n\n' + current.lstrip()
+    if source_sha:
+        return current.rstrip() + '\n\n<!-- newpage-source:' + source_sha + ' -->\n'
     return current
 
 
@@ -265,8 +389,8 @@ def source_state(config, controller, pulse_revision, source):
         'schema': 1,
         'project_version': config.get('project_version', '1.2.0'),
         'controller_sha': controller,
-        'overlay_sha256': sha256(source / 'automation/compatibility.patch'),
-        'configuration_sha256': sha256(source / 'automation/upstreams.json'),
+        'overlay_sha256': source_text_sha256((source / 'automation/compatibility.patch').read_bytes()),
+        'configuration_sha256': source_text_sha256((source / 'automation/upstreams.json').read_bytes()),
         'pulsemodel': {'repo': config['pulsemodel'], 'sha': pulse_revision},
         'integration': {
             'pulsemodel': 'source patch overlay',
@@ -348,7 +472,7 @@ def prepare(args):
         if (ROOT / name).is_file():
             shutil.copy2(ROOT / name, candidate / name)
     run(sys.executable, candidate / '.github/scripts/refresh_overlay.py', '--base-repository', candidate)
-    state['build_overlay_sha256'] = sha256(candidate / 'automation/compatibility.patch')
+    state['build_overlay_sha256'] = source_text_sha256((candidate / 'automation/compatibility.patch').read_bytes())
     state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     state['release_changes'] = release_changes(state, previous, os.environ.get('GITHUB_REPOSITORY'))
     (work / 'upstream-manifest.json').write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
@@ -453,8 +577,9 @@ def package(args):
                      'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
             if (Path(args.source) / name).is_file():
                 archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
-        for path in sorted((Path(args.source) / 'tests/reports').glob('*.json')):
-            archive.write(path, 'NewPageMergeMDL/tests/reports/' + path.name)
+        for path in sorted((Path(args.source) / 'tests/reports').glob('*')):
+            if path.is_file() and path.suffix in ('.json', '.md'):
+                archive.write(path, 'NewPageMergeMDL/tests/reports/' + path.name)
         for path in sorted((Path(args.source) / 'integration').rglob('*')):
             if path.is_file():
                 archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())

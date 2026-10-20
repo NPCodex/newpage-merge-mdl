@@ -1,11 +1,11 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。版本：v1.2.36。
+可用的模型编译功能整合到 NewPageMergeMDL。当前源码版本：v1.2.37。
 
 **每次生产编译都必须将 `-game` 指向目标游戏/模组中包含正确 `gameinfo.txt` 的目录。** `-OutDir` 只设置输出，不替代目标识别或资源挂载；请保留原始输入，并隔离输出进行验证。详细条件见 [编译前必读](README.md#编译前必读)。
 
-发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动上游合并版内嵌 `sources/NewPageMergeMDL-source.zip`；手动维护版完整源码来自发布标签。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化与体积优化均不扩展下表的游戏运行时认证范围。
+发布采用每个平台一个完整 ZIP，安装及更新均完整解压到新目录，见 [INSTALL.md](INSTALL.md)。Windows 包含 C4D 桥接程序；Windows/Linux 均包含主程序、反编译器、辅助工具、独立 VRML 转换器及其对应源码、准备脚本与 GMod Lua 模块，以及文档、许可、`upstream-manifest.json`、`SHA256SUMS.txt` 和 `tests/reports/`。自动合并与手动维护包均内嵌精确源码 `sources/NewPageMergeMDL-source.zip`，由包内 manifest 的 `controller_sha` 及来源散列标识；替换附件时保留的发布标签可能仍指向旧源码。Linux 的 C4D 输入仍须先在 Windows 转为 GLB；Python 脚本仍需自行安装 Python 3。单包化与体积优化均不扩展下表的游戏运行时认证范围。
 
 v1.2.26 历史发布构建及 `x64-compact` 预设采用 `MinSizeRel` 与 IPO/LTO，保留全部导入器和工具。安装包运行目录中的 tinyusdz 仅保留 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，省去运行无需的源码与开发图片；完整项目源码的获取规则不变，GPL VRML 转换器对应源码继续随包附带。当时 Windows C4D 使用原先已验证的 helper。Plum 与 viewarms 的本地模型输出逐文件一致，最终体积与验证范围见 [验证记录](VALIDATION.md)。
 
@@ -35,6 +35,16 @@ v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 
 本轮 CSGO 固定范围 A1–A7/B1–B4 共 11 包已全部完成；原可选扩展 B 区已获授权并交付。完整范围与排除项见 [CSGO_PORTING_SCOPE.md](CSGO_PORTING_SCOPE.md)，新增布料语法见 [CSGO_CLOTH_AUTHORING.md](CSGO_CLOTH_AUTHORING.md)。
 
+## 当前辅助工具与反编译契约
+
+本轮输入完整性、动画时序、辅助工具及发布流程修复的固定范围与验证状态见 [2026-10-20 修复报告](tests/reports/toolkit-fixes-20261020.md)。源码版本不代表已经发布。
+
+VMD 按每帧左右腿 IK 开关选择 IK/FK，关闭时保留 Thigh/Calf/Foot 的 FK；PMX、绑定姿态、比例与最终姿态拒绝非有限数值。正交相机尚无支持的输出表示，会在写入前明确失败，非法 perspective 标记也拒绝。AG2 校验完整资源及 preload CRC32。反编译保留各 LOD 独立权重并检查伴随文件 checksum、结构和解码范围；存在但损坏的 PHY 失败，缺 PHY 时明确警告无法证明碰撞完整性。
+
+Python 准备脚本统一暂存模型及运行时 JSON，普通写入失败整体回滚，并禁止输入/生成输出别名；此 Python 事务不等同原生工具的持久强杀恢复。Lua VRM/vertexanim 在使用前校验元数据及时间，拒绝模型不匹配。
+
+AG2 的 [SAS 实机验证](tests/reports/ag2-gameplay-20261020.md) 已覆盖完整人物、原比例/缩放骨架对照、手枪/步枪持握、射击、重载和蹲伏。第一人称仅为原版 viewmodel 图的无回归观察；生成第一人称图与实时图节点调试仍未认证，工具保持实验性。
+
 ## v1.2.36 替换构建
 
 本轮处理 VMD/L4D 持久事务、后置骨骼父级、无需 realign 时的变换、meshtool 协议边界及 Linux 发布验证。具体实现和本轮实际测试见 [验证报告](tests/reports/v1.2.36-replacement-validation.md)。历史报告保留原版本、日期和散列，不以旧构建通过代替当前包验证。C4D 仍只随 Windows 包提供；Linux 用户需先在 Windows 转换 C4D 为 GLB。
@@ -43,7 +53,7 @@ v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 
 反编译器保留 UTF-8 骨名与唯一替代名，预检全批次输出冲突，缺 VVD/VTX/ANI 或写出失败不再报告成功，并暂存每个模型的结果。VMD 转换统一检查人物/相机/表情/QC/音频输出；l4d_animswap 验证实际所需引用链，存在但序列表/标签损坏的 Light 模型也必须失败。两者现在暂存整批结果并在普通失败时整体回滚，包括相机、音频、retarget 动画和 Light QCI；L4D retarget 文件名同时包含 rig 与 target，防止 `-all` 同名动作互相覆盖。VMD `-compile` 直接调用随包 `NewPageMergeMDL`，保留真实 `-game` 并暂存编译产物。meshtool simplify 拒绝坏索引、非三角形数据与非法数值。主编译器严格读取 SMD 三角形并报告文件/行号；恢复 `.vertexanim.json`，事务清理与旧 MDL checksum 相符的同名废弃伴随文件。未知归属及自定义共享文件保留，checksum 仅用于模型关联。
 
-AG2 预检工具链，暂存源、compiled 与可选 VMDL/首次备份。AG2 与反编译器均增加持久日志、同目标进程锁和内容指纹检查，支持强杀后重跑恢复，检测外部修改冲突并保留备份；16 项专项验证涵盖中断恢复、恢复时再次强杀及 Windows 大小写/Unicode 别名。持久化不等于任意硬件断电下的绝对保证；VMD/L4D 仍只保证普通失败回滚。八个新版 AG2 真实 CS2 资源案例覆盖实际编译、失败及后续文件锁回滚；资源级结果与最终模型/游戏验证分开记录。
+AG2 预检工具链，暂存源、compiled 与可选 VMDL/首次备份。AG2 与反编译器均增加持久日志、同目标进程锁和内容指纹检查，支持强杀后重跑恢复，检测外部修改冲突并保留备份；16 项专项验证涵盖中断恢复、恢复时再次强杀及 Windows 大小写/Unicode 别名。持久化不等于任意硬件断电下的绝对保证；此处 VMD/L4D 普通失败回滚为 v1.2.34 历史范围，v1.2.36 已补齐整批持久恢复和并发保护。八个新版 AG2 真实 CS2 资源案例覆盖实际编译、失败及后续文件锁回滚；资源级结果与最终模型/游戏验证分开记录。
 
 补齐组合 flex 自动法线的纯法线 corrective：CE profile 使用等面加权和已观测阈值，native 保留面积加权；六项定向回归覆盖组合子集顺序、接缝和开关。命令行完整数值/缺值校验与 DMX 小数帧率往返有六项专项测试。Windows C4D helper 增加按多边形选择集和纹理标签顺序分配材质，拆分时保留 UV、作者法线及平滑法线；十项真实 C4D 夹具回归通过，不扩展到蒙皮、动画、生成器或完整着色网络。替换构建、最终安装包与发布状态以 [替换版报告](tests/reports/v1.2.34-replacement-validation.md) 为准；原 v1.2.34 发布包验证保留为历史证据。本版 Linux 尚未验证。
 

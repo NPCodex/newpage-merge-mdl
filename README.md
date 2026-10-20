@@ -36,7 +36,7 @@
 - `-OutDir` 指定输出根目录，`$modelname` 决定模型路径；它不替代 `-game`。编译支持 `.qc` / `.pulseqc`，资源和 VMT/VTF 材质需自行准备。
 - 参数优先级：`gameinfo < cfg/commandline.cfg < 显式命令行`；`-nodefaultargs` 禁用前两者。CE/Neko 差异通过显式兼容选项选择。
 - 先在隔离目录输出并在目标游戏验证，再整套替换匹配的 MDL/VVD/VTX/PHY/ANI。不要混用旧伴随文件；中断后保留 `.npmdl-*` 恢复文件，按诊断处理。
-- 反编译器与 AG2 使用持久恢复日志，并拒绝同目标并发运行；中断后保留 `.newpage-output-transactions`、`.newpage-output-locks` 及备份，重跑同一任务恢复。若报告外部修改冲突，先检查原因。VMD/L4D 的批次回滚仅覆盖普通错误；详见 [安装指南](INSTALL.md)。
+- 反编译器、AG2 及 VMD/L4D 支持持久恢复和同目标并发保护；中断后保留诊断指出的日志、暂存文件及备份，重跑同一任务恢复。外部修改冲突须先检查；各工具的文件位置见 [安装指南](INSTALL.md)。
 - 最终骨预算、每顶点权重和其他格式/引擎限制仍有效。CSGO/MCV 扩展 VTX 依赖正确 AppID，FE 布料限 CSGO；SubD 建议使用默认离线烘焙，已测 CSGO legacy 原生 SubD 路径会崩溃。
 
 ## 主要功能
@@ -58,7 +58,7 @@
 .\subtools\vmd2valvebiped.exe -vmd "D:/motions/dance.vmd" -mdl "D:/models/character.mdl" -o "D:/build/dance.dmx"
 ```
 
-输出为指定的 `dance.dmx`，随后在自己的 QC 中引用并编译。添加 `-dmxmodel 22` 可输出支持的表情通道。可重复 `-vmd` 批量处理，此时不要使用只针对单个输出的 `-o`；默认写到各 VMD 旁边。有相机键时另写 `<输出名>_camera.smd`，加 `-camerafov dmx` 可额外输出相机/FOV DMX。不带参数运行可查看完整帮助。
+输出为指定的 `dance.dmx`，随后在自己的 QC 中引用并编译。添加 `-dmxmodel 22` 可输出支持的表情通道。可重复 `-vmd` 批量处理，此时不要使用只针对单个输出的 `-o`；默认写到各 VMD 旁边。腿部按逐帧 IK 开关选择 IK/FK；正交相机与非法数值会明确失败。有相机键时另写 `<输出名>_camera.smd`，加 `-camerafov dmx` 可额外输出相机/FOV DMX。不带参数运行可查看完整帮助。
 
 添加 `-compile "my_animation" -game "D:/Games/MyMod"` 可直接调用随包 `NewPageMergeMDL`；`-game` 仍须使用真实目标游戏目录。转换源与编译产物全部成功后一起发布，普通失败保留原输出。
 
@@ -114,7 +114,7 @@ $cs2 = "D:/SteamLibrary/steamapps/common/Counter-Strike Global Offensive"
 
 Job 中的路径相对 job 文件；可选 `model_dmx` 指定骨架、`proportions` 指定保持姿态的 DMX。`--generate-only` 仅跳过资源编译，仍需 CS2 数据；是否修改 VMDL 由 `write_model` 决定。`--help` 查看完整参数。
 
-此工具不用于 Source1 MDL 手臂修复。比例 clip 主要调整平移，不重做骨轴或蒙皮；资源编译验证不代表完整人物或游戏动作已认证。暂存、进程中断恢复和同目标并发保护的范围见 [安装指南](INSTALL.md)，具体实测见 [验证记录](VALIDATION.md)。
+此工具不用于 Source1 MDL 手臂修复。比例 clip 主要调整平移，不重做骨轴或蒙皮。暂存、进程中断恢复和并发保护见 [安装指南](INSTALL.md)；[SAS 实机验证](tests/reports/ag2-gameplay-20261020.md) 仅覆盖报告列出的模型与动作，第一人称为原版图的无回归对照。
 
 ## 详细文档
 

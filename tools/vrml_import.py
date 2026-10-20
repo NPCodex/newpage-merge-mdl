@@ -4,6 +4,7 @@ import argparse
 import os
 import subprocess
 import sys
+from output_transaction import Publication, different_paths
 
 
 def main():
@@ -30,11 +31,26 @@ def main():
         qc=output.with_suffix('.qc')
         if qc.exists():raise FileExistsError(f'Refusing to replace existing QC: {qc}')
         qc_text=f'$modelname {quote(args.modelname)}\n$UpAxis {args.upaxis} assimp\n$body vrml {quote(output)}\n'
-    result=subprocess.run([str(converter.resolve()),str(source),str(output)])
-    if result.returncode:return result.returncode
-    if args.compiler:
-        with qc.open('x',encoding='utf-8',newline='\n') as stream:stream.write(qc_text)
-        return subprocess.run([str(args.compiler.resolve()),str(qc),'-game',str(args.game.resolve())]).returncode
+    different_paths([source],[output]+([qc] if args.compiler else []))
+    if not output.parent.is_dir():raise ValueError('output parent directory must exist')
+    with Publication([source]) as publication:
+        publication.reserve(output)
+        if args.compiler:publication.reserve(qc)
+        staged=publication.work/'scene.x3d'
+        result=subprocess.run([str(converter.resolve()),str(source),str(staged)])
+        if result.returncode:return result.returncode
+        publication.add(staged,output)
+        if args.compiler:
+            from mesh_states import prepare
+            # Reuse the model-path validation; the dummy source is already valid.
+            _,metadata=prepare(dict(modelname=args.modelname,states=[dict(name='vrml',source=str(staged))],fps=1),source.parent)
+            staged_qc=publication.work/'scene.qc'
+            staged_qc.write_text(qc_text.replace(quote(output),quote(staged)),encoding='utf-8')
+            result=publication.compile(args.compiler,staged_qc,args.game,metadata['model'])
+            if result:return result
+            staged_qc.write_text(qc_text,encoding='utf-8')
+            publication.add(staged_qc,qc)
+        publication.commit()
     return 0
 
 

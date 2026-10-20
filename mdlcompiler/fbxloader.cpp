@@ -84,8 +84,9 @@ pm::matrix3x4 BoneLocal(const ufbx_node* node, bool isRoot, float scale) {
 
 // Fill one frame's pose for every bone from an (evaluated) scene. A bone is a
 // root when its FBX parent is not itself a mapped bone.
-void SampleFrame(const ufbx_scene* scene, const std::unordered_map<uint32_t, int>& nodeToBone,
-                 float scale, std::vector<SrcBonePose>& frame) {
+bool SampleFrame(const ufbx_scene* scene, const std::unordered_map<uint32_t, int>& nodeToBone,
+                 const std::vector<ufbx_matrix>& rest, float scale,
+                 std::vector<SrcBonePose>& frame, std::string* err) {
     for (size_t i = 0; i < scene->nodes.count; ++i) {
         const ufbx_node* node = scene->nodes.data[i];
         auto it = nodeToBone.find(node->typed_id);
@@ -93,9 +94,25 @@ void SampleFrame(const ufbx_scene* scene, const std::unordered_map<uint32_t, int
             continue;
         const bool isRoot = !node->parent ||
                             nodeToBone.find(node->parent->typed_id) == nodeToBone.end();
+        const auto& sampled = isRoot ? node->node_to_world : node->node_to_parent;
+        const auto& original = rest[it->second];
+        // M^T M removes rotation while retaining scale and shear. Comparing
+        // sampled matrices also catches deformation inherited from containers.
+        bool changed = ufbx_matrix_determinant(&sampled) * ufbx_matrix_determinant(&original) < 0;
+        for (int a=0;a<3;++a) for (int b=0;b<3;++b) {
+            double x=0,y=0;
+            for (int r=0;r<3;++r) { x+=sampled.cols[a].v[r]*sampled.cols[b].v[r]; y+=original.cols[a].v[r]*original.cols[b].v[r]; }
+            if (!std::isfinite(x) || !std::isfinite(y) || std::abs(x-y)>1e-5*std::max(1.0,std::max(std::abs(x),std::abs(y)))) changed=true;
+        }
+        if (changed) {
+            if (err) *err = "animated FBX scaling/shear on '" + std::string(node->name.data,node->name.length) +
+                "' cannot be represented by MDL bone animation; bake into vertex animation before import";
+            return false;
+        }
         const pm::matrix3x4 local = BoneLocal(node, isRoot, scale);
         pm::MatrixAngles(local, frame[it->second].rot, frame[it->second].pos);
     }
+    return true;
 }
 
 bool SameMatrix(const ufbx_matrix& a, const ufbx_matrix& b) {
@@ -190,22 +207,34 @@ bool LoadAnimStacks(const ufbx_scene* scene, float scale, Source& out, std::stri
     double fps = requestedRate>0 ? requestedRate : scene->settings.frames_per_second;
     if (fps <= 0.0)
         fps = 30.0;
+    const float outputFps=static_cast<float>(fps);
+    if (!std::isfinite(fps) || !std::isfinite(outputFps) || outputFps<=0) {
+        if (err) *err="invalid FBX animation frame rate";
+        return false;
+    }
+    std::vector<ufbx_matrix> rest(out.numbones);
+    for (size_t i=0;i<scene->nodes.count;++i) {
+        const auto* node=scene->nodes.data[i];const auto found=nodeToBone.find(node->typed_id);
+        if (found==nodeToBone.end()) continue;
+        const bool root=!node->parent || nodeToBone.find(node->parent->typed_id)==nodeToBone.end();
+        rest[found->second]=root?node->node_to_world:node->node_to_parent;
+    }
 
     for (size_t s = 0; s < scene->anim_stacks.count; ++s) {
         const ufbx_anim_stack* stack = scene->anim_stacks.data[s];
-        int numframes = 1 + static_cast<int>(std::lround((stack->time_end - stack->time_begin) * fps));
-        if (numframes < 1)
-            numframes = 1;
         const std::string name(stack->name.data, stack->name.length);
-        if (numframes > lim::kMaxAnimFrames) {
+        const double duration=stack->time_end-stack->time_begin;
+        const double intervals=std::round(duration*fps);
+        if (!std::isfinite(duration) || duration<0 || !std::isfinite(intervals) || intervals>=lim::kMaxAnimFrames) {
             if (err)
-                *err = "animation \"" + name + "\" has " + std::to_string(numframes) +
-                       " frames (max " + std::to_string(lim::kMaxAnimFrames) + ")";
+                *err = "FBX animation \"" + name + "\" has invalid duration or exceeds frame limit (max " + std::to_string(lim::kMaxAnimFrames) + ")";
             return false;
         }
+        const int numframes=1+static_cast<int>(intervals);
 
         SourceAnim anim;
         anim.name = name;
+        anim.sampleFps = outputFps;
         anim.startframe = 0;
         anim.endframe = numframes - 1;
         anim.numframes = numframes;
@@ -223,8 +252,9 @@ bool LoadAnimStacks(const ufbx_scene* scene, float scale, Source& out, std::stri
                 }
                 return false;
             }
-            SampleFrame(frameScene, nodeToBone, scale, anim.frames[f]);
+            const bool sampled=SampleFrame(frameScene, nodeToBone, rest, scale, anim.frames[f], err);
             ufbx_free_scene(frameScene);
+            if (!sampled) return false;
         }
         out.anims.push_back(std::move(anim));
     }

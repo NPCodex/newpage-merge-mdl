@@ -12,7 +12,7 @@
 
 namespace ag2 {
 class Vpk {
-    struct Entry { uint16_t archive; uint32_t offset, size; std::vector<uint8_t> preload; };
+    struct Entry { uint16_t archive; uint32_t crc, offset, size; std::vector<uint8_t> preload; };
     std::filesystem::path directory;
     uint64_t embeddedOffset = 0;
     std::map<std::string, Entry> entries;
@@ -20,6 +20,22 @@ class Vpk {
         uint32_t value = 0;
         for (int i = 0; i < 4; ++i) { int byte = stream.get(); if (byte < 0) throw std::runtime_error("Truncated VPK"); value |= static_cast<uint32_t>(byte) << (8 * i); }
         return value;
+    }
+    static uint32_t Crc32(const std::vector<uint8_t>& data) {
+        static const auto table = [] {
+            std::array<uint32_t, 256> values{};
+            for (uint32_t i = 0; i < values.size(); ++i) {
+                uint32_t value = i;
+                for (int bit = 0; bit < 8; ++bit)
+                    value = (value >> 1) ^ ((value & 1) ? 0xedb88320u : 0u);
+                values[i] = value;
+            }
+            return values;
+        }();
+        uint32_t crc = 0xffffffffu;
+        for (uint8_t byte : data)
+            crc = table[(crc ^ byte) & 0xffu] ^ (crc >> 8);
+        return crc ^ 0xffffffffu;
     }
 public:
     explicit Vpk(const std::filesystem::path& path) : directory(path) {
@@ -48,9 +64,10 @@ public:
         for (auto extension = string(); !extension.empty(); extension = string()) {
             for (auto folder = string(); !folder.empty(); folder = string()) {
                 for (auto stem = string(); !stem.empty(); stem = string()) {
-                    number(4);
+                    const auto crc = number(4);
                     auto preloadSize = number(2);
                     Entry entry{};
+                    entry.crc = crc;
                     entry.archive = static_cast<uint16_t>(number(2)); entry.offset = number(4); entry.size = number(4);
                     if (number(2) != 0xffff || preloadSize > tree.size() - cursor) throw std::runtime_error("Invalid VPK entry");
                     entry.preload.assign(tree.begin() + cursor, tree.begin() + cursor + preloadSize); cursor += preloadSize;
@@ -82,6 +99,11 @@ public:
         file.seekg(static_cast<std::streamoff>(offset));
         file.read(reinterpret_cast<char*>(data.data() + entry.preload.size()), entry.size);
         if (!file) throw std::runtime_error("Truncated VPK resource: " + name);
+        // VPK's CRC covers the complete resource, including directory preload.
+        if (Crc32(data) != entry.crc)
+            throw std::runtime_error("VPK CRC32 mismatch for resource " + name +
+                                     " in " + directory.u8string() + " (archive " +
+                                     archive.u8string() + ")");
         return data;
     }
 };

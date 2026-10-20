@@ -449,13 +449,17 @@ bool EvaluateDmxAnimations(const dmx::Datamodel& dm,const dmx::Element* root,
         if(root->className.find("Clip")!=std::string::npos)append(root);
         for(const char* key:{"activeClip","filmClip","movie"})append(root->GetElement(key));
         if(roots.empty()&&(root->GetElementArray("trackGroups")||root->GetElementArray("channels")))append(root);
-        std::set<std::string> names;for(const auto& a:out.anims)names.insert(a.name);
+        // Selection throughout the compiler is case-insensitive, including the
+        // reserved BindPose clip. Use that same equivalence for uniqueness.
+        auto folded=[](std::string name){for(char& c:name)c=char(std::tolower(static_cast<unsigned char>(c)));return name;};
+        std::set<std::string> names;for(const auto& a:out.anims)names.insert(folded(a.name));
         for(const E* clip:roots) {
             const auto clips=CollectClips(clip);if(clips.empty())continue;
             source::SourceAnim anim;anim.name=clip->name;if(anim.name.empty())anim.name="animation";
-            if(!names.insert(anim.name).second)throw EvalError("duplicate or reserved animation name '"+anim.name+"'");
+            if(!names.insert(folded(anim.name)).second)throw EvalError("duplicate or reserved animation name (case-insensitive) '"+anim.name+"'");
             float fps=float(clip->GetInt("frameRate",0));if(fps<=0){fps=clip->GetFloat("frameRate",30);if(!std::isfinite(fps))throw EvalError("invalid animation frame rate");if(fps<=0)fps=30;}
             if(fps>10000)throw EvalError("invalid animation frame rate: exceeds 10000");
+            anim.sampleFps=fps;
             const E* tf=clip->GetElement("timeFrame");const int start=timeField(tf,"start"),duration=timeField(tf,"duration");if(duration<0||int64_t(start)+duration>std::numeric_limits<int>::max())throw EvalError("invalid clip duration");
             anim.startframe=frameAt(start,fps);anim.endframe=frameAt(start+duration,fps);const int64_t count=std::max<int64_t>(1,int64_t(anim.endframe)-anim.startframe+1);if(count>100000)throw EvalError("DMX animation exceeds 100000 frames");anim.numframes=int(count);
             Graph graph(dm,clips);anim.frames.resize(anim.numframes);

@@ -7,10 +7,17 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #include "format/mdl.h"
 #include "math/math.h"
@@ -49,8 +56,9 @@ struct Mdl {
     std::vector<pm::RadianEuler> ikBaseRot;
 
     bool InRange(const void* base, size_t bytes) const {
-        const char* p = static_cast<const char*>(base);
-        return p >= buf.data() && p + bytes <= buf.data() + buf.size();
+        const uintptr_t start = reinterpret_cast<uintptr_t>(buf.data());
+        const uintptr_t p = reinterpret_cast<uintptr_t>(base);
+        return p >= start && p - start <= buf.size() && bytes <= buf.size() - (p - start);
     }
 
     // A demand-loaded clip keeps its IK rules in the .ani at animblockikruleindex
@@ -76,8 +84,13 @@ struct Mdl {
     const T* At(const void* base, int32_t off, int count = 1) const {
         if (off == 0 || count <= 0)
             return nullptr;
-        const T* p = reinterpret_cast<const T*>(static_cast<const char*>(base) + off);
-        return InRange(p, sizeof(T) * static_cast<size_t>(count)) ? p : nullptr;
+        if (!InRange(base, 0)) return nullptr;
+        const int64_t at = static_cast<int64_t>(reinterpret_cast<uintptr_t>(base) -
+                           reinterpret_cast<uintptr_t>(buf.data())) + off;
+        if (at < 0 || static_cast<uint64_t>(at) > buf.size() ||
+            static_cast<size_t>(count) > (buf.size() - static_cast<size_t>(at)) / sizeof(T))
+            return nullptr;
+        return reinterpret_cast<const T*>(buf.data() + at);
     }
 
     const char* Str(const void* base, int32_t off) const {
@@ -173,6 +186,35 @@ inline std::string BoneNameKey(std::string n) {
     for (char& c : n) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
     return n;
 }
+
+// Export aliases are filenames on every supported platform. Keep UTF-8 names,
+// but remove path syntax and Windows aliases even when exporting on Linux.
+inline std::string OutputStem(std::string name, const std::string& fallback) {
+    if (!CleanName(name)) name = fallback;
+    for (char& c : name)
+        if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' ||
+            c == '<' || c == '>' || c == '|') c = '_';
+    while (!name.empty() && (name.back() == '.' || name.back() == ' ')) name.pop_back();
+    if (name.empty()) name = fallback;
+    const auto key = BoneNameKey(name.substr(0, name.find('.')));
+    if (key == "con" || key == "prn" || key == "aux" || key == "nul" ||
+        (key.size() == 4 && (key.substr(0, 3) == "com" || key.substr(0, 3) == "lpt") &&
+         key[3] >= '1' && key[3] <= '9')) name = "_" + name;
+    return name;
+}
+
+struct OutputNameLess {
+    bool operator()(const std::string& a, const std::string& b) const {
+#ifdef _WIN32
+        const auto wa = std::filesystem::u8path(a).native(), wb = std::filesystem::u8path(b).native();
+        return CompareStringOrdinal(wa.data(), static_cast<int>(wa.size()), wb.data(),
+                                    static_cast<int>(wb.size()), TRUE) == CSTR_LESS_THAN;
+#else
+        return BoneNameKey(a) < BoneNameKey(b);
+#endif
+    }
+};
+using OutputNameSet = std::set<std::string, OutputNameLess>;
 
 inline std::vector<std::string> UniqueBoneNames(const std::vector<std::string>& raw) {
     std::set<std::string> reserved, used;
@@ -291,16 +333,16 @@ inline std::vector<AnimRef> AnimRefs(const Mdl& m) {
     const fm::mstudioanimdesc_t* a =
         m.At<fm::mstudioanimdesc_t>(m.buf.data(), h.localanimindex, h.numlocalanim);
     std::vector<AnimRef> refs;
-    std::set<std::string> used;
+    // The synthesized subtract clip shares the animation output namespace.
+    OutputNameSet used{"a_bindpose"};
     for (int i = 0; a && i < h.numlocalanim; ++i) {
         std::string n = m.Str(&a[i], a[i].sznameindex);
         const bool implied = !n.empty() && n[0] == '@';
         if (implied)
             n.erase(0, 1);
-        if (!CleanName(n))
-            n = "anim_" + std::to_string(i);
+        n = OutputStem(n, "anim_" + std::to_string(i));
         std::string unique = n;
-        for (int k = 2; !used.insert(unique).second; ++k)
+        for (int k = 2; !used.insert(BoneNameKey(unique)).second; ++k)
             unique = n + "_" + std::to_string(k);
         refs.push_back({unique, implied});
     }

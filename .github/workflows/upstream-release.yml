@@ -106,12 +106,21 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - uses: actions/download-artifact@v8
         with:
           name: merged-source
           path: prepared
       - name: Extract source
         run: python -m zipfile -e prepared/NewPageMergeMDL-source.zip candidate
+      - name: Test Lua metadata and runtime math
+        run: |
+          python -m pip install lupa==2.6
+          python -c "from lupa.lua51 import LuaRuntime; LuaRuntime()"
+          python candidate/NewPageMergeMDL/tests/runtime_metadata_test.py
+          python candidate/NewPageMergeMDL/tests/vrm_runtime_lua_test.py
       - name: Configure
         shell: bash
         run: |
@@ -120,7 +129,9 @@ jobs:
       - name: Build every tool
         run: cmake --build build --config MinSizeRel --parallel 2
       - name: Test pipeline helpers
-        run: python -m unittest discover -s tests -p test_automation.py -v
+        run: |
+          python -m unittest discover -s tests -p test_automation.py -v
+          python -m unittest discover -s tests -p test_replacement_notes.py -v
       - name: Test pinned helper staging
         run: python -m unittest discover -s tests -p test_windows_extras.py -v
       - name: Stage verified Windows C4D helper
@@ -134,6 +145,12 @@ jobs:
         run: cmake --build output-tests --config Release --parallel 2
       - name: Test killed processes and output rollback
         run: ctest --test-dir output-tests -C Release --output-on-failure
+      - name: Configure subtool format tests
+        run: cmake -S candidate/NewPageMergeMDL/tests/subtool_formats -B subtool-format-tests -DCMAKE_BUILD_TYPE=Release
+      - name: Build subtool format tests
+        run: cmake --build subtool-format-tests --config Release --parallel 2
+      - name: Test AG2 resource integrity
+        run: ctest --test-dir subtool-format-tests -C Release --output-on-failure
       - name: Package with source provenance
         run: |
           python .github/scripts/upstream_release.py record-build --manifest prepared/upstream-manifest.json --cache build/CMakeCache.txt --configuration MinSizeRel
@@ -169,6 +186,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           name: merged-source
@@ -196,6 +214,24 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         shell: bash
         run: |
+          python3 - <<'PY'
+          import os, subprocess, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path('.github/scripts').resolve()))
+          from publish_release import find_release
+          repository, tag = os.environ['GITHUB_REPOSITORY'], os.environ['RELEASE_TAG']
+          existing = find_release(repository, tag, missing_ok=True)
+          if existing and not existing['draft']:
+              # Forced same-tag rebuilds retain reviewed prose. Save its source
+              # checkpoint before any upload, including the first such rebuild.
+              subprocess.run([sys.executable, '.github/scripts/replacement_notes.py',
+                              '--repo', repository, '--tag', tag, '--head', os.environ['GITHUB_SHA'],
+                              '--output', 'prepared/release-notes.md', '--checkpoint', 'prepared/release-checkpoint.md',
+                              'release-files/newpage-merge-mdl-win64.zip',
+                              'release-files/newpage-merge-mdl-linux64.zip'], check=True)
+              subprocess.run(['gh', 'release', 'edit', tag, '--repo', repository,
+                              '--notes-file', 'prepared/release-checkpoint.md'], check=True)
+          PY
           python3 .github/scripts/publish_release.py draft --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --target "$GITHUB_SHA" --notes-file prepared/release-notes.md
           gh release upload "$RELEASE_TAG" release-files/newpage-merge-mdl-win64.zip release-files/newpage-merge-mdl-linux64.zip --clobber
           python3 - <<'PY'
