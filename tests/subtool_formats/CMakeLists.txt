@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.22)
+project(NewPageSubtoolFormatTests LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_executable(ag2_vpk_test ../ag2_vpk_test.cpp)
+enable_testing()
+add_test(NAME ag2_vpk_crc COMMAND ag2_vpk_test)

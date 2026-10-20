@@ -247,14 +247,38 @@ def concise_release_notes(changes):
     return '\n'.join(lines).strip() + '\n'
 
 
-def append_release_notes(previous, current, tag):
+def append_release_notes(previous, current, tag, source_sha=None):
     """Preserve earlier change entries while replacing obsolete ZIP digests."""
     previous = previous.replace('\r\n', '\n')
     previous = re.sub(
         r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?ZIP SHA-?256:[ \t]*\n\s*```(?:text)?[ \t]*\n'
         r'(?:[a-f0-9]{64}[ \t]+[^\n]+\n)+```[ \t]*(?:\n|$)', '', previous).strip()
     if previous:
-        return previous + '\n\n## ' + tag + ' 后续更新\n\n' + current.lstrip()
+        # A replacement tag deliberately stays fixed. Retrying publication must
+        # not append its entire commit range or duplicate an earlier bullet.
+        previous_bullets = {line.strip() for line in previous.splitlines() if line.lstrip().startswith(('- ', '* '))}
+        blocks = []
+        for block in current.strip().split('\n\n'):
+            lines = block.splitlines()
+            lines = [line for line in lines if line.strip() not in previous_bullets]
+            if lines and not (len(lines) == 1 and lines[0].startswith('**') and lines[0].endswith('**')):
+                blocks.append('\n'.join(lines))
+        current = '\n\n'.join(blocks)
+        marker = '<!-- newpage-source:' + source_sha + ' -->' if source_sha else None
+        if marker and marker in previous:
+            # Keep the previously reviewed prose; only refresh the digests.
+            checksum = re.search(r'(?ims)^ZIP SHA-?256:.*$', current)
+            return previous + ('\n\n' + checksum[0] if checksum else '')
+        if not current:
+            return previous
+        if marker:
+            current += '\n\n' + marker
+        visible = re.sub(r'<!--.*?-->', '', current, flags=re.S)
+        visible = re.sub(r'(?ims)^ZIP SHA-?256:.*$', '', visible).strip()
+        heading = '\n\n## ' + tag + ' 后续更新' if visible else ''
+        return previous + heading + '\n\n' + current.lstrip()
+    if source_sha:
+        return current.rstrip() + '\n\n<!-- newpage-source:' + source_sha + ' -->\n'
     return current
 
 

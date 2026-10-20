@@ -266,6 +266,7 @@ struct Ctx {
     bool scriptBreak = false; // $break, sticky through every $include parent
 
     float defaultFps = 30.0f;
+    bool defaultFpsExplicit = false;
     source::SceneOptions sceneOptions;
     bool nekoConditions = false;
     float boneWeightThreshold = pulse::limits::kMinBoneWeight;
@@ -2690,6 +2691,7 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
             c.Fail(t.line, "fps must be > 0");
             return -1;
         }
+        a.fpsExplicit = true;
         return 1;
     }
     if (_stricmp(o.c_str(), "loop") == 0) { a.flags |= kStudioLooping; return 1; }
@@ -3541,6 +3543,7 @@ bool CmdAnimationCommon(Ctx& c, const Token& cmd, bool bindpose) {
     cm::CompileInput::InAnim a;
     a.name = name;
     a.fps = c.defaultFps;
+    a.fpsExplicit = c.defaultFpsExplicit;
     a.motionrollback = c.defaultMotionRollback;
     if (bindpose) {
         a.bindpose = true;
@@ -4808,6 +4811,7 @@ bool ParseSeqBody(Ctx& c, const Token& cmd, cm::CompileInput::InSequence& seq,
             // implied blend identically; the string table dedups them
             a.name = "@" + seq.name;
             a.fps = c.defaultFps;
+            a.fpsExplicit = c.defaultFpsExplicit;
             a.motionrollback = c.defaultMotionRollback;
             a.source = LoadSource(c, WithSourceExtension(c, o), t.line, /*morphSource=*/false,
                                   /*edit=*/nullptr, source::LoadKind::Animation);
@@ -4846,6 +4850,7 @@ bool CmdSequenceCommon(Ctx& c, const Token& cmd, bool bindpose) {
         cm::CompileInput::InAnim a;
         a.name = "@" + seq.name;
         a.fps = c.defaultFps;
+        a.fpsExplicit = c.defaultFpsExplicit;
         a.motionrollback = c.defaultMotionRollback;
         a.bindpose = true;
         a.endframe = 0;
@@ -4868,6 +4873,7 @@ bool CmdSequenceCommon(Ctx& c, const Token& cmd, bool bindpose) {
             continue;
         const cm::CompileInput::InAnim& src0 = c.in.anims[blends[0]];
         dst.fps = src0.fps;
+        dst.fpsExplicit = src0.fpsExplicit;
         dst.adjust = src0.adjust;
         dst.adjustSet = src0.adjustSet;
         dst.scale = src0.scale;
@@ -7768,6 +7774,7 @@ bool CmdDefaultFps(Ctx& c, const Token& cmd) {
     if (!std::isfinite(fps) || fps <= 0.0f || fps>1000)
         return c.Fail(cmd.line, "$defaultfps/$FPS must be finite and within (0,1000]");
     c.defaultFps = fps;
+    c.defaultFpsExplicit = true;
     c.sceneOptions.sampleRate=fps;
     c.sceneOptions.explicitSampleRate=true;
     return true;

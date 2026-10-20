@@ -11879,6 +11879,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                 if (!clip) clip = &ia.source->anims[0];
             }
             a.animationname = clip->name;
+            if (!ia.fpsExplicit && clip->sampleFps > 0) a.fps = clip->sampleFps;
             if (a.startframe < clip->startframe) a.startframe = clip->startframe;
             if (a.endframe > clip->endframe) a.endframe = clip->endframe;
         } else {

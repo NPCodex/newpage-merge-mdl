@@ -1531,6 +1531,7 @@ struct CompileInput {
         std::string name; // "@<seq>" when implied
         source::Source* source = nullptr;
         float fps = 30.0f;
+        bool fpsExplicit = false; // fps / $defaultfps wins over source sampling FPS
         int flags = 0; // STUDIO_DELTA etc.
         bool isDeclare = false;      // $declareanimation slot (STUDIO_OVERRIDE)
         // $bindposeanimation / $bindposesequence: no source file - the clip is

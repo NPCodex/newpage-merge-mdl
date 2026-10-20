@@ -268,6 +268,7 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
             if(!std::isfinite(duration) || duration<0 || duration*options.sampleRate>=pulse::limits::kMaxAnimFrames)
                 throw std::runtime_error("scene animation exceeds frame limit");
             SourceAnim clip; clip.name=animation->mName.C_Str();
+            clip.sampleFps=options.sampleRate;
             if(clip.name.empty()) clip.name="animation_"+std::to_string(a);
             clip.numframes=1+int(std::lround(duration*options.sampleRate)); clip.endframe=clip.numframes-1;
             if(bake){clip.numframes=1+int(std::ceil(duration*options.sampleRate));clip.endframe=clip.numframes-1;

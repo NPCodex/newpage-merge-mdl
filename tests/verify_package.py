@@ -56,7 +56,7 @@ def verify(archive, expected, destination):
             'FIVE_COMPILER_COMPLETION.md', 'O5_FORMAT_IMPORTS.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md',
             'integration/gmod/newpage_vertexanim.lua', 'integration/gmod/newpage_meshstates.lua',
             'integration/gmod/newpage_vrm.lua', 'integration/gmod/newpage_vrm_materials.lua',
-            'tools/mesh_states.py', 'tools/vrm_runtime.py', 'tools/vrml_import.py',
+            'tools/mesh_states.py', 'tools/vrm_runtime.py', 'tools/vrml_import.py', 'tools/output_transaction.py',
             'subtools/meshtool-protocol.md',
             'tools/vrml_converter/CMakeLists.txt', 'tools/vrml_converter/main.cpp',
             'tools/vrml_converter/meshlab/Parser.cpp', 'tools/vrml_converter/meshlab/Parser.h',
@@ -177,11 +177,14 @@ def main():
             ('cli_framerate_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix))]),
             ('compiler_integrity_test.py', [str(compiler)]),
             ('decompiler_integrity_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix))]),
+            ('decompiler_roundtrip_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix)), str(compiler.parent/'subtools'/('l4d_animswap'+compiler.suffix))]),
             ('subtools_integrity_test.py', ['--bin-dir', str(compiler.parent)]),
             ('subtools_cli_arguments_test.py', ['--bin-dir', str(compiler.parent)]),
             ('subtool_publication_test.py', ['--bin-dir', str(compiler.parent), '--probe', str(probe),
                                              '--work', str(Path(folder)/'subtool-publication')]),
             ('l4d_retarget_names_test.py', [str(compiler), str(compiler.parent/'subtools'/('l4d_animswap'+compiler.suffix))]),
+            ('vmd_motion_features_test.py', [str(compiler.parent/'subtools'/('vmd2valvebiped'+compiler.suffix))]),
+            ('helpers_publication_test.py', ['--bin-dir', str(compiler.parent)]),
         ):
             subprocess.run([sys.executable, str(Path(__file__).with_name(script)), *arguments], check=True)
         subprocess.run([sys.executable, str(Path(__file__).with_name('compatibility.py')), str(compiler)], check=True)

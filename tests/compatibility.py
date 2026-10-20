@@ -33,12 +33,13 @@ from integration_policy_cases import IntegrationPolicyCases
 from integration_vrm_cases import IntegrationVrmCases
 from integration_skin_cases import IntegrationSkinCases
 from pulse_update_cases import PulseUpdateCases
+from compiler_input_cases import CompilerInputCases
 from validate_outputs import validate
 
 COMPILER = str(Path(sys.argv.pop(1)).resolve())
 
 
-class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,SubdCases,DmxDependencyCases,ProceduralCases,AxisExportCases,CsgoClosureCases,ClothAdvancedCases,ClothScopeCases,DmxScopeCases,ProceduralScopeCases,ClothProjectionCases,IntegrationCapacityCases,IntegrationRigCases,SceneIntegrationCases,IntegrationMeshStatesCases,IntegrationWorkflowCases,IntegrationPolicyCases,IntegrationVrmCases,IntegrationSkinCases,PulseUpdateCases,unittest.TestCase):
+class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,SubdCases,DmxDependencyCases,ProceduralCases,AxisExportCases,CsgoClosureCases,ClothAdvancedCases,ClothScopeCases,DmxScopeCases,ProceduralScopeCases,ClothProjectionCases,IntegrationCapacityCases,IntegrationRigCases,SceneIntegrationCases,IntegrationMeshStatesCases,IntegrationWorkflowCases,IntegrationPolicyCases,IntegrationVrmCases,IntegrationSkinCases,PulseUpdateCases,CompilerInputCases,unittest.TestCase):
     def test_merged_materials_keep_geometry_flexes_and_lods(self):
         import json,copy
         doc=json.loads(scene_bytes());doc['materials'].append({'name':'Second'})

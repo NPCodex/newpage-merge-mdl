@@ -16,14 +16,98 @@ local function inversePosition(matrix,v)
     return Vector(d:Dot(matrix:GetForward()), -d:Dot(matrix:GetRight()), d:Dot(matrix:GetUp()))
 end
 local function finite(x) return type(x)=="number" and x==x and math.abs(x)<math.huge end
+local function array(t)
+    if type(t)~="table" then return false end
+    for i in pairs(t) do if not finite(i) or i~=math.floor(i) or i<1 or i>#t then return false end end
+    for i=1,#t do if t[i]==nil then return false end end
+    return true
+end
+local function values(t,n)
+    if not array(t) or #t~=n then return false end
+    for _,v in ipairs(t) do if not finite(v) then return false end end
+    return true
+end
+local function name(v) return type(v)=="string" and v~="" end
+local function modelpath(v) return name(v) and v:match("^models/.+%.mdl$") and not v:find("..",1,true) end
+local function expressions(data)
+    if type(data)~="table" or type(data.expressions)~="table" then return false end
+    for n,e in pairs(data.expressions) do
+        if not name(n) or type(e)~="table" or (e.binary~=nil and type(e.binary)~="boolean") or
+           not array(e.binds) or not array(e.material_binds) or type(e.overrides)~="table" then return false end
+        for category,mode in pairs(e.overrides) do
+            if not categories[category] or (mode~="none" and mode~="block" and mode~="blend") then return false end
+        end
+        for _,b in ipairs(e.binds) do
+            if type(b)~="table" or not name(b.controller) or not finite(b.weight) or b.weight<0 or b.weight>1 then return false end
+        end
+        for _,b in ipairs(e.material_binds) do
+            if type(b)~="table" or not finite(b.material) or b.material<0 or b.material~=math.floor(b.material) then return false end
+            if b.kind=="texture" then
+                if not values(b.scale,2) or not values(b.offset,2) then return false end
+            elseif b.kind=="color" or b.kind=="legacy" then
+                if not name(b.property) or (not values(b.target,3) and not values(b.target,4)) then return false end
+            else return false end
+        end
+    end
+    return true
+end
+local function springs(data)
+    if type(data)~="table" or not array(data.springs) or not array(data.colliders) then return false end
+    for _,c in ipairs(data.colliders) do
+        if type(c)~="table" or not name(c.bone) or not values(c.offset,3) or not finite(c.radius) or c.radius<0 or
+           (c.shape~="sphere" and c.shape~="capsule") or (c.shape=="capsule" and not values(c.tail,3)) then return false end
+    end
+    local seen={}
+    for _,s in ipairs(data.springs) do
+        if type(s)~="table" or not array(s.joints) or not array(s.colliders) or (s.center~=nil and not name(s.center)) then return false end
+        for _,i in ipairs(s.colliders) do
+            if not finite(i) or i~=math.floor(i) or i<0 or i>=#data.colliders then return false end
+        end
+        for _,j in ipairs(s.joints) do
+            if type(j)~="table" or not name(j.bone) or seen[j.bone] or not values(j.tail,3) or
+               not values(j.gravity_dir,3) or not finite(j.stiffness) or j.stiffness<0 or
+               not finite(j.gravity) or j.gravity<0 or not finite(j.drag) or j.drag<0 or j.drag>1 or
+               not finite(j.radius) or j.radius<0 then return false end
+            seen[j.bone]=true
+        end
+    end
+    return true
+end
+local function validclip(data)
+    local clip=data.clip
+    if type(clip)~="table" or not finite(clip.fps) or clip.fps<=0 or clip.fps>240 or
+       not finite(clip.duration) or clip.duration<0 or not array(clip.samples) or
+       #clip.samples~=math.ceil(clip.duration*clip.fps)+1 or #clip.samples>100000 then return false end
+    for _,sample in ipairs(clip.samples) do
+        if type(sample)~="table" then return false end
+        for n,w in pairs(sample) do
+            if not data.expressions[n] or not finite(w) or w<0 or w>1 then return false end
+        end
+    end
+    return true
+end
+local function sameModel(entity,data)
+    return data.model==nil or (modelpath(data.model) and entity.GetModel and (entity:GetModel() or ""):lower()==data.model:lower())
+end
 function M.Load(model)
+    if not modelpath(model) then return nil,"expected a model path under models/" end
     local path=model:gsub("%.mdl$", ".vrm.json")
     local raw=file.Read(path,"GAME")
     local data=raw and util.JSONToTable(raw)
-    if not data or data.schema~=1 or data.type~="newpage_vrm" then return nil,"invalid/missing VRM metadata: "..path end
+    if type(data)~="table" or data.schema~=1 or data.type~="newpage_vrm" or not modelpath(data.model) or
+       data.model:lower()~=model:lower() or not expressions(data) or not springs(data) or
+       not array(data.materials) or (data.clip~=nil and not validclip(data)) then return nil,"invalid/missing VRM metadata: "..path end
+    for _,material in ipairs(data.materials) do
+        if type(material)~="table" or not name(material.name) or not values(material.base_color,4) then return nil,"invalid VRM material metadata" end
+    end
+    for _,e in pairs(data.expressions) do for _,binding in ipairs(e.material_binds) do
+        if binding.material>=#data.materials then return nil,"invalid VRM material index" end
+    end end
     return data
 end
 function M.ResolveExpressions(data, weights)
+    if not expressions(data) or type(weights)~="table" then return nil,"invalid expression metadata or weights" end
+    for n,w in pairs(weights) do if not data.expressions[n] or not finite(w) then return nil,"invalid expression name or weight" end end
     local values, factors = {}, {overrideBlink=1,overrideLookAt=1,overrideMouth=1}
     for name,e in pairs(data.expressions) do
         local w=weights[name] or 0
@@ -50,6 +134,7 @@ end
 -- arbitrary Unity shader parameters have no universal Source shader mapping.
 function M.SetExpressions(entity,data,weights,materialAdapter)
     if not IsValid(entity) then return false,"invalid entity" end
+    if type(data)~="table" or not sameModel(entity,data) then return false,"VRM model does not match entity" end
     local controls,materials=M.ResolveExpressions(data,weights)
     if not controls then return false,materials end
     local ids={}
@@ -67,6 +152,7 @@ function M.SetExpressions(entity,data,weights,materialAdapter)
     return true
 end
 function M.SampleClip(entity,data,seconds,loop,materialAdapter)
+    if not expressions(data) or not validclip(data) then return false,"invalid expression clip" end
     local clip=data.clip
     if not clip or not finite(seconds) then return false,"missing clip/invalid time" end
     seconds=math.max(0,seconds)
@@ -117,6 +203,7 @@ local function collide(tail,radius,collider,matrix)
 end
 function M.NewSpringState(entity,data)
     if not IsValid(entity) then return nil,"invalid entity" end
+    if not springs(data) or not sameModel(entity,data) then return nil,"invalid spring metadata or model" end
     local state={data=data,bones={},tails={},parents={},order={}}
     local function resolve(name)
         if state.bones[name]~=nil then return true end

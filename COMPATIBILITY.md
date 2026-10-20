@@ -15,9 +15,17 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current version: **v1.2.34**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
+Current source version: **v1.2.37**. All **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) are complete. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs. The fixed scope is closed, without an additional CSGO porting backlog.
 
-Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Automatic upstream releases embed their exact merged project source at `sources/NewPageMergeMDL-source.zip`; manual releases use the repository source at the release tag. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
+Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Both automatic and maintained packages embed the exact build input at `sources/NewPageMergeMDL-source.zip`; use the packaged manifest source SHA and hashes to identify a replacement build, because its tag may still refer to an earlier revision. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
+
+## Current helper and decompiler contracts
+
+VMD conversion follows each frame's left/right leg IK enable state; disabled IK retains thigh/calf/foot FK. PMX positions, bind transforms, scale and generated poses must be finite. Orthographic camera keys have no supported output representation and fail before publication, as do invalid perspective flags; they are not silently emitted as perspective cameras.
+
+AG2 validates resource preload CRC32 as well as the complete resource data. Decompilation retains per-LOD vertex weights and checks model-companion checksums and decoder bounds. A present but corrupt PHY fails; a missing PHY warns that collision completeness cannot be established, because an MDL alone does not reliably establish whether physics data was authored.
+
+Python helper compilation stages model companions and runtime JSON together and rolls back ordinary publication failures. It does not yet provide the native tools' durable interrupted-process recovery. VRM inputs cannot alias generated files. GMod VRM and vertex-animation consumers reject malformed sidecars, non-finite times and incompatible model identities before modifying an entity.
 
 ## v1.2.36 replacement scope
 

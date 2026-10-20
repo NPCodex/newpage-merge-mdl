@@ -54,6 +54,38 @@ bool ValidateDmxNumbers(const dmx::Datamodel& dm, std::string* err) {
     return true;
 }
 
+// Validate before recursive skeleton/mesh loaders touch the graph. A DMX child
+// can reference an ancestor (including a transform-less container), so checking
+// only joints during loading misses both mesh cycles and container cycles.
+bool ValidateDag(const dmx::Element* root, std::string* err) {
+    struct Frame { const dmx::Element* node; size_t next = 0; };
+    std::vector<Frame> stack{{root, 0}};
+    std::map<const dmx::Element*, bool> visited{{root, true}};
+    auto fail = [&](const std::string& reason, const dmx::Element* node) {
+        if (err) *err = "DMX DAG " + reason + " at '" + node->name + "'";
+        return false;
+    };
+    while (!stack.empty()) {
+        auto& frame = stack.back();
+        const auto* children = frame.node->GetElementArray("children");
+        if (!children || frame.next == children->size()) {
+            visited[frame.node] = false;
+            stack.pop_back();
+            continue;
+        }
+        const auto* child = (*children)[frame.next++];
+        if (!child) continue;
+        const auto found = visited.find(child);
+        if (found != visited.end())
+            return fail(found->second ? "cycle" : "multiple parents or duplicate child reference", child);
+        if (stack.size() >= lim::kMaxDmxDagDepth)
+            return fail("depth exceeds " + std::to_string(lim::kMaxDmxDagDepth), child);
+        visited[child] = true;
+        stack.push_back({child, 0});
+    }
+    return true;
+}
+
 pm::Vector3 ToV3(const dmx::Vector3& v) { return {v.x, v.y, v.z}; }
 pm::Vector2 ToV2(const dmx::Vector2& v) { return {v.x, v.y}; }
 
@@ -2575,6 +2607,8 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
         return false;
     }
     if (!model) model = skeleton;
+
+    if (!ValidateDag(skeleton, err) || (model != skeleton && !ValidateDag(model, err))) return false;
 
     // upAxis (set-once): reference switches g_defaultrotation for Y-up DMX
     if (!s_bUpAxisChecked) {

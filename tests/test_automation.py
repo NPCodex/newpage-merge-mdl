@@ -650,7 +650,7 @@ class PackageValidationTests(unittest.TestCase):
                 'FIVE_COMPILER_COMPLETION.md','O5_FORMAT_IMPORTS.md','MESH_STATE_WORKFLOW.md','VRM_RUNTIME.md',
                 'integration/gmod/newpage_vertexanim.lua','integration/gmod/newpage_meshstates.lua',
                 'integration/gmod/newpage_vrm.lua','integration/gmod/newpage_vrm_materials.lua',
-                'tools/mesh_states.py','tools/vrm_runtime.py','tools/vrml_import.py',
+                'tools/mesh_states.py','tools/vrm_runtime.py','tools/vrml_import.py','tools/output_transaction.py',
                 'tools/vrml_converter/CMakeLists.txt','tools/vrml_converter/main.cpp',
                 'tools/vrml_converter/meshlab/Parser.cpp','tools/vrml_converter/meshlab/Parser.h',
                 'tools/vrml_converter/meshlab/Scanner.cpp','tools/vrml_converter/meshlab/Scanner.h',

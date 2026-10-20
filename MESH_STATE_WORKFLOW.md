@@ -41,8 +41,10 @@ python tools/mesh_states.py states.json --out generated --compiler NewPageMergeM
 
 The first command writes `generated/states.qc` and
 `generated/models/example/changing_mesh.meshstates.json`. The second also runs
-the compiler and writes the sidecar next to the resulting MDL in the supplied
-game directory after compilation succeeds. It does not copy material assets;
+the compiler in a private output directory, then publishes its model companions,
+generated QC and JSON together. Ordinary write failures restore the previous
+set; concurrent helper runs for the same targets are rejected. Forced process
+termination and power-loss recovery are not guaranteed by this Python helper. It does not copy material assets;
 package the model's materials normally. Python 3 is required for the authoring
 tool, but not for the Lua player. Do not modify/reorder the generated bodygroup
 without regenerating its sidecar.

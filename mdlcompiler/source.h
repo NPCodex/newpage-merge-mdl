@@ -85,6 +85,8 @@ struct SrcBonePose {
 // "BindPose" (frame 0 = bind transforms) plus one entry per DmeChannelsClip.
 struct SourceAnim {
     std::string name;
+    // Effective sampling FPS, zero when the source has no timing metadata (SMD).
+    float sampleFps = 0;
     // Operators already evaluated while loading an authored DMX clip. The
     // later external-rig pass must not replace animated parameters with defaults.
     std::vector<std::string> bakedRigOperators;

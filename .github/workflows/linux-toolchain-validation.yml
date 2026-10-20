@@ -1,6 +1,7 @@
-name: Linux Clang validation
+name: Linux toolchain validation
 
 on:
+  workflow_dispatch:
   workflow_call:
     inputs:
       source-artifact:
@@ -13,8 +14,16 @@ permissions:
 
 jobs:
   clang:
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["clang", "gcc"]' || '["clang"]') }}
+    name: Linux ${{ matrix.compiler }} validation
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      VALIDATION_CC: ${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
+      VALIDATION_CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -69,19 +78,22 @@ jobs:
               raise SystemExit('Unavailable IPO did not disable LTO in CMakeCache')
           PY
 
-      - name: Configure Clang without LTO
-        run: cmake -S "$VALIDATION_SOURCE" -B clang-build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/clang-dist"
-      - name: Build all tools with Clang
+      - name: Configure validation compiler without LTO
+        run: cmake -S "$VALIDATION_SOURCE" -B clang-build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_C_COMPILER="$VALIDATION_CC" -DCMAKE_CXX_COMPILER="$VALIDATION_CXX" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/clang-dist"
+      - name: Build all tools
         run: cmake --build clang-build --parallel 2
-      - name: Build and run Clang recovery tests
+      - name: Build and run recovery and format tests
         run: |
-          cmake -S "$VALIDATION_SOURCE/tests/output_transactions" -B clang-output-tests -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          cmake -S "$VALIDATION_SOURCE/tests/output_transactions" -B clang-output-tests -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$VALIDATION_CC" -DCMAKE_CXX_COMPILER="$VALIDATION_CXX"
           cmake --build clang-output-tests --parallel 2
           ctest --test-dir clang-output-tests --output-on-failure
-          cmake -S "$VALIDATION_SOURCE/tests/meshtool_response" -B clang-mesh-tests -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++
+          cmake -S "$VALIDATION_SOURCE/tests/meshtool_response" -B clang-mesh-tests -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$VALIDATION_CXX"
           cmake --build clang-mesh-tests --parallel 2
           ctest --test-dir clang-mesh-tests --output-on-failure
-      - name: Package and test actual Clang binaries
+          cmake -S "$VALIDATION_SOURCE/tests/subtool_formats" -B subtool-format-tests -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="$VALIDATION_CXX"
+          cmake --build subtool-format-tests --parallel 2
+          ctest --test-dir subtool-format-tests --output-on-failure
+      - name: Package and test actual validation binaries
         shell: bash
         run: |
           if [ ! -f prepared/upstream-manifest.json ]; then
@@ -91,3 +103,8 @@ jobs:
           python .github/scripts/upstream_release.py package --source "$VALIDATION_SOURCE" --dist clang-dist --platform linux64 --manifest prepared/upstream-manifest.json --source-archive prepared/NewPageMergeMDL-source.zip --output clang-validation.zip
           python "$VALIDATION_SOURCE/tests/verify_package.py" clang-validation.zip --manifest prepared/upstream-manifest.json --subtool-probe clang-output-tests/bin/subtool_transaction_probe
           python "$VALIDATION_SOURCE/tests/linux_package_smoke.py" clang-validation.zip
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: linux-${{ matrix.compiler }}-validation
+          path: clang-validation.zip

@@ -57,11 +57,10 @@ offline SubD and DMX rig baking have specific authoring requirements. Run
   interrupted compile. The next compile attempts recovery; investigate reported
   conflicts before changing recovery files. Do not target one output set from
   multiple compiler processes.
-- The decompiler and AG2 use persistent `.newpage-output-transactions` journals
-  and `.newpage-output-locks` locks, rejecting concurrent runs for the same target.
-  Preserve these files and backups after interruption, then rerun the same job.
-  Investigate external-edit conflicts before changing recovery files. VMD/L4D
-  batch rollback covers ordinary errors; see [installation](INSTALL.md).
+- The decompiler, AG2 and VMD/L4D use persistent recovery and reject concurrent
+  runs for the same target. Preserve the journals, staging files and backups
+  identified by diagnostics, then rerun the same job. Investigate external-edit
+  conflicts first; tool-specific file locations are in [installation](INSTALL.md).
 
 ## Compile and decompile
 
@@ -99,7 +98,8 @@ contain left/right leg IK chains.
 Use `-pmx "D:/models/original.pmx"` to supply the original MMD rest skeleton.
 Reference the generated DMX in your QC and compile it. `-dmxmodel 22` enables
 supported facial tracks. Repeat `-vmd` for batch conversion without `-o`; outputs
-then go beside each VMD. Camera keys produce `_camera.smd`; `-camerafov dmx` also
+then go beside each VMD. Per-frame leg IK switches select IK/FK; orthographic
+cameras and non-finite inputs fail explicitly. Camera keys produce `_camera.smd`; `-camerafov dmx` also
 adds camera/FOV DMX. Run without arguments for the full options.
 
 Add `-compile "my_animation" -game "D:/Games/MyMod"` to invoke the packaged

@@ -12,6 +12,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: newpage-upstream-release
+  cancel-in-progress: false
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -28,11 +32,12 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPLACE_TAG: ${{ inputs.replace_tag }}
         run: |
           version=$(sed -n 's/^project(NewPageMergeMDL VERSION \([0-9.]*\) .*/\1/p' CMakeLists.txt)
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          replace='${{ inputs.replace_tag }}'
+          replace="$REPLACE_TAG"
           if [ -n "$replace" ]; then
             python3 - "$replace" "$version" <<'PY'
           import json, re, subprocess, sys
@@ -75,7 +80,9 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Test packaging and update detection
-        run: python -m unittest discover -s tests -p test_automation.py -v
+        run: |
+          python -m unittest discover -s tests -p test_automation.py -v
+          python -m unittest discover -s tests -p test_replacement_notes.py -v
 
       - name: Configure
         # no -G: use whatever toolchain the runner image ships
@@ -120,6 +127,15 @@ jobs:
 
       - name: Test meshtool response publication
         run: ctest --test-dir meshtool-response-tests -C Release --output-on-failure
+
+      - name: Configure subtool format tests
+        run: cmake -S tests/subtool_formats -B subtool-format-tests -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build subtool format tests
+        run: cmake --build subtool-format-tests --config Release --parallel 2
+
+      - name: Test AG2 resource integrity
+        run: ctest --test-dir subtool-format-tests -C Release --output-on-failure
 
       - name: Package with maintained source provenance
         shell: bash
@@ -201,25 +217,7 @@ jobs:
           test -n "$before"
           cp "newpage-merge-mdl-$tag-win64.zip" newpage-merge-mdl-win64.zip
           cp "newpage-merge-mdl-$tag-linux64.zip" newpage-merge-mdl-linux64.zip
-          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body > existing-release-notes.txt
-          python3 - <<'PY'
-          from pathlib import Path
-          import os, sys
-          sys.path.insert(0, str(Path('.github/scripts').resolve()))
-          from upstream_release import append_release_notes
-          tag = os.environ['RELEASE_TAG']
-          notes = Path('notes.txt')
-          text = notes.read_text(encoding='utf-8')
-          for platform in ('win64', 'linux64'):
-              text = text.replace(
-                  f'newpage-merge-mdl-{tag}-{platform}.zip',
-                  f'newpage-merge-mdl-{platform}.zip',
-              )
-          previous = Path('existing-release-notes.txt').read_text(encoding='utf-8').strip()
-          text = append_release_notes(previous, text, tag)
-          notes.write_text(text, encoding='utf-8')
-          PY
-          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes.txt
+          python3 .github/scripts/replacement_notes.py --repo "$GITHUB_REPOSITORY" --tag "$tag" --head "$GITHUB_SHA" --output notes.txt newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip
           gh release upload "$tag" newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip --clobber
           python3 - <<'PY'
           import hashlib, os, subprocess, json
@@ -240,3 +238,4 @@ jobs:
           PY
           after=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha')
           test "$before" = "$after"
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes.txt

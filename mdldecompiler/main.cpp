@@ -46,6 +46,7 @@
 #include "branding.h"
 #include "persistentoutput.h"
 #include "cliargs.h"
+#include "pulselimits.h"
 
 using namespace mdldecompiler;
 using pulse::fatal::Fail;
@@ -99,6 +100,65 @@ int Usage() {
     return 1;
 }
 
+bool ValidateModelTables(const Mdl& m, std::string& err) {
+    const auto& h = *m.hdr;
+    auto table = [&](int count, const void* data, const char* label) {
+        if (count < 0 || (count > 0 && !data)) {
+            err = std::string("invalid ") + label + " table (count or byte range)";
+            return false;
+        }
+        return true;
+    };
+    const auto* bones = m.At<fm::mstudiobone_t>(m.buf.data(), h.boneindex, h.numbones);
+    const auto* attachments = m.At<fm::mstudioattachment_t>(m.buf.data(), h.localattachmentindex,
+                                                          h.numlocalattachments);
+    const auto* sets = m.At<fm::mstudiohitboxset_t>(m.buf.data(), h.hitboxsetindex, h.numhitboxsets);
+    if (!table(h.numbones, bones, "bone") ||
+        !table(h.numlocalattachments, attachments, "attachment") ||
+        !table(h.numhitboxsets, sets, "hitbox set")) return false;
+    // A finite, acyclic hierarchy is also used by the shared animation decoder.
+    for (int i = 0; i < h.numbones; ++i) {
+        int parent = i;
+        for (int depth = 0; parent >= 0; ++depth) {
+            if (parent >= h.numbones || depth >= h.numbones || bones[parent].parent < -1) {
+                err = "invalid bone hierarchy (parent or cycle)";
+                return false;
+            }
+            parent = bones[parent].parent;
+        }
+    }
+    for (int i = 0; i < h.numlocalattachments; ++i) {
+        if (attachments[i].localbone < 0 || attachments[i].localbone >= h.numbones) {
+            err = "invalid attachment bone reference";
+            return false;
+        }
+        for (const auto& row : attachments[i].local.m)
+            for (float value : row) if (!std::isfinite(value)) {
+                err = "non-finite attachment transform";
+                return false;
+            }
+    }
+    for (int i = 0; i < h.numhitboxsets; ++i) {
+        const auto* boxes = m.At<fm::mstudiobbox_t>(&sets[i], sets[i].hitboxindex, sets[i].numhitboxes);
+        if (!table(sets[i].numhitboxes, boxes, "hitbox")) return false;
+        for (int j = 0; j < sets[i].numhitboxes; ++j) {
+            if (boxes[j].bone < 0 || boxes[j].bone >= h.numbones) {
+                err = "invalid hitbox bone reference";
+                return false;
+            }
+            for (int axis = 0; axis < 3; ++axis)
+                if (!std::isfinite((&boxes[j].bbmin.x)[axis]) ||
+                    !std::isfinite((&boxes[j].bbmax.x)[axis])) {
+                    err = "non-finite hitbox bounds";
+                    return false;
+                }
+        }
+    }
+    return table(h.numlocalanim, m.At<fm::mstudioanimdesc_t>(m.buf.data(), h.localanimindex, h.numlocalanim), "animation") &&
+           table(h.numlocalseq, m.At<fm::mstudioseqdesc_t>(m.buf.data(), h.localseqindex, h.numlocalseq), "sequence") &&
+           table(h.numbodyparts, m.At<fm::mstudiobodyparts_t>(m.buf.data(), h.bodypartindex, h.numbodyparts), "bodypart");
+}
+
 bool ReadFile(const char* path, Mdl& m, int forceVersion, std::string& err) {
     std::FILE* f = std::fopen(path, "rb");
     if (!f) {
@@ -138,7 +198,7 @@ bool ReadFile(const char* path, Mdl& m, int forceVersion, std::string& err) {
     if (version < 44 || version > 49)
         std::printf("model version %d is outside the confirmed 44-49 range; reading it as 49 anyway\n",
                      version);
-    return true;
+    return ValidateModelTables(m, err);
 }
 
 // Angles we recover through trig (acos, MatrixAngles' atan2/asin) come back a
@@ -437,14 +497,23 @@ bool ModelHasFace(const Mdl& m, const fm::mstudiomodel_t& mo) {
 
 // The alias each model's .dmx is written under, "" for a blank body. dmxwrite
 // writes <alias>.dmx and every reference in the script names it.
-std::vector<std::vector<std::string>> MeshNames(const Mdl& m) {
+std::vector<std::vector<std::string>> MeshNames(const Mdl& m, const std::string& physicsName,
+                                              const std::string& jointsName) {
     const fm::studiohdr_t& h = *m.hdr;
     std::vector<std::vector<std::string>> out;
     const fm::mstudiobodyparts_t* parts =
         m.At<fm::mstudiobodyparts_t>(m.buf.data(), h.bodypartindex, h.numbodyparts);
     if (!parts)
         return out;
-    std::set<std::string> used;
+    OutputNameSet used{physicsName, jointsName};
+    // Reserve the entire family before assigning the next body. This prevents
+    // both case aliases and a later body's root from replacing an earlier LOD.
+    auto family = [](const std::string& n) {
+        std::vector<std::string> keys{BoneNameKey(n)};
+        for (int lod = 1; lod < pulse::limits::kMaxNumLods; ++lod)
+            keys.push_back(BoneNameKey(n + "_lod" + std::to_string(lod)));
+        return keys;
+    };
     out.resize(h.numbodyparts);
     for (int i = 0; i < h.numbodyparts; ++i) {
         const fm::mstudiomodel_t* models =
@@ -455,12 +524,18 @@ std::vector<std::vector<std::string>> MeshNames(const Mdl& m) {
                 continue;
             }
             const std::string file(models[j].name, strnlen(models[j].name, sizeof models[j].name));
-            std::string name = StripExt(BaseName(file));
-            if (!CleanName(name))
-                name = "mesh";
+            const std::string name = OutputStem(StripExt(BaseName(file)), "mesh");
             std::string unique = name;
-            for (int n = 2; !used.insert(unique).second; ++n)
+            for (int n = 2;; ++n) {
+                const auto keys = family(unique);
+                if (std::none_of(keys.begin(), keys.end(), [&](const std::string& key) {
+                    return used.count(key) != 0;
+                })) {
+                    used.insert(keys.begin(), keys.end());
+                    break;
+                }
                 unique = name + "_" + std::to_string(n);
+            }
             out[i].push_back(unique);
         }
     }
@@ -1057,12 +1132,22 @@ struct PhySection {
 };
 
 // Skips the header and the per-solid collision blobs, then reads the text that
-// follows up to its NUL. Missing or malformed file = no sections, no output.
-std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
+// follows up to its NUL. Absence is not proof that the original had no physics;
+// an existing but malformed sidecar must never silently discard collision data.
+std::vector<PhySection> ReadPhy(const Mdl& m, const std::string& mdlPath) {
     std::vector<PhySection> out;
-    std::FILE* f = std::fopen((StripExt(mdlPath) + ".phy").c_str(), "rb");
-    if (!f)
+    const auto path = StripExt(mdlPath) + ".phy";
+    auto invalid = [&]() {
+        ExtractionError("invalid or truncated PHY sidecar: \"" + path + "\"");
+        return std::vector<PhySection>{};
+    };
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) {
+        std::error_code ec;
+        if (std::filesystem::exists(path, ec) || ec) return invalid();
+        std::printf("warning: no PHY sidecar; collision completeness cannot be verified for \"%s\"\n", mdlPath.c_str());
         return out;
+    }
     std::fseek(f, 0, SEEK_END);
     const long size = std::ftell(f);
     std::fseek(f, 0, SEEK_SET);
@@ -1070,21 +1155,29 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
     const size_t got = buf.empty() ? 0 : std::fread(buf.data(), 1, buf.size(), f);
     std::fclose(f);
     if (got != buf.size() || buf.size() < sizeof(fm::phyheader_t))
-        return out;
+        return invalid();
 
     const fm::phyheader_t* h = reinterpret_cast<const fm::phyheader_t*>(buf.data());
+    if (h->size != sizeof(fm::phyheader_t) || h->id != 0 || h->solidCount < 0)
+        return invalid();
+    if (h->checkSum != m.hdr->checksum) {
+        ExtractionError("PHY checksum does not match MDL: sidecar belongs to a different model");
+        return out;
+    }
     size_t p = sizeof(fm::phyheader_t);
     for (int i = 0; i < h->solidCount; ++i) {
         int32_t blob = 0;
         if (p + sizeof(blob) > buf.size())
-            return out;
+            return invalid();
         std::memcpy(&blob, &buf[p], sizeof(blob));
         p += sizeof(blob);
         if (blob < 0 || p + static_cast<size_t>(blob) > buf.size())
-            return out;
+            return invalid();
         p += static_cast<size_t>(blob);
     }
 
+    if (p >= buf.size() || std::memchr(buf.data() + p, 0, buf.size() - p) == nullptr)
+        return invalid();
     struct PhyToken {
         std::string text;
         size_t begin = 0;
@@ -1101,7 +1194,7 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
             while (e < buf.size() && buf[e] && buf[e] != '"')
                 ++e;
             if (e >= buf.size() || !buf[e])
-                return out;
+                return invalid();
             p = e + 1;
             toks.push_back({std::string(&buf[begin + 1], e - begin - 1), begin, p});
         } else if (c == '{' || c == '}') {
@@ -1143,11 +1236,15 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
             }
         }
         if (depth != 0)
-            return out;
+            return invalid();
         s.raw.assign(&buf[toks[first].begin], toks[cursor - 1].end - toks[first].begin);
         out.push_back(std::move(s));
         i = cursor;
     }
+    const auto solidCount = std::count_if(out.begin(), out.end(), [](const PhySection& s) {
+        return s.name == "solid";
+    });
+    if (solidCount != h->solidCount) return invalid();
     return out;
 }
 
@@ -1157,7 +1254,7 @@ void EmitKeyValues(Qc& q, const std::string& text, std::string indent,
 // $physicsmodel. The hulls go out as a DMX collision mesh beside the render
 // meshes; everything else round-trips out of the .phy's text tail.
 void WritePhysics(Qc& q, const Mdl& m, const std::string& mdlPath, const std::string& dir) {
-    const std::vector<PhySection> secs = ReadPhy(mdlPath);
+    const std::vector<PhySection> secs = ReadPhy(m, mdlPath);
     std::vector<const PhySection*> solids;
     std::vector<const PhySection*> collisionText;
     const PhySection* edit = nullptr;
@@ -2999,7 +3096,8 @@ int DecompileInto(const std::string& in, const std::string& dir, int forceVersio
     // stock has no top-level flex/eye commands - they are $model options, so
     // capture them here and let WriteBodyParts put them in the block.
     pulse::fatal::g_stage = "MeshNames";
-    const std::vector<std::vector<std::string>> meshNames = MeshNames(m);
+    const std::vector<std::vector<std::string>> meshNames =
+        MeshNames(m, BaseName(StripExt(in)) + "_physics", BaseName(dir) + "_joints");
     pulse::fatal::g_stage = "BuildFlexRig";
     const FlexRig rig = BuildFlexRig(m);
     const std::string faceMesh = FaceMesh(m, meshNames);
@@ -3032,7 +3130,7 @@ int DecompileInto(const std::string& in, const std::string& dir, int forceVersio
     // re-derive their weights from LOD 0 the way an authored LOD needs.
     if (g_studiomdl && lods.size() > 1) {
         q.Blank();
-        q.Line("// $skinnedlods  // Alien Swarm and newer");
+        q.Line("$skinnedlods  // preserve the exported LODs' independent skin weights");
     }
     for (size_t l = 1; l < lods.size(); ++l) {
         q.Blank();

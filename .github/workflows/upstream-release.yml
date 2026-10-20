@@ -120,7 +120,9 @@ jobs:
       - name: Build every tool
         run: cmake --build build --config MinSizeRel --parallel 2
       - name: Test pipeline helpers
-        run: python -m unittest discover -s tests -p test_automation.py -v
+        run: |
+          python -m unittest discover -s tests -p test_automation.py -v
+          python -m unittest discover -s tests -p test_replacement_notes.py -v
       - name: Test pinned helper staging
         run: python -m unittest discover -s tests -p test_windows_extras.py -v
       - name: Stage verified Windows C4D helper
@@ -134,6 +136,12 @@ jobs:
         run: cmake --build output-tests --config Release --parallel 2
       - name: Test killed processes and output rollback
         run: ctest --test-dir output-tests -C Release --output-on-failure
+      - name: Configure subtool format tests
+        run: cmake -S candidate/NewPageMergeMDL/tests/subtool_formats -B subtool-format-tests -DCMAKE_BUILD_TYPE=Release
+      - name: Build subtool format tests
+        run: cmake --build subtool-format-tests --config Release --parallel 2
+      - name: Test AG2 resource integrity
+        run: ctest --test-dir subtool-format-tests -C Release --output-on-failure
       - name: Package with source provenance
         run: |
           python .github/scripts/upstream_release.py record-build --manifest prepared/upstream-manifest.json --cache build/CMakeCache.txt --configuration MinSizeRel

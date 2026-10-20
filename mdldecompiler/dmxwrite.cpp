@@ -1195,25 +1195,26 @@ std::vector<pm::matrix3x4> BindPose(const Mdl& m) {
     return out;
 }
 
-void CollectLedges(const std::vector<char>& buf, size_t node, std::vector<size_t>& out, int depth) {
+bool CollectLedges(const std::vector<char>& buf, size_t node, std::vector<size_t>& out, int depth) {
     if (depth > 64 || out.size() > 4096)
-        return;
+        return false;
     ivp_ledgetree_node_t n;
     if (node + sizeof(n) > buf.size())
-        return;
+        return false;
     std::memcpy(&n, &buf[node], sizeof n);
     if (n.offset_right_node == 0) {
         size_t ledge = 0;
         if (n.offset_compact_ledge != 0 &&
             RelOff(node, n.offset_compact_ledge, buf.size(), ledge))
             out.push_back(ledge);
-        return;
+        else return false;
+        return true;
     }
     size_t right = 0;
     if (!RelOff(node, n.offset_right_node, buf.size(), right))
-        return;
-    CollectLedges(buf, node + sizeof(n), out, depth + 1); // left child is adjacent
-    CollectLedges(buf, right, out, depth + 1);
+        return false;
+    return CollectLedges(buf, node + sizeof(n), out, depth + 1) && // left child is adjacent
+           CollectLedges(buf, right, out, depth + 1);
 }
 
 bool ReadLedge(const std::vector<char>& buf, size_t off, PhyHull& out) {
@@ -1256,6 +1257,7 @@ bool ReadLedge(const std::vector<char>& buf, size_t off, PhyHull& out) {
     for (int i = 0; i < nPts; ++i) {
         float k[3];
         std::memcpy(k, &buf[ptOff + 16 * static_cast<size_t>(firstPoint + i)], sizeof k);
+        for (float v : k) if (!std::isfinite(v)) return false;
         out.verts[i] = IvpToSrc(k);
     }
     for (int index : indices)
@@ -1298,12 +1300,12 @@ bool ReadPhyHulls(const Mdl& m, const std::string& phyPath, std::vector<PhyHull>
     for (int i = 0; i < h->solidCount; ++i) {
         int32_t blob = 0;
         if (p + sizeof(blob) > buf.size())
-            break;
+            return false;
         std::memcpy(&blob, &buf[p], sizeof blob);
         p += sizeof(blob);
         if (blob < static_cast<int32_t>(sizeof(ivp_compact_surface_t)) ||
             p + static_cast<size_t>(blob) > buf.size())
-            break;
+            return false;
         const size_t next = p + static_cast<size_t>(blob);
 
         // a VPHY header may or may not sit in front of the compact surface
@@ -1313,37 +1315,30 @@ bool ReadPhyHulls(const Mdl& m, const std::string& phyPath, std::vector<PhyHull>
             std::memcpy(&ch, &buf[p], sizeof ch);
             if (ch.vphysicsID == static_cast<int32_t>(MINICOL_VPHY_ID)) {
                 if (ch.modelType != 0) {
-                    std::printf("  .phy solid %d is not a compact surface - skipped\n", i);
-                    p = next;
-                    continue;
+                    std::printf("  .phy solid %d uses an unsupported collision format\n", i);
+                    return false;
                 }
                 surf = p + sizeof(ch);
             }
         }
 
         ivp_compact_surface_t cs;
-        if (surf + sizeof(cs) > buf.size()) {
-            p = next;
-            continue;
-        }
+        if (surf + sizeof(cs) > next) return false;
         std::memcpy(&cs, &buf[surf], sizeof cs);
         size_t root = 0;
-        if (!RelOff(surf, cs.offset_ledgetree_root, buf.size(), root)) {
-            p = next;
-            continue;
-        }
+        if (!RelOff(surf, cs.offset_ledgetree_root, next, root)) return false;
         std::vector<size_t> ledges;
-        CollectLedges(buf, root, ledges, 0);
+        if (!CollectLedges(buf, root, ledges, 0) || ledges.empty()) return false;
         for (size_t off : ledges) {
             PhyHull hull;
             if (!ReadLedge(buf, off, hull))
-                continue;
+                return false;
             if (hull.bone >= 0 && static_cast<size_t>(hull.bone) < bindPose.size()) {
                 for (pm::Vector3& v : hull.verts)
                     v = pm::VectorTransform(v, bindPose[hull.bone]);
-            } else {
+            } else if (hull.bone < 0 && !bindPose.empty()) {
                 hull.bone = 0; // single body: already model space, rig it to the root
-            }
+            } else return false;
             out.push_back(std::move(hull));
         }
         p = next;
@@ -1657,8 +1652,10 @@ PhysicsMeshInfo WritePhysicsMesh(const Mdl& m, const std::string& mdlPath,
                                  const std::string& dir, const std::string& name) {
     PhysicsMeshInfo info;
     std::vector<PhyHull> hulls;
-    if (!ReadPhyHulls(m, StripExt(mdlPath) + ".phy", hulls))
+    if (!ReadPhyHulls(m, StripExt(mdlPath) + ".phy", hulls)) {
+        ExtractionError("cannot decode PHY collision mesh: \"" + StripExt(mdlPath) + ".phy\"");
         return info;
+    }
 
     // more than one hull on a bone only comes back as more than one hull if the
     // script says `concave`, which splits the mesh into islands again
@@ -2009,6 +2006,20 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
         meshError("no usable \"" + stem + ".vvd\"");
         return lods;
     }
+    if (vvdBuf.size() < sizeof(fm::vertexFileHeader_t)) {
+        meshError("VVD header is truncated");
+        return lods;
+    }
+    const auto* vh = reinterpret_cast<const fm::vertexFileHeader_t*>(vvdBuf.data());
+    if (vh->id != fm::kIdVertexFile || vh->version != fm::kVertexFileVersion ||
+        vh->numLODs < 1 || vh->numLODs > fm::kMaxNumLods) {
+        meshError("invalid VVD header");
+        return lods;
+    }
+    if (vh->checksum != h.checksum) {
+        meshError("VVD checksum does not match MDL: sidecar belongs to a different model");
+        return lods;
+    }
     std::vector<char> vtxBuf;
     // .dx90.vtx is what ships; the others are the same data for dead renderers
     if (!ReadWhole(stem + ".dx90.vtx", vtxBuf) && !ReadWhole(stem + ".vtx", vtxBuf) &&
@@ -2021,7 +2032,16 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
         return lods;
     }
     const auto* fh = reinterpret_cast<const vtx::FileHeader_t*>(vtxBuf.data());
-    const int numLods = fh->numLODs > 0 ? fh->numLODs : 1;
+    if (fh->version != 7 || fh->numLODs < 1 || fh->numLODs > vh->numLODs ||
+        fh->numBodyParts != h.numbodyparts) {
+        meshError("invalid VTX header or inconsistent model/LOD counts");
+        return lods;
+    }
+    if (fh->checkSum != h.checksum) {
+        meshError("VTX checksum does not match MDL: sidecar belongs to a different model");
+        return lods;
+    }
+    const int numLods = fh->numLODs;
 
     // the strip-group stride is probed once and reused for every LOD
     size_t stride = sizeof(vtx::LegacyStripGroupHeader_t);
