@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import zipfile
-from upstream_release import api, fetch, append_release_notes
+from upstream_release import api, fetch, append_release_notes, verified_package_manifest, package_source_identity
 
 
 def recorded_source(release):
@@ -37,15 +37,14 @@ def manifest_for_release(release):
                 raise ValueError('Previous release package digest mismatch: ' + asset['name'])
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 manifest = json.loads(archive.read('NewPageMergeMDL/upstream-manifest.json'))
+                manifest = verified_package_manifest(archive, manifest)
             sha = manifest.get('controller_sha', '')
             if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}', sha):
                 raise ValueError('Invalid release source commit: ' + asset['name'])
             manifests.append(manifest)
         sources = sorted({m['controller_sha'] for m in manifests})
         for source in sources:
-            identities = {json.dumps({k: m.get(k) for k in ('fingerprint', 'project_version', 'pulsemodel',
-                          'overlay_sha256', 'configuration_sha256', 'build_overlay_sha256', 'source_kind')}, sort_keys=True)
-                          for m in manifests if m['controller_sha'] == source}
+            identities = {package_source_identity(m) for m in manifests if m['controller_sha'] == source}
             if len(identities) > 1:
                 raise ValueError('Platform package source identities differ at the same controller commit')
         if len(sources) > 1 and not recorded_source(release):

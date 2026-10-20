@@ -32,6 +32,31 @@ def asset(name='tools.zip', identifier=1):
 
 
 class AutomationTests(unittest.TestCase):
+    def test_source_identity_is_canonical_for_known_text_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'automation').mkdir()
+            config = dict(project_version='1.2.34', pulsemodel='official/pulse', pulse_base='b' * 40)
+            content = {'automation/upstreams.json': (json.dumps(config, indent=2) + '\n').encode(),
+                       'automation/compatibility.patch': b'--- a/old\n+++ b/new\n'}
+            (root / 'CMakeLists.txt').write_bytes(b'project(NewPageMergeMDL VERSION 1.2.36 LANGUAGES CXX C)\n')
+            states, manifests, raw_hashes = [], [], []
+            for newline in (b'\n', b'\r\n'):
+                for name, value in content.items():
+                    (root / name).write_bytes(value.replace(b'\n', newline))
+                states.append(sync.source_state(config, 'a' * 40, 'b' * 40, root))
+                raw_hashes.append(sync.sha256(root / 'automation/compatibility.patch'))
+                with patch.dict(os.environ, GITHUB_SHA='a' * 40):
+                    sync.maintained_manifest(argparse.Namespace(source=root, output=root / 'manifest.json', tag='v1.2.36'))
+                manifests.append(json.loads((root / 'manifest.json').read_text()))
+            self.assertEqual(states[0], states[1])
+            self.assertEqual(manifests[0]['fingerprint'], manifests[1]['fingerprint'])
+            self.assertEqual(manifests[1]['version_base'], '1.2.34')
+            self.assertEqual(manifests[1]['project_version'], '1.2.36')
+            self.assertEqual(states[0]['overlay_sha256'], hashlib.sha256(content['automation/compatibility.patch']).hexdigest())
+            self.assertEqual(states[0]['configuration_sha256'], hashlib.sha256(content['automation/upstreams.json']).hexdigest())
+            self.assertNotEqual(raw_hashes[0], raw_hashes[1])
+
     def test_maintained_package_prevents_redundant_scheduled_release(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

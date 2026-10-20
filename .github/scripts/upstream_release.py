@@ -12,7 +12,7 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import urllib.error
@@ -29,6 +29,92 @@ def sha256(path):
         for chunk in iter(lambda: stream.read(1024 * 1024), b''):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def source_text_sha256(data):
+    """Only source identity ignores CRLF; asset/inventory hashes remain raw."""
+    return hashlib.sha256(data.replace(b'\r\n', b'\n')).hexdigest()
+
+
+def checked_source_text_hash(data, declared, label):
+    canonical = data.replace(b'\r\n', b'\n')
+    equivalents = {hashlib.sha256(value).hexdigest() for value in
+                   (data, canonical, canonical.replace(b'\n', b'\r\n'))}
+    if declared not in equivalents:
+        raise ValueError('Source snapshot does not match declared ' + label)
+    return source_text_sha256(data)
+
+
+def verified_package_manifest(package, manifest):
+    """Migrate historical text hashes only when the embedded source proves it.
+
+    Maintained source is unstamped and can verify both controller input hashes.
+    A merged snapshot has a refreshed overlay and stamped configuration: only
+    its build_overlay hash is directly verifiable. Its original controller
+    overlay/config declarations must continue to agree exactly across platforms.
+    """
+    source_name = 'NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'
+    if source_name not in package.namelist():
+        return dict(manifest)  # Legacy packages retain strict manifest equality.
+    result = dict(manifest)
+    controller = manifest.get('controller_sha', '')
+    if not isinstance(controller, str) or not re.fullmatch(r'[0-9a-f]{40}', controller):
+        raise ValueError('Invalid source snapshot controller commit')
+    text_paths = {'automation/compatibility.patch', 'automation/upstreams.json'}
+    with zipfile.ZipFile(io.BytesIO(package.read(source_name))) as source:
+        if source.comment and source.comment != controller.encode('ascii'):
+            raise ValueError('Source archive comment does not match controller commit')
+        files, identity = {}, []
+        for info in source.infolist():
+            path = PurePosixPath(info.filename)
+            if (path.is_absolute() or '..' in path.parts or '\\' in info.filename or ':' in info.filename
+                    or not path.parts or path.parts[0] != 'NewPageMergeMDL'):
+                raise ValueError('Unsafe source archive member: ' + info.filename)
+            if info.is_dir():
+                continue
+            relative = path.relative_to('NewPageMergeMDL').as_posix()
+            if relative in files:
+                raise ValueError('Duplicate source archive member: ' + relative)
+            data = source.read(info)
+            files[relative] = data
+            # All other source and binary files are compared byte-for-byte.
+            value = data.replace(b'\r\n', b'\n') if relative in text_paths else data
+            identity.append((relative, hashlib.sha256(value).hexdigest()))
+        result['_verified_source_tree_sha256'] = fingerprint(sorted(identity))
+        required_files = ('CMakeLists.txt', 'automation/compatibility.patch', 'automation/upstreams.json')
+        if any(path not in files for path in required_files):
+            raise ValueError('Source snapshot is missing required identity files')
+        payload_keys = ('schema', 'controller_sha', 'overlay_sha256', 'configuration_sha256', 'pulsemodel', 'integration')
+        if any(key not in manifest for key in (*payload_keys, 'project_version', 'fingerprint')):
+            raise ValueError('Source manifest is missing required identity fields')
+        payload = {key: manifest[key] for key in payload_keys}
+        payload['project_version'] = manifest.get('version_base', manifest['project_version'])
+        if manifest['fingerprint'] != fingerprint(payload):
+            raise ValueError('Declared source fingerprint does not match its identity fields')
+        version = re.search(rb'project\(NewPageMergeMDL VERSION ([0-9.]+)', files['CMakeLists.txt'])
+        if not version or version[1].decode('ascii') != manifest['project_version']:
+            raise ValueError('Source snapshot CMake version does not match manifest')
+        if manifest.get('source_kind') == 'maintained checkout':
+            for field, path in (('overlay_sha256', 'automation/compatibility.patch'),
+                                ('configuration_sha256', 'automation/upstreams.json')):
+                payload[field] = result[field] = checked_source_text_hash(files[path], manifest[field], field)
+            config = json.loads(files['automation/upstreams.json'])
+            if (config.get('pulsemodel') != manifest['pulsemodel']['repo'] or
+                    config.get('pulse_base') != manifest['pulsemodel']['sha'] or
+                    config.get('project_version', '1.2.0') != payload['project_version']):
+                raise ValueError('Source snapshot configuration does not match maintained manifest')
+            result['fingerprint'] = fingerprint(payload)
+        if manifest.get('build_overlay_sha256') is not None:
+            result['build_overlay_sha256'] = checked_source_text_hash(
+                files['automation/compatibility.patch'], manifest['build_overlay_sha256'], 'build_overlay_sha256')
+    return result
+
+
+def package_source_identity(manifest):
+    fields = ('controller_sha', 'fingerprint', 'project_version', 'pulsemodel',
+              'overlay_sha256', 'configuration_sha256', 'build_overlay_sha256', 'source_kind',
+              '_verified_source_tree_sha256')
+    return json.dumps({key: manifest.get(key) for key in fields}, sort_keys=True)
 
 
 class GitHubRedirect(urllib.request.HTTPRedirectHandler):
@@ -112,12 +198,11 @@ def published_manifest(repo):
                 if 'NewPageMergeMDL/upstream-manifest.json' not in archive.namelist():
                     continue
                 manifest = json.loads(archive.read('NewPageMergeMDL/upstream-manifest.json'))
+                manifest = verified_package_manifest(archive, manifest)
                 manifest.setdefault('release_tag', release['tag_name'])
                 manifests.append(manifest)
         if manifests:
-            fields = ('controller_sha', 'fingerprint', 'project_version', 'pulsemodel',
-                      'overlay_sha256', 'configuration_sha256', 'build_overlay_sha256', 'source_kind')
-            identities = {json.dumps({k: m.get(k) for k in fields}, sort_keys=True) for m in manifests}
+            identities = {package_source_identity(m) for m in manifests}
             if len(identities) != 1:
                 raise ValueError('Published platform packages have different source identities: ' + release['tag_name'])
             return manifests[0]
@@ -304,8 +389,8 @@ def source_state(config, controller, pulse_revision, source):
         'schema': 1,
         'project_version': config.get('project_version', '1.2.0'),
         'controller_sha': controller,
-        'overlay_sha256': sha256(source / 'automation/compatibility.patch'),
-        'configuration_sha256': sha256(source / 'automation/upstreams.json'),
+        'overlay_sha256': source_text_sha256((source / 'automation/compatibility.patch').read_bytes()),
+        'configuration_sha256': source_text_sha256((source / 'automation/upstreams.json').read_bytes()),
         'pulsemodel': {'repo': config['pulsemodel'], 'sha': pulse_revision},
         'integration': {
             'pulsemodel': 'source patch overlay',
@@ -387,7 +472,7 @@ def prepare(args):
         if (ROOT / name).is_file():
             shutil.copy2(ROOT / name, candidate / name)
     run(sys.executable, candidate / '.github/scripts/refresh_overlay.py', '--base-repository', candidate)
-    state['build_overlay_sha256'] = sha256(candidate / 'automation/compatibility.patch')
+    state['build_overlay_sha256'] = source_text_sha256((candidate / 'automation/compatibility.patch').read_bytes())
     state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     state['release_changes'] = release_changes(state, previous, os.environ.get('GITHUB_REPOSITORY'))
     (work / 'upstream-manifest.json').write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')

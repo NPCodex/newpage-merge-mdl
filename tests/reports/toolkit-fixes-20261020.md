@@ -12,7 +12,7 @@
 | F4 | 错配 VVD/VTX | 核对头部、LOD/模型数量和 MDL checksum，错配失败且不发布部分结果。 |
 | F5 | DMX DAG 循环 | 骨架/网格路径检测循环、多父级及深度；自环、深链、重复子级有明确诊断。 |
 | F6 | 坏 attachment/hitbox/PHY | 非空坏表、错误骨引用和损坏 PHY 明确失败；缺 PHY 单独警告无法验证碰撞完整性，MDL 本身不能证明曾有碰撞。 |
-| F7 | Release 日志复发 | 以现用平台包内 manifest 源提交取增量，跨平台核对来源，隐藏提交标识去重并清除 CI 标记；上传前保存旧正文/来源检查点，首次或部分替换失败后重试仍保留完整增量，不从旧标签盲目追加。 |
+| F7 | Release 日志复发 | 以现用平台包内 manifest 源提交取增量，跨平台核对来源，隐藏提交标识去重并清除 CI 标记；上传前保存旧正文/来源检查点，显式同标签替换在首次或部分失败后重试仍保留完整增量。以包内精确源码证明历史 LF/CRLF 等价，统一源码指纹，实际源码/程序差异仍拒绝；自动发现遇不同来源的混合包明确停止。 |
 | F8 | 文档一致性 | 精确源码统一指向包内源码归档及 manifest；区分原生工具持久恢复与 Python helper 的普通失败回滚；补齐包内 Markdown 验证报告，避免文档链接失效。 |
 | F9 | 同模型内部输出覆盖 | 一次分配根网格及完整 LOD 名称族，预留 physics/joints，动画独立命名且预留合成绑定动画；大小写别名不覆盖，QC 引用一致。 |
 | F10 | 平台条件否定 | 解析受支持的平台条件、否定与布尔组合；未知/损坏表达式不静默启用。 |
@@ -38,7 +38,7 @@
 - 新反编译专项覆盖真实权重往返、同模型输出冲突及损坏输入时旧输出保留；没有将所有外部 MDL 的任意损坏组合宣称为已经验证。
 - Python helper 的普通失败回滚不承诺强杀/断电后的持久恢复；既有 VMD/L4D 原生事务恢复不受此修复缩减。
 - AG2 的 [完整人物实机报告](ag2-gameplay-20261020.md) 记录有效对照、动作截图、资源来源和限制。它仍为实验性工具：当前安装缺少 `animgraph2_editor`，不扩为任意自定义骨架、全部武器或生成第一人称图认证。CS2/VConsole 已退出，原配置和官方目录 VPK 哈希不变；隔离 addon 仅通过显式测试参数加载。
-- Linux GCC、Clang 均已完成全工具构建、恢复与格式测试、实际归档验证及 ELF/依赖/执行权限 smoke，每套均通过 421 项兼容测试。首轮 [CI 39410334048](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39410334048) 对应 `02bccf6`；包含发布/打包收尾及 Python 3.12 / Lua 5.1 回归的最终 [CI 39411422872](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39411422872) 对应 `78aa1e5`，两套均成功。最终仅补充实机报告与链接，不修改这组已验证的原生源码。
-- Release 重试 14 项、automation 48 项、真实 Lua 5.1 元数据/数学 13 项及三份 workflow 语法检查通过。正式流程固定 Python 3.12 / Lupa 2.6 并显式导入 Lua 5.1，避免依赖缺失时跳过测试。
+- Linux GCC、Clang 均已完成全工具构建、恢复与格式测试、实际归档验证及 ELF/依赖/执行权限 smoke，每套均通过 421 项兼容测试。首轮 [CI 39410334048](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39410334048) 对应 `02bccf6`；包含发布/打包收尾及 Python 3.12 / Lua 5.1 回归的最终 [CI 39411422872](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39411422872) 对应 `78aa1e5`，两套均成功。之后补充发布元数据换行兼容、ZIP 来源回归及实机报告，不修改这组已验证的原生源码。
+- Release 来源/重试 24 项、automation 49 项、真实 Lua 5.1 元数据/数学 13 项及三份 workflow 语法检查通过。已使用实际 Windows/Linux 候选验证同一内嵌源码的 LF/CRLF 指纹一致；历史配置版本与构建版本不同、自动合并盖写版本和补丁、内容篡改均有 ZIP 实例回归。正式流程固定 Python 3.12 / Lupa 2.6 并显式导入 Lua 5.1，避免依赖缺失时跳过测试。
 
 复现及机器日志保留在本机 `.diagnostics/toolkit-audit-20261020` 与 `.diagnostics/toolkit-fixes-20261020`。长期自动回归位于 `tests/compiler_input_cases.py`、`tests/decompiler_roundtrip_test.py`、`tests/vmd_motion_features_test.py`、`tests/ag2_vpk_test.cpp`、`tests/helpers_publication_test.py`、`tests/runtime_metadata_test.py` 和 `tests/test_replacement_notes.py`。
