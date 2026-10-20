@@ -29,11 +29,25 @@ endif()
 # Distribution builds use MinSizeRel with LTO (the x64-compact preset).
 # Ordinary Release remains available for development without LTO's link cost.
 if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+    # CheckIPOSupported uses project-mode try_compile. Propagate the selected
+    # toolchain and its flags instead of probing the host's default compiler.
+    cmake_policy(PUSH)
+    if(POLICY CMP0137)
+        cmake_policy(SET CMP0137 NEW)
+    endif()
+    if(POLICY CMP0138)
+        cmake_policy(SET CMP0138 NEW)
+    endif()
     include(CheckIPOSupported)
-    check_ipo_supported(RESULT NEWPAGE_IPO_SUPPORTED OUTPUT NEWPAGE_IPO_ERROR
-                        LANGUAGES C CXX)
-    if(NOT NEWPAGE_IPO_SUPPORTED)
-        message(WARNING "IPO is unavailable; building without LTO: ${NEWPAGE_IPO_ERROR}")
+    # Probe each language separately: some CMake versions can let a successful
+    # language check mask a later failed check in the same invocation.
+    check_ipo_supported(RESULT NEWPAGE_C_IPO_SUPPORTED OUTPUT NEWPAGE_C_IPO_ERROR
+                        LANGUAGES C)
+    check_ipo_supported(RESULT NEWPAGE_CXX_IPO_SUPPORTED OUTPUT NEWPAGE_CXX_IPO_ERROR
+                        LANGUAGES CXX)
+    cmake_policy(POP)
+    if(NOT NEWPAGE_C_IPO_SUPPORTED OR NOT NEWPAGE_CXX_IPO_SUPPORTED)
+        message(WARNING "IPO is unavailable; building without LTO: ${NEWPAGE_C_IPO_ERROR}${NEWPAGE_CXX_IPO_ERROR}")
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL
             "Enable interprocedural optimization when the toolchain supports it" FORCE)
     endif()

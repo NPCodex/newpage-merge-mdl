@@ -73,6 +73,14 @@
     "overlay": {
       "passed": true,
       "command": "python .github/scripts/refresh_overlay.py --check"
+    },
+    "ipo_fallback_local": {
+      "passed": true,
+      "fault_injection": "C++ compiler rejects -flto, C succeeds",
+      "fallback_ipo": "OFF",
+      "positive_ipo": "ON",
+      "both_build_and_run_exit": 0,
+      "evidence": "build-release-audit-20261020/ipo-fallback-local/results.json"
     }
   },
   "limits": [

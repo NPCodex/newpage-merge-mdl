@@ -45,16 +45,26 @@ jobs:
           #!/bin/sh
           for argument in "$@"; do
             case "$argument" in
-              -flto*) echo 'IPO intentionally unavailable in validation probe' >&2; exit 1 ;;
+              -flto*)
+                printf '%s\n' "$*" >> "$IPO_REJECTION_MARKER"
+                echo 'IPO intentionally unavailable in validation probe' >&2
+                exit 1
+                ;;
             esac
           done
           exec clang++ "$@"
           SH
           chmod +x "$RUNNER_TEMP/clang-no-lto"
-          cmake -S "$VALIDATION_SOURCE" -B ipo-fallback -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER="$RUNNER_TEMP/clang-no-lto" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+          export CC=clang CXX="$RUNNER_TEMP/clang-no-lto"
+          export IPO_REJECTION_MARKER="$RUNNER_TEMP/ipo-rejection-marker"
+          cmake -S "$VALIDATION_SOURCE" -B ipo-fallback -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
           python - <<'PY'
+          import os
           from pathlib import Path
           cache = Path('ipo-fallback/CMakeCache.txt').read_text()
+          marker = Path(os.environ['IPO_REJECTION_MARKER'])
+          if not marker.is_file() or '-flto' not in marker.read_text() or '_CMakeLTOTest-CXX' not in marker.read_text():
+              raise SystemExit('The IPO probe did not exercise the rejecting compiler')
           if 'CMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF' not in cache:
               raise SystemExit('Unavailable IPO did not disable LTO in CMakeCache')
           PY
