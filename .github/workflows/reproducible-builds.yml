@@ -1,0 +1,80 @@
+name: Reproducible builds
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      source-artifact:
+        description: Optional exact-source archive from release preparation
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  repeat:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            platform: win64
+          - os: ubuntu-24.04
+            platform: linux64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
+        if: inputs.source-artifact != ''
+        with:
+          name: ${{ inputs.source-artifact }}
+          path: prepared
+      - name: Prepare one immutable source input
+        shell: bash
+        env:
+          SOURCE_ARTIFACT: ${{ inputs.source-artifact }}
+        run: |
+          export SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)
+          echo "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" >> "$GITHUB_ENV"
+          if [ -z "$SOURCE_ARTIFACT" ]; then
+            mkdir -p prepared
+            git -c core.autocrlf=false -c core.eol=lf archive --format=zip --prefix=NewPageMergeMDL/ --output=prepared/NewPageMergeMDL-source.zip HEAD
+            python .github/scripts/upstream_release.py maintained-manifest --source . --output prepared/upstream-manifest.json --tag reproducibility-only
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          with zipfile.ZipFile('prepared/NewPageMergeMDL-source.zip') as archive:
+              Path('prepared/windows-extras.json').write_bytes(archive.read('NewPageMergeMDL/automation/windows-extras.json'))
+          PY
+      - name: Select Ubuntu 24.04 GCC 13
+        if: matrix.platform == 'linux64'
+        run: |
+          echo CC=gcc-13 >> "$GITHUB_ENV"
+          echo CXX=g++-13 >> "$GITHUB_ENV"
+      - name: Stage identical verified Windows SDK helper input
+        if: matrix.platform == 'win64'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/fetch_windows_extras.py --config prepared/windows-extras.json --dist extras
+      - name: Compare two clean builds and both complete archives
+        shell: bash
+        run: python tests/reproducible_build.py --source-archive prepared/NewPageMergeMDL-source.zip --manifest prepared/upstream-manifest.json --work-dir repeated --platform ${{ matrix.platform }} --extras-dist extras --parallel 2
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reproducibility-${{ matrix.platform }}
+          path: |
+            repeated/comparison.json
+            repeated/*/*.log
+            repeated/*/manifest.json
+            repeated/*/build/CMakeCache.txt
+          if-no-files-found: warn
+          retention-days: 14

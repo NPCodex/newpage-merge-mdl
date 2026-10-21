@@ -642,6 +642,8 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
 
     const source::SceneOptions& scene = sceneOptions ? *sceneOptions : (edit ? edit->sceneOptions : c.sceneOptions);
     std::string key = Lower(filename)+"|"+scene.node+"|"+std::to_string(scene.sampleRate)+"|"+std::to_string(scene.zUp)+"|"+std::to_string(scene.noFastGltf)+"|"+std::to_string(scene.gltfZUp)+"|"+std::to_string(scene.explicitSampleRate)+"|"+std::to_string(scene.fbxAssimp);
+    std::ostringstream bakeKey;bakeKey<<"|bake:"<<scene.bakeAnimation.size()<<':'<<scene.bakeAnimation<<'|'<<std::hexfloat<<scene.bakePositionTolerance<<'|'<<scene.bakeNormalTolerance;
+    key+=bakeKey.str();
     if (proceduralPoseOnly) key += "|procedural-pose";
     key += "|weight:" + std::to_string(c.boneWeightThreshold);
     // Sources may contain flex expressions. A later variable definition must
@@ -2053,6 +2055,12 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         } else if(o=="scenesamplerate") {
             if(!c.WantFloat("a scene sample rate",option,scene.sampleRate))return false;
             scene.explicitSampleRate=true;
+        } else if(o=="bakescenetolerance") {
+            if(!c.WantFloat("a position error bound",option,scene.bakePositionTolerance) ||
+               !c.WantFloat("a normal error bound in degrees",option,scene.bakeNormalTolerance))return false;
+            if(!std::isfinite(scene.bakePositionTolerance) || scene.bakePositionTolerance<0 ||
+               !std::isfinite(scene.bakeNormalTolerance) || scene.bakeNormalTolerance<0 || scene.bakeNormalTolerance>180)
+                return c.Fail(option.line,"BakeSceneTolerance requires finite nonnegative position and normal bounds (normal <= 180 degrees)");
         } else if(o=="computedeltanormals" || o=="computenormalsandwrinkles") {
             processing.computeNormals=true; if(o=="computenormalsandwrinkles") processing.computeWrinkles=true;
         } else if(o=="computewrinkles") { processing.computeWrinkles=true; processing.ignoreWrinkles=false;
@@ -2104,6 +2112,8 @@ bool CmdModel(Ctx& c, const Token& cmd) {
         }
     }
 
+    if(scene.bakePositionTolerance>=0 && scene.bakeAnimation.empty())
+        return c.Fail(cmd.line,"BakeSceneTolerance requires BakeSceneAnimation");
     source::Source* src = LoadStudioSource(c, cmd, file, flip, importScale, importFlexRig,&processing,&scene);
     if (!src)
         return false;
@@ -9246,6 +9256,12 @@ bool CmdPreRenameMaterial(Ctx& c,const Token& cmd) {
 }
 
 bool CmdNoFastGltf(Ctx& c,const Token&) { c.sceneOptions.noFastGltf=true; return true; }
+bool CmdSceneCacheMiB(Ctx& c,const Token& cmd) {
+    int mib=0;
+    if(!c.WantInt("a scene cache budget in MiB",cmd,mib))return false;
+    if(mib<0 || mib>16384)return c.Fail(cmd.line,"SceneCacheMiB must be within [0, 16384]");
+    source::SetSceneCacheBudgetMiB(unsigned(mib));return true;
+}
 
 bool CmdDiscardVertexAnimationNormals(Ctx& c,const Token&) { c.discardVertexAnimationNormals=true; return true; }
 
@@ -10238,6 +10254,7 @@ constexpr Command kCommands[] = {
     {"$prerenamematerial", CmdPreRenameMaterial},
     {"$discardvertexanimationnormals", CmdDiscardVertexAnimationNormals},
     {"$nofastgltf", CmdNoFastGltf},
+    {"$scenecachemib", CmdSceneCacheMiB},
     {"$dontdestroy", CmdCeOption},
     {"$prefer_fbx", CmdNekoLegacyDirective},
     {"$forcecapsules", CmdNekoLegacyDirective},
@@ -10520,6 +10537,8 @@ bool IsQcScriptPath(const char* path) {
 bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
                   const ScriptVars& defvars, const SearchDirs& includeDirs,
                   const SearchDirs& fileDirs, const std::string* scriptText) {
+    source::BeginSceneImportSession();
+    struct SceneImportScope { ~SceneImportScope(){source::EndSceneImportSession();} } sceneImportScope;
     const std::string normalizedPath = pulse::FilePath(rawPath).string();
     const char* path = normalizedPath.c_str();
     pulse::dependencies::Note(normalizedPath, pulse::dependencies::Kind::Script, scriptText);

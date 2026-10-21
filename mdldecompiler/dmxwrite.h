@@ -8,6 +8,7 @@
 
 #include "flexrig.h"
 #include "mdlfile.h"
+#include "keyreduce.h"
 
 namespace mdldecompiler {
 
@@ -59,7 +60,8 @@ struct FlexTrack {
 // bind pose, and every bone gets a channel so no bone falls back on that pose.
 bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string& clipName, float fps,
                        const std::vector<std::vector<AnimPose>>& frames,
-                       const std::vector<FlexTrack>* flex = nullptr);
+                       const std::vector<FlexTrack>* flex = nullptr,
+                       const std::vector<size_t>* protectedKeys = nullptr);
 
 // `path`: a `format pulsecamera 1` file (binary 5 or keyvalues2) - a DmeCamera whose
 // transform and verticalFieldOfView (degrees) one DmeChannelsClip keys per frame.

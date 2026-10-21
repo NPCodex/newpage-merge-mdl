@@ -1,0 +1,72 @@
+name: Bounded sanitizer mutations
+
+on:
+  workflow_dispatch:
+    inputs:
+      samples:
+        description: Maximum deterministic mutation samples
+        type: number
+        default: 240
+      seconds:
+        description: Total mutation and reduction time budget in seconds
+        type: number
+        default: 180
+  workflow_call:
+    inputs:
+      source-artifact:
+        description: Optional exact-source archive from the release preparation
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  clang-sanitizers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ASAN_OPTIONS: halt_on_error=1:abort_on_error=0:detect_leaks=1:allocator_may_return_null=1:exitcode=86
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:exitcode=87
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
+        if: inputs.source-artifact != ''
+        with:
+          name: ${{ inputs.source-artifact }}
+          path: prepared
+      - name: Select source
+        env:
+          SOURCE_ARTIFACT: ${{ inputs.source-artifact }}
+        run: |
+          if [ -n "$SOURCE_ARTIFACT" ]; then
+            python -m zipfile -e prepared/NewPageMergeMDL-source.zip candidate
+            echo "SANITIZER_SOURCE=$GITHUB_WORKSPACE/candidate/NewPageMergeMDL" >> "$GITHUB_ENV"
+          else
+            echo "SANITIZER_SOURCE=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          fi
+      - name: Configure address and undefined behavior checks
+        run: cmake -S "$SANITIZER_SOURCE" -B sanitizer-build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF -DNEWPAGE_SANITIZERS=address,undefined -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$GITHUB_WORKSPACE/sanitizer-dist"
+      - name: Build maintained native tools
+        run: cmake --build sanitizer-build --parallel 2
+      - name: Validate bounded runner classification and minimization
+        run: python "$SANITIZER_SOURCE/tests/bounded_mutation_test.py"
+      - name: Mutate authored valid model, skin, strip, DMX, archive and animation inputs
+        env:
+          MUTATION_SAMPLES: ${{ inputs.samples || 240 }}
+          MUTATION_SECONDS: ${{ inputs.seconds || 180 }}
+        run: python "$SANITIZER_SOURCE/tests/bounded_mutation.py" --compiler sanitizer-dist/NewPageMergeMDL --decompiler sanitizer-dist/NewPageMergeMDL-Decompiler --vmd-tool sanitizer-dist/subtools/vmd2valvebiped --samples "$MUTATION_SAMPLES" --seconds "$MUTATION_SECONDS" --case-timeout 5 --memory-mb 768 --output sanitizer-results
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sanitizer-mutation-evidence
+          path: |
+            sanitizer-results
+            sanitizer-build/CMakeCache.txt
+          if-no-files-found: warn
+          retention-days: 14

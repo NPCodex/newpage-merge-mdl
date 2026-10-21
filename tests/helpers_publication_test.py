@@ -1,5 +1,6 @@
 """Authoring helpers preserve complete previous outputs on publication failure."""
 import argparse
+import base64
 import ctypes
 import importlib
 import json
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from urllib.parse import quote
 from unittest.mock import patch
 
 parser = argparse.ArgumentParser()
@@ -24,6 +26,8 @@ import mesh_states
 import vrm_runtime
 import output_transaction
 from integration_vrm_cases import IntegrationVrmCases
+from helper_recovery_test import HelperRecovery
+HelperRecovery.tools = TOOLS
 
 SUFFIX = '.exe' if os.name == 'nt' else ''
 COMPILER = BIN / ('NewPageMergeMDL' + SUFFIX)
@@ -130,6 +134,38 @@ class HelperPublication(unittest.TestCase):
         linked = self.root/'input.gltf'; os.link(source, linked)
         self.assertEqual(vrm_runtime.main([str(linked), '--out', str(self.root)]), 2)
         self.assertEqual(source.read_text(), original)
+
+    def test_vrm_external_dependencies_compile_and_stay_relocatable(self):
+        for filename in ('mesh.bin', 'mesh data.bin', '\u6a21\u578b \u6570\u636e.bin', 'literal%20.bin'):
+            with self.subTest(filename=filename):
+                area = self.root / ('case' + str(len(list(self.root.iterdir())))); area.mkdir()
+                doc = IntegrationVrmCases().vrm_fixture()
+                payload = base64.b64decode(doc['buffers'][0]['uri'].split(',', 1)[1])
+                dependency = area / filename; dependency.write_bytes(payload)
+                doc['buffers'][0]['uri'] = quote(filename)
+                source = area/'input.gltf'; source.write_text(json.dumps(doc))
+                argv = [str(source), '--out', str(area/'out'), '--compiler', str(COMPILER),
+                        '--game', str(area/'game'), '--scale', '1']
+                self.assertEqual(vrm_runtime.main(argv), 0)
+                self.assertEqual(dependency.read_bytes(), payload)
+                normalized = json.loads((area/'out/avatar.gltf').read_text())
+                self.assertEqual(base64.b64decode(normalized['buffers'][0]['uri'].split(',', 1)[1]), payload)
+                moved = area/'relocated'; shutil.move(str(area/'out'), moved)
+                dependency.unlink()
+                result = subprocess.run([str(COMPILER), str(moved/'avatar.qc'), '-game', str(area/'relocated-game')],
+                                        capture_output=True, text=True, errors='replace')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_vrm_encoded_dependency_alias_is_protected(self):
+        out = self.root/'out'; out.mkdir()
+        dependency = out/'avatar.gltf'
+        doc = IntegrationVrmCases().vrm_fixture()
+        payload = base64.b64decode(doc['buffers'][0]['uri'].split(',', 1)[1])
+        dependency.write_bytes(payload)
+        doc['buffers'][0]['uri'] = 'out/%61vatar.gltf'
+        source = self.root/'input.gltf'; source.write_text(json.dumps(doc))
+        self.assertEqual(vrm_runtime.main([str(source), '--out', str(out)]), 2)
+        self.assertEqual(dependency.read_bytes(), payload)
 
     def test_vrml_failed_compile_preserves_converted_output_and_no_qc(self):
         source = self.root/'triangle.wrl'

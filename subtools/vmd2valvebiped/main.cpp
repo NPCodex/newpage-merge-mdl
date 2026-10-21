@@ -15,6 +15,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <iomanip>
 #include <map>
 #include <set>
 #include <sstream>
@@ -487,6 +489,7 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
             return false;
         }
         morphs[name].push_back(k);
+        lastFrame = std::max(lastFrame, k.frame);
     }
     const uint32_t ncam = r.ok && r.at < buf.size() ? r.Get<uint32_t>() : 0;
     for (uint32_t i = 0; i < ncam && r.ok; ++i) {
@@ -527,6 +530,7 @@ bool LoadVmd(const std::string& path, std::map<std::string, std::vector<Key>>& o
             return false;
         }
         cams.push_back(c);
+        lastFrame = std::max(lastFrame, c.frame);
     }
     if (!r.ok) {
         err = "\"" + path + "\" is truncated in the morph or camera section";
@@ -818,11 +822,14 @@ bool LoadPmxRest(const std::string& path, MmdSkel& s, std::string& err) {
 
 struct Target {
     int n = 0;
-    std::vector<int> parent;
+    std::vector<int> parent, order;
     std::vector<matrix3x4> local, world; // bind pose
     std::vector<std::string> names;
+    std::map<std::string, int> roles;
 
     int Find(const std::string& suffix) const {
+        const auto alias = roles.find(suffix);
+        if (alias != roles.end()) return alias->second;
         const std::string want = "ValveBiped.Bip01_" + suffix;
         for (int i = 0; i < n; ++i)
             if (_stricmp(names[i].c_str(), want.c_str()) == 0)
@@ -1064,6 +1071,57 @@ void AddEyeTracks(const std::map<std::string, std::vector<Key>>& keys,
             out.push_back(std::move(*t));
 }
 
+// Load the effective tracks before choosing their common sampling interval.
+// Sidecars replace only the tracks they author, not the body's time range.
+struct MotionData {
+    std::map<std::string, std::vector<Key>> keys;
+    Morphs morphs;
+    std::vector<CamKey> cams;
+    IkKeys ik;
+    uint32_t lastFrame = 0;
+    bool faceFile = false, camFile = false;
+};
+
+bool LoadMotion(const std::string& path, MotionData& data, std::string& err) {
+    if (!LoadVmd(path, data.keys, data.morphs, data.cams, data.lastFrame, err, &data.ik))
+        return false;
+    const std::string stem = mdldecompiler::StripExt(path);
+    data.faceFile = fs::exists(fs::u8path(stem + "_face.vmd"));
+    if (data.faceFile) {
+        std::map<std::string, std::vector<Key>> keys;
+        Morphs morphs;
+        std::vector<CamKey> cams;
+        uint32_t ignored;
+        if (!LoadVmd(stem + "_face.vmd", keys, morphs, cams, ignored, err)) return false;
+        for (auto& [name, track] : morphs) data.morphs[name] = std::move(track);
+        for (const char* eye : kEyeBones)
+            if (keys.count(eye)) data.keys[eye] = std::move(keys[eye]);
+    }
+    data.camFile = fs::exists(fs::u8path(stem + "_camera.vmd"));
+    if (data.camFile) {
+        std::map<std::string, std::vector<Key>> keys;
+        Morphs morphs;
+        uint32_t ignored;
+        data.cams.clear();
+        if (!LoadVmd(stem + "_camera.vmd", keys, morphs, data.cams, ignored, err)) return false;
+    }
+    // Recompute after overrides so a replaced, longer track does not leave a
+    // phantom tail. Lights and model visibility are not exported tracks.
+    data.lastFrame = 0;
+    for (const auto& [name, track] : data.keys)
+        if (!track.empty()) data.lastFrame = std::max(data.lastFrame, track.back().frame);
+    for (const auto& [name, track] : data.morphs)
+        if (!track.empty()) data.lastFrame = std::max(data.lastFrame, track.back().frame);
+    for (const auto& [name, track] : data.ik)
+        if (!track.empty()) data.lastFrame = std::max(data.lastFrame, track.back().frame);
+    if (!data.cams.empty()) data.lastFrame = std::max(data.lastFrame, data.cams.back().frame);
+    if (data.lastFrame >= static_cast<uint32_t>(LONG_MAX)) {
+        err = "\"" + path + "\": motion frame range exceeds the supported integer range";
+        return false;
+    }
+    return true;
+}
+
 struct Leg {
     int thigh = -1, knee = -1, foot = -1;
     Vector3 kneeDir; // thigh-local, from the $ikchain
@@ -1083,9 +1141,19 @@ int Usage() {
     std::printf(
         "MMD motion (.vmd) -> ValveBiped DMX animation\n\n"
         "  vmd2valvebiped -vmd <file> [-vmd <file>...] -mdl <file> [options]\n\n"
+        "  -mode <mode>    body (default), camera, or face\n"
+        "                   camera needs no -mdl; writes .dmx (camera/FOV) + .smd\n"
+        "                   face reads controllers from -mdl, writes model 22 DMX\n"
+        "                   with facial channels only; no leg IK chains required\n"
+        "                   standalone modes use tracks from each named VMD directly\n"
+        "  -camera-scale <n> standalone camera Source units per MMD unit (default 1)\n"
         "  -vmd <file>      MMD motion to retarget; repeat for several clips, all\n"
         "                   retargeted through the same -mdl and -pmx\n"
         "  -mdl <file>      ValveBiped model giving the proportions; needs leg $ikchains\n"
+        "  -mapping <file> versioned humanoid role map; explicit ik/fk leg mode,\n"
+        "                   named leg chains, basis and motion_scale calibration\n"
+        "  -reducepos <n> / -reduceangle <degrees> opt-in body DMX bone key reduction\n"
+        "                   position units / angular tolerance; 0 disables (default)\n"
         "  -pmx <file>      MMD model the motion was made for; its rest pose replaces\n"
         "                   the built-in standard skeleton\n"
         "  -armangle <deg>  built-in rest arm droop below horizontal (default 35)\n"
@@ -1102,7 +1170,7 @@ int Usage() {
         "                   each .vmd when its sequence starts; converted to a 16-bit\n"
         "                   44.1 kHz wav in <dir>/sound/mmd/\n"
         "  -start <frame>   first MMD frame (default 0)\n"
-        "  -end <frame>     last MMD frame (default the motion's last key)\n"
+        "  -end <frame>     last MMD frame (default last effective body/face/camera/IK key)\n"
         "  -walkframe <n>   extract the root's ground travel as sequence movement\n"
         "                   (LX LY): a walkframe every <n> clip frames, or 0 to place\n"
         "                   them where the path turns or changes speed; keep <n>\n"
@@ -1426,13 +1494,17 @@ bool WriteAnimQc(const std::string& path, const Mdl& m, const std::string& model
     return file.Close();
 }
 
+#include "track_modes.h"
+#include "rig_mapping.h"
+
 } // namespace
 
 int main(int argc, char** argv) try {
     PrintHeader();
     std::vector<std::string> vmdPaths;
-    std::string mdlPath, pmxPath, outPath, compileName, gameDir, srcArg, faceMapPath;
-    std::string faceSet = "facs", cameraFov;
+    std::string mdlPath, pmxPath, outPath, compileName, gameDir, srcArg, faceMapPath, mappingPath;
+    std::string faceSet = "facs", cameraFov, mode = "body";
+    float cameraScale = 1.0f;
     float armAngle = 35.0f, eyeRange = 30.0f;
     long startArg = -1, endArg = -1;
     bool haveStart = false, haveEnd = false;
@@ -1441,6 +1513,7 @@ int main(int argc, char** argv) try {
     bool uncompress = false, sound = false;
     std::string dmxEncoding = "binary";
     int dmxModel = 15;
+    bool haveDmxModel = false;
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
         std::string argumentError;
@@ -1484,7 +1557,12 @@ int main(int argc, char** argv) try {
             vmdPaths.push_back(std::move(value));
         }
         else if (!_stricmp(a, "-mdl")) { if (!stringArg(mdlPath)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-mode")) { if (!stringArg(mode)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-camera-scale")) { if (!floatArg(cameraScale)) return Fail(argumentError); }
         else if (!_stricmp(a, "-pmx")) { if (!stringArg(pmxPath)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-mapping")) { if (!stringArg(mappingPath)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-reducepos")) { if (!floatArg(mdldecompiler::g_reducePosition)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-reduceangle")) { if (!floatArg(mdldecompiler::g_reduceAngle)) return Fail(argumentError); }
         else if (!_stricmp(a, "-o")) { if (!stringArg(outPath)) return Fail(argumentError); }
         else if (!_stricmp(a, "-compile")) { if (!stringArg(compileName)) return Fail(argumentError); }
         else if (!_stricmp(a, "-srcdir")) { if (!stringArg(srcArg)) return Fail(argumentError); }
@@ -1502,14 +1580,35 @@ int main(int argc, char** argv) try {
         else if (!_stricmp(a, "-walktolerance")) { if (!floatArg(walkTol)) return Fail(argumentError); }
         else if (!_stricmp(a, "-sound")) sound = true;
         else if (!_stricmp(a, "-dmxencoding")) { if (!stringArg(dmxEncoding)) return Fail(argumentError); }
-        else if (!_stricmp(a, "-dmxmodel")) { if (!intArg(dmxModel)) return Fail(argumentError); }
+        else if (!_stricmp(a, "-dmxmodel")) { if (!intArg(dmxModel)) return Fail(argumentError); haveDmxModel = true; }
         else if (!_stricmp(a, "-facemap")) { if (!stringArg(faceMapPath)) return Fail(argumentError); }
         else if (!_stricmp(a, "-faceset")) { if (!stringArg(faceSet)) return Fail(argumentError); }
         else if (!_stricmp(a, "-camerafov")) { if (!stringArg(cameraFov)) return Fail(argumentError); }
         else return Usage();
     }
-    if (vmdPaths.empty() || mdlPath.empty())
+    if (mode != "body" && mode != "camera" && mode != "face")
+        return Fail("-mode must be body, camera or face");
+    if (vmdPaths.empty() || (mode != "camera" && mdlPath.empty()))
         return Usage();
+    if (mode != "camera" && cameraScale != 1.0f)
+        return Fail("-camera-scale is only for -mode camera");
+    if (mode != "body" && !mappingPath.empty())
+        return Fail("-mapping is only for -mode body");
+    if (mdldecompiler::g_reducePosition < 0 || mdldecompiler::g_reduceAngle < 0 || mdldecompiler::g_reduceAngle > 180)
+        return Fail("reduction tolerances must be non-negative; angle must be at most 180 degrees");
+    if (mode != "body" && (mdldecompiler::g_reducePosition || mdldecompiler::g_reduceAngle))
+        return Fail("-reducepos and -reduceangle currently apply to body DMX only");
+    if (cameraScale <= 0.0f || cameraScale > 1000000.0f)
+        return Fail("-camera-scale must be above 0 and at most 1000000");
+    if (mode == "camera" && !mdlPath.empty())
+        return Fail("-mode camera uses an unanchored camera; omit -mdl");
+    if (mode != "body" && (!compileName.empty() || !srcArg.empty() || !gameDir.empty() ||
+                            !pmxPath.empty() || walkEvery >= 0 || sound))
+        return Fail("standalone track modes do not accept -compile, -srcdir, -game, -pmx, -walkframe or -sound");
+    if (mode == "face") {
+        if (haveDmxModel && dmxModel != 22) return Fail("-mode face requires -dmxmodel 22");
+        dmxModel = 22;
+    }
     if ((haveStart && startArg < 0) || (haveEnd && endArg < 0))
         return Fail("-start and -end must be non-negative frame numbers");
     if (!outPath.empty() && (vmdPaths.size() > 1 || !compileName.empty()))
@@ -1527,16 +1626,21 @@ int main(int argc, char** argv) try {
     const bool fovBone = cameraFov == "bone";
 
     std::string err;
-    MmdSkel mmd = BuildMmdSkel();
-    BuiltinArms(mmd, armAngle);
-    if (!pmxPath.empty() && !LoadPmxRest(pmxPath, mmd, err))
-        return Fail(err);
     if (faceSet != "facs" && faceSet != "visemes")
         return Fail("unknown -faceset \"" + faceSet + "\" (facs or visemes)");
     if (eyeRange <= 0.0f || eyeRange > 180.0f)
         return Fail("-eyerange must be above 0 and no more than 180 degrees");
     FaceMap faceMap = BuiltinFaceMap(faceSet == "visemes");
     if (!faceMapPath.empty() && !LoadFaceMap(faceMapPath, faceMap, err))
+        return Fail(err);
+    if (mode != "body")
+        return RunTrackMode(mode, vmdPaths, mdlPath, outPath, faceMapPath, faceMap,
+                            startArg, endArg, uncompress, eyeRange, cameraScale, fovBone);
+
+    const RigProfile profile = LoadRigProfile(mappingPath);
+    MmdSkel mmd = BuildMmdSkel();
+    BuiltinArms(mmd, armAngle);
+    if (!pmxPath.empty() && !LoadPmxRest(pmxPath, mmd, err))
         return Fail(err);
 
     Mdl m;
@@ -1547,10 +1651,7 @@ int main(int argc, char** argv) try {
     if (!bones)
         return Fail("\"" + mdlPath + "\" has no readable bones");
     std::vector<mdldecompiler::FlexTrack> ctrls;
-    const fm::mstudioflexcontroller_t* fcs =
-        m.At<fm::mstudioflexcontroller_t>(m.buf.data(), h.flexcontrollerindex, h.numflexcontrollers);
-    for (int i = 0; fcs && i < h.numflexcontrollers; ++i)
-        ctrls.push_back({m.Str(&fcs[i], fcs[i].sznameindex), fcs[i].min, fcs[i].max, {}});
+    if (!ReadControllers(m, ctrls, err)) return Fail(err);
 
     Target t;
     t.n = h.numbones;
@@ -1561,12 +1662,29 @@ int main(int argc, char** argv) try {
     t.world.resize(t.n);
     for (int i = 0; i < t.n; ++i) {
         const int p = bones[i].parent;
-        t.parent[i] = (p >= 0 && p < i) ? p : -1;
+        if (p < -1 || p >= t.n || p == i)
+            return Fail("invalid target parent for bone " + t.names[i]);
+        t.parent[i] = p;
         pm::AngleMatrix(poses[i].rot, poses[i].pos, t.local[i]);
-        t.world[i] = t.parent[i] >= 0 ? pm::ConcatTransforms(t.world[t.parent[i]], t.local[i]) : t.local[i];
-        if (!FiniteMatrix(t.local[i]) || !FiniteMatrix(t.world[i]))
+        if (!FiniteMatrix(t.local[i]))
             return Fail("\"" + mdlPath + "\": non-finite bind transform for bone " + t.names[i]);
     }
+    std::vector<int> visits(t.n);
+    const std::function<void(int)> visit = [&](int i) {
+        if (visits[i] == 2) return;
+        if (visits[i] == 1) throw std::runtime_error("cycle in target bone parents at " + t.names[i]);
+        visits[i] = 1;
+        if (t.parent[i] >= 0) visit(t.parent[i]);
+        visits[i] = 2;
+        t.order.push_back(i);
+    };
+    for (int i = 0; i < t.n; ++i) visit(i);
+    for (int i : t.order) {
+        t.world[i] = t.parent[i] >= 0 ? pm::ConcatTransforms(t.world[t.parent[i]], t.local[i]) : t.local[i];
+        if (!FiniteMatrix(t.world[i]))
+            return Fail("\"" + mdlPath + "\": non-finite bind transform for bone " + t.names[i]);
+    }
+    ApplyRigProfile(profile, t);
 
     const int pelvis = t.Find("Pelvis");
     const int lThigh = t.Find("L_Thigh"), rThigh = t.Find("R_Thigh");
@@ -1579,13 +1697,13 @@ int main(int argc, char** argv) try {
     // A bind that is not upright (Pelvis left at the origin, unrotated, so only the
     // rig's clips stand it) is stood up in those clips' frame - up +Z, left +X,
     // facing -Y - ankles off the floor by a survivor's ankle-to-leg ratio.
-    {
+    if (!profile.keepUpright) {
         Vector3 bu = Sub(Origin(t.world[top]), Origin(t.world[pelvis]));
-        pm::VectorNormalize(bu);
+        if (pm::VectorNormalize(bu) < 1e-4f) return Fail("degenerate target up axis");
         if (bu.z < 0.9f) {
             Vector3 bl = Sub(Origin(t.world[lThigh]), Origin(t.world[rThigh]));
             bl = Sub(bl, Mul(bu, Dot(bl, bu)));
-            pm::VectorNormalize(bl);
+            if (pm::VectorNormalize(bl) < 1e-4f) return Fail("degenerate target left axis");
             const Vector3 bf = Cross(bl, bu);
             matrix3x4 from, to;
             for (int r = 0; r < 3; ++r) {
@@ -1598,7 +1716,7 @@ int main(int argc, char** argv) try {
             to.m[0][2] = 0; to.m[1][2] = -1; to.m[2][2] = 0; // front -Y
             const matrix3x4 stand = pm::ConcatTransforms(to, Transpose(from));
             const auto rebuild = [&]() {
-                for (int i = 0; i < t.n; ++i)
+                for (int i : t.order)
                     t.world[i] = t.parent[i] >= 0 ? pm::ConcatTransforms(t.world[t.parent[i]], t.local[i])
                                                   : t.local[i];
             };
@@ -1623,6 +1741,12 @@ int main(int argc, char** argv) try {
 
     // Leg chains come from the model's own $ikchain data.
     Leg legs[2];
+    if (profile.enabled)
+        for (int side = 0; side < 2; ++side) {
+            const std::string prefix = side ? "R_" : "L_";
+            legs[side] = {t.Find(prefix + "Thigh"), t.Find(prefix + "Calf"), t.Find(prefix + "Foot"), {},
+                          mmd.Find("legik", side)};
+        }
     const fm::mstudioikchain_t* chains =
         m.At<fm::mstudioikchain_t>(m.buf.data(), h.ikchainindex, h.numikchains);
     for (int c = 0; chains && c < h.numikchains; ++c) {
@@ -1634,7 +1758,8 @@ int main(int argc, char** argv) try {
             link[0].bone >= t.n || link[1].bone < 0 || link[1].bone >= t.n)
             continue;
         for (int side = 0; side < 2; ++side)
-            if (link[2].bone == t.Find(side ? "R_Foot" : "L_Foot"))
+            if (link[2].bone == t.Find(side ? "R_Foot" : "L_Foot") &&
+                (!profile.enabled || (link[0].bone == legs[side].thigh && link[1].bone == legs[side].knee)))
                 legs[side] = {link[0].bone, link[1].bone, link[2].bone, link[0].kneeDir,
                               mmd.Find("legik", side)};
     }
@@ -1645,10 +1770,12 @@ int main(int argc, char** argv) try {
     // MMD -> target basis from each rig's own left/up/forward. MMD is left-handed
     // Y-up facing -Z, so this is a reflection and M*R*Mt stays a proper rotation.
     Vector3 up = Sub(Origin(t.world[top]), Origin(t.world[pelvis]));
-    pm::VectorNormalize(up);
+    if (profile.customBasis) up = profile.up;
+    if (pm::VectorNormalize(up) < 1e-4f) return Fail("degenerate target up axis");
     Vector3 left = Sub(Origin(t.world[lThigh]), Origin(t.world[rThigh]));
+    if (profile.customBasis) left = profile.left;
     left = Sub(left, Mul(up, Dot(left, up)));
-    pm::VectorNormalize(left);
+    if (pm::VectorNormalize(left) < 1e-4f) return Fail("degenerate target left axis");
     const Vector3 fwd = Cross(left, up);
     matrix3x4 M;
     for (int r = 0; r < 3; ++r) {
@@ -1677,7 +1804,7 @@ int main(int argc, char** argv) try {
                          Len(Sub(Origin(t.world[legs[0].foot]), Origin(t.world[legs[0].knee])));
     if (!std::isfinite(mmdLeg) || !std::isfinite(tgtLeg) || mmdLeg < 1e-4f || tgtLeg < 1e-4f)
         return Fail("non-finite or zero-length leg, cannot derive the motion scale");
-    const float scale = tgtLeg / mmdLeg;
+    const float scale = tgtLeg / mmdLeg * profile.motionScale;
     if (!std::isfinite(scale) || scale <= 0.0f)
         return Fail("non-finite or invalid motion scale");
 
@@ -1724,9 +1851,11 @@ int main(int argc, char** argv) try {
             align[g.bone] = RotationBetween(g.from, g.to);
         }
         if (hand >= 0)
-            for (int i = 0; i < t.n; ++i)
-                if (src[i] >= 0 && t.names[i].find(std::string("Bip01_") + s + "Finger") != std::string::npos)
-                    align[i] = align[hand];
+            for (const auto& role : HumanoidRoles())
+                if (role.rfind(std::string(s) + "Finger", 0) == 0) {
+                    const int i = t.Find(role);
+                    if (i >= 0 && src[i] >= 0) align[i] = align[hand];
+                }
     }
 
     const auto toTarget = [&](const matrix3x4& g) {
@@ -1760,6 +1889,13 @@ int main(int argc, char** argv) try {
             err = "cannot resolve output path \"" + path.u8string() + "\": " + pathError.message();
             return false;
         }
+        if (!mappingPath.empty()) {
+            std::error_code mappingError;
+            if (fs::equivalent(normalized, fs::u8path(mappingPath), mappingError) && !mappingError) {
+                err = "output aliases mapping profile: " + path.u8string();
+                return false;
+            }
+        }
         for (const auto& [existingPath, existingOwner] : outputOwners) {
             std::error_code equivalentError;
             if (fs::equivalent(normalized, fs::path(existingPath), equivalentError) && !equivalentError) {
@@ -1782,11 +1918,11 @@ int main(int argc, char** argv) try {
     // the body names while converting silently replaces that earlier document.
     for (size_t motion = 0; motion < vmdPaths.size(); ++motion) {
         const std::string& vmdPath = vmdPaths[motion];
-        std::map<std::string, std::vector<Key>> keys;
-        Morphs morphs;
-        std::vector<CamKey> cams;
-        uint32_t lastFrame = 0;
-        if (!LoadVmd(vmdPath, keys, morphs, cams, lastFrame, err)) return Fail(err);
+        MotionData motionData;
+        if (!LoadMotion(vmdPath, motionData, err)) return Fail(err);
+        const auto& keys = motionData.keys;
+        const auto& cams = motionData.cams;
+        const uint32_t lastFrame = motionData.lastFrame;
         if (std::none_of(mmd.bones.begin(), mmd.bones.end(),
                          [&](const MmdBone& bone) { return keys.count(bone.sj) != 0; }))
             continue;
@@ -1809,22 +1945,7 @@ int main(int argc, char** argv) try {
         if (!dataDir.empty() &&
             !reserve(dataDir / "flex_anims" / (plan.clip + ".dmx"), "face/body copy from " + vmdPath))
             return Fail(err);
-        const std::string faceVmd = mdldecompiler::StripExt(vmdPath) + "_face.vmd";
-        if (fs::exists(fs::u8path(faceVmd), ec)) {
-            std::map<std::string, std::vector<Key>> faceKeys;
-            Morphs faceMorphs;
-            std::vector<CamKey> faceCams;
-            uint32_t faceLast = 0;
-            if (!LoadVmd(faceVmd, faceKeys, faceMorphs, faceCams, faceLast, err)) return Fail(err);
-        }
         const std::string camVmd = mdldecompiler::StripExt(vmdPath) + "_camera.vmd";
-        if (fs::exists(fs::u8path(camVmd), ec)) {
-            std::map<std::string, std::vector<Key>> camKeys;
-            Morphs camMorphs;
-            uint32_t camLast = 0;
-            cams.clear();
-            if (!LoadVmd(camVmd, camKeys, camMorphs, cams, camLast, err)) return Fail(err);
-        }
         if (!cams.empty()) {
             if (!CameraProjectionSupported(cams, fs::exists(fs::u8path(camVmd), ec) ? camVmd : vmdPath, err))
                 return Fail(err);
@@ -1863,13 +1984,13 @@ int main(int argc, char** argv) try {
 
     for (size_t motion = 0; motion < vmdPaths.size(); ++motion) {
         const std::string& vmdPath = vmdPaths[motion];
-        std::map<std::string, std::vector<Key>> keys;
-        Morphs morphs;
-        std::vector<CamKey> cams;
-        IkKeys ikKeys;
-        uint32_t lastFrame = 0;
-        if (!LoadVmd(vmdPath, keys, morphs, cams, lastFrame, err, &ikKeys))
-            return Fail(err);
+        MotionData motionData;
+        if (!LoadMotion(vmdPath, motionData, err)) return Fail(err);
+        const auto& keys = motionData.keys;
+        const auto& morphs = motionData.morphs;
+        const auto& cams = motionData.cams;
+        const auto& ikKeys = motionData.ik;
+        const uint32_t lastFrame = motionData.lastFrame;
         std::vector<const std::vector<Key>*> mmdKeys(mmd.bones.size(), nullptr);
         int keyed = 0;
         for (size_t b = 0; b < mmd.bones.size(); ++b) {
@@ -1920,7 +2041,7 @@ int main(int argc, char** argv) try {
                 G[b] = mb.parent >= 0 ? pm::ConcatTransforms(G[mb.parent], lm) : lm;
             }
 
-            for (int i = 0; i < t.n; ++i) {
+            for (int i : t.order) {
                 const int p = t.parent[i];
                 if (src[i] < 0) {
                     L[i] = t.local[i];
@@ -1939,7 +2060,7 @@ int main(int argc, char** argv) try {
 
             for (int side = 0; side < 2; ++side) {
                 const Leg& g = legs[side];
-                if (!IkEnabled(ikKeys, mmd.bones[g.ik].sj, f)) {
+                if (profile.legMode == "fk" || !IkEnabled(ikKeys, mmd.bones[g.ik].sj, f)) {
                     lastBend[side] = {};
                     continue;
                 }
@@ -1983,31 +2104,28 @@ int main(int argc, char** argv) try {
         const std::string& path = plans[motion].path;
         const std::string& clip = plans[motion].clip;
 
-        // face: the motion's own morphs, each one <vmd name>_face.vmd also keys taken from there
-        const std::string faceVmd = mdldecompiler::StripExt(vmdPath) + "_face.vmd";
-        const bool faceFile = fs::exists(fs::u8path(faceVmd), ec);
-        if (faceFile) {
-            std::map<std::string, std::vector<Key>> unusedKeys;
-            std::vector<CamKey> unusedCams;
-            Morphs faceMorphs;
-            uint32_t faceLast = 0;
-            if (!LoadVmd(faceVmd, unusedKeys, faceMorphs, unusedCams, faceLast, err))
-                return Fail(err);
-            for (auto& [name, fk] : faceMorphs)
-                morphs[name] = std::move(fk);
-            for (const char* eye : kEyeBones)
-                if (unusedKeys.count(eye))
-                    keys[eye] = std::move(unusedKeys[eye]);
-        }
+        const bool faceFile = motionData.faceFile;
         int unmapped = 0;
         std::vector<mdldecompiler::FlexTrack> face =
             FaceTracks(morphs, faceMap, ctrls, times, faceMissing, unmapped);
         const size_t faceCount = face.size();
         AddEyeTracks(keys, ctrls, times, eyeRange, face);
         const std::vector<mdldecompiler::FlexTrack>* flex = face.empty() ? nullptr : &face;
+        std::set<size_t> keyBoundaries;
+        for (const auto& channel : ikKeys)
+            for (const auto& key : channel.second) {
+                const size_t next = std::lower_bound(times.begin(),times.end(),static_cast<float>(key.frame)) - times.begin();
+                if (next < times.size()) keyBoundaries.insert(next);
+                if (next > 0) keyBoundaries.insert(next-1);
+            }
+        // Walkframe extraction and sound events are tied to sampled frames.
+        // Preserve all keys when generating those QC features.
+        if (walkEvery >= 0 || sound)
+            for (size_t i = 0; i < times.size(); ++i) keyBoundaries.insert(i);
+        const std::vector<size_t> protectedKeys(keyBoundaries.begin(),keyBoundaries.end());
 
         if (!mdldecompiler::WriteAnimationDmx(m, outputs.Stage(path), clip, fps, frames,
-                                              dmxModel == 22 && srcDir.empty() ? flex : nullptr))
+                                              dmxModel == 22 && srcDir.empty() ? flex : nullptr, &protectedKeys))
             return Fail("cannot write \"" + path + "\"");
         int root = pelvis;
         while (t.parent[root] >= 0)
@@ -2034,7 +2152,7 @@ int main(int argc, char** argv) try {
         if (!dataDir.empty()) {
             const std::string dataPath = (dataDir / "flex_anims" / (clip + ".dmx")).u8string();
             mdldecompiler::SetDmxOutput(dmxEncoding, 22);
-            const bool ok = mdldecompiler::WriteAnimationDmx(m, outputs.Stage(dataPath), clip, fps, frames, flex);
+            const bool ok = mdldecompiler::WriteAnimationDmx(m, outputs.Stage(dataPath), clip, fps, frames, flex, &protectedKeys);
             mdldecompiler::SetDmxOutput(dmxEncoding, dmxModel);
             if (!ok)
                 return Fail("cannot write \"" + dataPath + "\"");
@@ -2042,18 +2160,10 @@ int main(int argc, char** argv) try {
         }
         const size_t body = clips.size() - 1;
 
-        // camera: <vmd name>_camera.vmd beside the motion, else the motion's own keys,
-        // sampled over the body clip's frames so the two stay in sync
+        // All effective tracks share the selected time range and hold their
+        // final values after their last key.
         const std::string camVmd = mdldecompiler::StripExt(vmdPath) + "_camera.vmd";
-        const bool camFile = fs::exists(fs::u8path(camVmd), ec);
-        if (camFile) {
-            std::map<std::string, std::vector<Key>> unused;
-            uint32_t camLast = 0;
-            cams.clear();
-            Morphs unusedMorphs;
-            if (!LoadVmd(camVmd, unused, unusedMorphs, cams, camLast, err))
-                return Fail(err);
-        }
+        const bool camFile = motionData.camFile;
         if (!cams.empty()) {
             if (!CameraProjectionSupported(cams, camFile ? camVmd : vmdPath, err)) return Fail(err);
             std::vector<AnimPose> cf(static_cast<size_t>(count));

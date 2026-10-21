@@ -20,15 +20,18 @@
 #include <array>
 #include <fstream>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <set>
 #include <deque>
+#include <filesystem>
 
 namespace pulse::source {
 namespace {
 cgltf_result ReadFile(const cgltf_memory_options* memory,const cgltf_file_options*,const char* path,cgltf_size* size,void** data) {
+    bool mountedResource=false;
     std::ifstream f(pulse::FilePath(path),std::ios::binary|std::ios::ate);
-    if(!f) {auto mounted=pulse::resources::Find(pulse::FilePath(path));if(!mounted.empty())f.open(mounted,std::ios::binary|std::ios::ate);}
+    if(!f) {auto mounted=pulse::resources::Find(pulse::FilePath(path));if(!mounted.empty()){f.open(mounted,std::ios::binary|std::ios::ate);mountedResource=true;}}
     if(!f) return cgltf_result_file_not_found;
     const auto length=f.tellg(); if(length<0) return cgltf_result_io_error;
     cgltf_size bytes=*size ? *size : cgltf_size(length);
@@ -37,7 +40,9 @@ cgltf_result ReadFile(const cgltf_memory_options* memory,const cgltf_file_option
     if(!buffer) return cgltf_result_out_of_memory;
     f.seekg(0); f.read(static_cast<char*>(buffer),bytes);
     if(!f) { if(memory->free_func) memory->free_func(memory->user_data,buffer); else std::free(buffer); return cgltf_result_io_error; }
-    *data=buffer; *size=bytes; pulse::dependencies::Note(path); return cgltf_result_success;
+    *data=buffer; *size=bytes;
+    if(!mountedResource)pulse::dependencies::Note(path); // Find() records the actual backing VPK.
+    return cgltf_result_success;
 }
 void ReleaseFile(const cgltf_memory_options* memory,const cgltf_file_options*,void* data,cgltf_size) {
     if(memory->free_func) memory->free_func(memory->user_data,data); else std::free(data);
@@ -173,22 +178,38 @@ std::vector<float> Evaluate(const cgltf_animation_sampler& s,double time,int wid
     if(rotation) { float length=0; for(float x:result) length+=x*x; if(length<=0) throw std::runtime_error("zero glTF rotation quaternion"); for(float& x:result) x/=std::sqrt(length); }
     return result;
 }
+void NoteExternalImages(const cgltf_data* raw,const std::string& path) {
+    for(size_t i=0;i<raw->images_count;++i) {
+        const char* uri=raw->images[i].uri;
+        if(!uri || std::strncmp(uri,"data:",5)==0 || std::strstr(uri,"://"))continue;
+        std::string decoded=uri;decoded.resize(cgltf_decode_uri(decoded.data()));
+        const auto image=(pulse::FilePath(path).parent_path()/pulse::FilePath(decoded)).lexically_normal();
+        std::error_code error;
+        if(std::filesystem::is_regular_file(image,error))pulse::dependencies::Note(image.string());
+        else (void)pulse::resources::Find(image);
+    }
+}
+
 }
 bool GltfHasInstancing(const std::string& path) {
     cgltf_options options{};cgltf_data* raw=nullptr;options.file.read=ReadFile;options.file.release=ReleaseFile;
     if(cgltf_parse_file(&options,path.c_str(),&raw)!=cgltf_result_success)throw std::runtime_error("cannot parse glTF/GLB");
     std::unique_ptr<cgltf_data,decltype(&cgltf_free)> data(raw,cgltf_free);
+    NoteExternalImages(raw,path);
     for(size_t n=0;n<raw->nodes_count;++n)if(raw->nodes[n].has_mesh_gpu_instancing)return true;
     return false;
 }
-std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights,bool animationsOnly) {
+std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleRate,bool bakeWeights,bool animationsOnly,bool nativeNodeNames) {
     cgltf_options options{}; cgltf_data* raw=nullptr;
     options.file.read=ReadFile; options.file.release=ReleaseFile;
     if(cgltf_parse_file(&options,path.c_str(),&raw)!=cgltf_result_success) throw std::runtime_error("cannot parse glTF/GLB");
     std::unique_ptr<cgltf_data,decltype(&cgltf_free)> data(raw,cgltf_free);
     if(cgltf_load_buffers(&options,raw,path.c_str())!=cgltf_result_success || cgltf_validate(raw)!=cgltf_result_success)
         throw std::runtime_error("invalid glTF buffers or accessors; compressed extensions may require $NoFastGltf");
-    if (!animationsOnly) DecodeMeshopt(raw);
+    NoteExternalImages(raw,path);
+    // Animation accessors may themselves use EXT_meshopt_compression. The
+    // animation-only path must not accidentally read a fallback buffer instead.
+    DecodeMeshopt(raw);
     DracoViews dracoStorage;
     if (!animationsOnly) DecodeDraco(raw,dracoStorage);
     if(!std::isfinite(sampleRate) || sampleRate<=0 || sampleRate>1000) throw std::runtime_error("invalid glTF sample rate");
@@ -196,7 +217,7 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
     scene->mRootNode=new aiNode("gltf_scene_root");
     std::map<const cgltf_node*,std::string> names;
     for(size_t i=0;i<raw->nodes_count;++i) names[&raw->nodes[i]]=raw->nodes[i].name?raw->nodes[i].name:
-        (animationsOnly ? "nodes["+std::to_string(i)+"]" : "gltf_node_"+std::to_string(i));
+        (animationsOnly && !nativeNodeNames ? "nodes["+std::to_string(i)+"]" : "gltf_node_"+std::to_string(i));
     std::set<std::string> reservedNames;
     for(const auto& entry:names) reservedNames.insert(entry.second);
     scene->mNumMaterials=unsigned(raw->materials_count+1); scene->mMaterials=new aiMaterial*[scene->mNumMaterials]{};
@@ -376,9 +397,13 @@ std::shared_ptr<aiScene> LoadFastGltfScene(const std::string& path,float sampleR
     for(size_t i=0;i<meshes.size();++i) scene->mMeshes[i]=meshes[i].release();
     SamplerCache samplerCache;
     scene->mNumAnimations=unsigned(raw->animations_count); scene->mAnimations=new aiAnimation*[raw->animations_count]{};
+    scene->mMetaData=new aiMetadata;
     for(unsigned a=0;a<scene->mNumAnimations;++a) {
         auto& animation=raw->animations[a]; auto result=scene->mAnimations[a]=new aiAnimation(); result->mTicksPerSecond=1;
         result->mName=aiString(animation.name?animation.name:("animation_"+std::to_string(a)).c_str());
+        bool hasStep=false;
+        for(size_t s=0;s<animation.samplers_count;++s)hasStep=hasStep || animation.samplers[s].interpolation==cgltf_interpolation_type_step;
+        scene->mMetaData->Add("NPMDL_STEP_ANIMATION_"+std::to_string(a),hasStep);
         std::map<const cgltf_node*,std::vector<const cgltf_animation_channel*>> channels;
         std::vector<const cgltf_animation_channel*> morphChannels;
         double duration=0;

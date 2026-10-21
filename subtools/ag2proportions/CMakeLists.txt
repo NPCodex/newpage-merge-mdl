@@ -33,3 +33,7 @@ add_custom_command(TARGET ag2proportions POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:ag2proportions>/licenses"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/libs/zstd/LICENSE" "$<TARGET_FILE_DIR:ag2proportions>/licenses/zstd.txt"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/libs/keyvalues3/ValveResourceFormat.LICENSE" "$<TARGET_FILE_DIR:ag2proportions>/licenses/ValveResourceFormat.txt")
+
+if(COMMAND newpage_separate_symbols)
+    newpage_separate_symbols(ag2proportions)
+endif()

@@ -75,6 +75,18 @@ clip.times={"bad"};assert(not Vertex.Sample(entity,clip,0))
 assert(not Vertex.Sample(entity,false,0));assert(Vertex.Load(false)==nil)
 ''')
 
+    def test_vertex_nonuniform_reduced_times_use_local_segment_fraction(self):
+        self.lua.execute('''
+local entity=Entity();local clip={controller="smile",position_controller="blink",times={0,.125,.5,1}}
+-- At .3125 the second nonuniform segment is halfway: frame 1.5 of 3.
+assert(Vertex.Sample(entity,clip,.3125));near(entity.flex[0],1);near(entity.flex[1],0)
+assert(Vertex.Sample(entity,clip,.75));near(entity.flex[1],2*(2.5/3)-1)
+assert(Vertex.Sample(entity,clip,-10));near(entity.flex[1],-1)
+assert(Vertex.Sample(entity,clip,10));near(entity.flex[1],1)
+entity.HasFlexManipulatior=function() return true end
+assert(Vertex.Sample(entity,clip,.3125));near(entity.flex[1],.5)
+''')
+
 
 if __name__ == '__main__':
     unittest.main()

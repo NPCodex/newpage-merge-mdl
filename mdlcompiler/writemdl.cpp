@@ -3245,15 +3245,26 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
     }
     std::string vertexAnimation;
     std::map<std::string,std::vector<float>> bakedClips;
+    std::map<std::string,std::vector<const source::Source*>> bakedSources;
     for(const auto& model:m.models)if(model.source&&!model.source->bakedTimes.empty()) {
         auto added=bakedClips.emplace(model.source->bakedController,model.source->bakedTimes);
         if(!added.second&&added.first->second!=model.source->bakedTimes){if(err)*err="baked animations sharing a controller must have identical sample times";return false;}
+        auto& sources=bakedSources[model.source->bakedController];
+        if(std::find(sources.begin(),sources.end(),model.source)==sources.end())sources.push_back(model.source);
     }
     if(!bakedClips.empty()) {
         vertexAnimation="{\"schema\":1,\"clips\":[";bool first=true;
         for(const auto& clip:bakedClips){if(!first)vertexAnimation+=",";first=false;
             vertexAnimation+="{\"controller\":\""+clip.first+"\",\"position_controller\":\"multi_"+clip.first+"\",\"times\":[";
             for(size_t i=0;i<clip.second.size();++i){if(i)vertexAnimation+=",";vertexAnimation+=std::to_string(clip.second[i]);}
+            vertexAnimation+="],\"sample_checks\":[";bool firstSource=true;
+            for(const auto* src:bakedSources.at(clip.first)) {
+                if(!firstSource)vertexAnimation+=",";firstSource=false;
+                vertexAnimation+="{\"scope\":\"sampled_reference\",\"reference_sample_rate\":"+std::to_string(src->sceneOptions.sampleRate)+
+                    ",\"source_frames\":"+std::to_string(src->bakedReferenceFrames)+",\"retained_frames\":"+std::to_string(src->bakedTimes.size())+
+                    ",\"reduction_applied\":"+(src->bakedReductionApplied?std::string("true"):std::string("false"))+
+                    ",\"max_position_error\":"+std::to_string(src->bakedPositionError)+",\"max_normal_error_degrees\":"+std::to_string(src->bakedNormalError)+"}";
+            }
             vertexAnimation+="]}";
         }vertexAnimation+="]}\n";
     }

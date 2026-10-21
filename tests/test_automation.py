@@ -418,6 +418,12 @@ class AutomationTests(unittest.TestCase):
                 (source / name).write_text(name)
             (source / 'subtools/meshtool').mkdir(parents=True)
             (source / 'subtools/meshtool/PROTOCOL.md').write_text('Binary protocol limits')
+            new_docs = ('AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md',
+                        'subtools/ag2proportions/README.md', 'subtools/vmd2valvebiped/README.md', 'subtools/l4d_animswap/RETARGET.md')
+            for name in new_docs:
+                path = source / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('Authoring and recovery documentation: ' + name)
             branding = ('.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
                         'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
                         'assets/branding/README.md')
@@ -456,6 +462,8 @@ class AutomationTests(unittest.TestCase):
             with zipfile.ZipFile(root / 'out.zip') as archive:
                 self.assertEqual(archive.read('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'), (root / 'source.zip').read_bytes())
                 self.assertEqual(archive.read('NewPageMergeMDL/subtools/meshtool-protocol.md'), b'Binary protocol limits')
+                for name in new_docs:
+                    self.assertEqual(archive.read('NewPageMergeMDL/' + name), (source / name).read_bytes())
                 for name in branding:
                     self.assertEqual(archive.read('NewPageMergeMDL/' + name), (source / name).read_bytes())
                 self.assertIn('NewPageMergeMDL/INSTALL.md', archive.namelist())
@@ -698,6 +706,7 @@ class PackageValidationTests(unittest.TestCase):
                 '.github/images/newpage-compiler.png','.github/images/newpage-decompiler.png',
                 'assets/branding/NewPage-logo.png','assets/branding/generate_icons.py','assets/branding/README.md',
                 'FIVE_COMPILER_COMPLETION.md','O5_FORMAT_IMPORTS.md','MESH_STATE_WORKFLOW.md','VRM_RUNTIME.md',
+                'AUTHORING_WORKFLOWS.md','DECOMPILER_EXPORTS.md','SCENE_IMPORT.md','GAME_PLATFORM_MATRIX.md',
                 'tests/reports/toolkit-fixes-20261020.md','tests/reports/2026-10-18-rea-second-pass.md',
                 'tests/reports/ag2-gameplay-20261020.md',
                 'tests/reports/v1.2.34-replacement-validation.md','tests/reports/v1.2.36-replacement-validation.md',
@@ -714,6 +723,7 @@ class PackageValidationTests(unittest.TestCase):
                 'libs/tinyusdz/SOURCE.md','libs/tinyusdz/THIRD_PARTY_NOTICES.md',
                 'subtools/licenses/zstd.txt','subtools/licenses/ValveResourceFormat.txt',
                 'subtools/meshtool-protocol.md',
+                'subtools/ag2proportions/README.md','subtools/vmd2valvebiped/README.md','subtools/l4d_animswap/RETARGET.md',
             ):
                 if name != omit:
                     z.writestr('NewPageMergeMDL/'+name, '' if name == empty else 'fixture')
@@ -743,6 +753,8 @@ class PackageValidationTests(unittest.TestCase):
                      '.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
                      'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
                      'assets/branding/README.md', 'subtools/meshtool-protocol.md',
+                     'AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md',
+                     'subtools/ag2proportions/README.md', 'subtools/vmd2valvebiped/README.md', 'subtools/l4d_animswap/RETARGET.md',
                      'tests/reports/toolkit-fixes-20261020.md', 'tests/reports/2026-10-18-rea-second-pass.md',
                      'tests/reports/ag2-gameplay-20261020.md',
                      'tests/reports/v1.2.34-replacement-validation.md', 'tests/reports/v1.2.36-replacement-validation.md'):

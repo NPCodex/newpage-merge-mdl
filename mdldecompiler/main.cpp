@@ -21,6 +21,7 @@
 #include <cstring>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -47,6 +48,7 @@
 #include "persistentoutput.h"
 #include "cliargs.h"
 #include "pulselimits.h"
+#include "selection.h"
 
 using namespace mdldecompiler;
 using pulse::fatal::Fail;
@@ -58,6 +60,8 @@ using pulse::fatal::Fail;
 static constexpr const char* kAppVersion = PULSEMODEL_VERSION;
 
 namespace {
+bool g_qualityReport = false;
+std::string g_preserveRoot;
 
 void PrintHeader() {
     newpage::PrintBanner("Model Decompiler", kAppVersion);
@@ -97,6 +101,14 @@ int Usage() {
     std::printf("                <name>_joints.dmx the script imports with $datamodeljoints\n");
     std::printf("  -pause        wait for a keypress before exiting (drag-and-drop runs)\n");
     std::printf("  -perfmetrics  print wall time in ms per process once the run ends\n");
+    std::printf("  -qualityreport write export-report.json and an @quality JSON record per model\n");
+    std::printf("  -animation <name> / -sequence <name> select animation assets; repeatable\n");
+    std::printf("  -bodygroup <index> / -lod <index> select mesh assets; repeatable, zero-based\n");
+    std::printf("                selectors write an _assets folder, no QC; sequence layers and\n");
+    std::printf("                delta bases are included. Use full export for a project.\n");
+    std::printf("  -preservepaths <root> preserve paths relative to this root for explicit files\n");
+    std::printf("  -reducepos <units> / -reduceangle <degrees> opt-in DMX bone key reduction\n");
+    std::printf("                0 disables (default); validates source keys and quarter intervals\n");
     return 1;
 }
 
@@ -195,6 +207,7 @@ bool ReadFile(const char* path, Mdl& m, int forceVersion, std::string& err) {
     // never moved a field, so the v49 structs below read them all. studiohdr2_t
     // only exists from 45 on; earlier files simply have studiohdr2index == 0,
     // which every reader here already treats as "no extension header".
+    if (version < 44 || version > 49) QualityWarning("Model version is outside the confirmed Source 44-49 range", true);
     if (version < 44 || version > 49)
         std::printf("model version %d is outside the confirmed 44-49 range; reading it as 49 anyway\n",
                      version);
@@ -2169,11 +2182,14 @@ void WriteFlexes(Qc& q, const Mdl& m, const FlexRig& rig, const std::string& fac
         q.Line((ok ? "" : "// ") + (g_studiomdl ? "%" + target + " = " + expr
                                                 : "$flexrule \"" + target + "\" = " + expr));
     }
+    if (commented) QualityWarning(std::to_string(commented) + " flex rules reference unrecoverable morph names and were commented out", true);
     if (commented)
         q.Line("// " + std::to_string(commented) + " of " + std::to_string(h.numflexrules) +
                " rules name a morph whose real name was lost - commented out, they would not"
                "\n// compile. The expression is intact if you can work out what it drove.");
     if (skipped) {
+        QualityWarning(std::to_string(skipped) + " flex rules have no expression spelling" +
+                       (importRig ? "; reconstructed through the DMX rig" : "; omitted"), !importRig);
         q.Line("// " + std::to_string(skipped) + " of " + std::to_string(h.numflexrules) +
                " flex rules use ops with no expression spelling");
         q.Line(importRig ? "// - they come back from the DMX rig via $datamodelflexes."
@@ -3020,12 +3036,19 @@ std::string OutFolder(const std::string& in, const std::string& root, const char
         std::filesystem::path(root.empty() ? in : root).parent_path();
     const std::filesystem::path base = outDir ? std::filesystem::path(outDir) : parent;
     std::filesystem::path rel;
-    if (!root.empty()) {
+    if (!g_preserveRoot.empty()) {
+        const auto input = std::filesystem::weakly_canonical(std::filesystem::absolute(in));
+        const auto origin = std::filesystem::weakly_canonical(std::filesystem::absolute(g_preserveRoot));
+        rel = input.parent_path().lexically_relative(origin);
+        if (rel.empty() || rel.is_absolute() || *rel.begin() == "..")
+            throw std::runtime_error("input is outside -preservepaths root: " + in);
+        if (rel == ".") rel.clear();
+    } else if (!root.empty()) {
         rel = std::filesystem::path(in).parent_path().lexically_relative(parent);
         if (rel == ".")
             rel.clear();
     }
-    return (base / ver / rel / BaseName(StripExt(in))).string();
+    return (base / ver / rel / (BaseName(StripExt(in)) + (AssetSelection() ? "_assets" : ""))).string();
 }
 
 std::string OutScript(const std::string& dir) {
@@ -3038,6 +3061,8 @@ int DecompileInto(const std::string& in, const std::string& dir, int forceVersio
 
     // GoldSrc shares only the "IDST" magic with v44+; it has its own reader.
     if (IsGoldSrcMdl(in)) {
+        if (AssetSelection()) return Fail("unsupported selection", "selective export currently requires a Source 44-49 model");
+        QualityWarning("GoldSrc export does not yet report detailed recovery metadata", true);
         pulse::fatal::g_stage = "goldsrc";
         std::error_code ec;
         std::filesystem::create_directories(dir, ec);
@@ -3063,11 +3088,25 @@ int DecompileInto(const std::string& in, const std::string& dir, int forceVersio
     const auto safeBoneNames = BoneNames(m);
     const auto* storedBones = m.At<fm::mstudiobone_t>(m.buf.data(), h.boneindex, h.numbones);
     for (int i = 0; storedBones && i < h.numbones; ++i)
-        if (safeBoneNames[i] != m.Str(&storedBones[i], storedBones[i].sznameindex))
+        if (safeBoneNames[i] != m.Str(&storedBones[i], storedBones[i].sznameindex)) {
             std::printf("renamed unsafe or duplicate bone %d to \"%s\"\n", i, safeBoneNames[i].c_str());
+            if (g_quality.enabled) g_quality.renamedBones.emplace_back(
+                m.Str(&storedBones[i], storedBones[i].sznameindex), safeBoneNames[i]);
+        }
     if (h.numanimblocks > 1)
         ReadWhole(StripExt(in) + ".ani", m.ani);
     ComputeIkBaseRecovery(m, in);
+    ResolveSelection(m);
+    if (g_quality.enabled) {
+        if (m.ikRecovered) g_quality.recovered.push_back("Recovered delta/IK base pose");
+        const auto localPoses = LocalPoses(m);
+        for (size_t i = 0; i < localPoses.size(); ++i)
+            if (localPoses[i].rebuilt) g_quality.recovered.push_back("Bind transform rebuilt: " + safeBoneNames[i]);
+        if (h.numanimblocks > 1 && m.ani.empty())
+            g_quality.missingDependencies.push_back(StripExt(in) + ".ani");
+        if (g_nomesh) QualityWarning("Mesh and physics files explicitly skipped; the script needs external assets");
+        if (g_noanim) QualityWarning("Animation files explicitly skipped; the script needs external clips");
+    }
     std::printf("model:       \"%s\"\n", h.name);
     std::printf("contents:    %d bones, %d bodyparts, %d materials, %d animations, %d sequences,\n"
                 "             %d flex controllers, %d attachments, %d hitbox sets\n",
@@ -3078,6 +3117,16 @@ int DecompileInto(const std::string& in, const std::string& dir, int forceVersio
     pulse::fatal::g_stage = "output folder";
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
+    if (AssetSelection()) {
+        if (ec) return Fail("write error", ec.message());
+        QualityWarning("Selected assets are not an independently recompilable project; existing unrelated files are retained");
+        if (SelectMeshes()) {
+            const auto names = MeshNames(m, BaseName(StripExt(in)) + "_physics", BaseName(dir) + "_joints");
+            WriteRenderMeshes(m, in, dir, names, BuildFlexRig(m));
+        }
+        if (SelectAnimations()) WriteAnimationFiles(m, in, dir);
+        return g_extractionFailed ? Fail("extraction failed", "selected assets were not published") : 0;
+    }
     const std::string outPath = OutScript(dir);
     std::FILE* f = std::fopen(outPath.c_str(), "wb");
     if (!f)
@@ -3100,6 +3149,7 @@ int DecompileInto(const std::string& in, const std::string& dir, int forceVersio
         MeshNames(m, BaseName(StripExt(in)) + "_physics", BaseName(dir) + "_joints");
     pulse::fatal::g_stage = "BuildFlexRig";
     const FlexRig rig = BuildFlexRig(m);
+    if (rig.domMismatch) QualityWarning(std::to_string(rig.domMismatch) + " corrective dominator sets could not be recovered exactly", true);
     const std::string faceMesh = FaceMesh(m, meshNames);
     std::string faceBody;
     if (g_studiomdl) {
@@ -3184,6 +3234,7 @@ int DecompileInto(const std::string& in, const std::string& dir, int forceVersio
             joints = JointsInfo();
         } else {
             q.Blank();
+            if (joints.namedHitboxes) QualityWarning(std::to_string(joints.namedHitboxes) + " hitbox names are not representable in the selected DMX joints format", true);
             if (joints.namedHitboxes)
                 q.Line("// " + std::to_string(joints.namedHitboxes) +
                        " hitbox name(s) are lost - a DMX hitbox has no name");
@@ -3280,12 +3331,22 @@ public:
 int DecompileOne(const std::string& in, const std::string& root, const char* outDir,
                  int forceVersion) {
     const std::string destination = OutFolder(in, root, outDir);
+    g_quality.destination = destination;
     OutputStage output(destination);
+    g_quality.staging = output.staged.string();
     g_extractionFailed = false;
     const int result = DecompileInto(in, output.staged.string(), forceVersion);
     if (result || g_extractionFailed) return result ? result : 1;
+    if (g_qualityReport) {
+        const auto path = output.staged / "export-report.json";
+        QualityWritten(path.string());
+        std::ofstream report(path, std::ios::binary);
+        report << QualityJson(0, kAppVersion) << '\n';
+        report.close();
+        if (!report) return Fail("write error", "cannot write export quality report");
+    }
     output.Publish();
-    std::printf("\nwrote %s\n", OutScript(destination).c_str());
+    std::printf("\nwrote %s\n", (AssetSelection() ? destination : OutScript(destination)).c_str());
     return 0;
 }
 
@@ -3325,7 +3386,9 @@ int RunDecompile(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string option = argv[i];
         if (option == "-outdir" || option == "-forceversion" ||
-            option == "-dmxencoding" || option == "-dmxmodel") {
+            option == "-dmxencoding" || option == "-dmxmodel" || option == "-animation" ||
+            option == "-sequence" || option == "-bodygroup" || option == "-lod" || option == "-preservepaths" ||
+            option == "-reducepos" || option == "-reduceangle") {
             if (i + 1 >= argc || pulse::cli::MissingValue(argv[i + 1]))
                 return Fail("command line", option + " needs an argument");
         }
@@ -3359,11 +3422,32 @@ int RunDecompile(int argc, char** argv) {
             pulse::fatal::g_pause = true;
         else if (std::strcmp(argv[i], "-perfmetrics") == 0)
             pulse::perf::g_enabled = true;
+        else if (option == "-qualityreport")
+            g_qualityReport = true;
+        else if (option == "-reducepos" || option == "-reduceangle") {
+            float value = 0;
+            if (!pulse::cli::Number(argv[++i], value) || value < 0 || (option == "-reduceangle" && value > 180))
+                return Fail("command line", option + " needs a finite non-negative tolerance (angle at most 180)");
+            (option == "-reducepos" ? g_reducePosition : g_reduceAngle) = value;
+        }
+        else if (option == "-animation") g_animationNames.insert(argv[++i]);
+        else if (option == "-sequence") g_sequenceNames.insert(argv[++i]);
+        else if (option == "-preservepaths") g_preserveRoot = argv[++i];
+        else if (option == "-bodygroup" || option == "-lod") {
+            int value = 0;
+            if (!pulse::cli::Integer(argv[++i], value) || value < 0)
+                return Fail("command line", option + " needs a non-negative integer");
+            (option == "-bodygroup" ? g_bodygroups : g_lods).insert(value);
+        }
         else
             inputs.push_back(argv[i]);
     }
     if (inputs.empty())
         return Usage();
+    if (AssetSelection()) {
+        if (g_nomesh || g_noanim) return Fail("command line", "do not mix selectors with -nomesh/-noanimation");
+        g_qualityReport = true;
+    }
     if (const char* err = SetDmxOutput(dmxEncoding, dmxModel))
         return Fail("command line", err);
 
@@ -3404,10 +3488,21 @@ int RunDecompile(int argc, char** argv) {
         if (files.size() > 1)
             std::printf("\n===== [%zu/%zu] =====\n", i + 1, files.size());
         int rc;
+        g_quality = {};
+        g_quality.enabled = g_qualityReport;
+        g_quality.assetsOnly = AssetSelection();
+        g_quality.source = files[i].first;
+        pulse::diagnostics::enabled = g_qualityReport;
+        pulse::diagnostics::entries.clear();
         try {
             rc = DecompileOne(files[i].first, files[i].second, outDir, forceVersion);
         } catch (...) {
             rc = FailCaught();
+        }
+        if (g_qualityReport) {
+            for (const auto& entry : pulse::diagnostics::entries)
+                if (entry.severity == "error") g_quality.errors.push_back(entry.message);
+            std::printf("@quality %s\n", QualityJson(rc, kAppVersion).c_str());
         }
         failed += rc != 0;
     }

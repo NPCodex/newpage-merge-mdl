@@ -3,6 +3,7 @@
 #include <iostream>
 #include <iterator>
 int main(int argc,char** argv) {
+    try {
     if(argc!=4)return 2;
     std::string error;
     if(!pulse::resources::Initialize(argv[1],"",&error)){std::cerr<<error;return 3;}
@@ -12,4 +13,5 @@ int main(int argc,char** argv) {
     std::ifstream file(path,std::ios::binary);
     std::cout<<std::string(std::istreambuf_iterator<char>(file),{});
     return file.bad()?5:0;
+    } catch(const std::exception& error) { std::cerr<<error.what();return 6; }
 }

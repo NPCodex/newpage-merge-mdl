@@ -63,6 +63,25 @@ def pmx(knee_x=0.9):
     return data + struct.pack("<4i", 0, 0, 0, 0)
 
 
+def tail_motion(body_end=0, camera_end=30, morph_end=None):
+    data = b"Vocaloid Motion Data 0002".ljust(30, b"\0") + b"tail".ljust(20, b"\0")
+    bone_frames = [] if body_end is None else sorted({0, body_end})
+    data += struct.pack('<I', len(bone_frames))
+    for frame in bone_frames:
+        data += ('下半身'.encode('shift_jis').ljust(15, b'\0') +
+                 struct.pack('<I7f', frame, 0, 0, 0, 0, 0, 0, 1) + bytes(64))
+    morph_frames = [] if morph_end is None else sorted({0, morph_end})
+    data += struct.pack('<I', len(morph_frames))
+    for frame in morph_frames:
+        data += b'test'.ljust(15, b'\0') + struct.pack('<If', frame, frame / max(1, morph_end))
+    camera_frames = [] if camera_end is None else sorted({0, camera_end})
+    data += struct.pack('<I', len(camera_frames))
+    for frame in camera_frames:
+        data += struct.pack('<If6f', frame, -30, frame, 10, 0, 0, 0, 0) + bytes(24)
+        data += struct.pack('<IB', 45, 0)
+    return data
+
+
 def channels(path):
     objects = {}
     for kind, body in re.findall(r'^"([^"]+)"\s*\n\{(.*?)^\}', path.read_text(), re.S | re.M):
@@ -76,7 +95,7 @@ def channels(path):
         name = re.search(r'"name"\s+"string"\s+"([^"]+)"', body)[1]
         log = re.search(r'"log"\s+"element"\s+"([^"]+)"', body)[1]
         layer = re.search(r'"layers"\s+"element_array"\s*\[\s*"element"\s+"([^"]+)"', objects[log][1])[1]
-        values = re.search(r'"values"\s+"(?:vector3|quaternion)_array"\s*\[([^]]*)\]', objects[layer][1])[1]
+        values = re.search(r'"values"\s+"(?:vector3|quaternion|float)_array"\s*\[([^]]*)\]', objects[layer][1])[1]
         result[name] = [tuple(map(float, value.split())) for value in re.findall(r'"([^"]+)"', values)]
     return result
 
@@ -181,6 +200,212 @@ class MotionFeatures(unittest.TestCase):
                 struct.pack_into("<f", model, 408 + 3 * 216 + 96 + 44, value)
                 self.target.write_bytes(model)
                 self.convert(name, motion(), error=expected)
+
+    def add_face_controller(self):
+        data = bytearray(self.target.read_bytes())
+        struct.pack_into('<2i', data, 268, 1, len(data))
+        data += struct.pack('<3i2f', 20, 28, -1, 0, 1) + b'default\0test\0'
+        struct.pack_into('<i', data, 76, len(data))
+        self.target.write_bytes(data)
+        facemap = self.root / 'facemap.txt'
+        facemap.write_text('test test=1\n')
+        return facemap
+
+    def test_camera_and_morph_tail_extend_common_interval(self):
+        facemap = self.add_face_controller()
+        clip = self.convert('tails', tail_motion(camera_end=20, morph_end=30),
+                            ['-dmxmodel', '22', '-facemap', facemap])
+        self.assertEqual(len(clip['test']), 31)
+        self.assertAlmostEqual(clip['test'][-1][0], 1)
+        camera = (self.root / 'tails/motion_camera.smd').read_text()
+        self.assertEqual(len(re.findall(r'^time ', camera, re.M)), 31)
+        frames = re.findall(r'^time \d+\n([^\n]+)', camera, re.M)
+        self.assertNotEqual(frames[0], frames[20])
+        self.assertEqual(frames[20], frames[30])
+
+    def test_explicit_interval_keeps_crop_and_last_value_hold(self):
+        facemap = self.add_face_controller()
+        clip = self.convert('crop', tail_motion(camera_end=30, morph_end=30),
+                            ['-start', '10', '-end', '20', '-dmxmodel', '22', '-facemap', facemap])
+        self.assertEqual(len(clip['test']), 11)
+        self.assertAlmostEqual(clip['test'][0][0], 1 / 3, places=5)
+        self.assertAlmostEqual(clip['test'][-1][0], 2 / 3, places=5)
+
+    def test_sidecars_participate_in_interval_and_override_before_sampling(self):
+        facemap = self.add_face_controller()
+        folder = self.root / 'sidecars'
+        folder.mkdir()
+        (folder / 'motion.vmd').write_bytes(tail_motion(camera_end=90, morph_end=90))
+        (folder / 'motion_face.vmd').write_bytes(tail_motion(None, None, 30))
+        (folder / 'motion_camera.vmd').write_bytes(tail_motion(None, 20, None))
+        proc = subprocess.run([str(TOOL), '-mdl', str(self.target), '-vmd', str(folder / 'motion.vmd'),
+                               '-facemap', str(facemap), '-dmxmodel', '22', '-dmxencoding', 'keyvalues2'],
+                              capture_output=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(len(channels(folder / 'motion.dmx')['test']), 31)
+        camera = (folder / 'motion_camera.smd').read_text()
+        self.assertEqual(len(re.findall(r'^time ', camera, re.M)), 31)
+
+    def standalone(self, mode, source, output, extra=(), success=True):
+        proc = subprocess.run([str(TOOL), '-mode', mode, '-vmd', str(source), '-o', str(output),
+                               '-dmxencoding', 'keyvalues2', *map(str, extra)],
+                              capture_output=True, timeout=30)
+        text = (proc.stdout + proc.stderr).decode('utf-8', 'replace')
+        self.assertEqual(proc.returncode == 0, success, text)
+        return text
+
+    def test_camera_only_requires_no_model_and_preserves_fov_and_interval(self):
+        source = self.root / 'camera.vmd'
+        source.write_bytes(tail_motion(None, 30, None))
+        output = self.root / 'camera.dmx'
+        self.standalone('camera', source, output, ['-camera-scale', '2', '-start', '5', '-end', '15'])
+        tracks = channels(output)
+        self.assertEqual(len(tracks['position']), 11)
+        self.assertAlmostEqual(tracks['position'][-1][0] - tracks['position'][0][0], 20, places=5)
+        self.assertEqual(tracks['fov'], [(45.0,)])
+        self.assertEqual(len(re.findall(r'^time ', output.with_suffix('.smd').read_text(), re.M)), 11)
+
+    def test_face_only_has_no_skeleton_channels_or_ik_requirement(self):
+        facemap = self.add_face_controller()
+        model = bytearray(self.target.read_bytes())
+        struct.pack_into('<2i', model, 284, 0, 0)  # no leg chains
+        self.target.write_bytes(model)
+        source = self.root / 'face.vmd'
+        source.write_bytes(tail_motion(None, None, 30))
+        output = self.root / 'face.dmx'
+        self.standalone('face', source, output, ['-mdl', self.target, '-facemap', facemap])
+        tracks = channels(output)
+        self.assertEqual(set(tracks), {'test'})
+        self.assertEqual(len(tracks['test']), 31)
+        self.assertAlmostEqual(tracks['test'][-1][0], 1)
+
+    def test_standalone_rejects_input_aliases_and_unmapped_face_preserves_output(self):
+        source = self.root / 'camera.vmd'
+        source.write_bytes(tail_motion(None, 30, None))
+        alias = self.root / 'alias.dmx'
+        import os
+        os.link(source, alias)
+        original = source.read_bytes()
+        self.assertIn('aliases an input', self.standalone('camera', source, alias, success=False))
+        self.assertEqual(source.read_bytes(), original)
+        facemap = self.add_face_controller()
+        source.write_bytes(tail_motion(None, None, 30))
+        facemap.write_text('different test=1\n')
+        output = self.root / 'face.dmx'
+        output.write_bytes(b'previous face')
+        self.assertIn('no facial tracks map', self.standalone('face', source, output,
+                      ['-mdl', self.target, '-facemap', facemap], success=False))
+        self.assertEqual(output.read_bytes(), b'previous face')
+
+    def test_standalone_batch_failure_preserves_every_output(self):
+        first, second = self.root / 'one.vmd', self.root / 'two.vmd'
+        first.write_bytes(tail_motion(None, 30, None))
+        second.write_bytes(b'bad VMD')
+        targets = [first.with_suffix('.dmx'), first.with_suffix('.smd')]
+        for target in targets:
+            target.write_bytes(b'previous')
+        result = subprocess.run([str(TOOL), '-mode', 'camera', '-vmd', str(first), '-vmd', str(second)],
+                                capture_output=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        for target in targets:
+            self.assertEqual(target.read_bytes(), b'previous')
+
+    def custom_rig(self, leg_mode='ik', options=''):
+        roles = ['Pelvis', 'Head1', 'L_Thigh', 'L_Calf', 'L_Foot', 'R_Thigh', 'R_Calf', 'R_Foot']
+        names = ['hips', 'head', 'left upper leg', 'left knee', 'left ankle',
+                 'right upper leg', 'right knee', 'right ankle']
+        data = bytearray(self.target.read_bytes())
+        table = struct.unpack_from('<i', data, 160)[0]
+        for i, name in enumerate(names):
+            at = table + i * 216
+            struct.pack_into('<i', data, at, len(data) - at)
+            data += name.encode() + b'\0'
+        # The mapping's explicit anatomical chains do not need embedded MDL IK.
+        struct.pack_into('<2i', data, 284, 0, 0)
+        struct.pack_into('<i', data, 76, len(data))
+        self.target.write_bytes(data)
+        profile = self.root / 'humanoid.map'
+        profile.write_text('vmd_humanoid_mapping 1\nleg_mode ' + leg_mode + '\n' +
+                           ''.join(f'role {role} "{name}"\n' for role, name in zip(roles, names)) + options)
+        return profile, dict(zip(roles, names))
+
+    def test_custom_named_humanoid_explicit_ik_chain_matches_standard_rig(self):
+        reference = self.convert('standard', motion())
+        profile, names = self.custom_rig()
+        custom = self.convert('custom', motion(), ['-mapping', profile])
+        for role, name in names.items():
+            for kind in ('_p', '_o'):
+                self.assertEqual(custom[name + kind], reference['ValveBiped.Bip01_' + role + kind])
+
+    def test_custom_fk_only_ignores_ik_switches_and_keeps_fk(self):
+        reference = self.convert('standard-fk', motion([(0, [('左足ＩＫ', 0), ('右足ＩＫ', 0)])]))
+        profile, names = self.custom_rig('fk')
+        custom = self.convert('custom-fk', motion(), ['-mapping', profile])
+        for role, name in names.items():
+            self.assertEqual(custom[name + '_o'], reference['ValveBiped.Bip01_' + role + '_o'])
+
+    def test_custom_motion_scale_and_basis_have_measurable_root_effect(self):
+        data = bytearray(tail_motion(30, 0))
+        struct.pack_into('<f', data, 54 + 111 + 19, 2)  # second lower-body key's X
+        profile, names = self.custom_rig('fk')
+        original = profile.read_text()
+        first = self.convert('scale-one', data, ['-mapping', profile])
+        profile.write_text(original + 'motion_scale 2\nbasis 0 1 0 0 0 1\n')
+        second = self.convert('scale-two', data, ['-mapping', profile])
+        a = first[names['Pelvis'] + '_p']; b = second[names['Pelvis'] + '_p']
+        dx = a[-1][0] - a[0][0]
+        dy = b[-1][1] - b[0][1]
+        self.assertGreater(abs(dx), 1)
+        self.assertAlmostEqual(dy, 2 * dx, places=4)
+        self.assertAlmostEqual(b[-1][0], b[0][0], places=5)
+
+    def test_mapping_errors_reject_before_replacing_old_outputs(self):
+        profile, _ = self.custom_rig('fk')
+        original = profile.read_text()
+        for name, text, error in [
+            ('version', original.replace('mapping 1', 'mapping 2'), 'expected vmd_humanoid_mapping 1'),
+            ('duplicate', original + 'role Pelvis "hips"\n', 'duplicate role'),
+            ('unknown', original + 'typo 1\n', 'unknown mapping directive'),
+            ('basis', original + 'basis 1 0 0 1 0 0\n', 'orthogonal unit vectors'),
+            ('scale', original + 'motion_scale nan\n', 'complete finite number'),
+            ('missing', original.replace('"hips"', '"missing"'), 'target bone not found'),
+            ('alias', original.replace('"head"', '"hips"'), 'share target bone')]:
+            with self.subTest(name=name):
+                profile.write_text(text)
+                self.convert('bad-map-' + name, motion(), ['-mapping', profile], error=error)
+
+    def test_opt_in_key_reduction_meets_independent_error_samples_and_keeps_ik_edges(self):
+        from dmx_keys import channels as keyed_channels, sample, error
+        data=b'Vocaloid Motion Data 0002'.ljust(30,b'\0')+b'reduction'.ljust(20,b'\0')
+        data+=struct.pack('<I',31)
+        for frame in range(31):
+            angle=frame*0.015
+            data+='下半身'.encode('shift_jis').ljust(15,b'\0')
+            data+=struct.pack('<I7f',frame,frame*.3+math.sin(frame*.4)*.03,0,0,
+                              0,math.sin(angle/2),0,math.cos(angle/2))+bytes(64)
+        data+=tail_motion(None,0,None)[54:]
+        # FK for most frames, with an explicit IK boundary to preserve at frame 15.
+        data+=struct.pack('<3I',0,0,2)
+        for frame in (0,15):
+            data+=struct.pack('<IBI',frame,1,2)
+            for name in ('左足ＩＫ','右足ＩＫ'):
+                data+=name.encode('shift_jis').ljust(20,b'\0')+bytes([int(frame==15)])
+        self.convert('full-keys',data)
+        self.convert('reduced-keys',data,['-reducepos','0.02','-reduceangle','0.05'])
+        full=keyed_channels(self.root/'full-keys/motion.dmx')
+        reduced=keyed_channels(self.root/'reduced-keys/motion.dmx')
+        self.assertLess(sum(len(c[1]) for c in reduced.values()),sum(len(c[1]) for c in full.values()))
+        for name,channel in full.items():
+            kind,times,values=channel
+            limit=.05 if kind=='quaternion' else .02
+            probes=set(times)
+            for a,b in zip(times,times[1:]):
+                probes.update(a+(b-a)*part/8 for part in range(1,8))
+            for time in probes:
+                self.assertLessEqual(error(sample(channel,time),sample(reduced[name],time),kind=='quaternion'),limit+2e-4,name)
+            # Even constant tracks retain the explicit transition's adjacent keys in opt-in mode.
+            for boundary in (.5,.4667):
+                self.assertLess(min(abs(t-boundary) for t in reduced[name][1]),1e-6)
 
 
 if __name__ == "__main__":

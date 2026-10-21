@@ -21,6 +21,7 @@
 
 #include "format/mdl.h"
 #include "math/math.h"
+#include "quality.h"
 
 namespace fm = pulse::format;
 namespace pm = pulse::math;
@@ -239,12 +240,14 @@ inline std::vector<std::string> UniqueBoneNames(const std::vector<std::string>& 
 inline bool g_extractionFailed = false;
 inline void ExtractionError(const std::string& error) {
     g_extractionFailed = true;
+    if (g_quality.enabled) g_quality.errors.push_back(error);
     std::printf("extraction error: %s\n", error.c_str());
 }
 inline bool CloseOutput(std::FILE* f, const std::string& path) {
     const bool streamOk = std::ferror(f) == 0;
     const bool closeOk = std::fclose(f) == 0;
     if (!streamOk || !closeOk) ExtractionError("cannot finish writing \"" + path + "\"");
+    else QualityWritten(path);
     return streamOk && closeOk;
 }
 

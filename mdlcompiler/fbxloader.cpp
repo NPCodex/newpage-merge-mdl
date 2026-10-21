@@ -7,6 +7,7 @@
 #include "strcompat.h"
 
 #include "fbxloader.h"
+#include "sourcevalidation.h"
 #include "dependencies.h"
 
 #include <cmath>
@@ -220,6 +221,13 @@ bool LoadAnimStacks(const ufbx_scene* scene, float scale, Source& out, std::stri
         rest[found->second]=root?node->node_to_world:node->node_to_parent;
     }
 
+    SourceNameRegistry names(true);
+    for (const auto& animation : out.anims)
+        if (!names.Add(animation.name, err)) return false;
+    for (size_t s = 0; s < scene->anim_stacks.count; ++s) {
+        const auto* stack = scene->anim_stacks.data[s];
+        if (!names.Add(std::string(stack->name.data, stack->name.length), err)) return false;
+    }
     for (size_t s = 0; s < scene->anim_stacks.count; ++s) {
         const ufbx_anim_stack* stack = scene->anim_stacks.data[s];
         const std::string name(stack->name.data, stack->name.length);
@@ -411,6 +419,12 @@ bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, fl
     opts.geometry_transform_handling = UFBX_GEOMETRY_TRANSFORM_HANDLING_PRESERVE;
     opts.generate_missing_normals = true;
     opts.ignore_embedded = true;
+    opts.open_file_cb.fn = [](void* user, ufbx_stream* stream, const char* filename, size_t length,
+                             const ufbx_open_file_info* info) {
+        if (!ufbx_default_open_file(user, stream, filename, length, info)) return false;
+        pulse::dependencies::Note(std::string(filename, length));
+        return true;
+    };
 
     pulse::dependencies::Note(path);
     ufbx_error error;
@@ -428,6 +442,10 @@ bool LoadFbxSource(const std::string& path, Source& out, MaterialTable& mats, fl
     std::unordered_map<uint32_t,ufbx_matrix> geometryBinds;
     try { BuildSkeleton(scene, scale, out, nodeToBone,geometryBinds); }
     catch (const std::exception& e) { if(err)*err=e.what(); ufbx_free_scene(scene); return false; }
+    if (!ValidateSourceBoneNames(out, err)) {
+        ufbx_free_scene(scene);
+        return false;
+    }
     if (out.numbones <= 0) {
         if (err) *err = "the scene has no nodes";
         ufbx_free_scene(scene);

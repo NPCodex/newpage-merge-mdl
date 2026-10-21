@@ -7,6 +7,7 @@
 #include "strcompat.h"
 
 #include "smdloader.h"
+#include "sourcevalidation.h"
 #include "dependencies.h"
 
 #include <algorithm>
@@ -194,7 +195,7 @@ bool GrabNodes(LineReader& r, Source& out, std::string* err) {
         }
     }
     out.localBone = std::move(bones);
-    return true;
+    return ValidateSourceBoneNames(out, err);
 }
 
 // ---------------------------------------------------------------------------
@@ -761,7 +762,7 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
         if (err) *err = "SMD has no `nodes` block";
         return false;
     }
-    return true;
+    return ValidateSourceAnimationNames(out, err);
 }
 
 // ---------------------------------------------------------------------------

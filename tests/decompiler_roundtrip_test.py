@@ -5,6 +5,8 @@ All inputs are authored or mutated inside a temporary directory.
 """
 from pathlib import Path
 import re
+import json
+import math
 import shutil
 import struct
 import subprocess
@@ -207,6 +209,51 @@ class DecompilerRoundtrip(unittest.TestCase):
                 else:struct.pack_into('<f',data,rule+88,1e30)
                 check(data,'IK chain end bone' if mode=='chain-end' else 'IK phase')
 
+    def test_vvd_vertex_payload_rejection_preserves_old_output(self):
+        source = self.fixture()
+        vvd = source.with_suffix('.vvd')
+        original = vvd.read_bytes()
+        vertex = struct.unpack_from('<i', original, 56)[0]
+        dest, _ = self.decompile(source)
+        before = snapshot(dest)
+        cases = [('count-zero', 15, 'B', 0), ('count-four', 15, 'B', 4),
+                 ('bone-index', 12, 'B', 255), ('weight-nan', 0, 'f', float('nan')),
+                 ('weight-negative', 0, 'f', -1), ('weight-sum', 0, 'f', 0.5),
+                 ('weight-over-one', 0, 'f', 1.0001),
+                 ('weight-beyond-roundoff', 0, 'f', 1 + 5 * 2**-23),
+                 ('position-nan', 16, 'f', float('nan')),
+                 ('normal-infinity', 28, 'f', float('inf')),
+                 ('uv-infinity', 40, 'f', -float('inf'))]
+        for label, offset, fmt, value in cases:
+            with self.subTest(label=label):
+                data = bytearray(original)
+                struct.pack_into('<' + fmt, data, vertex + offset, value)
+                vvd.write_bytes(data)
+                _, log = self.decompile(source, success=False)
+                self.assertIn('invalid VVD vertex', log)
+                self.assertEqual(snapshot(dest), before)
+        vvd.write_bytes(original)
+        self.decompile(source)
+
+    def test_shipped_vvd_weight_roundoff_is_normalized(self):
+        source = self.fixture()
+        vvd = source.with_suffix('.vvd')
+        original = vvd.read_bytes()
+        vertex = struct.unpack_from('<i', original, 56)[0]
+        dest, _ = self.decompile(source)
+        # Unchanged unit-weight output is the independent reference. Exporting
+        # the official survivor's one-ULP overshoot must produce the same mesh.
+        reference = {p.relative_to(dest): p.read_bytes() for p in dest.rglob('*.dmx')}
+        self.assertTrue(reference)
+        for ulps in (1, 4):
+            with self.subTest(ulps=ulps):
+                data = bytearray(original)
+                struct.pack_into('<f', data, vertex, 1 + ulps * 2**-23)
+                vvd.write_bytes(data)
+                self.decompile(source)
+                self.assertEqual(reference, {p.relative_to(dest): p.read_bytes()
+                                            for p in dest.rglob('*.dmx')})
+
     def test_sidecar_checksum_rejection_preserves_old_output(self):
         source = self.fixture()
         dest, _ = self.decompile(source)
@@ -376,6 +423,140 @@ class DecompilerRoundtrip(unittest.TestCase):
                 log = self.run_tool(L4D,*args,success=False)
                 self.assertIn('animation',log.lower())
                 self.assertEqual(snapshot(self.root/'l4d-out'),l4d_before)
+
+    def quality_record(self, log):
+        return json.loads(next(line[len('@quality '):] for line in log.splitlines() if line.startswith('@quality ')))
+
+    def test_quality_report_matches_published_files_and_failed_exit(self):
+        source = self.fixture()
+        data = bytearray(source.read_bytes())
+        table = struct.unpack_from('<i', data, 160)[0]
+        # Deliberately invalid name bytes must remain representable in valid UTF-8 JSON.
+        at = table + 216
+        struct.pack_into('<i', data, at, len(data)-at)
+        data.extend(b'bad\xffname\0')
+        struct.pack_into('<i', data, 76, len(data))
+        source.write_bytes(data)
+        dest, log = self.decompile(source, 'quality', True, '-qualityreport')
+        report = self.quality_record(log)
+        self.assertTrue(report['success']); self.assertEqual(report['exit_code'], 0)
+        self.assertEqual(len(report['renamed_bones']), 1)
+        self.assertEqual(bytes.fromhex(report['renamed_bones'][0]['original_bytes_hex']), b'bad\xffname')
+        saved = next(dest.rglob('export-report.json'))
+        self.assertEqual(json.loads(saved.read_text()), report)
+        actual = {str(p.relative_to(saved.parent)).replace('\\','/') for p in saved.parent.rglob('*') if p.is_file()}
+        self.assertEqual(set(report['written_files']), actual)
+        before = snapshot(dest)
+        source.with_suffix('.vvd').unlink()
+        _, log = self.decompile(source, 'quality', False, '-qualityreport')
+        failure = self.quality_record(log)
+        self.assertFalse(failure['success']); self.assertNotEqual(failure['exit_code'], 0)
+        self.assertTrue(failure['errors']); self.assertTrue(failure['missing_dependencies'])
+        self.assertEqual(failure['written_files'], [])
+        self.assertEqual(snapshot(dest), before)
+
+    def test_selected_assets_preserve_paths_and_animation_dependency_closure(self):
+        source = self.fixture(qc='$body body mesh.smd\n$body extra lower.smd\n'
+            '$skinnedlods\n$lod 10 { replacemodel mesh.smd lower.smd }\n'
+            '$animation base mesh.smd\n$animation a_delta anim.smd { subtract base 0 }\n'
+            '$sequence layer { a_delta hidden }\n$sequence chosen { anim.smd addlayer layer }\n'
+            '$sequence unused anim.smd\n',
+            files={'mesh.smd':mesh(),'lower.smd':mesh(3),'anim.smd':animation()})
+        library = self.root/'library'
+        for folder in ('one','two'):
+            target = library/folder
+            target.mkdir(parents=True)
+            for path in source.parent.glob('shared.*'): shutil.copy2(path, target/path.name)
+        args = [library/'one/shared.mdl',library/'two/shared.mdl','-outdir',self.root/'selected',
+                '-preservepaths',library,'-sequence','chosen','-bodygroup','0','-lod','1',
+                '-dmxencoding','keyvalues2']
+        log = self.run_tool(DECOMPILER,*args)
+        reports = list((self.root/'selected').rglob('export-report.json'))
+        self.assertEqual(len(reports),2)
+        for report in reports:
+            result=json.loads(report.read_text());self.assertEqual(result['export_kind'],'assets_only')
+            self.assertIn(report.parent.parent.name,('one','two'))
+            self.assertFalse(list(report.parent.glob('*.qc')))
+            clips={p.stem for p in (report.parent/'anims').glob('*.dmx')}
+            self.assertIn('chosen',clips);self.assertIn('a_delta',clips);self.assertIn('base',clips)
+            self.assertNotIn('unused',clips)
+            meshes=list((report.parent/'meshes').glob('*.dmx'))
+            self.assertEqual(len(meshes),1);self.assertTrue(meshes[0].stem.endswith('_lod1'))
+        before=snapshot(self.root/'selected')
+        self.run_tool(DECOMPILER,*args,'-lod','7',success=False)
+        self.assertEqual(snapshot(self.root/'selected'),before)
+        self.run_tool(DECOMPILER,source,'-preservepaths',library,'-outdir',self.root/'escape',success=False)
+        self.assertFalse((self.root/'escape').exists())
+
+    def test_l4d_blend_grid_pose_layer_roundtrip(self):
+        source=self.fixture(qc='$body body mesh.smd\n$animation reference mesh.smd\n'
+            '$sequence idle reference\n'
+            '$poseparameter move_x -1 1\n$poseparameter move_y -1 1\n'
+            '$animation a0 anim.smd { fps 23.7 }\n$animation a1 other.smd { fps 30 }\n'
+            '$weightlist upper { root 0 child 1 }\n$sequence layer { other.smd hidden weightlist upper }\n'
+            '$sequence c1m1_intro { a0 a1 a1 a0 blendwidth 2 blend move_x -1 1 blend move_y -1 1 '
+            'blendlayer layer -1 -0.5 0.5 1 poseparameter move_x { event 1004 2 "test" } }\n',
+            files={'mesh.smd':mesh(),'anim.smd':animation(),'other.smd':animation(4)})
+        vanilla=self.root/'blend-vanilla';vanilla.mkdir()
+        for code in ('teenangst','producer'):
+            shutil.copy2(source,vanilla/f'survivor_{code}.mdl')
+        shutil.copy2(source,vanilla/'survivor_producer_light.mdl')
+        out=self.root/'blend-out/swap.qci'
+        self.run_tool(L4D,'-vanilla',vanilla,'-rig','zoey','-replace','rochelle','-retarget','-keepintro','-o',out)
+        light=out.with_name('swap_Light.qci')
+        text=light.read_text()
+        self.assertIn('blendwidth 2',text);self.assertIn('blend "move_x" -1 1',text)
+        self.assertIn('poseparameter "move_x"',text)
+        self.assertIn('$weightlist "__weights_layer_light_',text)
+        self.assertRegex(text,r'blendlayer "layer" -1 -0.5 0.5 1 poseparameter "move_x"')
+        self.assertNotIn('REPLACE ME',text)
+        self.assertEqual(len(list((out.parent/'anims').glob('*c1m1_intro*blend*.dmx'))),4)
+        qc=out.parent/'rebuild.qc'
+        qc.write_text('$modelname rebuilt_blend\n$bonealwayssetup child\n$body body "'+str(source.parent.parent/'mesh.smd').replace('\\','/')+'"\n'
+                      '$animation a_reference "'+str(source.parent.parent/'mesh.smd').replace('\\','/')+'"\n'
+                      '$include "swap_Light.qci"\n')
+        self.run_tool(COMPILER,'-nodefaultargs','-game',source.parent.parent,'-OutDir',self.root/'blend-rebuilt',qc)
+        rebuilt=next((self.root/'blend-rebuilt').rglob('rebuilt_blend.mdl'))
+        dest,_=self.decompile(rebuilt,'blend-decompiled')
+        regenerated=next(dest.rglob('*.qc')).read_text()
+        self.assertIn('blendwidth 2',regenerated)
+        self.assertIn('poseparameter "move_x"',regenerated)
+        self.assertIn('23.7',regenerated)
+        self.assertIn('$weightlist',regenerated)
+        # Also inspect compiled weights independently of the QC reconstruction.
+        def layer_weights(path):
+            data=path.read_bytes();bones=struct.unpack_from('<i',data,156)[0]
+            count,table=struct.unpack_from('<2i',data,188)
+            for index in range(count):
+                seq=table+index*212;label=seq+struct.unpack_from('<i',data,seq+4)[0]
+                if data[label:data.index(b'\0',label)]==b'layer':
+                    start=seq+struct.unpack_from('<i',data,seq+156)[0]
+                    return struct.unpack_from('<'+str(bones)+'f',data,start)
+            self.fail('missing layer sequence')
+        self.assertEqual(layer_weights(source),(0.0,1.0))
+        self.assertEqual(layer_weights(rebuilt),layer_weights(source))
+
+    def test_reduced_dmx_keeps_loop_event_boundaries_and_preserves_sampled_motion(self):
+        from dmx_keys import channels, sample, error
+        anim=HEADER+''.join(f'time {i}\n0 {i*.25} 0 0 0 0 {i*.01}\n1 0 0 0 0 0 0\n' for i in range(21))+'end\n'
+        source=self.fixture(qc='$body body mesh.smd\n$sequence motion { anim.smd fps 30 loop { event 1004 10 "x" } }\n',
+                            files={'mesh.smd':mesh(),'anim.smd':anim})
+        def export(folder,*extra):
+            root=self.root/folder
+            self.run_tool(DECOMPILER,source,'-outdir',root,'-dmxencoding','keyvalues2',*extra)
+            return channels(next(root.rglob('anims/motion.dmx')))
+        exact=export('exact-keys')
+        reduced=export('reduced-keys','-reducepos','.01','-reduceangle','.02')
+        self.assertLess(sum(len(c[1]) for c in reduced.values()),sum(len(c[1]) for c in exact.values()))
+        for name,channel in exact.items():
+            kind,times,values=channel
+            for boundary in (0,.3,.3333,.3667,.6667):
+                self.assertLess(min(abs(t-boundary) for t in reduced[name][1]),1e-6)
+            probes=set(times)
+            for a,b in zip(times,times[1:]):probes.update(a+(b-a)*i/8 for i in range(1,8))
+            for time in probes:
+                self.assertLessEqual(error(sample(channel,time),sample(reduced[name],time),kind=='quaternion'),
+                                     (.02 if kind=='quaternion' else .01)+2e-4,name)
 
 
 if __name__ == '__main__':

@@ -2950,6 +2950,7 @@ bool USDCReader::Impl::ReconstructPrimSpecNode(int parent, int current, int leve
 #else
         primspec.typeName() = primTypeName;
         primspec.name() = prim_name;
+        primspec.specifier() = specifier.value();
 
         prim::PropertyMap props;
         if (!BuildPropertyMap(node.GetChildren(), psmap, &props)) {
@@ -3170,6 +3171,7 @@ bool USDCReader::Impl::ReconstructPrimSpecNode(int parent, int current, int leve
         PrimSpec variantPrimSpec;
         variantPrimSpec.typeName() = primTypeName;
         variantPrimSpec.name() = prim_name;
+        variantPrimSpec.specifier() = specifier.value();
 
         prim::PropertyMap props;
         if (!BuildPropertyMap(node.GetChildren(), psmap, &props)) {

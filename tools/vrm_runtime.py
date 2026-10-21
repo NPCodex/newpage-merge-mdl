@@ -5,11 +5,13 @@ import base64
 import copy
 import json
 import math
+import mimetypes
 from pathlib import Path, PurePosixPath
 import re
 import struct
 import subprocess
 import sys
+from urllib.parse import unquote, urlsplit
 from mesh_states import number, quoted, write_atomic
 from output_transaction import Publication, different_paths
 
@@ -95,7 +97,7 @@ def transforms(nodes):
     return worlds,parents
 
 
-def prepare(document, source_dir, modelname, scale=39.3700787402):
+def prepare(document, source_dir, modelname, scale=39.3700787402, dependencies=None):
     scale=number(scale,'scale',True)
     if not re.fullmatch(r'[A-Za-z0-9_./-]+',modelname):raise ValueError('invalid modelname')
     path=PurePosixPath(modelname)
@@ -272,9 +274,24 @@ def prepare(document, source_dir, modelname, scale=39.3700787402):
     for collection in ('buffers','images'):
         for item in doc.get(collection,[]):
             uri=item.get('uri','')
+            if not isinstance(uri,str):raise ValueError('asset URI must be a string')
             if uri and not uri.startswith('data:'):
-                if re.match(r'^[A-Za-z]+://',uri):raise ValueError('external network assets must be downloaded before conversion')
-                item['uri']=(source_dir/uri).resolve().as_posix()
+                # Both glTF readers resolve external URIs relative to the scene.
+                # Embedding dependencies keeps the normalized scene relocatable,
+                # including while the publication transaction compiles privately.
+                parsed=urlsplit(uri)
+                drive_path=bool(re.match(r'^[A-Za-z]:[/\\]',uri))
+                if (parsed.scheme and not drive_path) or parsed.netloc:
+                    raise ValueError('external network/file URI assets must be local paths before conversion')
+                if parsed.query or parsed.fragment:raise ValueError('asset URI query/fragment is not supported')
+                if re.search(r'%(?![0-9A-Fa-f]{2})',uri):raise ValueError('invalid percent escape in asset URI')
+                decoded=unquote(uri,encoding='utf-8',errors='strict')
+                if '\0' in decoded:raise ValueError('NUL in asset URI')
+                dependency=(source_dir/decoded).resolve()
+                if dependencies is not None:dependencies.append(dependency)
+                payload=dependency.read_bytes()
+                mime='application/octet-stream' if collection=='buffers' else item.get('mimeType') or mimetypes.guess_type(dependency.name)[0] or 'application/octet-stream'
+                item['uri']='data:'+mime+';base64,'+base64.b64encode(payload).decode('ascii')
     for extension in ('VRM','VRMC_vrm','VRMC_springBone'):
         doc.get('extensions',{}).pop(extension,None)
         for field in ('extensionsRequired','extensionsUsed'):
@@ -332,13 +349,13 @@ def main(argv=None):
     args=parser.parse_args(argv)
     try:
         if bool(args.compiler)!=bool(args.game):raise ValueError('--compiler and --game must be supplied together')
-        doc,metadata,qc=prepare(load_document(args.source),args.source.resolve().parent,args.modelname,args.scale)
+        dependencies=[]
+        doc,metadata,qc=prepare(load_document(args.source),args.source.resolve().parent,args.modelname,args.scale,dependencies)
         if args.expression_clip:metadata['clip']=bake_expressions(metadata,json.loads(args.expression_clip.read_text()),args.fps)
         out=args.out.resolve()
         target=(args.game.resolve() if args.game else out)/PurePosixPath(metadata['model']).with_suffix('.vrm.json')
         inputs=[args.source]+([args.expression_clip] if args.expression_clip else [])
-        inputs.extend(Path(item['uri']) for collection in ('buffers','images') for item in doc.get(collection,[])
-                      if item.get('uri') and not item['uri'].startswith('data:'))
+        inputs.extend(dependencies)
         # Normalization changes names and removes VRM extensions: never replace
         # the caller's original document, including case/symlink/hardlink aliases.
         different_paths(inputs,[out/'avatar.gltf',out/'avatar.qc',target])

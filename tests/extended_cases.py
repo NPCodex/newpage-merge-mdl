@@ -548,8 +548,9 @@ class ExtendedCases:
   self.assertTrue(self.mdl('mounted').startswith(b'IDST'))
 
  def write_vpk(self,version=1,external=False):
+  import zlib
   data=(self.root/'mesh.smd').read_bytes();preload=data[:11];body=data[11:]
-  entry=struct.pack('<IHHIIH',0,len(preload),0 if external else 0x7fff,0,len(body),0xffff)+preload
+  entry=struct.pack('<IHHIIH',zlib.crc32(data),len(preload),0 if external else 0x7fff,0,len(body),0xffff)+preload
   tree=b'smd\0 \0mounted\0'+entry+b'\0\0\0'
   header=struct.pack('<III',0x55aa1234,version,len(tree))
   if version==2:header+=struct.pack('<4I',0 if external else len(body),0,0,0)
@@ -559,10 +560,21 @@ class ExtendedCases:
   return path
 
  def test_vpk_versions_preload_and_external_archive(self):
-  for version,external in [(1,False),(2,False),(2,True)]:
+  for version,external in [(1,False),(1,True),(2,False),(2,True)]:
    self.write_vpk(version,external)
    self.scene_qc('$modelname archived\n$body m mounted.smd\n')
    self.assertEqual(struct.unpack_from('<i',self.mdl('archived'),156)[0],1)
+
+ def test_vpk_crc_failure_preserves_previous_model(self):
+  self.scene_qc('$modelname archived\n$body m mesh.smd\n');before=self.mdl('archived')
+  for version in (1,2):
+   for external in (False,True):
+    archive=self.write_vpk(version,external)
+    target=self.root/'pack_000.vpk' if external else archive
+    data=target.read_bytes();self.assertIn(b'0 1 0 0 0 0 1',data)
+    target.write_bytes(data.replace(b'0 1 0 0 0 0 1',b'0 2 0 0 0 0 1',1))
+    output=self.scene_qc('$modelname archived\n$body m mounted.smd\n',success=False)
+    self.assertIn('CRC32 mismatch',output);self.assertEqual(self.mdl('archived'),before)
 
  def test_truncated_vpk_fails_without_replacing_model(self):
   self.scene_qc('$modelname archived\n$body m mesh.smd\n');old=self.mdl('archived')

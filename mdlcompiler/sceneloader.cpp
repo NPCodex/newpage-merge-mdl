@@ -1,9 +1,12 @@
 #include "sceneloader.h"
+#include "sourcevalidation.h"
+#include "bakereduction.h"
 #include "dependencies.h"
 #include "gltfscene.h"
 #include "c4dbridge.h"
 #include "pathcompat.h"
 #include "assimp/Importer.hpp"
+#include "assimp/DefaultIOSystem.h"
 #include "assimp/scene.h"
 #include "assimp/postprocess.h"
 #include "assimp/material.h"
@@ -13,15 +16,139 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <filesystem>
 #include <cctype>
 #include <fstream>
 #include <sstream>
+#include <chrono>
 
 namespace pulse::source {
 namespace {
 namespace pm = pulse::math;
+struct SceneFileStamp {
+    std::string path;
+    std::filesystem::file_time_type time;
+    uintmax_t size;
+    bool Current() const {
+        std::error_code ec;
+        const auto now=std::filesystem::last_write_time(pulse::FilePath(path),ec);
+        if(ec || now!=time)return false;
+        const auto bytes=std::filesystem::file_size(pulse::FilePath(path),ec);
+        return !ec && bytes==size;
+    }
+};
+struct SceneCacheEntry {
+    std::shared_ptr<aiScene> scene;
+    // For eligible glTF sources, scene owns sampled animation only. Geometry is
+    // immutable and shared across sample-rate/bake variants, without aliasing
+    // aiScene-owned arrays or changing their destruction rules.
+    std::shared_ptr<aiScene> geometry;
+    std::string geometryKey;
+    std::vector<SceneFileStamp> dependencies;
+    uint64_t bytes=0, geometryBytes=0, used=0;
+};
+std::map<std::string,SceneCacheEntry> sceneCache;
+SceneCacheStats sceneCacheStats;
+uint64_t sceneCacheClock=0;
+uint64_t ScenePayloadBytes(const aiScene& scene) {
+    // Assimp's C memory API only accepts scenes still owned by a C importer.
+    // Native and orphaned scenes need direct accounting, including morph data.
+    uint64_t bytes=sizeof(scene);
+    auto metadata=[&](const aiMetadata* data) {
+        if(!data)return uint64_t(0);
+        return uint64_t(sizeof(aiMetadata))+uint64_t(data->mNumProperties)*(sizeof(aiString)+sizeof(aiMetadataEntry)+sizeof(aiString));
+    };
+    std::function<void(const aiNode*)> node=[&](const aiNode* n) {
+        if(!n)return;bytes+=sizeof(aiNode)+uint64_t(n->mNumChildren)*sizeof(aiNode*)+uint64_t(n->mNumMeshes)*sizeof(unsigned)+metadata(n->mMetaData);
+        for(unsigned i=0;i<n->mNumChildren;++i)node(n->mChildren[i]);
+    };node(scene.mRootNode);bytes+=metadata(scene.mMetaData);
+    auto streams=[](const auto& mesh) {
+        uint64_t stride=0;
+        if(mesh.mVertices)stride+=sizeof(aiVector3D);if(mesh.mNormals)stride+=sizeof(aiVector3D);
+        if(mesh.mTangents)stride+=sizeof(aiVector3D);if(mesh.mBitangents)stride+=sizeof(aiVector3D);
+        for(const auto* colors:mesh.mColors)if(colors)stride+=sizeof(aiColor4D);
+        for(const auto* uv:mesh.mTextureCoords)if(uv)stride+=sizeof(aiVector3D);
+        return stride*mesh.mNumVertices;
+    };
+    bytes+=uint64_t(scene.mNumMeshes)*sizeof(aiMesh*);
+    for(unsigned i=0;i<scene.mNumMeshes;++i) {
+        const auto& mesh=*scene.mMeshes[i];bytes+=sizeof(aiMesh)+streams(mesh)+uint64_t(mesh.mNumFaces)*sizeof(aiFace)+uint64_t(mesh.mNumBones)*sizeof(aiBone*)+uint64_t(mesh.mNumAnimMeshes)*sizeof(aiAnimMesh*);
+        for(unsigned f=0;f<mesh.mNumFaces;++f)bytes+=uint64_t(mesh.mFaces[f].mNumIndices)*sizeof(unsigned);
+        for(unsigned b=0;b<mesh.mNumBones;++b)bytes+=sizeof(aiBone)+uint64_t(mesh.mBones[b]->mNumWeights)*sizeof(aiVertexWeight);
+        for(unsigned m=0;m<mesh.mNumAnimMeshes;++m)bytes+=sizeof(aiAnimMesh)+streams(*mesh.mAnimMeshes[m]);
+    }
+    bytes+=uint64_t(scene.mNumAnimations)*sizeof(aiAnimation*);
+    for(unsigned i=0;i<scene.mNumAnimations;++i) {
+        const auto& a=*scene.mAnimations[i];bytes+=sizeof(aiAnimation)+uint64_t(a.mNumChannels)*sizeof(aiNodeAnim*)+uint64_t(a.mNumMeshChannels)*sizeof(aiMeshAnim*)+uint64_t(a.mNumMorphMeshChannels)*sizeof(aiMeshMorphAnim*);
+        for(unsigned c=0;c<a.mNumChannels;++c) {const auto& ch=*a.mChannels[c];bytes+=sizeof(aiNodeAnim)+uint64_t(ch.mNumPositionKeys+ch.mNumScalingKeys)*sizeof(aiVectorKey)+uint64_t(ch.mNumRotationKeys)*sizeof(aiQuatKey);}
+        for(unsigned c=0;c<a.mNumMeshChannels;++c)bytes+=sizeof(aiMeshAnim)+uint64_t(a.mMeshChannels[c]->mNumKeys)*sizeof(aiMeshKey);
+        for(unsigned c=0;c<a.mNumMorphMeshChannels;++c) {const auto& ch=*a.mMorphMeshChannels[c];bytes+=sizeof(aiMeshMorphAnim)+uint64_t(ch.mNumKeys)*sizeof(aiMeshMorphKey);for(unsigned k=0;k<ch.mNumKeys;++k)bytes+=uint64_t(ch.mKeys[k].mNumValuesAndWeights)*(sizeof(unsigned)+sizeof(double));}
+    }
+    bytes+=uint64_t(scene.mNumMaterials)*sizeof(aiMaterial*);
+    for(unsigned i=0;i<scene.mNumMaterials;++i) {const auto& m=*scene.mMaterials[i];bytes+=sizeof(aiMaterial)+uint64_t(m.mNumAllocated)*sizeof(aiMaterialProperty*);for(unsigned p=0;p<m.mNumProperties;++p)bytes+=sizeof(aiMaterialProperty)+m.mProperties[p]->mDataLength;}
+    bytes+=uint64_t(scene.mNumTextures)*sizeof(aiTexture*);
+    for(unsigned i=0;i<scene.mNumTextures;++i) {const auto& t=*scene.mTextures[i];bytes+=sizeof(aiTexture)+(t.mHeight?uint64_t(t.mWidth)*t.mHeight*sizeof(aiTexel):t.mWidth);}
+    return bytes+uint64_t(scene.mNumLights)*(sizeof(aiLight*)+sizeof(aiLight))+uint64_t(scene.mNumCameras)*(sizeof(aiCamera*)+sizeof(aiCamera));
+}
+void RecountSceneCache() {
+    uint64_t bytes=0;std::set<const aiScene*> geometries;
+    for(const auto& item:sceneCache) {
+        const auto& entry=item.second;bytes+=entry.bytes;
+        if(entry.geometry && geometries.insert(entry.geometry.get()).second)bytes+=entry.geometryBytes;
+    }
+    sceneCacheStats.retainedBytes=bytes;
+}
+uint64_t AddedSceneBytes(const SceneCacheEntry& incoming) {
+    uint64_t bytes=incoming.bytes;
+    if(incoming.geometry && std::none_of(sceneCache.begin(),sceneCache.end(),[&](const auto& item){return item.second.geometry==incoming.geometry;}))bytes+=incoming.geometryBytes;
+    return bytes;
+}
+void TrimSceneCache(const SceneCacheEntry& incoming) {
+    while(!sceneCache.empty() && AddedSceneBytes(incoming)>sceneCacheStats.budgetBytes-sceneCacheStats.retainedBytes) {
+        const auto oldest=std::min_element(sceneCache.begin(),sceneCache.end(),[](const auto& a,const auto& b){return a.second.used<b.second.used;});
+        sceneCache.erase(oldest);RecountSceneCache();++sceneCacheStats.evictions;
+    }
+}
+std::shared_ptr<aiScene> TakeSceneAnimations(aiScene& source) {
+    auto result=std::make_shared<aiScene>();
+    if(source.mMetaData)result->mMetaData=new aiMetadata(*source.mMetaData);
+    result->mNumAnimations=source.mNumAnimations;result->mAnimations=source.mAnimations;
+    source.mNumAnimations=0;source.mAnimations=nullptr;
+    return result;
+}
+// Preserve Assimp's IO semantics while recording ancillary files such as OBJ
+// material libraries and external glTF buffers actually opened by importers.
+class DependencyIO final : public Assimp::IOSystem {
+    Assimp::DefaultIOSystem filesystem;
+    const bool decodeUris;
+    std::string Resolve(const char* path) const {
+        if(!decodeUris || filesystem.Exists(path))return path;
+        std::string decoded;
+        auto hex=[](char c){return c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:c>='A'&&c<='F'?c-'A'+10:-1;};
+        for(size_t i=0;path[i];++i) {
+            if(path[i]=='%' && path[i+1] && path[i+2]) {
+                const int a=hex(path[i+1]),b=hex(path[i+2]);
+                if(a>=0&&b>=0 && (a||b)){decoded+=char(a*16+b);i+=2;continue;}
+            }
+            decoded+=path[i];
+        }
+        return decoded;
+    }
+public:
+    explicit DependencyIO(bool uris) : decodeUris(uris) {}
+    bool Exists(const char* path) const override { return filesystem.Exists(Resolve(path).c_str()); }
+    char getOsSeparator() const override { return filesystem.getOsSeparator(); }
+    Assimp::IOStream* Open(const char* path,const char* mode="rb") override {
+        const auto resolved=Resolve(path);
+        auto* stream=filesystem.Open(resolved.c_str(),mode);
+        if(stream && mode && mode[0]=='r') pulse::dependencies::Note(resolved);
+        return stream;
+    }
+    void Close(Assimp::IOStream* stream) override { filesystem.Close(stream); }
+    bool ComparePaths(const char* a,const char* b) const override { return filesystem.ComparePaths(a,b); }
+};
 pm::Vector3 Vector(const aiVector3D& v) { return {v.x,v.y,v.z}; }
 aiMatrix4x4 Rigid(const aiMatrix4x4& m) {
     aiVector3D s,p; aiQuaternion q; m.Decompose(s,q,p);
@@ -133,6 +260,21 @@ void AddPmxMorphs(const std::string& path,aiScene& scene) {
     if(skipped)std::printf("PMX: %u non-vertex morphs are not representable as MDL vertex flexes (UV/material/bone/physics or groups containing them)\n",skipped);
 }
 }
+void BeginSceneImportSession() {
+    sceneCache.clear();sceneCacheStats=SceneCacheStats{};sceneCacheClock=0;
+}
+void EndSceneImportSession() {
+    sceneCache.clear();sceneCacheStats.retainedBytes=0;
+}
+void SetSceneCacheBudgetMiB(unsigned mib) {
+    sceneCacheStats.budgetBytes=uint64_t(mib)*1024*1024;
+    // Avoid unsigned subtraction while shrinking an existing cache.
+    while(!sceneCache.empty() && sceneCacheStats.retainedBytes>sceneCacheStats.budgetBytes) {
+        const auto oldest=std::min_element(sceneCache.begin(),sceneCache.end(),[](const auto& a,const auto& b){return a.second.used<b.second.used;});
+        sceneCache.erase(oldest);RecountSceneCache();++sceneCacheStats.evictions;
+    }
+}
+SceneCacheStats GetSceneCacheStats() { return sceneCacheStats; }
 std::string SceneImportFormats() {
     Assimp::Importer importer;std::ostringstream result;
     result<<"Native\tSource DMX/SMD/VTA, ufbx, cgltf\tdmx smd vta fbx gltf glb vrm\n";
@@ -148,35 +290,64 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
                      const SceneOptions& options) {
     try {
         pulse::dependencies::Note(path);
-        // Private sources with different InNode values share parsed geometry.
-        // The timestamp prevents reuse after an author changes the input file.
-        static std::map<std::string,std::shared_ptr<aiScene>> cache;
+        // Private InNode selections share a bounded parsed scene. All observed
+        // dependencies are checked before reuse; the QC session owns its lifetime.
         std::string ext=pulse::FilePath(path).extension().string();
         std::transform(ext.begin(),ext.end(),ext.begin(),[](unsigned char c){return char(std::tolower(c));});
         const bool c4d=ext==".c4d";
         const bool gltf=c4d || ext==".gltf" || ext==".glb" || ext==".vrm";
-        const bool nativeInstances=gltf && !c4d && options.noFastGltf && GltfHasInstancing(path);
+        const bool hasInstances=gltf && !c4d && GltfHasInstancing(path);
+        const bool nativeInstances=hasInstances && options.noFastGltf;
         const bool fast=gltf && (!options.noFastGltf || nativeInstances);
         if(nativeInstances)std::printf("glTF instancing: using native expansion because Assimp does not retain EXT_mesh_gpu_instancing\n");
-        const std::string key=path+"|"+std::to_string(static_cast<long long>(std::filesystem::last_write_time(pulse::FilePath(path)).time_since_epoch().count()))+
-                              "|"+std::to_string(fast)+"|"+std::to_string(options.sampleRate)+"|"+options.bakeAnimation;
-        auto found=cache.find(key);
-        if(found==cache.end()) {
+        std::ostringstream cacheKey;cacheKey<<path<<'|'<<fast<<'|'<<std::hexfloat<<options.sampleRate<<'|'<<!options.bakeAnimation.empty();
+        const auto key=cacheKey.str();
+        // Instance expansion can add animated joints and currently depends on
+        // the geometry walk. Keep that path and C4D conversion as whole scenes.
+        const bool separateGeometry=gltf && !c4d && !hasInstances;
+        const std::string geometryKey=separateGeometry ? path+'|'+std::to_string(fast) : std::string();
+        auto current=[](const SceneCacheEntry& entry) {return std::all_of(entry.dependencies.begin(),entry.dependencies.end(),[](const auto& stamp){return stamp.Current();});};
+        auto found=sceneCache.find(key);
+        if(found!=sceneCache.end() && !current(found->second)) {
+            sceneCache.erase(found);RecountSceneCache();found=sceneCache.end();++sceneCacheStats.stale;
+        }
+        std::shared_ptr<aiScene> parsed, geometry;
+        if(found!=sceneCache.end()) {
+            ++sceneCacheStats.hits;found->second.used=++sceneCacheClock;parsed=found->second.scene;
+            geometry=found->second.geometry;
+            for(const auto& stamp:found->second.dependencies)pulse::dependencies::Note(stamp.path);
+        } else {
+            ++sceneCacheStats.misses;
+            const auto started=std::chrono::steady_clock::now();
+            if(separateGeometry) for(auto item=sceneCache.begin();item!=sceneCache.end();) {
+                if(item->second.geometryKey!=geometryKey) {++item;continue;}
+                if(!current(item->second)) {item=sceneCache.erase(item);RecountSceneCache();++sceneCacheStats.stale;continue;}
+                geometry=item->second.geometry;
+                for(const auto& stamp:item->second.dependencies)pulse::dependencies::Note(stamp.path);
+                break;
+            }
             TemporaryC4dScene converted;
             // Generated GLB files are implementation details. Track the original
             // C4D as the source dependency, even on a conversion/import failure.
             struct ConversionDependency {
                 const TemporaryC4dScene& temporary;
                 ~ConversionDependency() {
-                    if(!temporary.path.empty())pulse::dependencies::Files().erase(temporary.path.lexically_normal().string());
+                    if(!temporary.path.empty()) {
+                        const auto key=temporary.path.lexically_normal().string();
+                        pulse::dependencies::Files().erase(key);pulse::dependencies::Paths().erase(key);
+                    }
                 }
             } conversionDependency{converted};
             std::string parsePath=path;
             if(c4d) {ConvertC4dScene(path,converted);parsePath=converted.path.u8string();}
-            std::shared_ptr<aiScene> parsed;
-            if(fast) parsed=LoadFastGltfScene(parsePath,options.sampleRate,!options.bakeAnimation.empty());
+            if(geometry) {
+                auto sampled=LoadFastGltfScene(parsePath,options.sampleRate,!options.bakeAnimation.empty(),true,fast);
+                parsed=TakeSceneAnimations(*sampled);++sceneCacheStats.geometryReuses;
+            }
+            else if(fast) parsed=LoadFastGltfScene(parsePath,options.sampleRate,!options.bakeAnimation.empty());
             else {
                 Assimp::Importer importer;
+                importer.SetIOHandler(new DependencyIO(gltf));
                 importer.SetPropertyFloat("NPMDL_SCENE_SAMPLE_RATE",options.sampleRate);
                 if(!importer.ReadFile(parsePath,aiProcess_Triangulate|aiProcess_GenSmoothNormals)) throw std::runtime_error(importer.GetErrorString());
                 parsed.reset(importer.GetOrphanedScene());
@@ -187,6 +358,11 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
                     // original accessors, without building a second mesh copy.
                     auto precise = LoadFastGltfScene(parsePath, options.sampleRate,
                         !options.bakeAnimation.empty(), true);
+                    if(!parsed->mMetaData)parsed->mMetaData=new aiMetadata;
+                    for(unsigned i=0;i<precise->mNumAnimations;++i) {
+                        const auto key="NPMDL_STEP_ANIMATION_"+std::to_string(i);bool step=false;
+                        if(precise->mMetaData && precise->mMetaData->Get(key,step))parsed->mMetaData->Add(key,step);
+                    }
                     for (unsigned i=0;i<parsed->mNumAnimations;++i) delete parsed->mAnimations[i];
                     delete[] parsed->mAnimations;
                     parsed->mNumAnimations = precise->mNumAnimations;
@@ -195,9 +371,29 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
                     precise->mAnimations = nullptr;
                 }
             }
-            found=cache.emplace(key,std::move(parsed)).first;
+            if(separateGeometry && !geometry) {
+                geometry=parsed;parsed=TakeSceneAnimations(*geometry);++sceneCacheStats.geometryImports;
+            }
+            sceneCacheStats.importSeconds+=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
+            SceneCacheEntry entry;entry.scene=parsed;entry.bytes=ScenePayloadBytes(*parsed);entry.used=++sceneCacheClock;
+            entry.geometry=geometry;entry.geometryKey=geometryKey;
+            if(geometry)entry.geometryBytes=ScenePayloadBytes(*geometry);
+            // A conservative superset also covers mounts and importers which
+            // read through a shared resolver rather than Assimp's IOSystem.
+            for(const auto& dependency:pulse::dependencies::Paths()) {
+                if(!converted.path.empty() && pulse::FilePath(dependency)==converted.path)continue;
+                std::error_code ec;auto time=std::filesystem::last_write_time(pulse::FilePath(dependency),ec);if(ec)continue;
+                const auto bytes=std::filesystem::file_size(pulse::FilePath(dependency),ec);if(!ec)entry.dependencies.push_back({dependency,time,bytes});
+            }
+            if(sceneCacheStats.budgetBytes && entry.bytes+entry.geometryBytes<=sceneCacheStats.budgetBytes) {
+                TrimSceneCache(entry);
+                sceneCache.emplace(key,std::move(entry));
+                RecountSceneCache();sceneCacheStats.peakRetainedBytes=std::max(sceneCacheStats.peakRetainedBytes,sceneCacheStats.retainedBytes);
+                sceneCacheStats.peakEntries=std::max(sceneCacheStats.peakEntries,uint64_t(sceneCache.size()));
+            } else ++sceneCacheStats.bypasses;
         }
-        const aiScene* scene=found->second.get();
+        const aiScene* scene=geometry ? geometry.get() : parsed.get();
+        const aiScene* animationScene=parsed.get();
         if(!scene || !scene->mRootNode) throw std::runtime_error("scene has no root node");
         std::vector<const aiNode*> nodes;
         std::vector<int> parents;
@@ -213,6 +409,14 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
         };
         visit(scene->mRootNode,-1);
         if(nodes.size()>pulse::limits::kMaxSrcBones) throw std::runtime_error("scene exceeds source bone limit");
+        if(!ValidateSourceBoneNames(out,err)) return false;
+        SourceNameRegistry animationNames(true);
+        if(!animationNames.Add("BindPose",err)) return false;
+        for(unsigned a=0;a<animationScene->mNumAnimations;++a) {
+            std::string name=animationScene->mAnimations[a]->mName.C_Str();
+            if(name.empty())name="animation_"+std::to_string(a);
+            if(!animationNames.Add(name,err)) return false;
+        }
         int selected=-1;
         if(!options.node.empty()) {
             auto i=byName.find(options.node);
@@ -257,8 +461,9 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
             throw std::runtime_error("SampleRate must be finite and within (0, 1000]");
         std::vector<std::vector<aiMatrix4x4>> bakedWorlds;
         const aiAnimation* bakedAnimation=nullptr;
-        for(unsigned a=0;a<scene->mNumAnimations;++a) {
-            auto animation=scene->mAnimations[a];
+        bool bakeReductionSafe=false;
+        for(unsigned a=0;a<animationScene->mNumAnimations;++a) {
+            auto animation=animationScene->mAnimations[a];
             if(!options.bakeAnimation.empty()&&options.bakeAnimation!=animation->mName.C_Str())continue;
             const bool bake=!options.bakeAnimation.empty();
             if(animation->mNumMeshChannels || (!bake&&animation->mNumMorphMeshChannels))
@@ -272,7 +477,10 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
             if(clip.name.empty()) clip.name="animation_"+std::to_string(a);
             clip.numframes=1+int(std::lround(duration*options.sampleRate)); clip.endframe=clip.numframes-1;
             if(bake){clip.numframes=1+int(std::ceil(duration*options.sampleRate));clip.endframe=clip.numframes-1;
-                if(clip.numframes>4096)throw std::runtime_error("BakeSceneAnimation exceeds 4096 sampled frames");bakedAnimation=animation;}
+                if(clip.numframes>4096)throw std::runtime_error("BakeSceneAnimation exceeds 4096 sampled frames");bakedAnimation=animation;
+                bool step=false;
+                bakeReductionSafe=animationScene->mMetaData && animationScene->mMetaData->Get("NPMDL_STEP_ANIMATION_"+std::to_string(a),step) && !step;
+            }
             clip.frames.resize(clip.numframes);
             for(unsigned ch=0;ch<animation->mNumChannels;++ch) {
                 const auto channel=animation->mChannels[ch];
@@ -401,6 +609,8 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
             out.bakedController="bake_"+options.bakeAnimation;
             for(char& c:out.bakedController)if(!std::isalnum(static_cast<unsigned char>(c))&&c!='_')c='_';
             ControllerRemap remap;remap.name=out.bakedController;remap.type=RemapType::NWay;
+            std::vector<SrcMorphAnim> samples;
+            out.bakedReferenceFrames=unsigned(bakedWorlds.size());
             for(size_t f=0;f<bakedWorlds.size();++f) {
                 const std::string name=out.bakedController+"_f"+std::to_string(f);
                 SrcMorphAnim morph; morph.name=name;
@@ -442,11 +652,25 @@ bool LoadSceneSource(const std::string& path,Source& out,MaterialTable& mats,flo
                         for(int index:unified.at(entry.base+v)){SrcVertAnim va;va.vertex=index;va.speed=1;va.side=1;va.pos=Vector(delta);va.normal=Vector(ndelta);morph.vanims.push_back(va);}
                     }
                 }
-                SrcFlexKey key;key.name=name;key.morphIndex=int(out.morphs.size());out.flexkeys.push_back(key);out.morphs.push_back(std::move(morph));
-                remap.rawControls.push_back(name);out.combinationControls.push_back({name});CombinationRule rule;rule.flex=int(f);rule.combination.push_back(int(f));out.combinationRules.push_back(std::move(rule));
+                samples.push_back(std::move(morph));
             }
+            std::vector<size_t> retained(samples.size());std::iota(retained.begin(),retained.end(),0);
+            if(options.bakePositionTolerance>=0) {
+                if(bakeReductionSafe) {
+                    BakedSampleError error;retained=ReduceBakedSamples(samples,out,options.bakePositionTolerance,options.bakeNormalTolerance,error);
+                    out.bakedPositionError=error.position;out.bakedNormalError=error.normalDegrees;out.bakedReductionApplied=true;
+                } else std::printf("BakeSceneTolerance: retaining every frame because the clip uses STEP interpolation or the importer does not expose its interpolation mode\n");
+            }
+            std::vector<float> retainedTimes;
+            for(size_t f=0;f<retained.size();++f) {
+                const size_t original=retained[f];const auto name=out.bakedController+"_f"+std::to_string(f);samples[original].name=name;
+                SrcFlexKey key;key.name=name;key.morphIndex=int(out.morphs.size());out.flexkeys.push_back(key);out.morphs.push_back(std::move(samples[original]));
+                remap.rawControls.push_back(name);out.combinationControls.push_back({name});CombinationRule rule;rule.flex=int(f);rule.combination.push_back(int(f));out.combinationRules.push_back(std::move(rule));
+                retainedTimes.push_back(out.bakedTimes[original]);
+            }
+            out.bakedTimes=std::move(retainedTimes);
             out.controllerRemaps.push_back(std::move(remap));
-            std::printf("Baked scene animation '%s': %zu frames into %s / multi_%s flex controls\n",options.bakeAnimation.c_str(),bakedWorlds.size(),out.bakedController.c_str(),out.bakedController.c_str());
+            std::printf("Baked scene animation '%s': %zu/%u reference frames into %s / multi_%s flex controls (sampled position error %.9g, normal error %.9g degrees)\n",options.bakeAnimation.c_str(),out.bakedTimes.size(),out.bakedReferenceFrames,out.bakedController.c_str(),out.bakedController.c_str(),out.bakedPositionError,out.bakedNormalError);
         }
         return true;
     } catch(const std::exception& e) { if(err) *err=e.what(); return false; }

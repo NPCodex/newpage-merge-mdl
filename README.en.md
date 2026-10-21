@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.36
+# NewPageMergeMDL
 
 <p>
 <img src=".github/images/newpage-compiler.png" width="80" alt="NewPage compiler">
@@ -88,8 +88,8 @@ folders first. On Linux, omit `.exe` and use `./subtools/<tool>`.
 
 ### vmd2valvebiped — MMD animation conversion
 
-Converts VMD motion to DMX using a target ValveBiped model. The target MDL must
-contain left/right leg IK chains.
+Converts VMD motion to DMX. The default target is ValveBiped with left/right leg
+IK chains; `-mapping` supplies explicit custom humanoid bone roles.
 
 ```powershell
 .\subtools\vmd2valvebiped.exe -vmd "D:/motions/dance.vmd" -mdl "D:/models/character.mdl" -o "D:/build/dance.dmx"
@@ -106,6 +106,10 @@ Add `-compile "my_animation" -game "D:/Games/MyMod"` to invoke the packaged
 `NewPageMergeMDL` directly. Keep `-game` pointed at the actual target game.
 Converted sources and compiled assets are published together after success;
 ordinary failures preserve the previous output set.
+
+Use `-mode camera` without an MDL for camera-only input, or `-mode face` for
+facial tracks only. See the [VMD guide](subtools/vmd2valvebiped/README.md) for
+time ranges, mapping profiles and optional DMX key reduction.
 
 ### l4d_animswap — L4D2 survivor animation setup
 
@@ -127,6 +131,9 @@ folder; externally stored animations require the corresponding `.ani` files
 beside the input MDLs. `-all -outdir "D:/build/survivor-qci"` generates a batch.
 Run without arguments for options and survivor names.
 
+Supported blend grids and pose layers are retained by `-retarget`; see the
+[retargeting contract](subtools/l4d_animswap/RETARGET.md) for limits.
+
 ### meshtool — binary mesh-processing interface
 
 A helper for callers that encode its binary request format. It does **not** read
@@ -143,6 +150,10 @@ The commands use different request/response layouts: see
 requests. Simplification returns indices/error; decomposition returns point
 clouds from which the caller constructs convex hulls. Success returns exit code
 0; invalid requests and processing failures return a nonzero exit code.
+
+For OBJ/GLB input use `python tools/mesh_workflow.py simplify input.obj --output
+lod.obj --ratio 0.5`. See [authoring workflows](AUTHORING_WORKFLOWS.md) for geometry
+exports, error summaries, material collection and incremental batch builds.
 
 ### ag2proportions — experimental CS2 AnimGraph2 proportions
 
@@ -183,9 +194,13 @@ This is a CS2 tool, not a Source1 MDL arm fix. It adapts translation proportions
 not bind axes or mesh rigging. Finish in ModelDoc and check the complete
 model and its actions in game. See [installation](INSTALL.md) for staging,
 process-interruption recovery and same-target locking. The bounded
-[SAS gameplay validation](tests/reports/ag2-gameplay-20261020.md) covers only the
-listed model/actions; first-person checks use the stock graph. Use
-`--help` for further options, including the Linux compiler runner.
+[SAS gameplay validation](tests/reports/ag2-gameplay-20261020.md) covers only its
+listed model/actions. A separate `first_person = true` job requires explicit
+arms `model_dmx` and an enabled `hudmodel` graph; see the
+[AG2 guide](subtools/ag2proportions/README.md). Its
+[resource-validation report](tests/reports/ag2-firstperson-v1238.md) is distinct
+from actual gameplay acceptance in the [game matrix](GAME_PLATFORM_MATRIX.md).
+Use `--help` for further options, including the Linux compiler runner.
 
 ## Documentation
 
@@ -194,7 +209,10 @@ listed model/actions; first-person checks use the stock graph. Use
 | Installation and package contents | [INSTALL.md](INSTALL.md) |
 | Features by upstream and fixed scope | [Feature matrix](FEATURE_MATRIX.md), [completion ledger](FIVE_COMPILER_COMPLETION.md) |
 | QC syntax, compatibility choices and limits | [COMPATIBILITY.md](COMPATIBILITY.md) |
-| Tests and actual game-validation coverage | [VALIDATION.md](VALIDATION.md) |
+| Tests and actual game-validation coverage | [Game/platform matrix](GAME_PLATFORM_MATRIX.md), [VALIDATION.md](VALIDATION.md) |
+| Scene cache, vertex baking and bounded USD composition | [SCENE_IMPORT.md](SCENE_IMPORT.md) |
+| Selective decompilation, quality reports and key reduction | [DECOMPILER_EXPORTS.md](DECOMPILER_EXPORTS.md) |
+| Mesh processing, local materials and incremental builds | [AUTHORING_WORKFLOWS.md](AUTHORING_WORKFLOWS.md) |
 | CSGO cloth and DMX inputs | [Cloth authoring](CSGO_CLOTH_AUTHORING.md), [DMX inputs](CSGO_DMX_INPUTS.md) |
 | M3D/USD/VRML/C4D import requirements | [O5_FORMAT_IMPORTS.md](O5_FORMAT_IMPORTS.md) |
 | VRM and finite mesh-state playback | [VRM runtime](VRM_RUNTIME.md), [mesh states](MESH_STATE_WORKFLOW.md) |

@@ -1,4 +1,5 @@
 #include "dmxeval.h"
+#include "sourcevalidation.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -451,12 +452,13 @@ bool EvaluateDmxAnimations(const dmx::Datamodel& dm,const dmx::Element* root,
         if(roots.empty()&&(root->GetElementArray("trackGroups")||root->GetElementArray("channels")))append(root);
         // Selection throughout the compiler is case-insensitive, including the
         // reserved BindPose clip. Use that same equivalence for uniqueness.
-        auto folded=[](std::string name){for(char& c:name)c=char(std::tolower(static_cast<unsigned char>(c)));return name;};
-        std::set<std::string> names;for(const auto& a:out.anims)names.insert(folded(a.name));
+        source::SourceNameRegistry names(true);
+        std::string nameError;
+        for(const auto& a:out.anims)if(!names.Add(a.name,&nameError))throw EvalError(nameError);
         for(const E* clip:roots) {
             const auto clips=CollectClips(clip);if(clips.empty())continue;
             source::SourceAnim anim;anim.name=clip->name;if(anim.name.empty())anim.name="animation";
-            if(!names.insert(folded(anim.name)).second)throw EvalError("duplicate or reserved animation name (case-insensitive) '"+anim.name+"'");
+            if(!names.Add(anim.name,&nameError))throw EvalError(nameError);
             float fps=float(clip->GetInt("frameRate",0));if(fps<=0){fps=clip->GetFloat("frameRate",30);if(!std::isfinite(fps))throw EvalError("invalid animation frame rate");if(fps<=0)fps=30;}
             if(fps>10000)throw EvalError("invalid animation frame rate: exceeds 10000");
             anim.sampleFps=fps;

@@ -28,11 +28,11 @@ jobs:
       matrix:
         compiler: ${{ fromJSON(inputs.include-gcc && '["clang", "gcc"]' || '["clang"]') }}
     name: Linux ${{ matrix.compiler }} validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      VALIDATION_CC: ${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
-      VALIDATION_CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
+      VALIDATION_CC: ${{ matrix.compiler == 'gcc' && 'gcc-13' || 'clang-18' }}
+      VALIDATION_CXX: ${{ matrix.compiler == 'gcc' && 'g++-13' || 'clang++-18' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -121,7 +121,7 @@ jobs:
           python .github/scripts/upstream_release.py record-build --manifest prepared/upstream-manifest.json --cache clang-build/CMakeCache.txt --configuration MinSizeRel
           python .github/scripts/upstream_release.py package --source "$VALIDATION_SOURCE" --dist clang-dist --platform linux64 --manifest prepared/upstream-manifest.json --source-archive prepared/NewPageMergeMDL-source.zip --output clang-validation.zip
           python "$VALIDATION_SOURCE/tests/verify_package.py" clang-validation.zip --manifest prepared/upstream-manifest.json --subtool-probe clang-output-tests/bin/subtool_transaction_probe
-          python "$VALIDATION_SOURCE/tests/linux_package_smoke.py" clang-validation.zip
+          python "$VALIDATION_SOURCE/tests/linux_package_smoke.py" clang-validation.zip --require-baseline
       - uses: actions/upload-artifact@v7
         if: inputs.include-gcc
         with:

@@ -6,6 +6,7 @@ All URLs come from configured official GitHub repositories, not release-body tex
 """
 import argparse
 import datetime
+import time
 import hashlib
 import io
 import json
@@ -21,6 +22,12 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def build_record_time():
+    epoch = os.environ.get('SOURCE_DATE_EPOCH')
+    return (datetime.datetime.fromtimestamp(int(epoch), datetime.timezone.utc) if epoch is not None
+            else datetime.datetime.now(datetime.timezone.utc)).isoformat()
 
 
 def sha256(path):
@@ -412,7 +419,7 @@ def maintained_manifest(args):
     state = source_state(config, controller, config['pulse_base'], source)
     state.update(version_base=state['project_version'], project_version=version,
                  release_tag=args.tag, source_kind='maintained checkout',
-                 generated_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
+                 generated_utc=build_record_time())
     Path(args.output).write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
 
 
@@ -468,12 +475,13 @@ def prepare(args):
         shutil.copy2(ROOT / name, candidate / name)
     stamp_version(candidate, base_version, state['project_version'])
     for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md',
-                 'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
+                 'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md',
+                 'AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md'):
         if (ROOT / name).is_file():
             shutil.copy2(ROOT / name, candidate / name)
     run(sys.executable, candidate / '.github/scripts/refresh_overlay.py', '--base-repository', candidate)
     state['build_overlay_sha256'] = source_text_sha256((candidate / 'automation/compatibility.patch').read_bytes())
-    state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    state['generated_utc'] = build_record_time()
     state['release_changes'] = release_changes(state, previous, os.environ.get('GITHUB_REPOSITORY'))
     (work / 'upstream-manifest.json').write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
     notes = concise_release_notes(state['release_changes'])
@@ -481,9 +489,27 @@ def prepare(args):
     emit(changed=True, tag=tag)
 
 
+class ReproducibleZipFile(zipfile.ZipFile):
+    """Stable entry metadata; exact file bytes and explicit ELF modes are retained."""
+    def writestr(self, zinfo_or_arcname, data, compress_type=None, compresslevel=None):
+        info = zinfo_or_arcname if isinstance(zinfo_or_arcname, zipfile.ZipInfo) else zipfile.ZipInfo(zinfo_or_arcname)
+        epoch = max(315532800, int(os.environ.get('SOURCE_DATE_EPOCH', '315532800')))
+        info.date_time = time.gmtime(epoch)[:6]
+        info.create_system = 3
+        info.external_attr = (0o40755 if info.is_dir() else 0o100644) << 16
+        info.compress_type = self.compression if compress_type is None else compress_type
+        level = getattr(self, 'compresslevel', getattr(self, '_compresslevel', 9))
+        return super().writestr(info, data, compress_type, level if compresslevel is None else compresslevel)
+
+    def write(self, filename, arcname=None, compress_type=None, compresslevel=None):
+        path = Path(filename)
+        name = str(arcname if arcname is not None else filename).replace('\\', '/')
+        self.writestr(name, path.read_bytes(), compress_type, compresslevel)
+
+
 def source_archive(args):
     source, destination = Path(args.source), Path(args.output)
-    with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with ReproducibleZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(source.rglob('*')):
             relative = path.relative_to(source)
             if path.is_file() and not any(p in {'.git', '__pycache__', 'build', 'out', 'dist'} for p in relative.parts):
@@ -509,6 +535,9 @@ def record_build(args):
         'compiler_id': cache.get('NEWPAGE_BUILD_CXX_COMPILER_ID'),
         'compiler_version': cache.get('NEWPAGE_BUILD_CXX_COMPILER_VERSION'),
         'interprocedural_optimization': cache['CMAKE_INTERPROCEDURAL_OPTIMIZATION'].upper() in ('ON', 'TRUE', '1', 'YES'),
+        'reproducible': cache.get('NEWPAGE_REPRODUCIBLE', 'OFF').upper() in ('ON', 'TRUE', '1', 'YES'),
+        'separate_symbols': cache.get('NEWPAGE_SEPARATE_SYMBOLS', 'OFF').upper() in ('ON', 'TRUE', '1', 'YES'),
+        'source_date_epoch': os.environ.get('SOURCE_DATE_EPOCH'),
     }
     manifest.write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
 
@@ -544,9 +573,9 @@ def package(args):
         notice = dist / name
         if not notice.is_file() or notice.stat().st_size == 0:
             raise ValueError('Missing or empty required ag2proportions license: ' + name)
-    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with ReproducibleZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(dist.rglob('*')):
-            if path.is_file():
+            if path.is_file() and path.suffix.lower() not in ('.pdb', '.debug', '.ilk'):
                 name = (Path('NewPageMergeMDL') / path.relative_to(dist)).as_posix()
                 archive.write(path, name)
                 if args.platform == 'linux64':
@@ -562,6 +591,11 @@ def package(args):
             archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
         archive.write(Path(args.source) / 'subtools/meshtool/PROTOCOL.md',
                       'NewPageMergeMDL/subtools/meshtool-protocol.md')
+        for name in ('subtools/ag2proportions/README.md', 'subtools/vmd2valvebiped/README.md',
+                     'subtools/l4d_animswap/RETARGET.md'):
+            path = Path(args.source) / name
+            if path.is_file():
+                archive.write(path, 'NewPageMergeMDL/' + name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         # Keep README previews usable after extraction and retain the editable
         # brand source. Do not bundle workflow files with the runtime tools.
@@ -574,7 +608,8 @@ def package(args):
         if getattr(args, 'source_archive', None):
             archive.write(args.source_archive, 'NewPageMergeMDL/sources/NewPageMergeMDL-source.zip')
         for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md',
-                     'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
+                     'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md',
+                     'AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md'):
             if (Path(args.source) / name).is_file():
                 archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
         for path in sorted((Path(args.source) / 'tests/reports').glob('*')):
@@ -604,7 +639,7 @@ def package(args):
                 archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())
     # Reopen after writing: Windows ZipInfo.from_file retains a backslash
     # orig_filename until the central directory is read back from disk.
-    with zipfile.ZipFile(output, 'a', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with ReproducibleZipFile(output, 'a', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         write_inventory(archive)
 
 

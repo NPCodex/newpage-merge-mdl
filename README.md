@@ -1,4 +1,4 @@
-# NewPageMergeMDL v1.2.36
+# NewPageMergeMDL
 
 <p>
 <img src=".github/images/newpage-compiler.png" width="80" alt="NewPage compiler">
@@ -52,7 +52,7 @@
 
 ### vmd2valvebiped：MMD 动作转 ValveBiped 动画
 
-输入 VMD 动作与提供骨架比例的 MDL，输出 DMX 动画。目标 MDL 必须具有左右腿 IK 链；`-pmx` 可指定原 MMD 模型，以其静止骨架替代内置骨架。
+输入 VMD 动作与提供骨架比例的 MDL，输出 DMX 动画。默认使用带左右腿 IK 链的 ValveBiped；`-pmx` 可指定原 MMD 静止骨架，`-mapping` 可指定自定义人形骨映射。
 
 ```powershell
 .\subtools\vmd2valvebiped.exe -vmd "D:/motions/dance.vmd" -mdl "D:/models/character.mdl" -o "D:/build/dance.dmx"
@@ -61,6 +61,8 @@
 输出为指定的 `dance.dmx`，随后在自己的 QC 中引用并编译。添加 `-dmxmodel 22` 可输出支持的表情通道。可重复 `-vmd` 批量处理，此时不要使用只针对单个输出的 `-o`；默认写到各 VMD 旁边。腿部按逐帧 IK 开关选择 IK/FK；正交相机与非法数值会明确失败。有相机键时另写 `<输出名>_camera.smd`，加 `-camerafov dmx` 可额外输出相机/FOV DMX。不带参数运行可查看完整帮助。
 
 添加 `-compile "my_animation" -game "D:/Games/MyMod"` 可直接调用随包 `NewPageMergeMDL`；`-game` 仍须使用真实目标游戏目录。转换源与编译产物全部成功后一起发布，普通失败保留原输出。
+
+纯相机使用 `-mode camera`（无需 MDL），纯表情使用 `-mode face`。时段、映射格式及可选 DMX 减帧见 [VMD 使用指南](subtools/vmd2valvebiped/README.md)。
 
 ### l4d_animswap：L4D2 幸存者动画序列适配
 
@@ -73,7 +75,7 @@
 将生成的 QCI 通过 `$include` 接入自己的 QC，再编译模型。`-skip` 默认跳过由模型自身定义的前两个序列槽；检查生成文件的注释，并补齐 `REPLACE ME` 项或按需选择 `-ref` / `-usenoanimation`。
 
 - 支持角色：`bill francis louis zoey coach nick ellis rochelle`。
-- `-retarget` 额外导出部分场景动作到 QCI 旁的 `anims/`，供后续编译使用；使用外部动画块的原版模型还需在 `-vanilla` 目录准备对应 `.ani` 文件。
+- `-retarget` 导出支持的动作、混合格点及 pose 层到 QCI 旁的 `anims/`；外部动画需要对应 `.ani`。范围及限制见 [重定向说明](subtools/l4d_animswap/RETARGET.md)。
 - 批量生成可用 `-vanilla "D:/L4D2/extracted-survivors" -all -outdir "D:/build/swaps"`。不带参数运行查看完整帮助。
 
 ### meshtool：网格简化与凸分解接口
@@ -86,6 +88,8 @@
 ```
 
 调用方先生成请求，执行命令并检查退出码（成功为 `0`），再读取响应。两种协议不同：简化返回索引及误差，凸分解返回各凸块点云，调用方需重新构造凸包。字段布局见 [simplify 实现](subtools/meshtool/mesh_simplify.cpp) 与 [decompose 实现](subtools/meshtool/convex_decompose.cpp)。
+
+处理普通 OBJ/GLB 可用 `python tools/mesh_workflow.py simplify input.obj --output lod.obj --ratio 0.5`。几何导出、误差摘要、材质收集和批量增量编译见 [作者工作流](AUTHORING_WORKFLOWS.md)。
 
 ### ag2proportions：CS2 AnimGraph2 比例适配（实验性）
 
@@ -114,14 +118,15 @@ $cs2 = "D:/SteamLibrary/steamapps/common/Counter-Strike Global Offensive"
 
 Job 中的路径相对 job 文件；可选 `model_dmx` 指定骨架、`proportions` 指定保持姿态的 DMX。`--generate-only` 仅跳过资源编译，仍需 CS2 数据；是否修改 VMDL 由 `write_model` 决定。`--help` 查看完整参数。
 
-此工具不用于 Source1 MDL 手臂修复。比例 clip 主要调整平移，不重做骨轴或蒙皮。暂存、进程中断恢复和并发保护见 [安装指南](INSTALL.md)；[SAS 实机验证](tests/reports/ag2-gameplay-20261020.md) 仅覆盖报告列出的模型与动作，第一人称为原版图的无回归对照。
+第一人称比例使用独立 job 的 `first_person = true`，必须显式指定 arms `model_dmx` 及已有启用的 `hudmodel` 图，详见 [AG2 使用指南](subtools/ag2proportions/README.md)。此工具不用于 Source1 MDL 手臂修复，比例 clip 主要调整平移，不重做骨轴或蒙皮。恢复说明见 [安装指南](INSTALL.md)；资源编译与实机验收范围分别记录在 [第一人称报告](tests/reports/ag2-firstperson-v1238.md) 和 [游戏矩阵](GAME_PLATFORM_MATRIX.md)。
 
 ## 详细文档
 
 | 内容 | 文档 |
 | --- | --- |
 | 功能覆盖与兼容参数 | [功能清单](FEATURE_MATRIX.md) · [兼容说明](COMPATIBILITY.md) |
-| 已验证范围与参考证据 | [验证记录](VALIDATION.md) · [五编译器固定范围](FIVE_COMPILER_COMPLETION.md) · [二进制调查](BINARY_ANALYSIS.md) |
+| 已验证范围与参考证据 | [游戏/平台矩阵](GAME_PLATFORM_MATRIX.md) · [验证记录](VALIDATION.md) · [五编译器固定范围](FIVE_COMPILER_COMPLETION.md) · [二进制调查](BINARY_ANALYSIS.md) |
+| 场景、导出与作者工具 | [缓存/烘焙/USD](SCENE_IMPORT.md) · [选择性反编译/质量报告](DECOMPILER_EXPORTS.md) · [网格/材质/增量构建](AUTHORING_WORKFLOWS.md) |
 | CSGO 专项 | [DMX 输入与 rig](CSGO_DMX_INPUTS.md) · [布料](CSGO_CLOTH_AUTHORING.md) |
 | 额外格式与运行模块 | [M3D/USD/VRML/C4D](O5_FORMAT_IMPORTS.md) · [网格状态](MESH_STATE_WORKFLOW.md) · [VRM](VRM_RUNTIME.md) |
 | 构建与发布维护 | [自动发布配置](AUTOMATION.md) |

@@ -32,3 +32,7 @@ if(WIN32)
     endif()
 endif()
 target_link_libraries(l4d_animswap PRIVATE pulse_libs pulse_math pulse_dmx)
+
+if(COMMAND newpage_separate_symbols)
+    newpage_separate_symbols(l4d_animswap)
+endif()

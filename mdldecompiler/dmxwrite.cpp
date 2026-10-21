@@ -14,6 +14,7 @@
 // same skeleton - see WritePhysicsMesh.
 
 #include "dmxwrite.h"
+#include "selection.h"
 #include "dmx/dmx.h"
 
 #include <algorithm>
@@ -507,7 +508,7 @@ struct Dmx : pulse::dmx::Builder {
         if (file) file.write(reinterpret_cast<const char*>(bytes.data()),
                              static_cast<std::streamsize>(bytes.size()));
         file.close();
-        if (file) return true;
+        if (file) { QualityWritten(path); return true; }
         ExtractionError("cannot finish writing \"" + path + "\"");
         return false;
     }
@@ -681,6 +682,48 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
         ExtractionError("vertex range for \"" + meshName + "\" is outside the .vvd");
         return;
     }
+    // The VVD checksum associates sidecars; it does not authenticate their
+    // contents. Validate the payload before indexing the fixed weight arrays
+    // or publishing a mesh which a later importer would have to repair.
+    for (size_t i = 0; i < nverts; ++i) {
+        const auto& v = vvd[vbase + i];
+        const auto& skin = v.m_BoneWeights;
+        const std::string where = "invalid VVD vertex " + std::to_string(vbase + i) +
+                                  " in \"" + meshName + "\": ";
+        auto invalid = [&](const char* reason) { ExtractionError(where + reason); };
+        if (skin.numbones < 1 || skin.numbones > fm::kMaxNumBonesPerVert) {
+            invalid("weight count is outside the fixed 1..3 range");
+            return;
+        }
+        const float geometry[] = {v.m_vecPosition.x, v.m_vecPosition.y, v.m_vecPosition.z,
+            v.m_vecNormal.x, v.m_vecNormal.y, v.m_vecNormal.z, v.m_vecTexCoord.x, v.m_vecTexCoord.y};
+        if (std::any_of(std::begin(geometry), std::end(geometry),
+                        [](float value) { return !std::isfinite(value); })) {
+            invalid("position, normal or UV is non-finite");
+            return;
+        }
+        double sum = 0.0;
+        for (int b = 0; b < skin.numbones; ++b) {
+            // Valve's shipped survivor VVDs include weights one float ULP
+            // above 1. Permit only rounding noise, then normalize that vertex
+            // on export; a genuinely out-of-range payload still fails.
+            constexpr float rounding = 4.0f * std::numeric_limits<float>::epsilon();
+            if (!std::isfinite(skin.weight[b]) || skin.weight[b] < 0.0f ||
+                skin.weight[b] > 1.0f + rounding) {
+                invalid("skin weight must be finite and between 0 and 1");
+                return;
+            }
+            if (skin.bone[b] >= h.numbones) {
+                invalid("skin bone index is outside the MDL skeleton");
+                return;
+            }
+            sum += skin.weight[b];
+        }
+        if (std::fabs(sum - 1.0) > 0.001) {
+            invalid("active skin weights do not sum to 1");
+            return;
+        }
+    }
     const fm::mstudiomesh_t* meshes =
         m.At<fm::mstudiomesh_t>(&model, model.meshindex, model.nummeshes);
     if (!meshes) {
@@ -711,8 +754,16 @@ void WriteOne(const Mdl& m, const std::string& path, const std::string& meshName
         // show the texture the right way up. 1-(1-v) can land a ULP off the
         // original for an awkward float, which is invisible either way.
         texcoords[i] = {v.m_vecTexCoord.x, 1.0f - v.m_vecTexCoord.y};
+        double weightSum = 0.0;
+        bool roundoff = false;
+        for (int b = 0; b < v.m_BoneWeights.numbones; ++b) {
+            weightSum += v.m_BoneWeights.weight[b];
+            roundoff |= v.m_BoneWeights.weight[b] > 1.0f;
+        }
         for (int b = 0; b < v.m_BoneWeights.numbones && b < jointCount; ++b) {
-            jointWeights[i * jointCount + b] = v.m_BoneWeights.weight[b];
+            jointWeights[i * jointCount + b] = roundoff
+                ? static_cast<float>(v.m_BoneWeights.weight[b] / weightSum)
+                : v.m_BoneWeights.weight[b];
             jointIndices[i * jointCount + b] = v.m_BoneWeights.bone[b];
         }
     }
@@ -1394,7 +1445,7 @@ int DmxModelVersion() { return g_formatModel; }
 
 bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string& clipName, float fps,
                        const std::vector<std::vector<AnimPose>>& frames,
-                       const std::vector<FlexTrack>* flex) {
+                       const std::vector<FlexTrack>* flex, const std::vector<size_t>* protectedKeys) {
     if (frames.empty() || fps <= 0)
         return false;
     Dmx q{Hash(clipName)};
@@ -1462,10 +1513,14 @@ bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string&
                     return false;
             return true;
         };
-        if (flat(&pos[0].x, pos.size(), 3))
+        if (g_reducePosition <= 0 && flat(&pos[0].x, pos.size(), 3))
             pos.resize(1);
-        if (flat(&rot[0].x, rot.size(), 4))
+        if (g_reduceAngle <= 0 && flat(&rot[0].x, rot.size(), 4))
             rot.resize(1);
+        const auto posKeys = ReduceKeys(pos, times, g_reducePosition, protectedKeys);
+        const auto rotKeys = ReduceKeys(rot, times, g_reduceAngle, protectedKeys);
+        pos = SelectKeys(pos, posKeys);
+        rot = SelectKeys(rot, rotKeys);
 
         for (int c = 0; c < 2; ++c) {
             const int n = j * 2 + c;
@@ -1487,11 +1542,11 @@ bool WriteAnimationDmx(const Mdl& m, const std::string& path, const std::string&
             q.End();
 
             q.Begin(isPos ? "DmeVector3LogLayer" : "DmeQuaternionLogLayer", idLayer[n], "log");
-            const size_t keyCount = isPos ? pos.size() : rot.size();
+            const auto& keys = isPos ? posKeys : rotKeys;
             if (g_formatModel == 1)
-                q.IntArray("times", std::vector<int>(legacyTimes.begin(), legacyTimes.begin() + keyCount));
+                q.IntArray("times", SelectKeys(legacyTimes, keys));
             else
-                q.TimeArray("times", std::vector<float>(times.begin(), times.begin() + keyCount));
+                q.TimeArray("times", SelectKeys(times, keys));
             if (isPos)
                 q.V3Array("values", pos);
             else
@@ -2003,6 +2058,7 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
     const std::string stem = StripExt(mdlPath);
     std::vector<char> vvdBuf;
     if (!ReadWhole(stem + ".vvd", vvdBuf)) {
+        if (g_quality.enabled) g_quality.missingDependencies.push_back(stem + ".vvd");
         meshError("no usable \"" + stem + ".vvd\"");
         return lods;
     }
@@ -2024,6 +2080,7 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
     // .dx90.vtx is what ships; the others are the same data for dead renderers
     if (!ReadWhole(stem + ".dx90.vtx", vtxBuf) && !ReadWhole(stem + ".vtx", vtxBuf) &&
         !ReadWhole(stem + ".dx80.vtx", vtxBuf)) {
+        if (g_quality.enabled) g_quality.missingDependencies.push_back(stem + ".dx90.vtx (or .vtx/.dx80.vtx)");
         meshError("no usable VTX sidecar (.dx90.vtx, .vtx or .dx80.vtx) for \"" + stem + "\"");
         return lods;
     }
@@ -2042,6 +2099,8 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
         return lods;
     }
     const int numLods = fh->numLODs;
+    for (int selected : g_lods)
+        if (selected >= numLods) { ExtractionError("selected LOD does not exist: " + std::to_string(selected)); return lods; }
 
     // the strip-group stride is probed once and reused for every LOD
     size_t stride = sizeof(vtx::LegacyStripGroupHeader_t);
@@ -2070,6 +2129,7 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
     static const ModelTris empty;
     std::vector<fm::mstudiovertex_t> vvd;
     for (int lod = 0; lod < numLods && lod < fm::kMaxNumLods; ++lod) {
+        if (!g_lods.empty() && !g_lods.count(lod)) continue;
         const LodLayout layout = BuildLodLayout(m, lod);
         if (!ExtractTris(vtxBuf, m, stride, lod, layout, tris)) {
             meshError("invalid VTX triangle data at LOD " + std::to_string(lod));
@@ -2090,6 +2150,7 @@ std::vector<LodInfo> WriteRenderMeshes(const Mdl& m, const std::string& mdlPath,
         // what the $lod block's replacemodel points at
         const std::string suffix = lod ? "_lod" + std::to_string(lod) : std::string();
         for (int i = 0; i < h.numbodyparts && static_cast<size_t>(i) < names.size(); ++i) {
+            if (!g_bodygroups.empty() && !g_bodygroups.count(i)) continue;
             const fm::mstudiomodel_t* models =
                 m.At<fm::mstudiomodel_t>(&parts[i], parts[i].modelindex, parts[i].nummodels);
             for (int j = 0; models && j < parts[i].nummodels; ++j) {

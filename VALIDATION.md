@@ -1,4 +1,21 @@
-# v1.2.36 验证记录
+# 当前验证入口
+
+当前开发源码为 **v1.2.38**；本节不表示已经发布或全部验收完成。固定 33 项的实施、
+定向测试和剩余条件见 [实施台账](tests/reports/v1.2.38-improvements.md)。游戏与平台
+按独立能力记录在 [验收矩阵](GAME_PLATFORM_MATRIX.md) 及其
+[JSON](tests/reports/game-platform-matrix.json)。
+
+本轮已保存的专项报告包括 [导入/缓存/烘焙/USD](tests/reports/v1.2.38-import-validation.md)、
+[AG2 第一人称资源](tests/reports/ag2-firstperson-v1238.md)、
+[真实 Blender 人形映射](tests/reports/v1.2.38-blender-vmd.md) 和
+[开发性能测量](tests/reports/v1.2.38-performance.md)。这些证据不代替尚未完成的真实
+C4D 作者场景、生成第一人称游戏表现、最终双平台包或两次干净构建复现验收。
+
+[v1.2.37 修复记录](tests/reports/toolkit-fixes-20261020.md) 包含 Windows/Linux 包、
+Plum 与历史 SAS 实机证据。下列章节均保留它们当时的版本和条件，旧的“未实现”描述
+应结合当前台账/使用指南阅读，旧测试数量不能当作本轮通过数量。
+
+# v1.2.36 历史验证记录
 
 本轮验证范围、实测状态和发布包门禁见 [替换构建报告](tests/reports/v1.2.36-replacement-validation.md) 及 [机器摘要](tests/reports/v1.2.36-replacement-validation.json)。Linux 的 GCC/Clang、IPO 降级、ELF 依赖、ZIP 权限及工具启动由当前 CI 构建验证；过去的 Linux 成功运行不计为本轮验证。
 

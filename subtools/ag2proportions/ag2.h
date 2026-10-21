@@ -21,6 +21,7 @@ namespace pm = pulse::math;
 
 inline constexpr const char* kStockGraph = "animation/graphs/worldmodel/worldmodel.vnmgraph";
 inline constexpr const char* kStockUiGraph = "animation/graphs/ui/uimodel.vnmgraph";
+inline constexpr const char* kStockViewGraph = "animation/graphs/viewmodel/viewmodel.vnmgraph";
 inline constexpr const char* kStockSkeleton = "animation/skeletons/characters/worldmodel.vnmskel";
 inline constexpr const char* kStockViewSkeleton = "animation/skeletons/characters/viewmodel.vnmskel";
 
@@ -32,6 +33,7 @@ struct Job {
     fs::path proportions; // default: the model DMX's bind pose
     fs::path vnmskel;     // default: read from the installed pak01 VPK
     bool writeModel = false;
+    bool firstPerson = false; // explicit arms rig; changes only the hudmodel graph
 };
 
 struct Options {
@@ -78,10 +80,12 @@ std::vector<Bone> ReadRig(pulse::dmx::Datamodel& dm, float scale, bool held);
 // shares with the rig, whatever the posture; needs at least three such pairs.
 bool HasStockLengths(const std::vector<Bone>& rig, const std::vector<const std::vector<Bone>*>& skeletons);
 SkeletonBuild BuildSkeleton(const std::vector<Bone>& rig, const std::vector<Bone>& stock,
-                            const std::vector<Bone>& nodes);
+                            const std::vector<Bone>& nodes, bool firstPerson = false);
 std::vector<Bone> ModelStock(const std::vector<Bone>& stock); // stock plus the agent-only bones
 std::vector<Bone> TargetPose(const std::vector<Bone>& skeleton, const std::vector<Bone>& stock,
                              std::vector<std::string>& warnings);
+std::vector<Bone> TargetViewPose(const std::vector<Bone>& rig, const std::vector<Bone>& stock,
+                                std::vector<std::string>& warnings);
 void WriteSkeleton(const fs::path& path, const std::vector<Bone>& bones);
 void WriteHeldPose(const fs::path& path, const std::vector<Bone>& bones, int lowLodCount);
 
@@ -89,8 +93,9 @@ void WriteHeldPose(const fs::path& path, const std::vector<Bone>& bones, int low
 StockSkeleton ReadStockSkeleton(const std::vector<uint8_t>& resource);
 void RequireSameSkeleton(const StockSkeleton& installed, const StockSkeleton& supplied);
 kv::Value SkeletonDescriptor(const StockSkeleton& stock, const std::string& referenceDmx);
-kv::Value ProportionClip(const std::string& relative);
-kv::Value WrapperGraph(const kv::Value& stockGraph, const std::string& stockPath, const std::string& clip);
+kv::Value ProportionClip(const std::string& relative, bool firstPerson = false);
+kv::Value WrapperGraph(const kv::Value& stockGraph, const std::string& stockPath, const std::string& clip,
+                       bool firstPerson = false);
 
 // workflow.cpp
 void Generate(const Job& job, const Options& options);
@@ -99,6 +104,6 @@ void Generate(const Job& job, const Options& options);
 void PreflightCompiler(const Options& options, const Paths& paths);
 void Compile(const Options& options, const Paths& paths, const std::vector<uint8_t>& skeleton,
              const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor,
-             const fs::path& stagedCompiled);
+             const fs::path& stagedCompiled, bool firstPerson = false);
 
 } // namespace ag2

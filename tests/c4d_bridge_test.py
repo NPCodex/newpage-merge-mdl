@@ -155,6 +155,27 @@ class C4dBridge(unittest.TestCase):
         self.assertIn('Refusing to overwrite', text)
         self.assertEqual(output.read_bytes(), b'previous scene')
 
+    def test_missing_cache_animation_skin_and_corrupt_geometry_fail_without_output(self):
+        expected = {
+            'missing-cache': 'missing saved polygon cache or unsupported C4D object/plugin',
+            'invalid-index': 'polygon point index out of range',
+            'short-uv': 'UV tag count does not match polygon count',
+            'skin': 'skin weights are not supported',
+            'animated': 'animated C4D object is not supported',
+        }
+        self.compile()
+        original = self.outputs()
+        for mode, diagnostic in expected.items():
+            with self.subTest(mode=mode):
+                source = FIXTURE.parent / ('cineware-reject-' + mode + '.c4d')
+                output = self.root / (mode + '.glb')
+                text = self.run_process([HELPER, source.resolve(), output], success=False)
+                self.assertIn(diagnostic, text)
+                self.assertFalse(output.exists())
+                text = self.compile(source=source.resolve(), success=False)
+                self.assertIn('C4D conversion failed', text)
+                self.assertEqual(self.outputs(), original)
+
     def material_scene(self):
         output = self.root / 'materials.glb'
         self.run_process([HELPER, MATERIAL_FIXTURE.resolve(), output])

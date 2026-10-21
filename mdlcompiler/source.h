@@ -32,6 +32,8 @@ struct SceneOptions {
     std::string bakeAnimation;
     std::string node;
     float sampleRate = 30;
+    // Negative disables reduction. Bounds are against SceneSampleRate samples.
+    float bakePositionTolerance=-1, bakeNormalTolerance=0;
     bool zUp = false;
     bool noFastGltf = false;
     bool explicitSampleRate=false;
@@ -222,6 +224,9 @@ enum class LoadKind {
 struct Source {
     std::string bakedController;
     std::vector<float> bakedTimes;
+    unsigned bakedReferenceFrames=0;
+    double bakedPositionError=0, bakedNormalError=0;
+    bool bakedReductionApplied=false;
     std::string filename;
     SceneOptions sceneOptions;
     LoadKind kind = LoadKind::Model; // set by the front end, the only thing

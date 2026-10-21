@@ -10,6 +10,8 @@
 .\NewPageMergeMDL.exe "D:/models/model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/model"
 ```
 
+本轮 Linux x86-64 构建配置的最低验收环境为 Ubuntu 24.04 LTS（glibc 2.39、libstdc++ 提供 GLIBCXX_3.4.32/CXXABI_1.3.15）；CI 固定该系统并检查所需符号上限。当前候选是否已完成整包运行验收见 [平台矩阵](GAME_PLATFORM_MATRIX.md)，配置本身不代表验收通过。更旧发行版可自行构建，不以能解压视为可运行。
+
 Linux 使用 `./NewPageMergeMDL` 并换成实际 Linux 路径；若解压工具未保留可执行权限，先为需要运行的程序设置执行权限。
 
 包内根目录提供 `INSTALL.md`、`upstream-manifest.json` 和 `SHA256SUMS.txt`，验证报告在 `tests/reports/`。自动合并包与手动维护包均在 `sources/NewPageMergeMDL-source.zip` 保存精确构建源码。以包内 `upstream-manifest.json` 的 `controller_sha`、来源散列及构建信息识别附件；同标签替换构建可能保留旧标签，标签或 GitHub 自动 Source code 归档不能替代包内源码。独立 GPL 转换器的对应源码始终随包附带。
@@ -44,9 +46,9 @@ v1.2.34 先预检编译工具链，源文件、VMDL/首次备份与编译产物�
 
 VMD/L4D 同样支持整批持久恢复和同目标并发保护。输出旁的 `<文件名>.newpage-subtool-journal` 指向系统临时目录中的 `newpage-subtool-stage-*`；发布备份位于目标目录的 `.newpage-subtool-publish-*`。中断后不要清理这些文件或系统临时目录，按原命令重跑；内容冲突时先检查外部修改并保留现场。系统临时目录中的 `newpage-subtool-lock-*.lock` 是进程锁，不应通过删锁绕过正在运行的任务。
 
-Python 准备脚本 `mesh_states.py`、`vrm_runtime.py` 和 `vrml_import.py` 先隔离生成并编译，再统一发布相关输出；普通写入错误会回滚，同目标 helper 并发会被拒绝。它们尚不提供强杀/断电后的持久自动恢复；不要将此范围与原生 VMD/L4D 混同。输入与生成输出不能是同一文件，VRM 应使用独立的 `--out` 目录。
+Python 准备脚本及作者包装脚本先隔离生成并编译，再统一发布相关输出，具有同目标进程锁和持久 journal。下次保留任一组成员的任务会先锁定整组，恢复未提交的事务或清理已提交事务；恢复中再次中断仍可重试。输入与生成输出不能是同一文件，VRM 应使用独立的 `--out` 目录。
 
-若 Python helper 连回滚也失败，错误会给出保留的暂存目录；其中 `recovery.json` 记录原输出与备份的对应关系。保留该目录和输出旁的 `.newpage-helper-old-*`，核对外部修改后再手工恢复。已成功提交但无法清理旧备份时只显示警告，当前新输出仍然有效。
+中断后保留 `.newpage-helper-*` 和 `*.newpage-helper-journal` 文件，按原命令重跑。若外部改动与记录指纹冲突，自动恢复停止并保留日志/备份；先核对这些改动再处理。文件内容会刷新，支持的平台还刷新目录，但这不保证任意文件系统、硬件断电或外部并发读取的安全。细节见 [作者工作流](AUTHORING_WORKFLOWS.md#interrupted-helper-publication)。
 
 ## English
 
@@ -57,6 +59,8 @@ Python 准备脚本 `mesh_states.py`、`vrm_runtime.py` 和 `vrml_import.py` 先
 ```sh
 ./NewPageMergeMDL "/models/model.qc" -game "/games/csgo legacy/csgo" -OutDir "/build/model"
 ```
+
+The configured minimum Linux x86-64 acceptance environment is Ubuntu 24.04 LTS (glibc 2.39 and libstdc++ providing GLIBCXX_3.4.32/CXXABI_1.3.15). CI pins this baseline and rejects newer required symbols. See the [platform matrix](GAME_PLATFORM_MATRIX.md) for the current candidate's actual package-run status; configuration alone is not a passing run. Older distributions require a source build and their own validation.
 
 On Windows, use `NewPageMergeMDL.exe` and your Windows paths. On Linux, restore executable permission for the required programs if your extractor did not preserve it.
 
@@ -92,6 +96,6 @@ See [Before compiling](README.en.md#before-compiling), [format imports](O5_FORMA
 
 VMD/L4D also support batch recovery and same-target locking. Each `<filename>.newpage-subtool-journal` beside an output points to `newpage-subtool-stage-*` in the system temporary directory; publication backups use `.newpage-subtool-publish-*` beside their targets. Preserve these and the temporary directory after interruption, then rerun the original command. Inspect external-edit conflicts before altering recovery data. The temporary `newpage-subtool-lock-*.lock` files implement process locks; deleting them is not a way to bypass a running job.
 
-The Python preparation scripts `mesh_states.py`, `vrm_runtime.py` and `vrml_import.py` generate and compile in isolation before publishing related outputs together. Ordinary write failures roll back, and concurrent helper writers are rejected. They do not provide persistent recovery after forced termination or power loss. Input and generated output files must differ; use a separate VRM `--out` directory.
+Python preparation and authoring helpers generate/compile in isolation and publish related outputs with process locks and a persistent journal. The next invocation reserving any group member locks the entire group and restores an uncommitted transaction or finishes committed cleanup. Recovery interrupted a second time can be retried. Input and generated output files must differ; use a separate VRM `--out` directory.
 
-If rollback itself fails, the error identifies retained staging with a `recovery.json` mapping original destinations to backups. Keep that directory and adjacent `.newpage-helper-old-*` files until external edits are reviewed and recovery is completed manually. Failure to remove an old backup after a successful commit is a warning; the new outputs remain valid.
+Keep `.newpage-helper-*` files and `*.newpage-helper-journal` pointers after interruption, then rerun the original command. Fingerprint conflicts from external edits stop automatic recovery and retain its journal/backups for inspection. File contents are flushed, with directory flushing where supported; this is not an absolute filesystem/hardware power-loss guarantee or an atomic snapshot for readers. See [authoring workflows](AUTHORING_WORKFLOWS.md#interrupted-helper-publication).

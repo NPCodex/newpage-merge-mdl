@@ -9,24 +9,28 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zlib
 
 LOOKUP = None
 
-def vpk(path, name, payload, preload=b'', chunk=False):
+def vpk(path, name, payload, preload=b'', chunk=False, version=1):
     tree = (b'txt\0 \0' + name.encode() + b'\0' +
-            struct.pack('<IHHIIH', 0, len(preload), 0 if chunk else 0x7fff,
+            struct.pack('<IHHIIH', zlib.crc32(preload+payload), len(preload), 0 if chunk else 0x7fff,
                         0, len(payload), 0xffff) + preload + b'\0\0\0')
-    path.write_bytes(struct.pack('<III', 0x55aa1234, 1, len(tree)) + tree +
-                     (b'' if chunk else payload))
-    if chunk:
+    header=struct.pack('<III', 0x55aa1234, version, len(tree))
+    if version==2:header+=struct.pack('<4I',0 if chunk else len(payload),0,0,0)
+    path.write_bytes(header + tree + (b'' if chunk else payload))
+    if chunk and payload:
         path.with_name(path.stem.removesuffix('_dir') + '_000.vpk').write_bytes(payload)
+    elif chunk:
+        path.with_name(path.stem.removesuffix('_dir') + '_000.vpk').unlink(missing_ok=True)
 
 def raw_vpk(path, entries):
     """Byte-key fixtures model legacy VPK names without decoding them on the host."""
     tree = bytearray()
     for directory, name, extension, payload in entries:
         tree.extend(extension + b'\0' + directory + b'\0' + name + b'\0')
-        tree.extend(struct.pack('<IHHIIH', 0, len(payload), 0x7fff, 0, 0, 0xffff))
+        tree.extend(struct.pack('<IHHIIH', zlib.crc32(payload), len(payload), 0x7fff, 0, 0, 0xffff))
         tree.extend(payload + b'\0\0')
     tree.extend(b'\0')
     path.write_bytes(struct.pack('<III', 0x55aa1234, 1, len(tree)) + tree)
@@ -65,6 +69,33 @@ class ContentMounts(unittest.TestCase):
         vpk(self.root/'sources_dir.vpk','source',b'archive')
         self.config([('CONTENT','sources.vpk')])
         self.assertEqual(self.lookup('source.txt').stdout,b'archive')
+    def test_vpk_crc_covers_preload_and_body_for_both_versions_and_storage(self):
+        self.config([('CONTENT','sources.vpk')])
+        path=self.root/'sources_dir.vpk'
+        for version in (1,2):
+            for chunk in (False,True):
+                for payload,preload in ((b'body',b'preload-'),(b'',b'preload-only'),(b'body-only',b''),(b'',b'')):
+                    with self.subTest(version=version,chunk=chunk,payload=payload,preload=preload):
+                        vpk(path,'source',payload,preload,chunk,version)
+                        result=self.lookup('source.txt')
+                        self.assertEqual(result.returncode,0,result.stderr)
+                        self.assertEqual(result.stdout,preload+payload)
+                        header=12 if version==1 else 28
+                        # Corrupt the expected CRC without disturbing entry lengths.
+                        data=bytearray(path.read_bytes());data[header+len(b'txt\0 \0source\0')]^=1;path.write_bytes(data)
+                        result=self.lookup('source.txt')
+                        self.assertNotEqual(result.returncode,0);self.assertIn(b'CRC32 mismatch',result.stderr)
+                        self.assertEqual(result.stdout,b'')
+                for corrupt in ('preload','body'):
+                    with self.subTest(version=version,chunk=chunk,corrupt=corrupt):
+                        vpk(path,'source',b'body',b'preload-',chunk,version)
+                        target=path.with_name('sources_000.vpk') if chunk and corrupt=='body' else path
+                        data=bytearray(target.read_bytes())
+                        offset=data.index(b'preload-') if corrupt=='preload' else len(data)-1
+                        data[offset]^=1;target.write_bytes(data)
+                        result=self.lookup('source.txt')
+                        self.assertNotEqual(result.returncode,0);self.assertIn(b'CRC32 mismatch',result.stderr)
+                        self.assertEqual(result.stdout,b'')
     def test_non_utf8_vpk_names_do_not_block_other_resources(self):
         raw_vpk(self.root/'sources_dir.vpk', [
             (b'materials/dons_decals', b'serviet bug\xe9', b'vmt', b'legacy-name'),

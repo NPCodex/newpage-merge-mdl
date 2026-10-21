@@ -23,6 +23,10 @@ GitHub 的调度可能延迟，长时间无活动的公开仓库可能被自动�
    不再作为独立附件；发布说明列出平台包及其 SHA256。上传和校验完成前保持草稿。
 7. PulseModel 与本仓库版本未变时不重复构建、发布；失败不更新已发布状态，后续可重试。
 
+手动维护构建和 Dev 构建共用 `.github/scripts/package_maintained.py` 的完整清单与整包验证；Dev 附件明确命名为开发产物，不自动发布 Release。Linux 失败会阻止成功状态，四个 subtools 均必需。Windows runner 固定 `windows-2025`，Linux 固定 `ubuntu-24.04`，所需 ELF 符号门槛见 `automation/linux-runtime.json`；本轮真实执行结果见 [平台矩阵](GAME_PLATFORM_MATRIX.md)。
+
+手动发布修订号同时考虑 tag 和 API 中的草稿，只有完整来源 SHA 匹配的草稿才可复用；上传前再次检查草稿/来源，两个平台附件上传并核对服务端 digest 后才更新说明。已发布版本或不同来源的占位不能被当作同一次重试。离线流程回归不等同已执行远端并发冲突试验。
+
 **闭源功能不会被自动移植。** StudioMDL-CE / StudioMDL++ 的下载仅用于版本追踪，
 临时保存在 runner 中，不执行、不打包、不重新分发。用户在对话中提供它们的更新内容后，
 由维护者实现对应功能并更新源码补丁；它们的版本变化本身不会触发发布。
@@ -55,21 +59,22 @@ python .github/scripts/refresh_overlay.py
 - 自动上游发布不会更新默认分支的源码：每个平台包都在 `sources/NewPageMergeMDL-source.zip`
   内嵌最新上游源码与本地补丁的精确合并结果，
   不再另挂源码 ZIP。GitHub 自动生成的 **Source code** 链接对应控制仓库提交，
-  不是安装包，也不能替代自动上游合并的实际源码。手动维护版的完整项目源码由发布标签
-  对应的仓库提供，不重复内嵌整份项目源码；独立 GPL 转换器的对应源码始终随平台包提供。
+  不是安装包，也不能替代实际构建源码。自动上游包和手动维护包均内嵌
+  `sources/NewPageMergeMDL-source.zip`，以包内 manifest 的源码提交及哈希为准；
+  同标签替换构建后尤其不能用旧 tag 代替。独立 GPL 转换器的对应源码始终随平台包提供。
 - 现有 `release.yml` 仍提供人工草稿发布；自动发布使用独立工作流。
 
 ## 本地验证
 
 v1.2.23 按 [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md)完成五编译器固定清单的实现、策略与有界验收；当前测试和运行证据见 [VALIDATION.md](VALIDATION.md)。v1.2.22 完成 A1–A7/B1–B4 共 11 个 CSGO 功能包时的历史结果为 325 项兼容、20 项自动化、6 项挂载专项，以及原始 Plum 编译和 12 个自制 CSGO 模型的运行/地图重载。报告中的本地 Windows 编译器哈希只对应所记录的本地二进制；GitHub 自动构建的 MSVC/Linux 产物以各自打包验证日志和发布清单为准。以下 v1.2.19–v1.2.21 段落均是历史记录，不代表当前版本或发布状态。
 
-发布包包含编译器、反编译器、全部辅助工具、独立 GPL VRML 转换器、[INSTALL.md](INSTALL.md)、两份 README、兼容说明、CSGO 范围及作者指南、`FIVE_COMPILER_COMPLETION.md`、`MESH_STATE_WORKFLOW.md`、`VRM_RUNTIME.md`、`O5_FORMAT_IMPORTS.md` 和 `tests/reports/` 中的验证报告。`tools/` 提供准备/转换工具及其源文件，`integration/gmod/` 提供客户端模块；独立 VRML 转换器及其所需 `libs/assimp/contrib/pugixml/` 的对应源码和许可始终附带。根目录提供 `upstream-manifest.json` 与 `SHA256SUMS.txt`。自动上游包内的 `sources/NewPageMergeMDL-source.zip` 另含精确合并源码、固定版本的 `libs/tinyusdz/` 及其他构建依赖和许可；手动维护版完整源码由发布标签提供。Python 准备脚本需用户自行安装 Python 3；不打包游戏、用户模型或参考编译器。
+发布包包含编译器、反编译器、全部辅助工具、独立 GPL VRML 转换器、[INSTALL.md](INSTALL.md)、两份 README、兼容说明、CSGO 范围及作者指南、`FIVE_COMPILER_COMPLETION.md`、`MESH_STATE_WORKFLOW.md`、`VRM_RUNTIME.md`、`O5_FORMAT_IMPORTS.md`、`SCENE_IMPORT.md`、`DECOMPILER_EXPORTS.md`、`AUTHORING_WORKFLOWS.md`、`GAME_PLATFORM_MATRIX.md`、各 subtool 用法及 `tests/reports/` 中的验证报告。`tools/` 提供准备/转换工具及其源文件，`integration/gmod/` 提供客户端模块；独立 VRML 转换器及其所需 `libs/assimp/contrib/pugixml/` 的对应源码和许可始终附带。根目录提供 `upstream-manifest.json` 与 `SHA256SUMS.txt`。所有平台包内的 `sources/NewPageMergeMDL-source.zip` 另含精确构建源码、固定版本的 `libs/tinyusdz/` 及其他构建依赖和许可。Python 准备脚本需用户自行安装 Python 3；不打包游戏、用户模型或参考编译器。
 
 Windows x64 完整包还包含 `NewPageMergeMDL-C4D.exe`。CI 根据 `automation/windows-extras.json` 固定的来源和 SHA256 复用已按许可构建并测试的产品二进制，不下载/安装 Cineware SDK。主程序与其他开源工具仍由当前源码构建；Windows C4D helper 缺失或哈希不符时必须失败，不能把缺少 helper 的 CI 包作为第二个用户下载。Linux 导入 Windows 预转换的 GLB。SDK 的头文件、静态库、示例和文档均不进入源码包或二进制包。相关范围和独立构建方法见 [O5_FORMAT_IMPORTS.md](O5_FORMAT_IMPORTS.md)。
 
 v1.2.26 的两个发布工作流使用 `MinSizeRel` 与 `CMAKE_INTERPROCEDURAL_OPTIMIZATION=ON`；本地 `x64-compact` 预设采用相同策略。构建环境需提供相互匹配、支持 LTO 的编译器、归档工具和链接器，普通 Release 开发构建仍可选择。C4D 独立 helper 继续复用上述已验证二进制，不随此策略重建。
 
-平台包的运行目录不再重复附带 tinyusdz 源码与开发图片；USD 后端已静态编入程序。`libs/tinyusdz/` 中保留 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，包括原本嵌在源码中的第三方声明。独立 GPL VRML 转换器及 pugixml 的对应源码、构建文件和许可继续随包分发。自动包中的精确合并源码仍包含完整 tinyusdz，手动维护版仍从发布标签取得完整源码；精简仅针对运行目录的重复内容。
+平台包的运行目录不再重复附带 tinyusdz 源码与开发图片；USD 后端已静态编入程序。`libs/tinyusdz/` 中保留 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，包括原本嵌在源码中的第三方声明。独立 GPL VRML 转换器及 pugixml 的对应源码、构建文件和许可继续随包分发。所有包内的精确构建源码仍包含完整 tinyusdz；精简仅针对运行目录的重复内容。
 
 v1.2.28 的 Windows/Linux 包还包含实验性 `subtools/ag2proportions`（Windows 为 `.exe`）。构建并静态链接共享 DMX/KV3/zstd 支持，打包必须保留 `subtools/licenses/zstd.txt` 和 `subtools/licenses/ValveResourceFormat.txt`，验证器检查新工具的存在、`--help` 和项目版本。该工具的 CS2 数据与 Workshop Tools 由使用者自行准备，不能放入安装包。CI 的构建及烟雾检查不代表真实 VMDL、ModelDoc 或 CS2 游戏内验证；使用条件与原位修改注意事项见 [INSTALL.md](INSTALL.md)。
 

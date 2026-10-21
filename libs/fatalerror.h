@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include "diagnostics.h"
 
 #ifdef _WIN32
 // windows.h's min/max macros would break std::min/std::max in any TU that
@@ -53,6 +54,7 @@ inline void PauseIfAsked() {
 
 // A spaced footer block so the reason stands out at the bottom of a long log.
 inline int Fail(const char* what, const std::string& detail) {
+    diagnostics::Error(what, g_stage, detail);
     std::printf("\n\n");
     std::printf("----------------------------------------\n");
     std::printf("FAILED: %s (stage: %s)\n", what, g_stage);

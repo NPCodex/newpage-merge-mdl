@@ -27,3 +27,7 @@ if(WIN32)
     endif()
 endif()
 target_link_libraries(vmd2valvebiped PRIVATE pulse_libs pulse_math pulse_drlibs pulse_dmx)
+
+if(COMMAND newpage_separate_symbols)
+    newpage_separate_symbols(vmd2valvebiped)
+endif()

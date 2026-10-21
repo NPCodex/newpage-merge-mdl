@@ -49,12 +49,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "USDLoaderImplTinyusdzHelper.h"
 #include "USDLoaderUtil.h"
 #include "USDPreprocessor.h"
+#include "USDComposition.h"
 #include "io-util.hh" // namespace tinyusdz::io
 #include "tydra/scene-access.hh"
 #include "tydra/shader-network.hh"
 
 #include <memory>
 #include <sstream>
+#include <functional>
+#include <cctype>
 
 // internal headers
 #include "assimp/MemoryIOWrapper.h"
@@ -115,7 +118,9 @@ void USDImporterImplTinyusdz::InternReadFile(const std::string &pFile, aiScene *
     tinyusdz::Stage stage;
     std::string warn, err;
     bool is_usdz{ false };
-    if (isUsdc(pFile)) {
+    if(!is_load_from_mem && !isUsdz(pFile)) {
+        StaticUsdComposition(*pIOHandler).Load(pFile,stage,warn);ret=true;
+    } else if (isUsdc(pFile)) {
         ret = is_load_from_mem ? LoadUSDCFromMemory(in_mem_data.data(), in_mem_data.size(), pFile, &stage, &warn, &err, options) :
                                  LoadUSDCFromFile(pFile, &stage, &warn, &err, options);
         ss.str("");
@@ -162,6 +167,16 @@ void USDImporterImplTinyusdz::InternReadFile(const std::string &pFile, aiScene *
         ss << "InternReadFile(): ERROR: load failed! ret: " << ret;
         TINYUSDZLOGE(TAG, "%s", ss.str().c_str());
         throw DeadlyImportError("tinyusdz failed to load USD: ", err);
+    }
+    if(is_usdz || is_load_from_mem) {
+        std::function<void(const tinyusdz::Prim&)> unresolved=[&](const tinyusdz::Prim& prim) {
+            const auto& meta=prim.metas();
+            if(meta.references || meta.payload || meta.inherits || meta.specializes || meta.variantSets || meta.variants)
+                throw DeadlyImportError("USDZ/in-memory composition is not supported; flatten references and variants before import");
+            for(const auto& child:prim.children())unresolved(child);
+        };
+        if(!stage.metas().subLayers.empty())throw DeadlyImportError("USDZ/in-memory subLayers must be flattened before import");
+        for(const auto& prim:stage.root_prims())unresolved(prim);
     }
     
     RenderScene render_scene;
@@ -218,6 +233,21 @@ void USDImporterImplTinyusdz::InternReadFile(const std::string &pFile, aiScene *
     if (render_scene.nodes.empty()) {
         throw DeadlyImportError("USD scene has no root nodes");
     }
+    // USD leaf names are scoped by their prim paths. Two references of the same
+    // object therefore legitimately contain identically named mesh nodes.
+    // Preserve unambiguous names and use full prim paths only for collisions.
+    std::map<std::string,unsigned> nodeNames;
+    auto folded=[](std::string name){for(char& c:name)c=char(std::tolower(static_cast<unsigned char>(c)));return name;};
+    std::function<void(const Node&)> countNames=[&](const Node& node){++nodeNames[folded(node.prim_name)];for(const auto& child:node.children)countNames(child);};
+    for(const auto& node:render_scene.nodes)countNames(node);
+    std::function<void(Node&)> scopeNames=[&](Node& node){
+        if(nodeNames[folded(node.prim_name)]>1) {
+            if(node.abs_path.empty() || node.abs_path.size()>=1024)throw DeadlyImportError("USD instance prim path cannot be represented as a source node name");
+            node.prim_name=node.abs_path;
+        }
+        for(auto& child:node.children)scopeNames(child);
+    };
+    for(auto& node:render_scene.nodes)scopeNames(node);
 
     // sanityCheckNodesRecursive(pScene->mRootNode);
     animations(render_scene, pScene);
@@ -786,6 +816,14 @@ aiNode *USDImporterImplTinyusdz::nodesRecursive(aiNode *pNodeParent, const tinyu
     cNode->mParent = pNodeParent;
     cNode->mName.Set(node.prim_name);
     cNode->mTransformation = tinyUsdzMat4ToAiMat4(node.local_matrix.m);
+    if(node.has_resetXform && pNodeParent) {
+        aiMatrix4x4 parentWorld;
+        for(const aiNode* ancestor=pNodeParent;ancestor;ancestor=ancestor->mParent)
+            parentWorld=ancestor->mTransformation*parentWorld;
+        if(std::abs(parentWorld.Determinant())<1e-12f)
+            throw DeadlyImportError("USD resetXformStack under a singular parent transform cannot be represented");
+        cNode->mTransformation=parentWorld.Inverse()*tinyUsdzMat4ToAiMat4(node.global_matrix.m);
+    }
 
     if (node.nodeType == NodeType::Mesh) {
         cNode->mNumMeshes = 1;
