@@ -11,6 +11,10 @@ on:
         description: Run bounded ASan/UBSan mutations and two-clean-build comparisons
         type: boolean
         default: false
+      sanitizers-only:
+        description: Run only the bounded sanitizer check while diagnosing a sanitizer failure
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       include-gcc:
@@ -31,16 +35,17 @@ permissions:
 
 jobs:
   sanitizers:
-    if: inputs.quality-checks
+    if: inputs.quality-checks || inputs.sanitizers-only
     uses: ./.github/workflows/sanitizer-mutations.yml
     with:
       source-artifact: ${{ inputs.source-artifact || '' }}
   reproducibility:
-    if: inputs.quality-checks
+    if: inputs.quality-checks && !inputs.sanitizers-only
     uses: ./.github/workflows/reproducible-builds.yml
     with:
       source-artifact: ${{ inputs.source-artifact || '' }}
   clang:
+    if: ${{ !inputs.sanitizers-only }}
     strategy:
       fail-fast: false
       matrix:

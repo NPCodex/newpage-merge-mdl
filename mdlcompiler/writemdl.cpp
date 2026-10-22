@@ -3161,8 +3161,16 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
     // checksum over the whole buffer, BEFORE AssignMeshIDs and the fixup pass
     phdr->checksum = 0;
     for (size_t i = 0; i < total; i += 4) {
-        phdr->checksum = (phdr->checksum << 1) + ((phdr->checksum & 0x8000000) ? 1 : 0) +
-                         *reinterpret_cast<int32_t*>(buf.start() + i);
+        // This format uses wrapping 32-bit arithmetic, including bit 27's
+        // feedback. Signed shifts/addition are undefined once the high bit is
+        // set. Keep updating the header each iteration: its checksum word is
+        // itself part of the buffer visited by this historical algorithm.
+        const uint32_t previous = static_cast<uint32_t>(phdr->checksum);
+        uint32_t word;
+        std::memcpy(&word, buf.start() + i, sizeof(word));
+        const uint32_t checksum = (previous << 1) +
+                                  ((previous & 0x08000000u) ? 1u : 0u) + word;
+        std::memcpy(&phdr->checksum, &checksum, sizeof(checksum));
     }
 
     AssignMeshIDs(buf, phdr);

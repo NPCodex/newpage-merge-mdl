@@ -28,6 +28,10 @@ jobs:
     env:
       ASAN_OPTIONS: halt_on_error=1:abort_on_error=0:detect_leaks=1:allocator_may_return_null=1:exitcode=86
       UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1:exitcode=87
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-sanitizer
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPILERCHECK: content
+      CCACHE_MAXSIZE: 1G
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,6 +39,13 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Install compiler cache
+        run: sudo apt-get update -qq && sudo apt-get install -y ccache
+      - uses: actions/cache/restore@v5
+        with:
+          path: .ccache-sanitizer
+          key: sanitizer-clang18-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: sanitizer-clang18-${{ runner.os }}-${{ runner.arch }}-
       - uses: actions/download-artifact@v8
         if: inputs.source-artifact != ''
         with:
@@ -51,9 +62,15 @@ jobs:
             echo "SANITIZER_SOURCE=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
           fi
       - name: Configure address and undefined behavior checks
-        run: cmake -S "$SANITIZER_SOURCE" -B sanitizer-build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF -DNEWPAGE_SANITIZERS=address,undefined -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$GITHUB_WORKSPACE/sanitizer-dist"
+        run: cmake -S "$SANITIZER_SOURCE" -B sanitizer-build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF -DNEWPAGE_SANITIZERS=address,undefined -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$GITHUB_WORKSPACE/sanitizer-dist"
       - name: Build maintained native tools
+        id: build
         run: cmake --build sanitizer-build --parallel 2
+      - uses: actions/cache/save@v5
+        if: always() && steps.build.outcome == 'success'
+        with:
+          path: .ccache-sanitizer
+          key: sanitizer-clang18-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Validate bounded runner classification and minimization
         run: python "$SANITIZER_SOURCE/tests/bounded_mutation_test.py"
       - name: Mutate authored valid model, skin, strip, DMX, archive and animation inputs
