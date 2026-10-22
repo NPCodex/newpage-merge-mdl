@@ -2804,17 +2804,23 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
                             // one-ring/control indices name the unchanged SG table.
                             if (!legacyVtx && (pStudioHdr->flags & (1<<19))) {
                                 auto* full=reinterpret_cast<fmt::vtx::StripGroupHeader_t*>(sgRaw);
-                                auto* topology=reinterpret_cast<uint16_t*>(sgRaw+full->topologyOffset);
+                                auto* topology=sgRaw+full->topologyOffset;
+                                const auto readTopology = [topology](size_t index) {
+                                    uint16_t value;
+                                    std::memcpy(&value, topology + index * sizeof(value), sizeof(value));
+                                    return value;
+                                };
                                 size_t cursor=0, count=size_t(full->numTopologyIndices);
                                 while(cursor<count) {
                                     if(count-cursor<60)throw std::runtime_error("truncated SubD patch topology");
-                                    size_t ring=0;for(int corner=0;corner<4;++corner)ring+=topology[cursor+corner];
+                                    size_t ring=0;for(int corner=0;corner<4;++corner)ring+=readTopology(cursor+corner);
                                     if(ring>count-cursor-60)throw std::runtime_error("truncated SubD one-ring");
                                     for(size_t uv=44;uv<60;++uv) {
-                                        int old=topology[cursor+uv];
+                                        int old=readTopology(cursor+uv);
                                         if(old>=pools[poolStart+k].numVertexes)throw std::runtime_error("invalid SubD UV vertex reference");
                                         int mapped=pools[poolStart+k].vertexMap[old];
-                                        topology[cursor+uv]=uint16_t(vertexList[mapped].finalMeshVertID);
+                                        const auto vertexID=uint16_t(vertexList[mapped].finalMeshVertID);
+                                        std::memcpy(topology+(cursor+uv)*sizeof(vertexID), &vertexID, sizeof(vertexID));
                                     }
                                     cursor+=60+ring;
                                 }

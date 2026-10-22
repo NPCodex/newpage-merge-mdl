@@ -73,6 +73,8 @@ jobs:
           key: sanitizer-clang18-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Validate bounded runner classification and minimization
         run: python "$SANITIZER_SOURCE/tests/bounded_mutation_test.py"
+      - name: Check packed SubD topology on valid models
+        run: python "$SANITIZER_SOURCE/tests/compatibility.py" sanitizer-dist/NewPageMergeMDL Compatibility.test_subd_single_quad_emits_boundary_patch Compatibility.test_subd_grid_has_regular_and_extraordinary_strips
       - name: Mutate authored valid model, skin, strip, DMX, archive and animation inputs
         env:
           MUTATION_SAMPLES: ${{ inputs.samples || 240 }}

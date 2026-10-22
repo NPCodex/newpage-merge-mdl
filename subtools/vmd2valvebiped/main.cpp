@@ -1747,14 +1747,22 @@ int main(int argc, char** argv) try {
             legs[side] = {t.Find(prefix + "Thigh"), t.Find(prefix + "Calf"), t.Find(prefix + "Foot"), {},
                           mmd.Find("legik", side)};
         }
-    const fm::mstudioikchain_t* chains =
-        m.At<fm::mstudioikchain_t>(m.buf.data(), h.ikchainindex, h.numikchains);
+    const char* chains = reinterpret_cast<const char*>(
+        m.At<fm::mstudioikchain_t>(m.buf.data(), h.ikchainindex, h.numikchains));
     for (int c = 0; chains && c < h.numikchains; ++c) {
-        if (chains[c].numlinks != 3)
+        // Imported MDL records may start unaligned. Keep the on-disk address
+        // for relative offsets, but read each record through an aligned copy.
+        const char* chainRaw = chains + size_t(c) * sizeof(fm::mstudioikchain_t);
+        fm::mstudioikchain_t chain;
+        std::memcpy(&chain, chainRaw, sizeof(chain));
+        if (chain.numlinks != 3)
             continue;
-        const fm::mstudioiklink_t* link =
-            m.At<fm::mstudioiklink_t>(&chains[c], chains[c].linkindex, 3);
-        if (!link || link[2].bone < 0 || link[2].bone >= t.n || link[0].bone < 0 ||
+        const auto* linkRaw = m.At<fm::mstudioiklink_t>(chainRaw, chain.linkindex, 3);
+        if (!linkRaw)
+            continue;
+        fm::mstudioiklink_t link[3];
+        std::memcpy(link, linkRaw, sizeof(link));
+        if (link[2].bone < 0 || link[2].bone >= t.n || link[0].bone < 0 ||
             link[0].bone >= t.n || link[1].bone < 0 || link[1].bone >= t.n)
             continue;
         for (int side = 0; side < 2; ++side)
