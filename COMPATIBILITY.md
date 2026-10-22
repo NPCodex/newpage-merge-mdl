@@ -21,6 +21,10 @@ Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). B
 
 ## Current helper and decompiler contracts
 
+The [current candidate package report](tests/reports/v1.2.38-candidate.md) records
+the exact downloaded Windows/Linux archives, embedded source, symbols and completed
+CI checks. The earlier sanitizer/reproducibility checkpoint retains its own source identity.
+
 Actual game and platform coverage is recorded per capability in the [game/platform matrix](GAME_PLATFORM_MATRIX.md), with [machine-readable evidence](tests/reports/game-platform-matrix.json). A successful compile does not establish loading, rendering or gameplay. The [v1.2.37 repair report](tests/reports/toolkit-fixes-20261020.md) retains its original tested binaries and scope.
 
 VMD conversion follows each frame's left/right leg IK enable state; disabled IK retains thigh/calf/foot FK. PMX positions, bind transforms, scale and generated poses must be finite. Orthographic camera keys have no supported output representation and fail before publication, as do invalid perspective flags; they are not silently emitted as perspective cameras.

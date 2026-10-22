@@ -53,7 +53,7 @@ AG2 独立第一人称模式与自定义 helper 骨保留已有[资源验证](te
 | C4D 静态缓存 | 真实 C4D 2027 保存的生成器/变形器缓存经 Cineware 22 读取，与应用求值几何、UV、法线及层级对照通过；骨骼动画仍明确拒绝。见[应用报告](tests/reports/v1.2.38-c4d-application.md)。 |
 | 反编译 | VVD 内容校验、每模型质量 JSON、选择性资产导出及保留目录、可选 DMX 减帧；选择性资产集不保证可独立回编。见 [导出说明](DECOMPILER_EXPORTS.md)。 |
 | 作者脚本 | OBJ/GLB 网格包装、本地 VMT/VTF 依赖收集、声明完整搜索根后的增量编译与批次摘要。[Medusa 六模型](tests/reports/v1.2.38-medusa-materials.md)各 19 VMT/37 VTF 闭包及缺件输出保护通过，并修复 EyeRefract 贴图漏收；不等于游戏着色认证。见 [工作流](AUTHORING_WORKFLOWS.md)。 |
-| 维护与验收 | 安全 perf/dependency 报告、结构化诊断、平台基线、符号/变异/可重复构建的实际完成状态逐项列于台账；不以配置存在代替运行通过。 |
+| 维护与验收 | 安全 perf/dependency 报告、结构化诊断、平台基线、符号/变异/可重复构建的实际完成状态逐项列于台账；[候选包验收](tests/reports/v1.2.38-candidate.md)核对双平台完整包、精确源码及符号。内存与复现检查保留各自源码身份。 |
 
 ## v1.2.36 替换构建
 
