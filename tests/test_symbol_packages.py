@@ -12,6 +12,7 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / '.github/scripts'))
 import package_symbols as symbols
 import upstream_release as upstream
+from symbol_line_probe import llvm_source_line
 
 
 def pdb(guid=b'0123456789abcdef', age=1):
@@ -115,6 +116,37 @@ def rewrite_zip(path, transform):
     with zipfile.ZipFile(path, 'w') as archive:
         for name, value in members.items():
             archive.writestr(name, value)
+
+
+class SymbolizerLocations(unittest.TestCase):
+    def test_single_lookup_object_and_array_resolve_the_same_line(self):
+        record = {'Address': '0x1000', 'Symbol': [{'FileName': 'src/probe.c', 'Line': 6}]}
+        for output in (record, [record]):
+            with self.subTest(output=output):
+                self.assertEqual(llvm_source_line(json.dumps(output)), ('src/probe.c', 6))
+
+    def test_empty_and_ambiguous_lookup_results_are_explicit_errors(self):
+        record = {'Symbol': [{'FileName': 'src/probe.c', 'Line': 6}]}
+        cases = (([], 'no lookup records'), ([record, record], 'ambiguous lookup records'),
+                 ({'Symbol': []}, 'no source locations'),
+                 ({'Symbol': record['Symbol'] * 2}, 'ambiguous source locations'))
+        for output, message in cases:
+            with self.subTest(output=output), self.assertRaisesRegex(ValueError, message):
+                llvm_source_line(json.dumps(output))
+
+    def test_invalid_and_unresolved_locations_are_explicit_errors(self):
+        for output in ('', 'not JSON'):
+            with self.subTest(output=output), self.assertRaisesRegex(ValueError, 'invalid or empty JSON'):
+                llvm_source_line(output)
+        for output, message in ((None, 'record is not an object'),
+                                ({'Error': {'Message': 'No symbols'}}, 'no source locations'),
+                                ({'Symbol': [None]}, 'location is not an object')):
+            with self.subTest(output=output), self.assertRaisesRegex(ValueError, message):
+                llvm_source_line(json.dumps(output))
+        for source, line in (('', 6), ('??', 0), ('src/probe.c', 0),
+                             ('src/probe.c', True), ('src/probe.c', '6')):
+            with self.subTest(source=source, line=line), self.assertRaisesRegex(ValueError, 'valid source file and line'):
+                llvm_source_line(json.dumps({'Symbol': [{'FileName': source, 'Line': line}]}))
 
 
 class NativeIdentities(unittest.TestCase):

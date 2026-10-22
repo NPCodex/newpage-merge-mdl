@@ -150,6 +150,7 @@ jobs:
           python tests/test_diagnostic_bundle.py
           python tests/test_reproducible_archives.py
       - name: Verify native symbols and source line lookup
+        shell: bash
         run: |
           python tests/test_symbol_packages.py
           python tests/symbol_line_probe.py --output symbol-line-probe.json
@@ -175,6 +176,7 @@ jobs:
       - name: Test AG2 resource integrity
         run: ctest --test-dir subtool-format-tests -C Release --output-on-failure
       - name: Package with source provenance
+        shell: bash
         run: |
           python .github/scripts/upstream_release.py record-build --manifest prepared/upstream-manifest.json --cache build/CMakeCache.txt --configuration MinSizeRel
           python .github/scripts/upstream_release.py package --source candidate/NewPageMergeMDL --dist dist --platform ${{ matrix.platform }} --manifest prepared/upstream-manifest.json --source-archive prepared/NewPageMergeMDL-source.zip --output newpage-merge-mdl-${{ matrix.platform }}.zip

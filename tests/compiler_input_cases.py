@@ -412,6 +412,20 @@ def Xform "Parent" {
         self.write('comments.smd',base.replace('time 0','time 0 // bind').replace('"unused_child" 0','"unused_child" 0 // child'))
         self.scene_qc('$modelname comments\n$body m comments.smd\n');self.assertEqual(self.mdl_bones('comments'),self.mdl_bones('guarded'))
 
+    def test_smd_missing_skeleton_rejects_mesh_and_animation_preserving_outputs(self):
+        source=(self.root/'mesh.smd').read_text()
+        qc='$modelname guarded\n$body m mesh.smd\n$sequence idle mesh.smd\n'
+        self.scene_qc(qc)
+        before={p:p.read_bytes() for p in (self.root/'models').glob('guarded.*')}
+        nodes=source.split('skeleton',1)[0]
+        for broken in (nodes, nodes+'// truncated before the bind pose\n'):
+            self.write('broken.smd',broken)
+            for damaged in (qc.replace('$body m mesh.smd','$body m broken.smd'),
+                            qc.replace('$sequence idle mesh.smd','$sequence idle broken.smd')):
+                with self.subTest(qc=damaged,source=broken):
+                    self.assertIn('no `skeleton` block',self.scene_qc(damaged,success=False))
+                    self.assertEqual(before,{p:p.read_bytes() for p in before})
+
     def test_vta_numeric_records_are_strict(self):
         base='version 1\nvertexanimation\ntime 0 # basis\n0 0 0 0 0 0 1\n1 1 0 0 0 0 1\n2 0 1 0 0 0 1\ntime 1\n0 0 0 1 0 0 1\nend\n'
         qc='$modelname face\n$model m mesh.smd {\nflexfile face.vta {\ndefaultflex frame 0\nflex smile frame 1\n}\nflexcontroller test range 0 1 strength\n%smile = strength\n}\n'

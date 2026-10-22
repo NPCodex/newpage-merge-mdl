@@ -707,6 +707,7 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
         return false;
 
     bool sawNodes = false;
+    bool sawSkeleton = false;
     int version = 1; // reference Load_SMD default
 
     for (;;) {
@@ -736,6 +737,7 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
             }
             if (!GrabAnimation(r, scale, out, err))
                 return false;
+            sawSkeleton = true;
         } else if (_stricmp(cmd, "triangles") == 0) {
             if (!sawNodes) {
                 if (err) *err = "`triangles` before `nodes` in SMD";
@@ -760,6 +762,10 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
 
     if (!sawNodes) {
         if (err) *err = "SMD has no `nodes` block";
+        return false;
+    }
+    if (!sawSkeleton) {
+        if (err) *err = "SMD has no `skeleton` block";
         return false;
     }
     return ValidateSourceAnimationNames(out, err);

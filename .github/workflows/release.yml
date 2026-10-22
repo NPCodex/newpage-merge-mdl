@@ -117,6 +117,7 @@ jobs:
           python tests/subtools_cli_arguments_test.py --bin-dir dist
 
       - name: Verify native symbols and source line lookup
+        shell: bash
         run: |
           python tests/test_symbol_packages.py
           python tests/symbol_line_probe.py --output symbol-line-probe.json

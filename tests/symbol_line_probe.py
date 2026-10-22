@@ -102,6 +102,34 @@ def linux_line(debug, symbol='newpage_symbol_line_probe'):
     return source, int(line.split()[0])
 
 
+def llvm_source_line(output):
+    """Read one lookup result from either LLVM JSON output convention."""
+    try:
+        result = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise ValueError('llvm-symbolizer returned invalid or empty JSON') from exc
+    if isinstance(result, list):
+        if not result:
+            raise ValueError('llvm-symbolizer returned no lookup records')
+        if len(result) != 1:
+            raise ValueError('llvm-symbolizer returned ambiguous lookup records')
+        result = result[0]
+    if not isinstance(result, dict):
+        raise ValueError('llvm-symbolizer lookup record is not an object')
+    locations = result.get('Symbol')
+    if not isinstance(locations, list) or not locations:
+        raise ValueError('llvm-symbolizer returned no source locations')
+    if len(locations) != 1:
+        raise ValueError('llvm-symbolizer returned ambiguous source locations')
+    location = locations[0]
+    if not isinstance(location, dict):
+        raise ValueError('llvm-symbolizer source location is not an object')
+    source, line = location.get('FileName'), location.get('Line')
+    if not isinstance(source, str) or not source.strip() or source == '??' or type(line) is not int or line < 1:
+        raise ValueError('llvm-symbolizer did not resolve a valid source file and line')
+    return source, line
+
+
 def llvm_windows_line(binary, symbolizer):
     # The probe explicitly exports its function, so its RVA is available without
     # relying on a platform debugger's PDB loading configuration.
@@ -129,8 +157,7 @@ def llvm_windows_line(binary, symbolizer):
             address, = struct.unpack_from('<I', data, offset(functions) + ordinal * 4)
             result = subprocess.check_output([symbolizer, '--obj=' + str(binary), '--relative-address',
                                                '--output-style=JSON', hex(address)], text=True)
-            record = json.loads(result)['Symbol'][0]
-            return record['FileName'], record['Line']
+            return llvm_source_line(result)
     raise ValueError('Probe export is missing')
 
 
