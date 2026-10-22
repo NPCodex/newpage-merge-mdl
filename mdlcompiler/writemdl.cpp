@@ -2526,11 +2526,13 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
                         fmt::vtx::MeshHeader_t* vmesh = vtx.mesh(vlh, k);
                         for (int mm = 0; mm < vmesh->numStripGroups; mm++) {
                             uint8_t* sgRaw = vtx.stripGroupRaw(vmesh, mm);
-                            SGCommon* sg = reinterpret_cast<SGCommon*>(sgRaw);
+                            SGCommon sg;
+                            // VTX records are byte-packed and may start unaligned.
+                            std::memcpy(&sg, sgRaw, sizeof(sg));
                             VertexPool& pool = pools[poolStart + k];
-                            for (int n = 0; n < sg->numVerts; n++) {
+                            for (int n = 0; n < sg.numVerts; n++) {
                                 auto* v = reinterpret_cast<fmt::vtx::Vertex_t*>(
-                                    sgRaw + sg->vertOffset) + n;
+                                    sgRaw + sg.vertOffset) + n;
                                 if (v->origMeshVertID >= pool.numVertexes) {
                                     if (err) *err = "vtx vertex out of range";
                                     return false;
@@ -2789,10 +2791,11 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
                         fmt::vtx::MeshHeader_t* vmesh = nav.mesh(vlh, k);
                         for (int mm = 0; mm < vmesh->numStripGroups; mm++) {
                             uint8_t* sgRaw = nav.stripGroupRaw(vmesh, mm);
-                            SGCommon* sg = reinterpret_cast<SGCommon*>(sgRaw);
-                            for (int n = 0; n < sg->numVerts; n++) {
+                            SGCommon sg;
+                            std::memcpy(&sg, sgRaw, sizeof(sg));
+                            for (int n = 0; n < sg.numVerts; n++) {
                                 auto* v = reinterpret_cast<fmt::vtx::Vertex_t*>(
-                                    sgRaw + sg->vertOffset) + n;
+                                    sgRaw + sg.vertOffset) + n;
                                 int newID = pools[poolStart + k].vertexMap[v->origMeshVertID];
                                 newID = vertexList[newID].finalMeshVertID;
                                 v->origMeshVertID = static_cast<uint16_t>(newID);
