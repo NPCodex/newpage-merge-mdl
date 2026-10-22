@@ -1,0 +1,272 @@
+{
+  "schema": 1,
+  "updated_date": "2026-10-22",
+  "release_published": false,
+  "scope": "Verified intermediate snapshots; final integrated candidate must be checked again",
+  "linux_package_validation": {
+    "status": "passed",
+    "run_id": 39751372432,
+    "sha": "4e00894",
+    "configuration": "MinSizeRel",
+    "ipo": false,
+    "baseline": "Ubuntu 24.04 LTS x86_64",
+    "compilers": [
+      "GCC 13",
+      "Clang 18"
+    ],
+    "compatibility_tests_per_compiler": 445,
+    "native_elf_tools_per_compiler": 7,
+    "additional_suites": "Recovery/format CTest, packaged VRML, report inputs, incremental cache, helpers, decompiler, subtools, VMD and output protection",
+    "maximum_observed_required_symbols": {
+      "GLIBC": "2.38",
+      "GLIBCXX": "3.4.30",
+      "CXXABI": "1.3.13"
+    },
+    "contract_ceilings": {
+      "GLIBC": "2.39",
+      "GLIBCXX": "3.4.32",
+      "CXXABI": "1.3.15"
+    }
+  },
+  "reproducibility": {
+    "run_id": 39751372432,
+    "sha": "4e00894",
+    "linux64": {
+      "schema": 1,
+      "scope": "Two clean builds, one toolchain, distinct source/build paths",
+      "source_archive_sha256": "c3d47a361887f1feb4a5a02d6ac54e40ef76223650f6e97631708b58f3203746",
+      "platform": "linux64",
+      "configuration": "MinSizeRel",
+      "requested_ipo": "ON",
+      "source_date_epoch": "1792659301",
+      "success": true,
+      "executables": {
+        "schema": 1,
+        "equal": true,
+        "entries": 7,
+        "missing": [],
+        "extra": [],
+        "changed": {}
+      },
+      "runtime_packages": {
+        "schema": 1,
+        "equal": true,
+        "entries": 153,
+        "missing": [],
+        "extra": [],
+        "changed": {},
+        "archive_bytes_equal": true
+      },
+      "symbol_packages": {
+        "schema": 1,
+        "equal": true,
+        "entries": 8,
+        "missing": [],
+        "extra": [],
+        "changed": {},
+        "archive_bytes_equal": true
+      },
+      "required_equal": [
+        "executables",
+        "runtime_packages",
+        "symbol_packages"
+      ]
+    },
+    "win64": {
+      "schema": 1,
+      "scope": "Two clean builds, one toolchain, distinct source/build paths",
+      "source_archive_sha256": "c3d47a361887f1feb4a5a02d6ac54e40ef76223650f6e97631708b58f3203746",
+      "platform": "win64",
+      "configuration": "MinSizeRel",
+      "requested_ipo": "ON",
+      "source_date_epoch": "1792659301",
+      "success": true,
+      "executables": {
+        "schema": 1,
+        "equal": true,
+        "entries": 8,
+        "missing": [],
+        "extra": [],
+        "changed": {}
+      },
+      "runtime_packages": {
+        "schema": 1,
+        "equal": true,
+        "entries": 155,
+        "missing": [],
+        "extra": [],
+        "changed": {},
+        "archive_bytes_equal": true
+      },
+      "symbol_packages": {
+        "schema": 1,
+        "equal": false,
+        "entries": 8,
+        "missing": [],
+        "extra": [],
+        "changed": {
+          "NewPageMergeMDL-symbols/NewPageMergeMDL-Decompiler.pdb": {
+            "left": "f55b3b985fac87f3263009263357313519da9d10997538a5532499cb634392e1",
+            "right": "e24cce34864077a14d518d12d9e9078a6a56a74e88d61f414edc6a43ea9a2b50"
+          },
+          "NewPageMergeMDL-symbols/NewPageMergeMDL.pdb": {
+            "left": "cee4bee5776f6863921c88cc0747c3f749fe673bc6df76b7c5cae605ffefb16c",
+            "right": "e640fb1e0a00a08512d9b4cd34b090873a3eabaaa84d371d62bb080b2b602947"
+          },
+          "NewPageMergeMDL-symbols/NewPageVRMLtoX3D.pdb": {
+            "left": "301aa2a017881c190873f8278f0dca8ae7f6887a124cb497ae498bce88cd7edf",
+            "right": "934bca1ba6d0c5a7f5fe99a0296b10de7a4ea4f2a408936f156609c518970cc2"
+          },
+          "NewPageMergeMDL-symbols/subtools/ag2proportions.pdb": {
+            "left": "9b0d978597453347b5c7a02e86a7e5d2dd8de74fc65b7d6ca00954ac446e2df5",
+            "right": "350bd7b43e0c430d73d846d1a5e2bda591ddf71a3a2182a40466d8aa23f2ee82"
+          },
+          "NewPageMergeMDL-symbols/subtools/l4d_animswap.pdb": {
+            "left": "5e319c0680df771cfa8584642a2508ac46c70d2233cd0695a8090a2e732b052b",
+            "right": "07bd985c53aaecc51cd9849516f851ba0131e5fbc5a444ee1fd73880810fd746"
+          },
+          "NewPageMergeMDL-symbols/subtools/meshtool.pdb": {
+            "left": "15acf2b17a6372288ebd1274231e54eab55cb66d9d69e7ae631fbffdcd4375e8",
+            "right": "d2e7e3738c1068ff73f20e7aa3dc42aea20bd78e5f73c105b38200aa98f5be71"
+          },
+          "NewPageMergeMDL-symbols/subtools/vmd2valvebiped.pdb": {
+            "left": "24b8291732f2119a8fca6918751dd6bd5c28a0266a34e852f9dcdfa5753ef867",
+            "right": "720574962a4b37c19b0b89bd225db0cf4d3ce89af48520f90f9b82386be6d73e"
+          },
+          "NewPageMergeMDL-symbols/symbols-manifest.json": {
+            "left": "6bc96f866f3aaaf99bce3645895e4265175db46f32fff9d1842509c5f6083f90",
+            "right": "ffbc836140df2505a132d2ae1bdf0a510e9902cfb304518928f97095d33796d8"
+          }
+        },
+        "archive_bytes_equal": false
+      },
+      "required_equal": [
+        "executables",
+        "runtime_packages"
+      ],
+      "symbol_reproducibility_limit": "Windows PDBs retain absolute linker object/CVTRES paths. Matching GUID/age and source provenance are required; symbol ZIP byte equality is reported but not claimed or required on Windows."
+    }
+  },
+  "native_source_lines": {
+    "status": "passed_on_prior_local_snapshot",
+    "source_archive_sha256": "2cab60d51222695974a72dd0a7ce7e263c4e1431d5936f2260cf1c6495986eee",
+    "configuration": "MinSizeRel",
+    "ipo": false,
+    "method": "Windows DbgHelp native symbol and source line resolution",
+    "platform": "win64",
+    "executables": [
+      {
+        "binary": "NewPageMergeMDL.exe",
+        "symbol": "main",
+        "source": "src\\mdlcompiler\\main.cpp",
+        "line": 700,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "373d6dd0be15c29b6d723b332f160e58",
+          "age": 1,
+          "pdb_name": "NewPageMergeMDL.pdb"
+        }
+      },
+      {
+        "binary": "NewPageMergeMDL-Decompiler.exe",
+        "symbol": "main",
+        "source": "src\\mdldecompiler\\main.cpp",
+        "line": 3516,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "a2e50abdc61fc36a5289cab83d0ee4e7",
+          "age": 1,
+          "pdb_name": "NewPageMergeMDL-Decompiler.pdb"
+        }
+      },
+      {
+        "binary": "NewPageVRMLtoX3D.exe",
+        "symbol": "wmain",
+        "source": "src\\tools\\vrml_converter\\main.cpp",
+        "line": 90,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "a688080044ccf511ad24429599aa2fd4",
+          "age": 1,
+          "pdb_name": "NewPageVRMLtoX3D.pdb"
+        }
+      },
+      {
+        "binary": "subtools/ag2proportions.exe",
+        "symbol": "wmain",
+        "source": "src\\subtools\\ag2proportions\\main.cpp",
+        "line": 151,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "cd9b1de6726bf7fb044c32d494b4cc1a",
+          "age": 1,
+          "pdb_name": "ag2proportions.pdb"
+        }
+      },
+      {
+        "binary": "subtools/l4d_animswap.exe",
+        "symbol": "main",
+        "source": "src\\subtools\\l4d_animswap\\main.cpp",
+        "line": 1372,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "95b44764164c04fa2653d32e6efa38b4",
+          "age": 1,
+          "pdb_name": "l4d_animswap.pdb"
+        }
+      },
+      {
+        "binary": "subtools/meshtool.exe",
+        "symbol": "main",
+        "source": "src\\subtools\\meshtool\\main.cpp",
+        "line": 44,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "d3bd660d02d9a3815b360d55e1214dc9",
+          "age": 1,
+          "pdb_name": "meshtool.pdb"
+        }
+      },
+      {
+        "binary": "subtools/vmd2valvebiped.exe",
+        "symbol": "main",
+        "source": "src\\subtools\\vmd2valvebiped\\main.cpp",
+        "line": 1502,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "c0ff190af8df66cb055b93c3fdc729fd",
+          "age": 1,
+          "pdb_name": "vmd2valvebiped.pdb"
+        }
+      }
+    ],
+    "scope": "Actual native executable entry points; not a claim that every optimized stack frame is recoverable.",
+    "dependency_source_line": "src/libs/assimp/contrib/draco/src/draco/compression/decode.cc:87"
+  },
+  "ordinary_windows_mutations": {
+    "status": "passed_without_sanitizers",
+    "samples": 240,
+    "accepted": 69,
+    "rejected": 171,
+    "crashes": 0,
+    "timeouts": 0,
+    "budget_overruns": 0
+  },
+  "asan_ubsan": {
+    "status": "in_progress",
+    "run_id": 39752234113,
+    "sha": "641b7e3",
+    "configuration": "RelWithDebInfo",
+    "ipo": false,
+    "samples_requested": 240,
+    "time_budget_seconds": 180,
+    "prior_failure": {
+      "run_id": 39749658951,
+      "stage": "valid corpus seed compile",
+      "diagnostic": "writemdl.cpp:3164 left shift of negative checksum",
+      "fix_sha": "641b7e3",
+      "fix": "Use uint32 wrapping arithmetic with unchanged bit-27 feedback and per-iteration header writeback"
+    },
+    "bounded_mutation_result": null
+  }
+}
