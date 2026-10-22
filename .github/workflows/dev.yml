@@ -6,8 +6,18 @@ on:
     paths-ignore: ['**.md']
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  windows-extras:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/windows-extras.yml
   build:
+    needs: windows-extras
+    # A helper download failure must not suppress the independent Linux build.
+    if: ${{ always() && !cancelled() }}
     strategy:
       # a Linux failure must not cancel win64
       fail-fast: false
@@ -44,6 +54,7 @@ jobs:
         run: cmake --build build --config Release --parallel 2
 
       - name: Verify native symbols and source line lookup
+        shell: bash
         run: |
           python tests/test_symbol_packages.py
           python tests/symbol_line_probe.py --output symbol-line-probe.json
@@ -51,11 +62,13 @@ jobs:
 
       - name: Stage verified Windows C4D helper
         if: matrix.plat == 'win64'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python .github/scripts/fetch_windows_extras.py --dist dist
+        uses: actions/download-artifact@v8
+        with:
+          name: verified-windows-extras
+          path: dist
 
       - name: Build recovery probe
+        shell: bash
         run: |
           cmake -S tests/output_transactions -B output-tests -DCMAKE_BUILD_TYPE=Release
           cmake --build output-tests --config Release --parallel 2

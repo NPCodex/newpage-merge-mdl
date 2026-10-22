@@ -1,0 +1,62 @@
+name: Verify Windows helper input
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Unique verified-helper artifact name in the calling run
+        type: string
+        default: verified-windows-extras
+      source-artifact:
+        description: Optional exact-source archive containing the helper pin
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    # GitHub restricts draft-release asset reads to tokens with push access.
+    # Only this download job receives it; it makes no release/source mutations.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
+        if: inputs.source-artifact != ''
+        with:
+          name: ${{ inputs.source-artifact }}
+          path: prepared
+      - name: Select exact helper pin
+        env:
+          SOURCE_ARTIFACT: ${{ inputs.source-artifact }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import zipfile
+          Path('prepared').mkdir(exist_ok=True)
+          if os.environ['SOURCE_ARTIFACT']:
+              with zipfile.ZipFile('prepared/NewPageMergeMDL-source.zip') as archive:
+                  pin = archive.read('NewPageMergeMDL/automation/windows-extras.json')
+          else:
+              pin = Path('automation/windows-extras.json').read_bytes()
+          Path('prepared/windows-extras.json').write_bytes(pin)
+          PY
+      - name: Download and verify pinned helper
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/fetch_windows_extras.py --config prepared/windows-extras.json --dist extras
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: extras/*
+          if-no-files-found: error
+          retention-days: 7

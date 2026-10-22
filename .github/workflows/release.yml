@@ -176,13 +176,13 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/linux-toolchain-validation.yml
     permissions:
-      contents: read
+      contents: write
 
   reproducible:
     needs: prepare
     uses: ./.github/workflows/reproducible-builds.yml
     permissions:
-      contents: read
+      contents: write
 
   sanitizers:
     needs: prepare

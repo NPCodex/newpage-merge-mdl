@@ -41,6 +41,8 @@ jobs:
       source-artifact: ${{ inputs.source-artifact || '' }}
   reproducibility:
     if: inputs.quality-checks && !inputs.sanitizers-only
+    permissions:
+      contents: write
     uses: ./.github/workflows/reproducible-builds.yml
     with:
       source-artifact: ${{ inputs.source-artifact || '' }}

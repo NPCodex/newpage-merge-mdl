@@ -22,6 +22,7 @@ on:
       - '.github/scripts/package_symbols.py'
       - '.github/scripts/compare_builds.py'
       - '.github/workflows/reproducible-builds.yml'
+      - '.github/workflows/windows-extras.yml'
       - '.github/workflows/sanitizer-mutations.yml'
       - '.github/workflows/upstream-release.yml'
       - '.github/workflows/linux-toolchain-validation.yml'
@@ -99,9 +100,18 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  build:
+  windows-extras:
     needs: prepare
     if: needs.prepare.outputs.changed == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/windows-extras.yml
+    with:
+      source-artifact: merged-source
+
+  build:
+    needs: [prepare, windows-extras]
+    if: ${{ always() && !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.changed == 'true' }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -160,9 +170,10 @@ jobs:
         run: python -m unittest discover -s tests -p test_windows_extras.py -v
       - name: Stage verified Windows C4D helper
         if: matrix.platform == 'win64'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python .github/scripts/fetch_windows_extras.py --dist dist
+        uses: actions/download-artifact@v8
+        with:
+          name: verified-windows-extras
+          path: dist
       - name: Configure isolated output recovery tests
         run: cmake -S candidate/NewPageMergeMDL/tests/output_transactions -B output-tests -DCMAKE_BUILD_TYPE=Release
       - name: Build isolated output recovery tests
@@ -201,7 +212,7 @@ jobs:
     with:
       source-artifact: merged-source
     permissions:
-      contents: read
+      contents: write
 
   reproducible:
     needs: prepare
@@ -210,7 +221,7 @@ jobs:
     with:
       source-artifact: merged-source
     permissions:
-      contents: read
+      contents: write
 
   sanitizers:
     needs: prepare
