@@ -41,17 +41,18 @@ v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 
 VMD 按每帧左右腿 IK 开关选择 IK/FK，关闭时保留 Thigh/Calf/Foot 的 FK；PMX、绑定姿态、比例与最终姿态拒绝非有限数值。正交相机尚无支持的输出表示，会在写入前明确失败，非法 perspective 标记也拒绝。AG2 校验完整资源及 preload CRC32。反编译保留各 LOD 独立权重并检查伴随文件 checksum、结构和解码范围；存在但损坏的 PHY 失败，缺 PHY 时明确警告无法证明碰撞完整性。
 
-Python 准备脚本统一暂存模型及运行时 JSON，具有同目标锁和持久 journal，下次运行可恢复进程中断；外部修改冲突保留现场，不能保证任意断电安全。VRM 外置本地 buffer/image 在暂存前内嵌。Lua VRM/vertexanim 校验元数据及时间；弹簧骨使用固定 60 Hz 模拟步长，新的帧率一致性是数值测试证据。
+Python 准备脚本统一暂存模型及运行时 JSON，具有同目标锁和持久 journal，下次运行可恢复进程中断；外部修改冲突保留现场，不能保证任意断电安全。VRM 外置本地 buffer/image 在暂存前内嵌。Lua VRM/vertexanim 校验元数据及时间；弹簧骨使用固定 60 Hz 模拟步长，[本轮实机回调](tests/reports/v1.2.38-gmod-runtime.md)与四档帧率的独立数值测试分开记录。
 
-AG2 历史 [SAS 实机验证](tests/reports/ag2-gameplay-20261020.md) 覆盖完整人物、比例对照、手枪/步枪持握、射击、重载和蹲伏，第一人称为原版图对照。新的独立第一人称模式与自定义 helper 骨保留见 [资源验证](tests/reports/ag2-firstperson-v1238.md) 和 [用法](subtools/ag2proportions/README.md)，不能以资源编译替代生成图的实机验收，工具保持实验性。
+AG2 独立第一人称模式与自定义 helper 骨保留已有[资源验证](tests/reports/ag2-firstperson-v1238.md)及[本轮实机验证](tests/reports/ag2-gameplay-v1238.md)：1.1 倍 SAS 在生成图下观察 AWP/M4A4/Desert Eagle 持握、射击、重载、M4A4 inspect、完整人物蹲伏，以及补齐测试模型物理关节后的死亡布娃娃。历史[原版第一人称图对照](tests/reports/ag2-gameplay-20261020.md)保留原范围；不扩为任意骨架、所有附件或图节点调试认证，工具保持实验性。详见[用法](subtools/ag2proportions/README.md)。
 
 | 当前扩展 | 已实现范围与边界 |
 | --- | --- |
 | 场景输入与缓存 | 同源骨/动画名消歧、DMX 蒙皮数组校验、完整 VPK CRC；预算化 LRU 和生命周期释放，不是进程 RSS 硬上限。见 [SCENE_IMPORT](SCENE_IMPORT.md)。 |
 | 采样与 USD | 可选位置/法线容限减少顶点帧，未知/STEP 插值保留密集帧；USD 有界静态单引用/选定变体/实例，对不支持组合明确失败。不是完整 OpenUSD。 |
-| 动画工具 | VMD 尾轨时长、独立相机/表情、自定义人形映射与可选减帧；[真实 Blender 八骨下肢](tests/reports/v1.2.38-blender-vmd.md)核对非对称比例、绑定、脚固定与数值蒙皮。L4D 支持混合格点/pose 层及遮罩，生产动作和游戏过渡仍需独立验证。 |
+| 动画工具 | VMD 尾轨时长、独立相机/表情、自定义人形映射与可选减帧；[真实 Blender 八骨下肢](tests/reports/v1.2.38-blender-vmd.md)核对非对称比例、绑定、脚固定与数值蒙皮。L4D 支持混合格点/pose 层及遮罩；[官方 Zoey→Rochelle](tests/reports/v1.2.38-l4d-production.md) 17序列离线往返及本轮四个固定位置人物的移动/瞄准混合通过，不扩为完整幸存者玩法、活动切换或游戏 pose-envelope 认证。 |
+| C4D 静态缓存 | 真实 C4D 2027 保存的生成器/变形器缓存经 Cineware 22 读取，与应用求值几何、UV、法线及层级对照通过；骨骼动画仍明确拒绝。见[应用报告](tests/reports/v1.2.38-c4d-application.md)。 |
 | 反编译 | VVD 内容校验、每模型质量 JSON、选择性资产导出及保留目录、可选 DMX 减帧；选择性资产集不保证可独立回编。见 [导出说明](DECOMPILER_EXPORTS.md)。 |
-| 作者脚本 | OBJ/GLB 网格包装、本地 VMT/VTF 依赖收集、声明完整搜索根后的增量编译与批次摘要。见 [工作流](AUTHORING_WORKFLOWS.md)。 |
+| 作者脚本 | OBJ/GLB 网格包装、本地 VMT/VTF 依赖收集、声明完整搜索根后的增量编译与批次摘要。[Medusa 六模型](tests/reports/v1.2.38-medusa-materials.md)各 19 VMT/37 VTF 闭包及缺件输出保护通过，并修复 EyeRefract 贴图漏收；不等于游戏着色认证。见 [工作流](AUTHORING_WORKFLOWS.md)。 |
 | 维护与验收 | 安全 perf/dependency 报告、结构化诊断、平台基线、符号/变异/可重复构建的实际完成状态逐项列于台账；不以配置存在代替运行通过。 |
 
 ## v1.2.36 替换构建

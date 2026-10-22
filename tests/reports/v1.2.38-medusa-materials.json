@@ -1,0 +1,1467 @@
+{
+  "schema": 1,
+  "date": "2026-10-22",
+  "item": 30,
+  "status": "passed_for_six_medusa_models",
+  "authorization": "The user supplied E:/desktop/Medusa for the current material test after confirming Plum assets are lost.",
+  "source_root": "E:/desktop/Medusa",
+  "collector_fix_commit": "61ff561dd026b17790c53f8d8073da665d823ad5",
+  "tool_sha256": {
+    "tools\\material_collect.py": "27a081311aa61e8b8fa9b21bf3ca8720e99c15a9bb5cbb658e39f970239c7112",
+    "tools\\output_transaction.py": "86389fee9555413e5ec8f2c0b8e85850ef567a73876de4d3a8be7aca69011f4b"
+  },
+  "native_build": {
+    "source_commit": "75c13ac48c1acc80a2cdb2627e5f7b94b67cd8fe",
+    "compiler_sha256": "5cd859057dcfce8effbab7abc3425700ef1cfbf2bf3caa61ba9c543f2afb5669",
+    "compile_evidence_path": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\result.json",
+    "compile_evidence_sha256": "ff16b1ac290d20ada085b154eadca08090ca41e608f4dee78c5e439edbbd7762",
+    "two_compile_output_families_identical_to_previous_build": true,
+    "original_source_files_checked_by_compile_run": 236,
+    "source_unchanged": true,
+    "gameinfo_unchanged": true,
+    "scope": "Unmodified expressions/no_expressions combine QC in isolated copies; GMod target compilation and serialized checks, not gameplay or original-build parity."
+  },
+  "before_fix": {
+    "collector_sha256": "5459188297e445d6b8811303149adc51ab92a8f41747019926fc89795411fe96",
+    "cases": [
+      {
+        "model": "expressions/compiled 0.74/models/combine_prisonguard.mdl",
+        "model_sha256": "ec8385d2de1aba71f9e642ad0e29db78d321a7ab96612f661015527c9648f676",
+        "exit_code": 0,
+        "reported_complete": true,
+        "reported_files": 54,
+        "omitted_dependencies": [
+          "models/dewobedil/monster/medusa/cornea.vtf",
+          "models/dewobedil/monster/medusa/oa.vtf"
+        ]
+      },
+      {
+        "model": "expressions/compiled 0.74/models/combine_soldier.mdl",
+        "model_sha256": "46f9966a2eda56f3a7c48c05b2fc3163bc520d6ac5d9644b8dd870f142fda65c",
+        "exit_code": 0,
+        "reported_complete": true,
+        "reported_files": 54,
+        "omitted_dependencies": [
+          "models/dewobedil/monster/medusa/cornea.vtf",
+          "models/dewobedil/monster/medusa/oa.vtf"
+        ]
+      },
+      {
+        "model": "expressions/compiled 0.74/models/combine_super_soldier.mdl",
+        "model_sha256": "9b630750c99cf3bb61c33c88aceb1d4ffefe1708b4a384e54facf651608da14b",
+        "exit_code": 0,
+        "reported_complete": true,
+        "reported_files": 54,
+        "omitted_dependencies": [
+          "models/dewobedil/monster/medusa/cornea.vtf",
+          "models/dewobedil/monster/medusa/oa.vtf"
+        ]
+      },
+      {
+        "model": "expressions/compiled 0.74/models/police.mdl",
+        "model_sha256": "c741c46226f65f4107177f26ffaab754d0007f28429d215fddf58e43a67ff322",
+        "exit_code": 0,
+        "reported_complete": true,
+        "reported_files": 54,
+        "omitted_dependencies": [
+          "models/dewobedil/monster/medusa/cornea.vtf",
+          "models/dewobedil/monster/medusa/oa.vtf"
+        ]
+      }
+    ]
+  },
+  "fix": "Recognize the standard EyeRefract $iris, $ambientoccltexture and $corneatexture parameters. The sample Iris is also its basetexture, so this sample gains two unique VTF files.",
+  "current_cases": [
+    {
+      "model": "expressions/compiled 0.74/models/combine_prisonguard.mdl",
+      "model_sha256": "ec8385d2de1aba71f9e642ad0e29db78d321a7ab96612f661015527c9648f676",
+      "model_origin": "pre-existing user supplied MDL, not a current compiler output",
+      "command": [
+        "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "D:\\newpage-merge-mdl\\tools\\material_collect.py",
+        "--root",
+        "E:\\desktop\\Medusa\\materials",
+        "--mdl",
+        "E:\\desktop\\Medusa\\expressions\\compiled 0.74\\models\\combine_prisonguard.mdl",
+        "--output",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\after-fix\\combine_prisonguard"
+      ],
+      "exit_code": 0,
+      "request_alternatives": [
+        [
+          "models/dewobedil/monster/medusa/medusa_head.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_teeth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyelash.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_face.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyeball_r01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyeball_l01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_cloth_front.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_cloth_bock.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hand_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hand_cloth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_inner.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_foot.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_upper_cloth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_upper_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_body01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_body_hand.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hair.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hair_scalp.vmt"
+        ]
+      ],
+      "independent_missing_from_collector": [],
+      "independent_unexpected_collector_textures": [],
+      "all_published_bytes_match_source": true,
+      "closure_files": 56,
+      "vmt_files": 19,
+      "vtf_files": 37,
+      "complete": true,
+      "published": true,
+      "missing": [],
+      "errors": [],
+      "runtime_resources": [
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_head.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_lower_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_hand_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_inner.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_foot.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_upper_metal.vmt",
+          "key": "$envmap"
+        }
+      ]
+    },
+    {
+      "model": "expressions/compiled 0.74/models/combine_soldier.mdl",
+      "model_sha256": "46f9966a2eda56f3a7c48c05b2fc3163bc520d6ac5d9644b8dd870f142fda65c",
+      "model_origin": "pre-existing user supplied MDL, not a current compiler output",
+      "command": [
+        "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "D:\\newpage-merge-mdl\\tools\\material_collect.py",
+        "--root",
+        "E:\\desktop\\Medusa\\materials",
+        "--mdl",
+        "E:\\desktop\\Medusa\\expressions\\compiled 0.74\\models\\combine_soldier.mdl",
+        "--output",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\after-fix\\combine_soldier"
+      ],
+      "exit_code": 0,
+      "request_alternatives": [
+        [
+          "models/dewobedil/monster/medusa/medusa_head.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_teeth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyelash.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_face.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyeball_r01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyeball_l01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_cloth_front.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_cloth_bock.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hand_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hand_cloth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_inner.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_foot.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_upper_cloth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_upper_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_body01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_body_hand.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hair.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hair_scalp.vmt"
+        ]
+      ],
+      "independent_missing_from_collector": [],
+      "independent_unexpected_collector_textures": [],
+      "all_published_bytes_match_source": true,
+      "closure_files": 56,
+      "vmt_files": 19,
+      "vtf_files": 37,
+      "complete": true,
+      "published": true,
+      "missing": [],
+      "errors": [],
+      "runtime_resources": [
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_head.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_lower_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_hand_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_inner.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_foot.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_upper_metal.vmt",
+          "key": "$envmap"
+        }
+      ]
+    },
+    {
+      "model": "expressions/compiled 0.74/models/combine_super_soldier.mdl",
+      "model_sha256": "9b630750c99cf3bb61c33c88aceb1d4ffefe1708b4a384e54facf651608da14b",
+      "model_origin": "pre-existing user supplied MDL, not a current compiler output",
+      "command": [
+        "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "D:\\newpage-merge-mdl\\tools\\material_collect.py",
+        "--root",
+        "E:\\desktop\\Medusa\\materials",
+        "--mdl",
+        "E:\\desktop\\Medusa\\expressions\\compiled 0.74\\models\\combine_super_soldier.mdl",
+        "--output",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\after-fix\\combine_super_soldier"
+      ],
+      "exit_code": 0,
+      "request_alternatives": [
+        [
+          "models/dewobedil/monster/medusa/medusa_head.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_teeth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyelash.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_face.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyeball_r01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyeball_l01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_cloth_front.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_cloth_bock.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hand_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hand_cloth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_inner.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_foot.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_upper_cloth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_upper_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_body01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_body_hand.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hair.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hair_scalp.vmt"
+        ]
+      ],
+      "independent_missing_from_collector": [],
+      "independent_unexpected_collector_textures": [],
+      "all_published_bytes_match_source": true,
+      "closure_files": 56,
+      "vmt_files": 19,
+      "vtf_files": 37,
+      "complete": true,
+      "published": true,
+      "missing": [],
+      "errors": [],
+      "runtime_resources": [
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_head.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_lower_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_hand_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_inner.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_foot.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_upper_metal.vmt",
+          "key": "$envmap"
+        }
+      ]
+    },
+    {
+      "model": "expressions/compiled 0.74/models/police.mdl",
+      "model_sha256": "c741c46226f65f4107177f26ffaab754d0007f28429d215fddf58e43a67ff322",
+      "model_origin": "pre-existing user supplied MDL, not a current compiler output",
+      "command": [
+        "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "D:\\newpage-merge-mdl\\tools\\material_collect.py",
+        "--root",
+        "E:\\desktop\\Medusa\\materials",
+        "--mdl",
+        "E:\\desktop\\Medusa\\expressions\\compiled 0.74\\models\\police.mdl",
+        "--output",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\after-fix\\police"
+      ],
+      "exit_code": 0,
+      "request_alternatives": [
+        [
+          "models/dewobedil/monster/medusa/medusa_head.vmt",
+          "models/dewobedil/shared/medusa_head.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_teeth.vmt",
+          "models/dewobedil/shared/medusa_teeth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyelash.vmt",
+          "models/dewobedil/shared/medusa_eyelash.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_face.vmt",
+          "models/dewobedil/shared/medusa_skin_face.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyeball_r01.vmt",
+          "models/dewobedil/shared/medusa_eyeball_r01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_eyeball_l01.vmt",
+          "models/dewobedil/shared/medusa_eyeball_l01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_cloth_front.vmt",
+          "models/dewobedil/shared/medusa_lower_cloth_front.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_metal.vmt",
+          "models/dewobedil/shared/medusa_lower_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_lower_cloth_bock.vmt",
+          "models/dewobedil/shared/medusa_lower_cloth_bock.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hand_metal.vmt",
+          "models/dewobedil/shared/medusa_hand_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hand_cloth.vmt",
+          "models/dewobedil/shared/medusa_hand_cloth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_inner.vmt",
+          "models/dewobedil/shared/medusa_inner.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_foot.vmt",
+          "models/dewobedil/shared/medusa_foot.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_upper_cloth.vmt",
+          "models/dewobedil/shared/medusa_upper_cloth.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_upper_metal.vmt",
+          "models/dewobedil/shared/medusa_upper_metal.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_body01.vmt",
+          "models/dewobedil/shared/medusa_skin_body01.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_skin_body_hand.vmt",
+          "models/dewobedil/shared/medusa_skin_body_hand.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hair.vmt",
+          "models/dewobedil/shared/medusa_hair.vmt"
+        ],
+        [
+          "models/dewobedil/monster/medusa/medusa_hair_scalp.vmt",
+          "models/dewobedil/shared/medusa_hair_scalp.vmt"
+        ]
+      ],
+      "independent_missing_from_collector": [],
+      "independent_unexpected_collector_textures": [],
+      "all_published_bytes_match_source": true,
+      "closure_files": 56,
+      "vmt_files": 19,
+      "vtf_files": 37,
+      "complete": true,
+      "published": true,
+      "missing": [],
+      "errors": [],
+      "runtime_resources": [
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_head.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_lower_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_hand_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_inner.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_foot.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_upper_metal.vmt",
+          "key": "$envmap"
+        }
+      ]
+    },
+    {
+      "id": "expressions",
+      "model": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\expressions\\compiled\\models\\combine_soldier.mdl",
+      "model_sha256": "c9bcb72d7d3e632314ea1b8ed895aa4eb850c76abb0e554ed8439fa3ac0a93b2",
+      "model_origin": "2026-10-22 isolated compile of unmodified user combine QC: after-alignment-fixes",
+      "compiler_sha256": "5cd859057dcfce8effbab7abc3425700ef1cfbf2bf3caa61ba9c543f2afb5669",
+      "compile_command": [
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1238-alignment-regressions\\bin\\NewPageMergeMDL.exe",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\expressions\\input\\combine_compile.qc",
+        "-game",
+        "G:\\SteamLibrary\\steamapps\\common\\GarrysMod\\garrysmod",
+        "-OutDir",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\expressions\\compiled"
+      ],
+      "compile_outputs": {
+        "models/combine_soldier.dx80.vtx": "e52cc79bf0f80733ba1812b790129e5efd23352a6a47c0e59d10c0e6c6bfcaa9",
+        "models/combine_soldier.dx90.vtx": "6fb869e5aa7539bf272f40fc6ceb466fb923229a20e7a91b5c4bec7f87382fc0",
+        "models/combine_soldier.mdl": "c9bcb72d7d3e632314ea1b8ed895aa4eb850c76abb0e554ed8439fa3ac0a93b2",
+        "models/combine_soldier.phy": "1102c89a5d02e8e31e6d363b2054976bcd1e5cf070bfd04c21d760afa252e196",
+        "models/combine_soldier.vvd": "7344a6b01787b4d65c620f92f36a81d25f2b7610d277581c3020a4ed1911faf1"
+      },
+      "command": [
+        "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "D:\\newpage-merge-mdl\\tools\\material_collect.py",
+        "--root",
+        "E:\\desktop\\Medusa\\materials",
+        "--mdl",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\expressions\\compiled\\models\\combine_soldier.mdl",
+        "--output",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\final-native-validation\\expressions"
+      ],
+      "exit_code": 0,
+      "independent_missing_from_collector": [],
+      "all_published_bytes_match_source": true,
+      "closure_files": 56,
+      "vmt_files": 19,
+      "vtf_files": 37,
+      "complete": true,
+      "published": true,
+      "missing": [],
+      "errors": [],
+      "runtime_resources": [
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_head.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_lower_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_hand_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_inner.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_foot.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_upper_metal.vmt",
+          "key": "$envmap"
+        }
+      ]
+    },
+    {
+      "id": "no_expressions",
+      "model": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\no_expressions\\compiled\\models\\combine_soldier.mdl",
+      "model_sha256": "29094daff7d90f8fbc9e3790b7fd631a3a144fe452e49670254df37e9c3b7be9",
+      "model_origin": "2026-10-22 isolated compile of unmodified user combine QC: after-alignment-fixes",
+      "compiler_sha256": "5cd859057dcfce8effbab7abc3425700ef1cfbf2bf3caa61ba9c543f2afb5669",
+      "compile_command": [
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1238-alignment-regressions\\bin\\NewPageMergeMDL.exe",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\no_expressions\\input\\combine_compile.qc",
+        "-game",
+        "G:\\SteamLibrary\\steamapps\\common\\GarrysMod\\garrysmod",
+        "-OutDir",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\no_expressions\\compiled"
+      ],
+      "compile_outputs": {
+        "models/combine_soldier.dx80.vtx": "ec11e85288f3cce603b9e2c8d8fec5f7aa84974dd97552f5de1f04915757e127",
+        "models/combine_soldier.dx90.vtx": "4e6f98cf11261441f51d04682a7cd5d9d6f8bf47a6a3468575ce3b2dab55f5ce",
+        "models/combine_soldier.mdl": "29094daff7d90f8fbc9e3790b7fd631a3a144fe452e49670254df37e9c3b7be9",
+        "models/combine_soldier.phy": "5cc959238ce927f8a6dca685fa26c333c1f20eaf6a6b6d90963d033db0a03c68",
+        "models/combine_soldier.vvd": "48769a16cd502c34f5a5c6adffccecb488190952fe4e037150f31b277ced4614"
+      },
+      "command": [
+        "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "D:\\newpage-merge-mdl\\tools\\material_collect.py",
+        "--root",
+        "E:\\desktop\\Medusa\\materials",
+        "--mdl",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\no_expressions\\compiled\\models\\combine_soldier.mdl",
+        "--output",
+        "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\final-native-validation\\no_expressions"
+      ],
+      "exit_code": 0,
+      "independent_missing_from_collector": [],
+      "all_published_bytes_match_source": true,
+      "closure_files": 56,
+      "vmt_files": 19,
+      "vtf_files": 37,
+      "complete": true,
+      "published": true,
+      "missing": [],
+      "errors": [],
+      "runtime_resources": [
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_head.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_lower_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_hand_metal.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_inner.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_foot.vmt",
+          "key": "$envmap"
+        },
+        {
+          "name": "env_cubemap",
+          "requested_by": "models/dewobedil/monster/medusa/medusa_upper_metal.vmt",
+          "key": "$envmap"
+        }
+      ]
+    }
+  ],
+  "shared_closure": {
+    "files": [
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_head.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_head.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "2199362b834e5db0ca83ac9e6b815328f137c20ac28dedbc4dfb6c4c2730c616",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_head.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_head.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "9f3527aa353bd7d3acd280e10d81758fd2392994700305362e3a1b4be0d4ad6e",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_head_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_head_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "dc6017c6778b954cbaa81d79923425ca57d9bbac2782235085e7a8179b84bbb2",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_teeth.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_teeth.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "59382cdb346a53b900142ab37480491402c3d0f026ab8031422d47e7893e64dc",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_teeth.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_teeth.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "972c5db89b41d8fcfeddafa73c1f5a6300dc20f9381bed4ab3bc384467eedfa2",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_teeth_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_teeth_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "c73c7b4e0fb4afecf470bd14e32771353f8ebb4dbe20d072a7b273714633df9f",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_eyelash.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_eyelash.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "a63b1773e6ea398ab2bd8ea3d5736000ca30223c3e53f665e7e83db533db3d82",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_eyelash.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_eyelash.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "ae86db71af37b2df3958b003ba8d18ef46be7c748c8359cd5bcea706d85668ae",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_skin_face.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_skin_face.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "a527ffc8ac7c2eaf4d2861ecbddd2e20eefcdcfe78249016870fd5bfd13c93f3",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_skin_face.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_skin_face.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "747d059b358dd175c71a463c35365b4e3a0f1253c780a3444a7ed882a31cd58a",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_skin_face_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_skin_face_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "d1a79ae5e4b46b50a7b67be9c69483505f4563f9415889c6b0d6b794486f77dc",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_eyeball_r01.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_eyeball_r01.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "dbd6344e6bf153da802dd94a49bbf0b6ed1e36a4afb30351cf59d4812affba76",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_pupil_r01.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_pupil_r01.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "c360e9cc09186bb42e9fadacd9ba803d261a2c59422fd30306cd86aea5a00c32",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/oa.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\oa.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "806d70128b42e578be61e905362e87b2af06b44a6767bea265814518f4ae7807",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/black.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\black.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "0f99c4388d365aa6b5fa99f27b4ae174b0d99469f91453392c6f3bd98f01d012",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/cornea.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\cornea.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "856c88d845d96b51dff2a39906a0a533c551a0f19e26e55da692057ebff84b42",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/eye-lightwarp.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\eye-lightwarp.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "fa5f4d0e8689dbd74b1eb2a50f1d63f60383ce1169adc87d0816449d8a95e006",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_eyeball_l01.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_eyeball_l01.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "78aad89917e65e4bcebc3213be5dbcd7d1a21a9fecfc01a218fc36f7bdb99f16",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_pupil_l01.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_pupil_l01.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "bf1ab9f7e9876c6231bd173f995ae4f450cfea245641d45907775c8795facae6",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_lower_cloth_front.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_lower_cloth_front.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "62ec04d8f9a6a368d012876e8ee958bda51b0a887e83b6f23c74f44f78e46080",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_lower_cloth_front.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_lower_cloth_front.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "0fc629c76a41a55f7b57081e9a0854fe2b3c25183a57b24fc947ff9b8fca45f4",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_lower_cloth_front_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_lower_cloth_front_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "db5d2b218593fe12377d5ff6a13f9101b2d24a6e96321f9427bb9922f20a4cc4",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_lower_metal.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_lower_metal.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "dca73e9f4c76cae0d35bb5267e6f651edfe9b2fddf0a878010b60b9f447ca05a",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_lower_metal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_lower_metal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "f91e13adcfa86c02045a6b5db4d9bfc05905bf376f302c208b8867be5e98a215",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_lower_metal_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_lower_metal_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "e175c8d3e1c649e33f3f72abe72999b4fb68de909b00b9c28c25b594d4bcf4fe",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_lower_cloth_bock.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_lower_cloth_bock.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "1f3386def8319b68f3f623eb24eafc6e56b0f9fce151333c4cfbd6b7fff3634a",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_lower_cloth_bock.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_lower_cloth_bock.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "fbd8d0422c1912ee0fedd2921db1efa524eab565181ae2e0eeaebaf70b31a560",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_lower_cloth_bock_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_lower_cloth_bock_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "b4e1fe7fa5ca78ca1e0dda6243dce8fc5a741603ca7041b0e63a4423826a7d2e",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hand_metal.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hand_metal.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "81668509b9146539a930ab04103ecb51f6581be4e3fb45d706ca3cb60b35626c",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hand_metal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hand_metal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "3e6050aa66a4c70102626d2f928bd52e0d36ef2ab5115a22a5020f34bbeac0b7",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hand_metal_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hand_metal_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "932bc1d49e031b421fd7a44ae109b341fb9ed454b804aaf3fc86c68bb95dfa5f",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hand_cloth.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hand_cloth.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "fff433b65009054f7ab5e2557e90f3365a4cba50a381d82780a1c67c79e30ff7",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hand_cloth.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hand_cloth.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "bc572ca9fee6d45980f2d503415f6cdc044eea1774e0669744a533836577cd7c",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hand_cloth_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hand_cloth_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "e916012c5d3a8a669f5b7de669f9dd0a6c0ef5fc6545a8eb0e0bcd3bf0ea6558",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_inner.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_inner.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "fb5585b9e1051cb9b6747e9bf0d70d4d5c3e33359c3c5817dc73ff4160c8cdf8",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_inner.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_inner.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "2496adb6afea67198cf13181a590d880a71163981ac376f30e09996c985c28af",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_inner_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_inner_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "7bffef5febf095c79f50c11ec4cc8e6631b37361e5cbd5e1114e62807f8bdd0a",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_foot.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_foot.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "a91afc882bc849e4ee32dd7c8e2e008d50e7798de524f3ad3cee085e1f70d240",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_foot.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_foot.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "18934ddf16b7278e21a95bfca91f0a49daa0ba41a05e4128219c7d1625d8b242",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_foot_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_foot_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "573dff21635c18d34e80596f8489e3438b1e4bc95dff39d235ebddcb43497618",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_upper_cloth.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_upper_cloth.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "979a90603c945b97f160223e06e502112760628b8c2ddeed57028ae7fa88f0bc",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_upper_cloth.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_upper_cloth.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "1a89c04a4802cc31a5af127d757b3611e2c3f62d0bc3deda565f15f9e2e263b1",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_upper_cloth_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_upper_cloth_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "c6bcd26d7e53dcdf55f553140f08a469863eefd853c46649ba68dcfbbdb6a7b7",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_upper_metal.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_upper_metal.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "dbf39beed3f7a4f1f45b752ec843e6b827e186696b31c046a1cf419097b6a130",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_upper_metal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_upper_metal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "8fdd13b526606cf7c2af787924694ea19580d139c4845e5c6b491614c02a08cc",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_upper_metal_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_upper_metal_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "c852b56eda576139cc13146ca61a9d06e190a609e7a91b4e3202a80de0329e24",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_skin_body01.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_skin_body01.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "65616b32bac084fae0f1e27a8ec847a6c5679743d837a8fcaf57b11119e039e6",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_skin_body01.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_skin_body01.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "d2aa232b9c937df850d26040c4a1c351eccda8b03ded4dbf4368ea9d46e22be6",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_skin_body01_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_skin_body01_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "d634b1fbfd31a2834ba89592896dec0551d64a425ce4920312f7603ade9dd5c4",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_skin_body_hand.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_skin_body_hand.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "557a7a4051b273284cae0128310e0cde717a9a2d279929e96f2f2c555f387766",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_skin_body_hand.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_skin_body_hand.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "6b8cc791f0431f80da10007a2ef5b61305c5f693b3680840a33153296fe8d9df",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_skin_body_hand_normal.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_skin_body_hand_normal.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "691de0fed5e86e72621d20f0123e470d8ee5ea06c24ec8be4bc21c992c30285f",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hair.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hair.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "163f33caa9aac46d6445fbc2e7ad32e80885969cf3df4ec7c5dd364c5513feaf",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hair.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hair.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "5b9697df97d3a6b0bf7884b2a58ee6d0ca2b18a70f0f28b92f599ffce046fab3",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hair_scalp.vmt",
+        "kind": "vmt",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hair_scalp.vmt",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "23f60e871f1b6c3f17e18db6a02b6f697799ebfddbf6cca96e2499491cc5c3a2",
+        "shadowed_sources": []
+      },
+      {
+        "name": "models/dewobedil/monster/medusa/medusa_hair_scalp.vtf",
+        "kind": "vtf",
+        "source": "E:\\desktop\\Medusa\\materials\\models\\dewobedil\\monster\\medusa\\medusa_hair_scalp.vtf",
+        "root": "E:\\desktop\\Medusa\\materials",
+        "priority": 0,
+        "sha256": "eaf4fc4993d732806ea498e6e4f2a9dfe59bb60039841de5df35ea914ec24233",
+        "shadowed_sources": []
+      }
+    ],
+    "total_files": 56,
+    "vmt": 19,
+    "vtf": 37,
+    "total_bytes": 32850428,
+    "identical_for_all_six_cases": true
+  },
+  "independent_check": {
+    "method": "Separate line-oriented key/value scanner, checks all values resolving to existing VTFs under the supplied material root; does not call collector.parse_vmt or use TEXTURE_KEYS to choose dependencies.",
+    "path_value_keys": {
+      "$ambientoccltexture": 2,
+      "$basetexture": 19,
+      "$bumpmap": 14,
+      "$corneatexture": 2,
+      "$envmap": 2,
+      "$iris": 2,
+      "$lightwarptexture": 2
+    },
+    "unresolved_path_values": [],
+    "missing_from_collector": [],
+    "scope": "The 19 VMTs actually referenced by these six MDLs. Other supplied VMTs, including medusa_ep1 Patch materials, are not claimed as a resolved model closure."
+  },
+  "isolated_output_resolution": [
+    {
+      "model": "expressions/compiled 0.74/models/combine_prisonguard.mdl",
+      "material_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\after-fix\\combine_prisonguard\\materials",
+      "complete": true,
+      "files": 56,
+      "sha256_match": true
+    },
+    {
+      "model": "expressions/compiled 0.74/models/combine_soldier.mdl",
+      "material_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\after-fix\\combine_soldier\\materials",
+      "complete": true,
+      "files": 56,
+      "sha256_match": true
+    },
+    {
+      "model": "expressions/compiled 0.74/models/combine_super_soldier.mdl",
+      "material_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\after-fix\\combine_super_soldier\\materials",
+      "complete": true,
+      "files": 56,
+      "sha256_match": true
+    },
+    {
+      "model": "expressions/compiled 0.74/models/police.mdl",
+      "material_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\after-fix\\police\\materials",
+      "complete": true,
+      "files": 56,
+      "sha256_match": true
+    },
+    {
+      "model": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\expressions\\compiled\\models\\combine_soldier.mdl",
+      "material_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\final-native-validation\\expressions\\materials",
+      "complete": true,
+      "files": 56,
+      "sha256_match": true
+    },
+    {
+      "model": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\after-alignment-fixes\\no_expressions\\compiled\\models\\combine_soldier.mdl",
+      "material_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\final-native-validation\\no_expressions\\materials",
+      "complete": true,
+      "files": 56,
+      "sha256_match": true
+    }
+  ],
+  "failure_preservation": {
+    "command": [
+      "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "D:\\newpage-merge-mdl\\tools\\material_collect.py",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\final-native-validation\\missing-oa-source\\materials",
+      "--mdl",
+      "E:\\desktop\\Medusa\\expressions\\compiled 0.74\\models\\police.mdl",
+      "--output",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238\\final-native-validation\\previous-output"
+    ],
+    "exit_code": 2,
+    "removed_from_isolated_copy": "models/dewobedil/monster/medusa/oa.vtf",
+    "old_material_files_preserved": 56,
+    "old_material_sha256_unchanged": true
+  },
+  "failure_report": {
+    "complete": false,
+    "published": false,
+    "missing": [
+      {
+        "kind": "vtf",
+        "name": "models/dewobedil/monster/medusa/oa.vtf",
+        "requested_by": "models/dewobedil/monster/medusa/medusa_eyeball_r01.vmt"
+      },
+      {
+        "kind": "vtf",
+        "name": "models/dewobedil/monster/medusa/oa.vtf",
+        "requested_by": "models/dewobedil/monster/medusa/medusa_eyeball_l01.vmt"
+      }
+    ],
+    "errors": []
+  },
+  "regression_checks": {
+    "material_cases_passed": 5,
+    "new_eyerefract_case_failed_before_fix": true,
+    "new_case_scope": "Two self-authored eye VMTs with three distinct unavailable textures must exit 2 and preserve previous output; providing all three produces exactly five unique byte-identical files and an isolated complete closure."
+  },
+  "input_protection": {
+    "files_hashed_by_material_run": 136,
+    "source_inputs_unchanged": true,
+    "sha256": {
+      "expressions/all_female_citizen_compile.qc": "aa6cfacbf240449a75285ecb6a24b03d7d4179ce17dd025fd6dcb234591643a0",
+      "expressions/all_male_citizen_compile.qc": "856a1912d8b5cb1500456f9e8c39577c9a923975120d897504cc91b275395bba",
+      "expressions/alyx_compile.qc": "af6584155c2c86ccf0d9ead12a604486a608dc2dae7dead1ccbeb5ced7317f66",
+      "expressions/alyx_ep2_compile.qc": "7cabae652ba443ec24f29c5f57ca7f2aeac81c9a5d2c2fa6ca7ea5fba3a19568",
+      "expressions/alyx_interior_compile.qc": "8c2932d910074ca67e2ec18c9bdcfb289e06d65a97910e5f4a2041cfbb3f28bd",
+      "expressions/alyx_intro_compile.qc": "b9e3fb69fad7e1871c222671a76768a3009784576938b6c44730ac4731819b8b",
+      "expressions/barney_compile.qc": "65790284fe6340a3a2688abba93049a07eb481796e37d8eaeabf69bd5dcd11fd",
+      "expressions/breen_compile.qc": "cb4342f1a1836fc0f76c5af7bde90391bc890b1cfc986b9bb79176a16562ff29",
+      "expressions/combine_compile.qc": "4c805d4c9f1d9bc7fd7f562fbde3536640fe943b461118dc4a0b259caf087667",
+      "expressions/combine_prisonguard_compile.qc": "a2112ea3a349e26ead6bf7cea0f3554aa264dc79c640a3dd9edd66627bc59783",
+      "expressions/combine_super_soldier_compile.qc": "db9840b001af2d7745a6959460696585afbf30fd764f78bee4f27823216cb67a",
+      "expressions/compiled 0.74/models/combine_prisonguard.mdl": "ec8385d2de1aba71f9e642ad0e29db78d321a7ab96612f661015527c9648f676",
+      "expressions/compiled 0.74/models/combine_soldier.mdl": "46f9966a2eda56f3a7c48c05b2fc3163bc520d6ac5d9644b8dd870f142fda65c",
+      "expressions/compiled 0.74/models/combine_super_soldier.mdl": "9b630750c99cf3bb61c33c88aceb1d4ffefe1708b4a384e54facf651608da14b",
+      "expressions/compiled 0.74/models/police.mdl": "c741c46226f65f4107177f26ffaab754d0007f28429d215fddf58e43a67ff322",
+      "expressions/kleiner_compile.qc": "7529343f8f08d6efbbdb69b0be03e0695ef7f39bd0f25ebfbc7641682c266650",
+      "expressions/mossman_compile.qc": "4931053412234b2ea9ffb79f7a63d5236f828c7ffba2825180ae577ce30eb5bb",
+      "expressions/npc_female_compile.qc": "2fa7a29c2a07bc2d324c9662688fd3206875f24826c49cd063ecc490a999c9f3",
+      "expressions/npc_male_compile.qc": "1e61cdfbdcf8ae74f13976f702c9a1ad58e02618a4eb95f967d033a63b3fb37f",
+      "expressions/police_compile.qc": "5fcb90fe2ceb6178ea811214645c210765b459a442f10e1574461fdfec5d0b4c",
+      "materials/models/dewobedil/monster/medusa/black.vtf": "0f99c4388d365aa6b5fa99f27b4ae174b0d99469f91453392c6f3bd98f01d012",
+      "materials/models/dewobedil/monster/medusa/cornea.vtf": "856c88d845d96b51dff2a39906a0a533c551a0f19e26e55da692057ebff84b42",
+      "materials/models/dewobedil/monster/medusa/eye-lightwarp.vtf": "fa5f4d0e8689dbd74b1eb2a50f1d63f60383ce1169adc87d0816449d8a95e006",
+      "materials/models/dewobedil/monster/medusa/medusa_bone_snake_metal.vmt": "fe680c2229a6ed1d76f227d93325969a965af263536cfc979a42404702a5739e",
+      "materials/models/dewobedil/monster/medusa/medusa_bone_snake_metal.vtf": "e4c964809bbefdfc3751a920bd212ca60e6dd9f26f99ee790d5ea3258c0000cb",
+      "materials/models/dewobedil/monster/medusa/medusa_bone_snake_metal_normal.vtf": "8204dfbc0de4cce6c41b897eb4953fb2767b4dcdf1b1b627b985d016334ad802",
+      "materials/models/dewobedil/monster/medusa/medusa_eyeball_l01.vmt": "78aad89917e65e4bcebc3213be5dbcd7d1a21a9fecfc01a218fc36f7bdb99f16",
+      "materials/models/dewobedil/monster/medusa/medusa_eyeball_l01.vtf": "92e457d0a67edcb47633b7c04c64af2b1e916ba86dce0eef1fd929b6a6e258c7",
+      "materials/models/dewobedil/monster/medusa/medusa_eyeball_r01.vmt": "dbd6344e6bf153da802dd94a49bbf0b6ed1e36a4afb30351cf59d4812affba76",
+      "materials/models/dewobedil/monster/medusa/medusa_eyeball_r01.vtf": "92e457d0a67edcb47633b7c04c64af2b1e916ba86dce0eef1fd929b6a6e258c7",
+      "materials/models/dewobedil/monster/medusa/medusa_eyelash.vmt": "a63b1773e6ea398ab2bd8ea3d5736000ca30223c3e53f665e7e83db533db3d82",
+      "materials/models/dewobedil/monster/medusa/medusa_eyelash.vtf": "ae86db71af37b2df3958b003ba8d18ef46be7c748c8359cd5bcea706d85668ae",
+      "materials/models/dewobedil/monster/medusa/medusa_foot.vmt": "a91afc882bc849e4ee32dd7c8e2e008d50e7798de524f3ad3cee085e1f70d240",
+      "materials/models/dewobedil/monster/medusa/medusa_foot.vtf": "18934ddf16b7278e21a95bfca91f0a49daa0ba41a05e4128219c7d1625d8b242",
+      "materials/models/dewobedil/monster/medusa/medusa_foot_normal.vtf": "573dff21635c18d34e80596f8489e3438b1e4bc95dff39d235ebddcb43497618",
+      "materials/models/dewobedil/monster/medusa/medusa_hair.vmt": "163f33caa9aac46d6445fbc2e7ad32e80885969cf3df4ec7c5dd364c5513feaf",
+      "materials/models/dewobedil/monster/medusa/medusa_hair.vtf": "5b9697df97d3a6b0bf7884b2a58ee6d0ca2b18a70f0f28b92f599ffce046fab3",
+      "materials/models/dewobedil/monster/medusa/medusa_hair_scalp.vmt": "23f60e871f1b6c3f17e18db6a02b6f697799ebfddbf6cca96e2499491cc5c3a2",
+      "materials/models/dewobedil/monster/medusa/medusa_hair_scalp.vtf": "eaf4fc4993d732806ea498e6e4f2a9dfe59bb60039841de5df35ea914ec24233",
+      "materials/models/dewobedil/monster/medusa/medusa_hand_cloth.vmt": "fff433b65009054f7ab5e2557e90f3365a4cba50a381d82780a1c67c79e30ff7",
+      "materials/models/dewobedil/monster/medusa/medusa_hand_cloth.vtf": "bc572ca9fee6d45980f2d503415f6cdc044eea1774e0669744a533836577cd7c",
+      "materials/models/dewobedil/monster/medusa/medusa_hand_cloth_normal.vtf": "e916012c5d3a8a669f5b7de669f9dd0a6c0ef5fc6545a8eb0e0bcd3bf0ea6558",
+      "materials/models/dewobedil/monster/medusa/medusa_hand_metal.vmt": "81668509b9146539a930ab04103ecb51f6581be4e3fb45d706ca3cb60b35626c",
+      "materials/models/dewobedil/monster/medusa/medusa_hand_metal.vtf": "3e6050aa66a4c70102626d2f928bd52e0d36ef2ab5115a22a5020f34bbeac0b7",
+      "materials/models/dewobedil/monster/medusa/medusa_hand_metal_normal.vtf": "932bc1d49e031b421fd7a44ae109b341fb9ed454b804aaf3fc86c68bb95dfa5f",
+      "materials/models/dewobedil/monster/medusa/medusa_head.vmt": "2199362b834e5db0ca83ac9e6b815328f137c20ac28dedbc4dfb6c4c2730c616",
+      "materials/models/dewobedil/monster/medusa/medusa_head.vtf": "9f3527aa353bd7d3acd280e10d81758fd2392994700305362e3a1b4be0d4ad6e",
+      "materials/models/dewobedil/monster/medusa/medusa_head_normal.vtf": "dc6017c6778b954cbaa81d79923425ca57d9bbac2782235085e7a8179b84bbb2",
+      "materials/models/dewobedil/monster/medusa/medusa_inner.vmt": "fb5585b9e1051cb9b6747e9bf0d70d4d5c3e33359c3c5817dc73ff4160c8cdf8",
+      "materials/models/dewobedil/monster/medusa/medusa_inner.vtf": "2496adb6afea67198cf13181a590d880a71163981ac376f30e09996c985c28af",
+      "materials/models/dewobedil/monster/medusa/medusa_inner_normal.vtf": "7bffef5febf095c79f50c11ec4cc8e6631b37361e5cbd5e1114e62807f8bdd0a",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_back.vmt": "1b2896b2f3a417ea6c3c0675bc6dd75f35c15722fddf839135690dee076b4ec3",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_bock.vmt": "1f3386def8319b68f3f623eb24eafc6e56b0f9fce151333c4cfbd6b7fff3634a",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_bock.vtf": "fbd8d0422c1912ee0fedd2921db1efa524eab565181ae2e0eeaebaf70b31a560",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_bock_normal.vtf": "b4e1fe7fa5ca78ca1e0dda6243dce8fc5a741603ca7041b0e63a4423826a7d2e",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_broken_bock.vmt": "eca826de91f50c48cd81bcbac36419ea5363b1fda62b17877ab2137148a83f9a",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_broken_bock.vtf": "761cab38d26a9bfec1af6c01b7abe657c1505ac63137c00f66cc63bed8be675c",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_broken_bock_normal.vtf": "6c9d4693911f34af767c6ae3def4e0af50f5a3af406ec95514a5595376f98cbb",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_broken_front.vmt": "1e2bec3de612d98ee36a7e287e80d2ceee6cfa78fc264e5392f18c5ef69af5ad",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_broken_front.vtf": "80416621fb0cef5dbabb92a2972c43c432319748ca15639aee0fffb5c2f21962",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_broken_front_normal.vtf": "3f4dae58b5e696533afd5112d4058a9b67f2b1739267ce62d30d62cc4eb6105a",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_front.vmt": "62ec04d8f9a6a368d012876e8ee958bda51b0a887e83b6f23c74f44f78e46080",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_front.vtf": "0fc629c76a41a55f7b57081e9a0854fe2b3c25183a57b24fc947ff9b8fca45f4",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_cloth_front_normal.vtf": "db5d2b218593fe12377d5ff6a13f9101b2d24a6e96321f9427bb9922f20a4cc4",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_metal.vmt": "dca73e9f4c76cae0d35bb5267e6f651edfe9b2fddf0a878010b60b9f447ca05a",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_metal.vtf": "f91e13adcfa86c02045a6b5db4d9bfc05905bf376f302c208b8867be5e98a215",
+      "materials/models/dewobedil/monster/medusa/medusa_lower_metal_normal.vtf": "e175c8d3e1c649e33f3f72abe72999b4fb68de909b00b9c28c25b594d4bcf4fe",
+      "materials/models/dewobedil/monster/medusa/medusa_pupil_l01.vmt": "8871ec0514af440b68af21aa1351ef8225e50aaca9ba8d1facdc0f3958349e5e",
+      "materials/models/dewobedil/monster/medusa/medusa_pupil_l01.vtf": "bf1ab9f7e9876c6231bd173f995ae4f450cfea245641d45907775c8795facae6",
+      "materials/models/dewobedil/monster/medusa/medusa_pupil_r01.vmt": "111c0231ff2c30741c61a42436416fa0a443652679aa60f5744bf1c3dd297b88",
+      "materials/models/dewobedil/monster/medusa/medusa_pupil_r01.vtf": "c360e9cc09186bb42e9fadacd9ba803d261a2c59422fd30306cd86aea5a00c32",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_body01.vmt": "65616b32bac084fae0f1e27a8ec847a6c5679743d837a8fcaf57b11119e039e6",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_body01.vtf": "d2aa232b9c937df850d26040c4a1c351eccda8b03ded4dbf4368ea9d46e22be6",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_body01_normal.vtf": "d634b1fbfd31a2834ba89592896dec0551d64a425ce4920312f7603ade9dd5c4",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_body_hand.vmt": "557a7a4051b273284cae0128310e0cde717a9a2d279929e96f2f2c555f387766",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_body_hand.vtf": "6b8cc791f0431f80da10007a2ef5b61305c5f693b3680840a33153296fe8d9df",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_body_hand_normal.vtf": "691de0fed5e86e72621d20f0123e470d8ee5ea06c24ec8be4bc21c992c30285f",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_face.vmt": "a527ffc8ac7c2eaf4d2861ecbddd2e20eefcdcfe78249016870fd5bfd13c93f3",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_face.vtf": "747d059b358dd175c71a463c35365b4e3a0f1253c780a3444a7ed882a31cd58a",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_face_normal.vtf": "d1a79ae5e4b46b50a7b67be9c69483505f4563f9415889c6b0d6b794486f77dc",
+      "materials/models/dewobedil/monster/medusa/medusa_skin_face_PE.vtf": "8a1a7d75872d7910d0624444d53f13cd3bee94ee49ed512ba6d9b759b24c7dda",
+      "materials/models/dewobedil/monster/medusa/medusa_teeth.vmt": "59382cdb346a53b900142ab37480491402c3d0f026ab8031422d47e7893e64dc",
+      "materials/models/dewobedil/monster/medusa/medusa_teeth.vtf": "972c5db89b41d8fcfeddafa73c1f5a6300dc20f9381bed4ab3bc384467eedfa2",
+      "materials/models/dewobedil/monster/medusa/medusa_teeth_normal.vtf": "c73c7b4e0fb4afecf470bd14e32771353f8ebb4dbe20d072a7b273714633df9f",
+      "materials/models/dewobedil/monster/medusa/medusa_upper_cloth.vmt": "979a90603c945b97f160223e06e502112760628b8c2ddeed57028ae7fa88f0bc",
+      "materials/models/dewobedil/monster/medusa/medusa_upper_cloth.vtf": "1a89c04a4802cc31a5af127d757b3611e2c3f62d0bc3deda565f15f9e2e263b1",
+      "materials/models/dewobedil/monster/medusa/medusa_upper_cloth_broken.vmt": "fea7224cf98db658ddd9b2cf0a36180ca5b8ea94f01d767ee9ddee3827ee7bf0",
+      "materials/models/dewobedil/monster/medusa/medusa_upper_cloth_broken.vtf": "e493ce0d9bcde00c093fe811976da8a781f0bfbd5a73c4be2e8055c6164202bb",
+      "materials/models/dewobedil/monster/medusa/medusa_upper_cloth_broken_normal.vtf": "67986ac8ab771c0bed200e6c78e179ea7b55fe17e8e866b38df12f694e10b5b2",
+      "materials/models/dewobedil/monster/medusa/medusa_upper_cloth_normal.vtf": "c6bcd26d7e53dcdf55f553140f08a469863eefd853c46649ba68dcfbbdb6a7b7",
+      "materials/models/dewobedil/monster/medusa/medusa_upper_metal.vmt": "dbf39beed3f7a4f1f45b752ec843e6b827e186696b31c046a1cf419097b6a130",
+      "materials/models/dewobedil/monster/medusa/medusa_upper_metal.vtf": "8fdd13b526606cf7c2af787924694ea19580d139c4845e5c6b491614c02a08cc",
+      "materials/models/dewobedil/monster/medusa/medusa_upper_metal_normal.vtf": "c852b56eda576139cc13146ca61a9d06e190a609e7a91b4e3202a80de0329e24",
+      "materials/models/dewobedil/monster/medusa/oa.vtf": "806d70128b42e578be61e905362e87b2af06b44a6767bea265814518f4ae7807",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_bone_snake_metal.vmt": "6f1f4274abf7a9a81d7740542320d65cacc7b54fb2eb3c3abd80f1e26796d4f1",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_eyeball_l01.vmt": "78aad89917e65e4bcebc3213be5dbcd7d1a21a9fecfc01a218fc36f7bdb99f16",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_eyeball_r01.vmt": "dbd6344e6bf153da802dd94a49bbf0b6ed1e36a4afb30351cf59d4812affba76",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_eyelash.vmt": "c793712282cb1ee66f48bc687f6b9d8c251dddf781208f7aa1ca9d9d90ee8656",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_foot.vmt": "f0913c5dfebb4bca90cad909e34ccdf5cab0659101ae40f0d2139714b7e40823",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_hair.vmt": "373bd51761c6d9863ff122a996bb8279017eb02e7f16ca1800ce53786ea52489",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_hair_scalp.vmt": "a496209f15c71b19c9b27df300098a5732c0773364d51cc121f200be3035faf6",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_hand_cloth.vmt": "660071f65fc4135636e8afa1a469376970b320ee0fb8f214412bc1818ba76ddd",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_hand_metal.vmt": "f743b878887cc09b4774f9e9c4b3f8abf52689a75c84443d78758d889aa28052",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_head.vmt": "8175c92752236b6bee9884b80b786e8e3a380404f0dd86d969e52b1f2a46f272",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_inner.vmt": "8bf0bc11534660cb0420c7bfb7ff5a24ee36124f927cb98129ee220f736283ac",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_lower_cloth_back.vmt": "0a4704d544f2d8fd53d680fecab1b868bd6a9cfb7c25d71e179609b2a8c58d9a",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_lower_cloth_bock.vmt": "d227f16abd94ba5750ef415124f01fe207d5d694c6bd417aa4f00b61ee7d8383",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_lower_cloth_broken_bock.vmt": "c2dff70a32758d619f3eac2c9be1025e12861ec698e351bf31591356144f4333",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_lower_cloth_broken_front.vmt": "15d7f7c2db4cdd2928d2887ac7d904c7a371d929e367dedfce4a661e01336228",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_lower_cloth_front.vmt": "0bd9a8be91327351c4e06444ffd5ca70159416958bac20c364c0117cff540955",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_lower_metal.vmt": "097288e0f1dbae4463bcf7ca435574a11ac35d3c27aa53e77428b16f9f151a07",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_pupil_l01.vmt": "8871ec0514af440b68af21aa1351ef8225e50aaca9ba8d1facdc0f3958349e5e",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_pupil_r01.vmt": "111c0231ff2c30741c61a42436416fa0a443652679aa60f5744bf1c3dd297b88",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_skin_body01.vmt": "c94888298b667aae484277d5d48f871d6a751360a05a7e6aa6e1c039fb58b121",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_skin_body_hand.vmt": "8fb198cac241fe02be8f9661574a770dc4b1cda27b5331fa359cb00ef66f5525",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_skin_face.vmt": "5539be40b836671a02d7c1257c5059937b0979af4331746e3dd5459d86bec735",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_teeth.vmt": "87508158981f9e23387c08e3f9957f7920fd475bacc7f41db8a6fb4cae3061fe",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_upper_cloth.vmt": "a7e6e1b01b7f0bcac095b513eb4481d8c011fd10d81dd00a29d6591d0689bd59",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_upper_cloth_broken.vmt": "6c8bc9de2c114a75f2cdc6778fe1bbd984b382a70d0dfc176cff5371985da240",
+      "materials/models/dewobedil/monster/medusa_ep1/medusa_upper_metal.vmt": "1f3befe5e9b7b0dd1f1ad59ae33a6de9fb3aea81c1586344c826c6a0f83f836d",
+      "no_expressions/all_female_citizen_compile.qc": "aa6cfacbf240449a75285ecb6a24b03d7d4179ce17dd025fd6dcb234591643a0",
+      "no_expressions/all_male_citizen_compile.qc": "856a1912d8b5cb1500456f9e8c39577c9a923975120d897504cc91b275395bba",
+      "no_expressions/alyx_compile.qc": "af6584155c2c86ccf0d9ead12a604486a608dc2dae7dead1ccbeb5ced7317f66",
+      "no_expressions/alyx_ep2_compile.qc": "7cabae652ba443ec24f29c5f57ca7f2aeac81c9a5d2c2fa6ca7ea5fba3a19568",
+      "no_expressions/alyx_interior_compile.qc": "8c2932d910074ca67e2ec18c9bdcfb289e06d65a97910e5f4a2041cfbb3f28bd",
+      "no_expressions/alyx_intro_compile.qc": "b9e3fb69fad7e1871c222671a76768a3009784576938b6c44730ac4731819b8b",
+      "no_expressions/barney_compile.qc": "65790284fe6340a3a2688abba93049a07eb481796e37d8eaeabf69bd5dcd11fd",
+      "no_expressions/breen_compile.qc": "cb4342f1a1836fc0f76c5af7bde90391bc890b1cfc986b9bb79176a16562ff29",
+      "no_expressions/combine_compile.qc": "4c805d4c9f1d9bc7fd7f562fbde3536640fe943b461118dc4a0b259caf087667",
+      "no_expressions/combine_prisonguard_compile.qc": "2dd31b7caa9eb65b9ab35e077cc68827312b715e5ac61249cc958e04f36fc007",
+      "no_expressions/combine_super_soldier_compile.qc": "db9840b001af2d7745a6959460696585afbf30fd764f78bee4f27823216cb67a",
+      "no_expressions/kleiner_compile.qc": "7529343f8f08d6efbbdb69b0be03e0695ef7f39bd0f25ebfbc7641682c266650",
+      "no_expressions/mossman_compile.qc": "4931053412234b2ea9ffb79f7a63d5236f828c7ffba2825180ae577ce30eb5bb",
+      "no_expressions/npc_female_compile.qc": "2fa7a29c2a07bc2d324c9662688fd3206875f24826c49cd063ecc490a999c9f3",
+      "no_expressions/npc_male_compile.qc": "1e61cdfbdcf8ae74f13976f702c9a1ad58e02618a4eb95f967d033a63b3fb37f",
+      "no_expressions/police_compile.qc": "669056249da07bb0341732f055e717803d413717ef46479dbbd1b806883adbc2"
+    }
+  },
+  "assets_committed": false,
+  "gameplay_claimed": false,
+  "scope": "Local MDL-to-VMT/VTF resolution and byte-preserving publication for four pre-existing user MDLs and two freshly compiled combine variants; not shader rendering or universal/custom-shader completeness.",
+  "local_evidence_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238"
+}

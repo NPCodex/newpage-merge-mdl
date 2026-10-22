@@ -194,7 +194,7 @@ This is a CS2 tool, not a Source1 MDL arm fix. It adapts translation proportions
 not bind axes or mesh rigging. Finish in ModelDoc and check the complete
 model and its actions in game. See [installation](INSTALL.md) for staging,
 process-interruption recovery and same-target locking. The bounded
-[SAS gameplay validation](tests/reports/ag2-gameplay-20261020.md) covers only its
+[SAS gameplay validation](tests/reports/ag2-gameplay-v1238.md) covers only its
 listed model/actions. A separate `first_person = true` job requires explicit
 arms `model_dmx` and an enabled `hudmodel` graph; see the
 [AG2 guide](subtools/ag2proportions/README.md). Its

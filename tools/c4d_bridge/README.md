@@ -59,12 +59,12 @@ cmake --build build-c4d --config Release
 The Release executable is `build-c4d/Release/NewPageMergeMDL-C4D.exe`. It links
 Cineware, Assimp, JPEG, zlib and the MSVC runtime statically. Do not package SDK
 headers, static libraries, documentation or vendor examples with the executable.
-The helper is separate because the Cineware MSVC C++ ABI cannot be linked into
-the main project's LLVM/MinGW binary. Linux builds import a GLB previously
-converted on Windows.
+The helper remains a separate program, allowing the main compiler to use a
+different toolchain without linking against Cineware's MSVC C++ ABI. Linux
+builds import a GLB previously converted on Windows.
 
 CI stages the linked executable from the dedicated
-`NewPageMergeMDL-C4D-v1.2.34-win64.zip` asset on the project's `v1.2.34` release.
+`NewPageMergeMDL-C4D-v1.2.38-win64.zip` asset on the project's `v1.2.38` release.
 `automation/windows-extras.json` pins both the ZIP and executable SHA256 values.
 The exact release/asset name is resolved through GitHub's API; neither a moving
 latest release nor an unverified helper is accepted. The helper archive must be
@@ -73,7 +73,7 @@ the verified helper, so end users do not need the separate build-input archive.
 For verification before upload, use:
 
 ```text
-python .github/scripts/fetch_windows_extras.py --archive NewPageMergeMDL-C4D-v1.2.34-win64.zip --dist dist
+python .github/scripts/fetch_windows_extras.py --archive NewPageMergeMDL-C4D-v1.2.38-win64.zip --dist dist
 ```
 
 ## Validation

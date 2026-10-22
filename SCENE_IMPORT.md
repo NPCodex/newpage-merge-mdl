@@ -18,7 +18,7 @@ $body second scene.gltf InNode MeshB
 
 一次 QC 加载拥有独立的缓存生命周期；成功或失败退出后都释放解析场景。不同 `InNode` 可共享解析结果；导入后端、采样率和是否需烘焙权重不同的请求不混用。复用前检查已记录输入的时间戳与大小，包括外置 buffer、MTL 和挂载文件。不要在编译过程中并发改写输入。
 
-`-perfjson report.json` 的 `scene_cache` 对象提供 `hits`、`misses`、`evictions`、`stale`、`bypasses`、`estimated_retained_bytes`、`estimated_peak_retained_bytes`、`budget_bytes` 与 `import_seconds`。这些数据用于测量实际项目；不会据此预先承诺加速。不同采样率仍可能各保留一份解析场景，其总量受预算限制。
+`-perfjson report.json` 的 `scene_cache` 对象提供 `hits`、`misses`、`evictions`、`stale`、`bypasses`、`estimated_retained_bytes`、`estimated_peak_retained_bytes`、`budget_bytes` 与 `import_seconds`。这些数据用于测量实际项目；不会据此预先承诺加速。无实例 glTF/GLB/VRM 的不同采样率共享不可变几何，各自保留动画采样；其他路径仍可能保留完整场景，其总量均受预算限制。估算容量与进程 RSS 分开记录，见[缓存测量](tests/reports/v1.2.38-scene-cache.md)。
 
 ## 按误差减少顶点动画帧
 
