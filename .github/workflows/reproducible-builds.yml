@@ -78,3 +78,13 @@ jobs:
             repeated/*/build/CMakeCache.txt
           if-no-files-found: warn
           retention-days: 14
+      - name: Retain differing binaries and symbols for diagnosis
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: reproducibility-differences-${{ matrix.platform }}
+          path: |
+            repeated/*/runtime.zip
+            repeated/*/symbols.zip
+          if-no-files-found: ignore
+          retention-days: 7

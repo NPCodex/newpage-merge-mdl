@@ -5,6 +5,11 @@ if(NEWPAGE_REPRODUCIBLE)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=src"
                             "-fdebug-prefix-map=${CMAKE_BINARY_DIR}=build")
+        # LTO compiles code again during linking. Its generated DWARF compilation
+        # unit must receive the same maps or its working directory changes the
+        # debug file, ELF build ID and debuglink CRC in every runtime binary.
+        add_link_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=src"
+                         "-fdebug-prefix-map=${CMAKE_BINARY_DIR}=build")
         if(UNIX AND NOT APPLE)
             add_link_options(-Wl,--build-id=sha1)
         endif()
