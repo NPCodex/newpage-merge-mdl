@@ -111,6 +111,30 @@ class AuthoringWorkflows(unittest.TestCase):
         (high/'shared/Base.vmt').write_text('Patch { include "characters/face" }')
         report=material_collect.collect([high,low],[['characters/face.vmt']])
         self.assertTrue(any('cyclic VMT include' in error for error in report['errors']))
+    def test_eyerefract_textures_require_complete_closure_before_publication(self):
+        root=self.root/'source/materials';(root/'eyes').mkdir(parents=True);(root/'textures').mkdir()
+        shader='EyeRefract { "$Iris" "textures/iris" "$AmbientOcclTexture" "textures/occlusion" "$CorneaTexture" "textures/cornea" "$envmap" "env_cubemap" }'
+        for eye in ('left','right'):(root/'eyes'/f'{eye}.vmt').write_text(shader)
+        output=self.root/'collected';(output/'materials/eyes').mkdir(parents=True)
+        previous=output/'materials/eyes/left.vmt';previous.write_text('previous material')
+        command=['--root',str(root),'--material','eyes/left','--material','eyes/right','--output',str(output)]
+        expected={f'textures/{name}.vtf' for name in ('iris','occlusion','cornea')}
+        self.assertEqual(material_collect.main(command),2)
+        report=json.loads((output/'materials-manifest.json').read_text())
+        self.assertFalse(report['complete']);self.assertFalse(report['published'])
+        self.assertEqual({item['name'] for item in report['missing']},expected)
+        self.assertEqual(previous.read_text(),'previous material')
+        self.assertFalse((output/'materials/eyes/right.vmt').exists())
+        for name in sorted(expected):(root/name).write_bytes(b'VTF\0'+name.encode())
+        self.assertEqual(material_collect.main(command),0)
+        report=json.loads((output/'materials-manifest.json').read_text())
+        self.assertTrue(report['complete']);self.assertTrue(report['published'])
+        self.assertEqual({item['name'] for item in report['files']},expected|{'eyes/left.vmt','eyes/right.vmt'})
+        self.assertEqual(len(report['files']),5)
+        for item in report['files']:
+            self.assertEqual((output/'materials'/item['name']).read_bytes(),(root/item['name']).read_bytes())
+        isolated=material_collect.collect([output],[['eyes/left.vmt'],['eyes/right.vmt']])
+        self.assertTrue(isolated['complete']);self.assertEqual(len(isolated['files']),5)
     def test_material_path_escape_and_source_alias_are_rejected(self):
         high,low=self.materials()
         with self.assertRaises(ValueError):material_collect.resource_name('../outside','.vmt')

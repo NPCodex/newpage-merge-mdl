@@ -17,6 +17,7 @@ TEXTURE_KEYS = {
     '$lightwarptexture', '$refracttinttexture', '$flowmap', '$noisetexture',
     '$gradienttexture', '$phongwarptexture', '$flashlighttexture', '$wrinkle',
     '$stretch', '$compress', '$flow_noise_texture', '$flow_bounds_texture',
+    '$iris', '$ambientoccltexture', '$corneatexture',
 }
 
 
