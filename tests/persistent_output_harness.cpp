@@ -1,6 +1,7 @@
 // Fault checkpoints exist only in this independently compiled harness.
 #define AG2_TRANSACTION_TESTING
 #include "../subtools/ag2proportions/transaction.cpp"
+#include "../mdlcompiler/reportoutput.h"
 #include <thread>
 
 namespace {
@@ -41,7 +42,12 @@ int Main(const std::filesystem::path& directory, const std::string& kind, const 
     namespace fs = std::filesystem;
     root = fs::absolute(directory);
     try {
-        if (kind == "ag2") {
+        if (kind == "report") {
+            pulse::reports::Report report(root / "perf.json", {});
+            if (operation == "recover") return 0;
+            if (operation == "hold") Pause("lock");
+            report.Write("{\"result\":\"new report\"}\n");
+        } else if (kind == "ag2") {
             std::vector<fs::path> targets; for (const char* name : names) targets.push_back(root / name);
             ag2::OutputTransaction transaction(root / names[0], targets);
             if (operation == "recover") return 0;

@@ -14,6 +14,8 @@
 
 Linux 使用 `./NewPageMergeMDL` 并换成实际 Linux 路径；若解压工具未保留可执行权限，先为需要运行的程序设置执行权限。
 
+Windows 程序支持系统已启用的 Win32 长路径策略。输出目录过深时，事务暂存路径可能超过 260 字符；系统未启用该策略时请使用较短输出目录。工具不会修改系统策略。
+
 包内根目录提供 `INSTALL.md`、`upstream-manifest.json` 和 `SHA256SUMS.txt`，验证报告在 `tests/reports/`。自动合并包与手动维护包均在 `sources/NewPageMergeMDL-source.zip` 保存精确构建源码。以包内 `upstream-manifest.json` 的 `controller_sha`、来源散列及构建信息识别附件；同标签替换构建可能保留旧标签，标签或 GitHub 自动 Source code 归档不能替代包内源码。独立 GPL 转换器的对应源码始终随包附带。
 
 v1.2.26 精简包保留所有工具和导入功能，Windows 继续附带原先已验证的 C4D helper。tinyusdz 已静态链接，运行目录仅保留它的 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，无需下载源码或开发图片来使用 USD 导入。上述完整项目源码与 GPL 转换器对应源码的获取方式不变。
@@ -63,6 +65,8 @@ Python 准备脚本及作者包装脚本先隔离生成并编译，再统一发�
 The configured minimum Linux x86-64 acceptance environment is Ubuntu 24.04 LTS (glibc 2.39 and libstdc++ providing GLIBCXX_3.4.32/CXXABI_1.3.15). CI pins this baseline and rejects newer required symbols. See the [platform matrix](GAME_PLATFORM_MATRIX.md) for the current candidate's actual package-run status; configuration alone is not a passing run. Older distributions require a source build and their own validation.
 
 On Windows, use `NewPageMergeMDL.exe` and your Windows paths. On Linux, restore executable permission for the required programs if your extractor did not preserve it.
+
+Windows programs opt into the system's enabled Win32 long-path policy. Transaction staging can push a deeply nested export beyond 260 characters; use a shorter output directory if that policy is disabled. The tools do not change system policy.
 
 `INSTALL.md`, `upstream-manifest.json` and `SHA256SUMS.txt` are at the package root; validation reports are in `tests/reports/`. Both automatic and maintained packages contain their exact build input at `sources/NewPageMergeMDL-source.zip`. Identify the archive by `controller_sha`, source hashes and build information in its `upstream-manifest.json`. Replacing assets may retain the original tag, so the tag and GitHub-generated source archive may describe an earlier build. The separate GPL converter's corresponding source is always bundled.
 

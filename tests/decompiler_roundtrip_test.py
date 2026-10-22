@@ -76,6 +76,31 @@ class DecompilerRoundtrip(unittest.TestCase):
                             '-dmxencoding', 'keyvalues2', *extra, success=success)
         return dest, log
 
+    def test_long_export_paths_preserve_complete_output_on_failure(self):
+        source = self.fixture()
+        original = source.read_bytes()
+        # The final paths already exceed MAX_PATH. Transaction staging adds
+        # further components, as happens with production retargeted clip names.
+        parent = self.root/'long-export'/('a'*90)/('b'*90)
+        for mode in ('dmx', 'smd'):
+            dest = parent/mode
+            arguments = [source, '-outdir', dest]
+            if mode == 'smd':
+                arguments += ['-smdanimation', '-dmxencoding', 'keyvalues2']
+            self.run_tool(DECOMPILER, *arguments)
+            files = list(dest.rglob('*.'+mode))
+            self.assertTrue(files)
+            self.assertTrue(all(len(str(p)) > 260 for p in files))
+            before = snapshot(dest)
+            self.run_tool(DECOMPILER, *arguments)
+            self.assertEqual(snapshot(dest), before)
+            source.write_bytes(original[:80])
+            try:
+                self.run_tool(DECOMPILER, *arguments, success=False)
+                self.assertEqual(snapshot(dest), before)
+            finally:
+                source.write_bytes(original)
+
     def decoder_failure_check(self, source, original, *, l4d=True):
         """Prime valid output, then require handled failure and atomic preservation."""
         dest, _ = self.decompile(source)

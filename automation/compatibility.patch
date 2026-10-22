@@ -128,10 +128,10 @@ index 1e28e47..762744d 100644
  }
 diff --git a/cmake/BuildQuality.cmake b/cmake/BuildQuality.cmake
 new file mode 100644
-index 0000000..d19ff2e
+index 0000000..3c181b1
 --- /dev/null
 +++ b/cmake/BuildQuality.cmake
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,68 @@
 +if(NEWPAGE_REPRODUCIBLE)
 +    if(MSVC)
 +        add_compile_options(/experimental:deterministic "/pathmap:${CMAKE_SOURCE_DIR}=src" "/pathmap:${CMAKE_BINARY_DIR}=build" /Brepro)
@@ -139,6 +139,11 @@ index 0000000..d19ff2e
 +    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 +        add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=src"
 +                            "-fdebug-prefix-map=${CMAKE_BINARY_DIR}=build")
++        # LTO compiles code again during linking. Its generated DWARF compilation
++        # unit must receive the same maps or its working directory changes the
++        # debug file, ELF build ID and debuglink CRC in every runtime binary.
++        add_link_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=src"
++                         "-fdebug-prefix-map=${CMAKE_BINARY_DIR}=build")
 +        if(UNIX AND NOT APPLE)
 +            add_link_options(-Wl,--build-id=sha1)
 +        endif()
@@ -1127215,10 +1127220,10 @@ index ddac291..35912e4 100644
  
 diff --git a/mdlcompiler/reportoutput.h b/mdlcompiler/reportoutput.h
 new file mode 100644
-index 0000000..e1499bb
+index 0000000..707a1de
 --- /dev/null
 +++ b/mdlcompiler/reportoutput.h
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,63 @@
 +#pragma once
 +#include "dependencies.h"
 +#include "pathcompat.h"
@@ -1127236,11 +1127241,18 @@ index 0000000..e1499bb
 +                     const std::vector<std::filesystem::path>& outputs) {
 +    // Reject symlink/reparse targets and resolve short Windows spellings.
 +    const auto target = output::detail::Destination(destination);
++    const auto targetKey = output::detail::Key(std::filesystem::weakly_canonical(target));
++    const auto aliasesTarget = [&](const std::filesystem::path& file) {
++        std::error_code ec;
++        if (std::filesystem::equivalent(target, file, ec) && !ec) return true;
++        return targetKey == output::detail::Key(
++            std::filesystem::weakly_canonical(std::filesystem::absolute(file)));
++    };
 +    for (const auto& input : dependencies::Paths())
-+        if (Aliases(target, FilePath(input)))
++        if (aliasesTarget(FilePath(input)))
 +            throw std::runtime_error("report output aliases an input: " + input);
 +    for (const auto& file : outputs)
-+        if (Aliases(target, file))
++        if (aliasesTarget(file))
 +            throw std::runtime_error("report output aliases a model output: " + file.u8string());
 +    for (const auto& component : target)
 +        if (component == ".newpage-output-locks" || component == ".newpage-output-transactions")
@@ -1127258,7 +1127270,15 @@ index 0000000..e1499bb
 +    }
 +    void Write(const std::string& text) {
 +        const auto staged = transaction_->StageRoot() / "report.json";
-+        output::detail::Write(staged, text);
++        // This is only Commit's copy source, never a recovery target. Commit
++        // copies and flushes the publication stage before its durable ready
++        // marker. Flushing this scratch copy as well doubles data sync work
++        // without strengthening recovery. Still check both writing and close.
++        FILE* file = output::detail::Open(staged, true);
++        if (!file) throw std::runtime_error("cannot write staged report: " + staged.u8string());
++        bool complete = std::fwrite(text.data(), 1, text.size(), file) == text.size();
++        if (std::fclose(file)) complete = false;
++        if (!complete) throw std::runtime_error("cannot finish staged report: " + staged.u8string());
 +        transaction_->Replace(staged, path_);
 +        transaction_->Commit();
 +    }
@@ -1130213,7 +1130233,7 @@ index b8947a1..ae1655e 100644
      }
      BLOCK "VarFileInfo"
 diff --git a/mdlcompiler/writemdl.cpp b/mdlcompiler/writemdl.cpp
-index ffc6104..9bf0ad5 100644
+index ffc6104..4c02d5c 100644
 --- a/mdlcompiler/writemdl.cpp
 +++ b/mdlcompiler/writemdl.cpp
 @@ -9,6 +9,8 @@
@@ -1130649,7 +1130669,26 @@ index ffc6104..9bf0ad5 100644
      size_t total = buf.pos;
  
      // the reference takes this delta AFTER the string table, so it is the
-@@ -3030,6 +3234,40 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -2957,8 +3161,16 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+     // checksum over the whole buffer, BEFORE AssignMeshIDs and the fixup pass
+     phdr->checksum = 0;
+     for (size_t i = 0; i < total; i += 4) {
+-        phdr->checksum = (phdr->checksum << 1) + ((phdr->checksum & 0x8000000) ? 1 : 0) +
+-                         *reinterpret_cast<int32_t*>(buf.start() + i);
++        // This format uses wrapping 32-bit arithmetic, including bit 27's
++        // feedback. Signed shifts/addition are undefined once the high bit is
++        // set. Keep updating the header each iteration: its checksum word is
++        // itself part of the buffer visited by this historical algorithm.
++        const uint32_t previous = static_cast<uint32_t>(phdr->checksum);
++        uint32_t word;
++        std::memcpy(&word, buf.start() + i, sizeof(word));
++        const uint32_t checksum = (previous << 1) +
++                                  ((previous & 0x08000000u) ? 1u : 0u) + word;
++        std::memcpy(&phdr->checksum, &checksum, sizeof(checksum));
+     }
+ 
+     AssignMeshIDs(buf, phdr);
+@@ -3030,6 +3242,40 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::vector<uint8_t> phyBuf =
          BuildPhy(m, reinterpret_cast<fmt::studiohdr_t*>(mdlBuf.data())->checksum);
  
@@ -1130690,7 +1130729,7 @@ index ffc6104..9bf0ad5 100644
      // save. Reference hardcodes a "models/" root in the disk path (not in the
      // header name), so $modelname stays prefix-free and the .mdl bytes match.
      std::filesystem::path base =
-@@ -3051,16 +3289,18 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3051,16 +3297,18 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          return path;
      };
  
@@ -1130711,7 +1130750,7 @@ index ffc6104..9bf0ad5 100644
  
          // which strip layout went out. SFM reads the Alien Swarm/CS:GO 35-byte
          // strips and crashes on the legacy ones, so make the format explicit.
-@@ -3069,14 +3309,14 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3069,14 +3317,14 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          vtxPath = announce(".dx90.vtx");
          FlushReport(vtxReport);
          std::printf("everything (%zu bytes)\n", vtxBuf.size());
@@ -1130728,7 +1130767,7 @@ index ffc6104..9bf0ad5 100644
          }
      }
  
-@@ -3086,11 +3326,10 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3086,11 +3334,10 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          // the .ani sits beside the .mdl under the same "models/" root, and its
          // name is what szanimblocknameindex already recorded
          pblockhdr->length = static_cast<int32_t>(blockBuf->pos);
@@ -1130742,7 +1130781,7 @@ index ffc6104..9bf0ad5 100644
      }
  
      if (!phyBuf.empty()) {
-@@ -3115,9 +3354,11 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3115,9 +3362,11 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          else if (!m.physCollisionPairs.empty())
              std::printf("pairs      %7zu\n", m.physCollisionPairs.size());
          std::printf("total      %7zu\n", phyBuf.size());
@@ -1136986,10 +1137025,10 @@ index 92c17dc..241acfb 100644
 +endif()
 diff --git a/subtools/l4d_animswap/RETARGET.md b/subtools/l4d_animswap/RETARGET.md
 new file mode 100644
-index 0000000..801dc3a
+index 0000000..75607fa
 --- /dev/null
 +++ b/subtools/l4d_animswap/RETARGET.md
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,33 @@
 +# Retargeted animation data
 +
 +```text
@@ -1137018,7 +1137057,11 @@ index 0000000..801dc3a
 +
 +`tests/decompiler_roundtrip_test.py` exports, compiles and decompiles an authored
 +2×2 grid with differing cell FPS, a masked pose-driven layer and an event.
-+Production survivors and gameplay transitions require separate validation.
++[Official Zoey-to-Rochelle validation](../../tests/reports/v1.2.38-l4d-production.md)
++also rebuilt a complete 10,496-vertex character with 17 sequences, including
++3×3 locomotion and 3×4 aim grids. Independent metadata and sampled pose checks
++passed. Gameplay transitions, all survivor combinations and unsupported touch-IK
++targets remain outside that offline acceptance.
 diff --git a/subtools/l4d_animswap/main.cpp b/subtools/l4d_animswap/main.cpp
 index 1619ffe..2a06f6c 100644
 --- a/subtools/l4d_animswap/main.cpp
@@ -1140803,3 +1140846,22 @@ index 67add67..66db944 100644
          }
      }
      BLOCK "VarFileInfo"
+diff --git a/utf8.manifest b/utf8.manifest
+index cf022d3..b7a40c4 100644
+--- a/utf8.manifest
++++ b/utf8.manifest
+@@ -1,10 +1,12 @@
+ <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+-<!-- Win10 1903+: makes the process ANSI codepage UTF-8, so argv, fopen and
+-     std::filesystem stop mangling non-Latin-1 paths into '?'. -->
++<!-- Win10 1903+: UTF-8 paths, and opt in to the operating system's enabled
++     long-path policy. Transaction staging can extend otherwise short exports
++     beyond MAX_PATH; the process must not silently retain the legacy limit. -->
+ <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+   <application xmlns="urn:schemas-microsoft-com:asm.v3">
+     <windowsSettings>
+       <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
++      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+     </windowsSettings>
+   </application>
+ </assembly>

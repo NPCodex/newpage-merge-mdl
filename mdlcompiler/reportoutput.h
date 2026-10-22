@@ -15,11 +15,18 @@ inline void Validate(const std::filesystem::path& destination,
                      const std::vector<std::filesystem::path>& outputs) {
     // Reject symlink/reparse targets and resolve short Windows spellings.
     const auto target = output::detail::Destination(destination);
+    const auto targetKey = output::detail::Key(std::filesystem::weakly_canonical(target));
+    const auto aliasesTarget = [&](const std::filesystem::path& file) {
+        std::error_code ec;
+        if (std::filesystem::equivalent(target, file, ec) && !ec) return true;
+        return targetKey == output::detail::Key(
+            std::filesystem::weakly_canonical(std::filesystem::absolute(file)));
+    };
     for (const auto& input : dependencies::Paths())
-        if (Aliases(target, FilePath(input)))
+        if (aliasesTarget(FilePath(input)))
             throw std::runtime_error("report output aliases an input: " + input);
     for (const auto& file : outputs)
-        if (Aliases(target, file))
+        if (aliasesTarget(file))
             throw std::runtime_error("report output aliases a model output: " + file.u8string());
     for (const auto& component : target)
         if (component == ".newpage-output-locks" || component == ".newpage-output-transactions")
@@ -37,7 +44,15 @@ public:
     }
     void Write(const std::string& text) {
         const auto staged = transaction_->StageRoot() / "report.json";
-        output::detail::Write(staged, text);
+        // This is only Commit's copy source, never a recovery target. Commit
+        // copies and flushes the publication stage before its durable ready
+        // marker. Flushing this scratch copy as well doubles data sync work
+        // without strengthening recovery. Still check both writing and close.
+        FILE* file = output::detail::Open(staged, true);
+        if (!file) throw std::runtime_error("cannot write staged report: " + staged.u8string());
+        bool complete = std::fwrite(text.data(), 1, text.size(), file) == text.size();
+        if (std::fclose(file)) complete = false;
+        if (!complete) throw std::runtime_error("cannot finish staged report: " + staged.u8string());
         transaction_->Replace(staged, path_);
         transaction_->Commit();
     }

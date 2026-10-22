@@ -26,4 +26,8 @@ L4D2 rig/animation combination.
 
 `tests/decompiler_roundtrip_test.py` exports, compiles and decompiles an authored
 2×2 grid with differing cell FPS, a masked pose-driven layer and an event.
-Production survivors and gameplay transitions require separate validation.
+[Official Zoey-to-Rochelle validation](../../tests/reports/v1.2.38-l4d-production.md)
+also rebuilt a complete 10,496-vertex character with 17 sequences, including
+3×3 locomotion and 3×4 aim grids. Independent metadata and sampled pose checks
+passed. Gameplay transitions, all survivor combinations and unsupported touch-IK
+targets remain outside that offline acceptance.

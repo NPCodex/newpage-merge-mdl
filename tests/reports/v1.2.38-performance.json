@@ -1,0 +1,1739 @@
+{
+  "schema": 1,
+  "baseline_commit": "246ee12de661d271deb97b2d4aba0b18be4ae3ff",
+  "candidate_base_commit": "e2692717645babd387c937fd71669523538ef957",
+  "candidate_source_overrides": {
+    "base_revision": "e2692717645babd387c937fd71669523538ef957",
+    "files": {
+      "mdlcompiler/reportoutput.h": "0fd3110c7f295ea38e75406da0551f42b3117c756522ee924b774cabb219daea"
+    },
+    "patch_sha256": "5c995e0ae15739f0195fbd4b5920cf1054e7b12e3be267c942515cd4acd0252a"
+  },
+  "build_configuration": {
+    "CMAKE_GENERATOR": "Visual Studio 18 2026",
+    "CMAKE_GENERATOR_PLATFORM": "x64",
+    "CMAKE_GENERATOR_TOOLSET": "",
+    "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+    "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "OFF",
+    "NEWPAGE_COMPACT_RELEASE": "ON",
+    "NEWPAGE_REPRODUCIBLE": "OFF",
+    "NEWPAGE_SEPARATE_SYMBOLS": "OFF",
+    "NEWPAGE_SANITIZERS": "",
+    "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "ON",
+    "NEWPAGE_BUILD_CXX_COMPILER_ID": "MSVC",
+    "NEWPAGE_BUILD_CXX_COMPILER_VERSION": "19.51.36260.0",
+    "CMAKE_C_FLAGS": "/DWIN32 /D_WINDOWS",
+    "CMAKE_C_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+    "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc",
+    "CMAKE_CXX_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+    "CMAKE_EXE_LINKER_FLAGS": "/machine:x64",
+    "CMAKE_EXE_LINKER_FLAGS_MINSIZEREL": "/INCREMENTAL:NO",
+    "CMAKE_STATIC_LINKER_FLAGS": "/machine:x64",
+    "CMAKE_STATIC_LINKER_FLAGS_MINSIZEREL": "",
+    "configuration": "MinSizeRel",
+    "C_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57",
+    "CXX_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57"
+  },
+  "build_commands": {
+    "baseline": {
+      "source_revision": "246ee12de661d271deb97b2d4aba0b18be4ae3ff",
+      "configure_command": [
+        "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+        "-S",
+        "D:\\newpage-performance-20261022\\baseline\\source",
+        "-B",
+        "D:\\newpage-performance-20261022\\baseline\\build",
+        "-G",
+        "Visual Studio 18 2026",
+        "-A",
+        "x64",
+        "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF",
+        "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+        "-DNEWPAGE_REPRODUCIBLE=OFF",
+        "-DNEWPAGE_SEPARATE_SYMBOLS=OFF",
+        "-DNEWPAGE_COMPACT_RELEASE=ON"
+      ],
+      "build_command": [
+        "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+        "--build",
+        "D:\\newpage-performance-20261022\\baseline\\build",
+        "--config",
+        "MinSizeRel",
+        "--target",
+        "mdlcompiler",
+        "--parallel",
+        "3"
+      ]
+    },
+    "candidate": {
+      "source_revision": "e2692717645babd387c937fd71669523538ef957",
+      "configure_command": [
+        "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+        "-S",
+        "D:\\newpage-performance-20261022\\candidate\\source",
+        "-B",
+        "D:\\newpage-performance-20261022\\candidate\\build",
+        "-G",
+        "Visual Studio 18 2026",
+        "-A",
+        "x64",
+        "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF",
+        "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+        "-DNEWPAGE_REPRODUCIBLE=OFF",
+        "-DNEWPAGE_SEPARATE_SYMBOLS=OFF",
+        "-DNEWPAGE_COMPACT_RELEASE=ON"
+      ],
+      "build_command": [
+        "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+        "--build",
+        "D:\\newpage-performance-20261022\\candidate\\build",
+        "--config",
+        "MinSizeRel",
+        "--target",
+        "mdlcompiler",
+        "--parallel",
+        "3"
+      ]
+    }
+  },
+  "test_results": {
+    "benchmark_comparison_tests": 10,
+    "actual_compiler_report_tests": 8,
+    "persistent_output_tests": 17,
+    "report_kill_checkpoints": 7
+  },
+  "scope": "Self-authored SMD and VTA; no SDK, game or user assets. First process is not guaranteed disk-cold. Local MinSizeRel without IPO is not the final release package.",
+  "date": "2026-10-22",
+  "harness_sha256": "b981ea8f50f4d1950dda4e6e336b75ef12a71d8268de592793129d938f9cfe71",
+  "fixture_generator_sha256": "c8b30057acef91e17f85d5a3b5181a07ffc4b22c7fd84cd6813a05fec5411440",
+  "measurements": {
+    "plain": {
+      "baseline": {
+        "schema": 3,
+        "compiler": "D:\\newpage-performance-20261022\\baseline\\build\\NewPageMergeMDL\\MinSizeRel\\NewPageMergeMDL.exe",
+        "compiler_sha256": "381e60752c890a43680754a605ecca51d926359489c0ca4beae77aa9fe2e63f9",
+        "measured_at_utc": "2026-10-22T09:04:41.117157+00:00",
+        "source_revision": "246ee12de661d271deb97b2d4aba0b18be4ae3ff",
+        "build_cache_sha256": "52014c588409d718ceaefc528dee543a115ed623deeeb73e3bcb2b7af5118439",
+        "build_configuration": {
+          "CMAKE_GENERATOR": "Visual Studio 18 2026",
+          "CMAKE_GENERATOR_PLATFORM": "x64",
+          "CMAKE_GENERATOR_TOOLSET": "",
+          "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+          "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "OFF",
+          "NEWPAGE_COMPACT_RELEASE": "ON",
+          "NEWPAGE_REPRODUCIBLE": "OFF",
+          "NEWPAGE_SEPARATE_SYMBOLS": "OFF",
+          "NEWPAGE_SANITIZERS": "",
+          "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "ON",
+          "NEWPAGE_BUILD_CXX_COMPILER_ID": "MSVC",
+          "NEWPAGE_BUILD_CXX_COMPILER_VERSION": "19.51.36260.0",
+          "CMAKE_C_FLAGS": "/DWIN32 /D_WINDOWS",
+          "CMAKE_C_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+          "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc",
+          "CMAKE_CXX_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+          "CMAKE_EXE_LINKER_FLAGS": "/machine:x64",
+          "CMAKE_EXE_LINKER_FLAGS_MINSIZEREL": "/INCREMENTAL:NO",
+          "CMAKE_STATIC_LINKER_FLAGS": "/machine:x64",
+          "CMAKE_STATIC_LINKER_FLAGS_MINSIZEREL": "",
+          "configuration": "MinSizeRel",
+          "C_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57",
+          "CXX_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57"
+        },
+        "machine": {
+          "system": "Windows-11-10.0.26340-SP0",
+          "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+          "node": "Kud-PC"
+        },
+        "runs": 5,
+        "warmup": 1,
+        "first_process_runs": 1,
+        "instrumentation": "none",
+        "clock": "perf_counter subprocess wall time; compiler steady-clock stages; first process is not guaranteed disk-cold",
+        "thresholds": {
+          "time_fraction": 0.2,
+          "memory_fraction": 0.15,
+          "time_metrics": [
+            "median_wall_ms",
+            "median_total_ms"
+          ]
+        },
+        "input_contract": "Each QC parent directory must contain its complete input dependency tree and no outputs",
+        "cases": [
+          {
+            "qc": "small.qc",
+            "qc_sha256": "b349087700cf2ce0099c7e7d9d68688b440ff29798c7d1fe348edde9015f92f4",
+            "input_sha256": {
+              "clip0.smd": "a7f527a9ed22d7908bab6d8372b7ff01b816d496d9f4374ba8e6a82694496bd3",
+              "mesh.smd": "0abe8dc914cb9d590f8f92ee28e745abf741a64098ef4e0a5cf9d89521626aba",
+              "small.qc": "b349087700cf2ce0099c7e7d9d68688b440ff29798c7d1fe348edde9015f92f4"
+            },
+            "metrics_schema": null,
+            "samples": [
+              {
+                "schema": null,
+                "wall_seconds": 0.0777565999997023,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07970639999984996,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07634039999902598,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07648250000056578,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07471639999857871,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07675010000093607,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07593020000058459,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": null,
+            "first_process_wall_ms": 77.7565999997023,
+            "median_wall_ms": 76.34039999902598,
+            "median_total_ms": null,
+            "median_peak_bytes": null,
+            "main_stage_median_ms": {},
+            "stage_median_ms": {},
+            "output_sha256": {
+              "benchmark\\small.dx80.vtx": "aa0de1e8f5ec62ffb084b441ce76f0cd6567df19520eeb1aaf08d3715f065197",
+              "benchmark\\small.dx90.vtx": "d3fe5a7ef9dfb204fd85d514201cf8b2dbe370c24e80710183cc4d51b80be64f",
+              "benchmark\\small.mdl": "8c741a92f30f902fba4072a6782721cc331e394af415bda6fe98b01d21141626",
+              "benchmark\\small.vvd": "c37f2364852812a7a4f2c30f4412fc7b31c594940d96938edb91a05ea204f6bc"
+            }
+          },
+          {
+            "qc": "large-grid.qc",
+            "qc_sha256": "fa81e6bc68612118d484bb0920a4ba041c6015fecb488461b1e3842d51a7da1b",
+            "input_sha256": {
+              "clip0.smd": "a7f527a9ed22d7908bab6d8372b7ff01b816d496d9f4374ba8e6a82694496bd3",
+              "large-grid.qc": "fa81e6bc68612118d484bb0920a4ba041c6015fecb488461b1e3842d51a7da1b",
+              "mesh.smd": "c698b177f1b36fa9e93d568efcace46c127d5b9f337a9ba418a65b3e53ca0090"
+            },
+            "metrics_schema": null,
+            "samples": [
+              {
+                "schema": null,
+                "wall_seconds": 0.13826070000141044,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.13985889999821666,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.13630369999737013,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.13684070000090287,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.13906430000133696,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.14021649999995134,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.14010469999993802,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": null,
+            "first_process_wall_ms": 138.26070000141044,
+            "median_wall_ms": 139.06430000133696,
+            "median_total_ms": null,
+            "median_peak_bytes": null,
+            "main_stage_median_ms": {},
+            "stage_median_ms": {},
+            "output_sha256": {
+              "benchmark\\large-grid.dx80.vtx": "250d4bda7dddec18ac91df106f02ca4711c4c7c4236b68b14f74d02a3eb90297",
+              "benchmark\\large-grid.dx90.vtx": "7daa1bec306fd5fbe0b428890e66b90751a97b3c7e922c8ec1f50822afe4ad91",
+              "benchmark\\large-grid.mdl": "241134433b96d7e5271e91dc135eae6dc2b9a50d46be2af34e15176cb2cf96a0",
+              "benchmark\\large-grid.vvd": "b3e0b89718d73c5fdba3286b8f56f2e51e5a5bc00a75f3aafbd7ebb9aedb33d7"
+            }
+          },
+          {
+            "qc": "clips-morphs.qc",
+            "qc_sha256": "b8f062811ec5292987f15a240ef533abef529b8bbdba53317709ad7fd9e3aa51",
+            "input_sha256": {
+              "clip0.smd": "3da3cfbee2599c7b2fcd1427abbf7b064357a661ed8fa141426d6e705aabbbde",
+              "clip1.smd": "0d6b889dcbf85659355504175df7f2dc3cacbb247a676e15c1b037538576e72d",
+              "clip10.smd": "66fcd22e61f159e5c5797cafdedbaf77a3f11335a1e7e2e2efde4f60e0296760",
+              "clip11.smd": "d4533fec7392c6f7f0eca4468b2c4c3acb80b36209ba032f7d7cabed8b34c735",
+              "clip12.smd": "59e2f2d88d0b08af7477e1f63bf7a737243211e77e6a881bc3b1ff082c0177df",
+              "clip13.smd": "47019067b96858b1d6462acf5416f8a6c7b22e7f63706972f7ccd37323fcc514",
+              "clip14.smd": "548346275d3fc329c8a646a3d8401c5cc57ca47c0f96830315a7714fcc886932",
+              "clip15.smd": "69417bf77dc978bac6754caae33dd52b41d272da402e48673d6f4314b4616481",
+              "clip16.smd": "3f63ef4c0eeaffdbf7efe4b5174548e3140e3f391b276a89f7acb8d6c7caf5e6",
+              "clip17.smd": "2544d12c68d35ca2455508a0bd6bea474915fb5fd1921d6526bfc65fe7ffa15e",
+              "clip18.smd": "f325bec1c87a51d2515636cc72eff3b92659f9bf2e5db41002efc37ad37833c7",
+              "clip19.smd": "4773edacd59fd5c54336751e6229de64e5369f94187554d4fdcdc475a48c824a",
+              "clip2.smd": "f1edc1026b8374a2da529ca095fbe0b0d2c66ef9f0f45b1852a13d87be54db80",
+              "clip20.smd": "ffa29ac6558f8565d46e876a7cb8a74e1791da2e3cb45902b149a71eb64e8de9",
+              "clip21.smd": "fcbd643d8ec4a03965c3996635e55f92e9694d0872c65fba1d4004e52cc63771",
+              "clip22.smd": "08532ec9b2f8248758e52d1a018a39655cf383f4a0ec098fd851f49bcb570198",
+              "clip23.smd": "0a1fcb4444004a58abda6a8a2eb21f9ae99868278659d1ab520b5b2b9660bf3f",
+              "clip3.smd": "85ed26d7654375cb0092c16f5ac428bd609d0b5950f956e4897a627533413af7",
+              "clip4.smd": "20f67474c6f5397291450e3267eef3c8b1380d26ed7b43bdd98a2d3ae4468337",
+              "clip5.smd": "efd42f4854b74e27145507c2e3e11bfb587e8dfae0e2fa02ba276f05e0e03a65",
+              "clip6.smd": "bc0db27187a0f2f238893c697084634851e476db29e3567861dfc32d096022e7",
+              "clip7.smd": "99e4204fa689c9ae9d9f63474c6a11045b177f66a87821f7cfc7de1eec0b49df",
+              "clip8.smd": "f32882e544c4a0f45034bd29cbeae5ed7f34ee46a4a9f2b77645c9512f3e4dfc",
+              "clip9.smd": "b6687ea979772af4c14d6d9a1f20ee13fc04714d5cb2ea916254191d0f784030",
+              "clips-morphs.qc": "b8f062811ec5292987f15a240ef533abef529b8bbdba53317709ad7fd9e3aa51",
+              "face.vta": "2d2c7c8059b99b7d4b391a13ec73a994002a5d7d432b15838e419721583dc343",
+              "mesh.smd": "142da89f98bc3d1c757464a38f05e88ab6ad02999de46287c0ea2679d1024b99"
+            },
+            "metrics_schema": null,
+            "samples": [
+              {
+                "schema": null,
+                "wall_seconds": 0.09442630000194185,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.09383769999840297,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.08923980000326992,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.0939379999981611,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.09369240000160062,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.08955280000009225,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.09352829999988899,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": null,
+            "first_process_wall_ms": 94.42630000194185,
+            "median_wall_ms": 93.52829999988899,
+            "median_total_ms": null,
+            "median_peak_bytes": null,
+            "main_stage_median_ms": {},
+            "stage_median_ms": {},
+            "output_sha256": {
+              "benchmark\\clips-morphs.dx80.vtx": "c820ebb6144ab70492422ac95c746783ca52ad31066050fe2041f698e2e6f602",
+              "benchmark\\clips-morphs.dx90.vtx": "4927e57db20c322c4bffee017f32378b3999372155e6967a3df490cc82b4d9ee",
+              "benchmark\\clips-morphs.mdl": "3df23182e27b1072d5040c1882ba5f42aaec97bbbbd4653042c89e28df34bb15",
+              "benchmark\\clips-morphs.vvd": "1751e060cb08baa6aa1a3afabe91a4ff20725260c1d407fec26657180f8de15e"
+            }
+          }
+        ],
+        "regressions": []
+      },
+      "candidate": {
+        "schema": 3,
+        "compiler": "D:\\newpage-performance-20261022\\candidate\\build\\NewPageMergeMDL\\MinSizeRel\\NewPageMergeMDL.exe",
+        "compiler_sha256": "01772c2d47138d0758ef62989e7bfee0fec324de3c08f5cc5bfc48b4f60c5a62",
+        "measured_at_utc": "2026-10-22T09:04:43.484571+00:00",
+        "source_revision": "e2692717645babd387c937fd71669523538ef957",
+        "build_cache_sha256": "91af493db7b5a4d01b566cfa1fc485ef87a01c179e396402e5fc5378f6c8ed7c",
+        "build_configuration": {
+          "CMAKE_GENERATOR": "Visual Studio 18 2026",
+          "CMAKE_GENERATOR_PLATFORM": "x64",
+          "CMAKE_GENERATOR_TOOLSET": "",
+          "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+          "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "OFF",
+          "NEWPAGE_COMPACT_RELEASE": "ON",
+          "NEWPAGE_REPRODUCIBLE": "OFF",
+          "NEWPAGE_SEPARATE_SYMBOLS": "OFF",
+          "NEWPAGE_SANITIZERS": "",
+          "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "ON",
+          "NEWPAGE_BUILD_CXX_COMPILER_ID": "MSVC",
+          "NEWPAGE_BUILD_CXX_COMPILER_VERSION": "19.51.36260.0",
+          "CMAKE_C_FLAGS": "/DWIN32 /D_WINDOWS",
+          "CMAKE_C_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+          "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc",
+          "CMAKE_CXX_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+          "CMAKE_EXE_LINKER_FLAGS": "/machine:x64",
+          "CMAKE_EXE_LINKER_FLAGS_MINSIZEREL": "/INCREMENTAL:NO",
+          "CMAKE_STATIC_LINKER_FLAGS": "/machine:x64",
+          "CMAKE_STATIC_LINKER_FLAGS_MINSIZEREL": "",
+          "configuration": "MinSizeRel",
+          "C_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57",
+          "CXX_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57"
+        },
+        "machine": {
+          "system": "Windows-11-10.0.26340-SP0",
+          "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+          "node": "Kud-PC"
+        },
+        "runs": 5,
+        "warmup": 1,
+        "first_process_runs": 1,
+        "instrumentation": "none",
+        "clock": "perf_counter subprocess wall time; compiler steady-clock stages; first process is not guaranteed disk-cold",
+        "thresholds": {
+          "time_fraction": 0.2,
+          "memory_fraction": 0.15,
+          "time_metrics": [
+            "median_wall_ms",
+            "median_total_ms"
+          ]
+        },
+        "input_contract": "Each QC parent directory must contain its complete input dependency tree and no outputs",
+        "cases": [
+          {
+            "qc": "small.qc",
+            "qc_sha256": "b349087700cf2ce0099c7e7d9d68688b440ff29798c7d1fe348edde9015f92f4",
+            "input_sha256": {
+              "clip0.smd": "a7f527a9ed22d7908bab6d8372b7ff01b816d496d9f4374ba8e6a82694496bd3",
+              "mesh.smd": "0abe8dc914cb9d590f8f92ee28e745abf741a64098ef4e0a5cf9d89521626aba",
+              "small.qc": "b349087700cf2ce0099c7e7d9d68688b440ff29798c7d1fe348edde9015f92f4"
+            },
+            "metrics_schema": null,
+            "samples": [
+              {
+                "schema": null,
+                "wall_seconds": 0.07615869999790448,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07617689999824506,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07567360000030021,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07496180000089225,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07573229999979958,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07396309999967343,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.07488229999944451,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": null,
+            "first_process_wall_ms": 76.15869999790448,
+            "median_wall_ms": 74.96180000089225,
+            "median_total_ms": null,
+            "median_peak_bytes": null,
+            "main_stage_median_ms": {},
+            "stage_median_ms": {},
+            "output_sha256": {
+              "benchmark\\small.dx80.vtx": "aa0de1e8f5ec62ffb084b441ce76f0cd6567df19520eeb1aaf08d3715f065197",
+              "benchmark\\small.dx90.vtx": "d3fe5a7ef9dfb204fd85d514201cf8b2dbe370c24e80710183cc4d51b80be64f",
+              "benchmark\\small.mdl": "8c741a92f30f902fba4072a6782721cc331e394af415bda6fe98b01d21141626",
+              "benchmark\\small.vvd": "c37f2364852812a7a4f2c30f4412fc7b31c594940d96938edb91a05ea204f6bc"
+            }
+          },
+          {
+            "qc": "large-grid.qc",
+            "qc_sha256": "fa81e6bc68612118d484bb0920a4ba041c6015fecb488461b1e3842d51a7da1b",
+            "input_sha256": {
+              "clip0.smd": "a7f527a9ed22d7908bab6d8372b7ff01b816d496d9f4374ba8e6a82694496bd3",
+              "large-grid.qc": "fa81e6bc68612118d484bb0920a4ba041c6015fecb488461b1e3842d51a7da1b",
+              "mesh.smd": "c698b177f1b36fa9e93d568efcace46c127d5b9f337a9ba418a65b3e53ca0090"
+            },
+            "metrics_schema": null,
+            "samples": [
+              {
+                "schema": null,
+                "wall_seconds": 0.13974519999828772,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.14003629999933764,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.14094719999775407,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.14766450000024633,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.14053559999956633,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.14071870000043418,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.14213850000305683,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": null,
+            "first_process_wall_ms": 139.74519999828772,
+            "median_wall_ms": 140.94719999775407,
+            "median_total_ms": null,
+            "median_peak_bytes": null,
+            "main_stage_median_ms": {},
+            "stage_median_ms": {},
+            "output_sha256": {
+              "benchmark\\large-grid.dx80.vtx": "250d4bda7dddec18ac91df106f02ca4711c4c7c4236b68b14f74d02a3eb90297",
+              "benchmark\\large-grid.dx90.vtx": "7daa1bec306fd5fbe0b428890e66b90751a97b3c7e922c8ec1f50822afe4ad91",
+              "benchmark\\large-grid.mdl": "241134433b96d7e5271e91dc135eae6dc2b9a50d46be2af34e15176cb2cf96a0",
+              "benchmark\\large-grid.vvd": "b3e0b89718d73c5fdba3286b8f56f2e51e5a5bc00a75f3aafbd7ebb9aedb33d7"
+            }
+          },
+          {
+            "qc": "clips-morphs.qc",
+            "qc_sha256": "b8f062811ec5292987f15a240ef533abef529b8bbdba53317709ad7fd9e3aa51",
+            "input_sha256": {
+              "clip0.smd": "3da3cfbee2599c7b2fcd1427abbf7b064357a661ed8fa141426d6e705aabbbde",
+              "clip1.smd": "0d6b889dcbf85659355504175df7f2dc3cacbb247a676e15c1b037538576e72d",
+              "clip10.smd": "66fcd22e61f159e5c5797cafdedbaf77a3f11335a1e7e2e2efde4f60e0296760",
+              "clip11.smd": "d4533fec7392c6f7f0eca4468b2c4c3acb80b36209ba032f7d7cabed8b34c735",
+              "clip12.smd": "59e2f2d88d0b08af7477e1f63bf7a737243211e77e6a881bc3b1ff082c0177df",
+              "clip13.smd": "47019067b96858b1d6462acf5416f8a6c7b22e7f63706972f7ccd37323fcc514",
+              "clip14.smd": "548346275d3fc329c8a646a3d8401c5cc57ca47c0f96830315a7714fcc886932",
+              "clip15.smd": "69417bf77dc978bac6754caae33dd52b41d272da402e48673d6f4314b4616481",
+              "clip16.smd": "3f63ef4c0eeaffdbf7efe4b5174548e3140e3f391b276a89f7acb8d6c7caf5e6",
+              "clip17.smd": "2544d12c68d35ca2455508a0bd6bea474915fb5fd1921d6526bfc65fe7ffa15e",
+              "clip18.smd": "f325bec1c87a51d2515636cc72eff3b92659f9bf2e5db41002efc37ad37833c7",
+              "clip19.smd": "4773edacd59fd5c54336751e6229de64e5369f94187554d4fdcdc475a48c824a",
+              "clip2.smd": "f1edc1026b8374a2da529ca095fbe0b0d2c66ef9f0f45b1852a13d87be54db80",
+              "clip20.smd": "ffa29ac6558f8565d46e876a7cb8a74e1791da2e3cb45902b149a71eb64e8de9",
+              "clip21.smd": "fcbd643d8ec4a03965c3996635e55f92e9694d0872c65fba1d4004e52cc63771",
+              "clip22.smd": "08532ec9b2f8248758e52d1a018a39655cf383f4a0ec098fd851f49bcb570198",
+              "clip23.smd": "0a1fcb4444004a58abda6a8a2eb21f9ae99868278659d1ab520b5b2b9660bf3f",
+              "clip3.smd": "85ed26d7654375cb0092c16f5ac428bd609d0b5950f956e4897a627533413af7",
+              "clip4.smd": "20f67474c6f5397291450e3267eef3c8b1380d26ed7b43bdd98a2d3ae4468337",
+              "clip5.smd": "efd42f4854b74e27145507c2e3e11bfb587e8dfae0e2fa02ba276f05e0e03a65",
+              "clip6.smd": "bc0db27187a0f2f238893c697084634851e476db29e3567861dfc32d096022e7",
+              "clip7.smd": "99e4204fa689c9ae9d9f63474c6a11045b177f66a87821f7cfc7de1eec0b49df",
+              "clip8.smd": "f32882e544c4a0f45034bd29cbeae5ed7f34ee46a4a9f2b77645c9512f3e4dfc",
+              "clip9.smd": "b6687ea979772af4c14d6d9a1f20ee13fc04714d5cb2ea916254191d0f784030",
+              "clips-morphs.qc": "b8f062811ec5292987f15a240ef533abef529b8bbdba53317709ad7fd9e3aa51",
+              "face.vta": "2d2c7c8059b99b7d4b391a13ec73a994002a5d7d432b15838e419721583dc343",
+              "mesh.smd": "142da89f98bc3d1c757464a38f05e88ab6ad02999de46287c0ea2679d1024b99"
+            },
+            "metrics_schema": null,
+            "samples": [
+              {
+                "schema": null,
+                "wall_seconds": 0.09551290000308654,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.09652709999863873,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.09168760000102338,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.09651369999846793,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.09519440000076429,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.09393920000002254,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": null,
+                "wall_seconds": 0.09745469999688794,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": null,
+            "first_process_wall_ms": 95.51290000308654,
+            "median_wall_ms": 95.19440000076429,
+            "median_total_ms": null,
+            "median_peak_bytes": null,
+            "main_stage_median_ms": {},
+            "stage_median_ms": {},
+            "output_sha256": {
+              "benchmark\\clips-morphs.dx80.vtx": "c820ebb6144ab70492422ac95c746783ca52ad31066050fe2041f698e2e6f602",
+              "benchmark\\clips-morphs.dx90.vtx": "4927e57db20c322c4bffee017f32378b3999372155e6967a3df490cc82b4d9ee",
+              "benchmark\\clips-morphs.mdl": "3df23182e27b1072d5040c1882ba5f42aaec97bbbbd4653042c89e28df34bb15",
+              "benchmark\\clips-morphs.vvd": "1751e060cb08baa6aa1a3afabe91a4ff20725260c1d407fec26657180f8de15e"
+            }
+          }
+        ],
+        "regressions": [],
+        "source_overrides": {
+          "base_revision": "e2692717645babd387c937fd71669523538ef957",
+          "files": {
+            "mdlcompiler/reportoutput.h": "0fd3110c7f295ea38e75406da0551f42b3117c756522ee924b774cabb219daea"
+          },
+          "patch_sha256": "5c995e0ae15739f0195fbd4b5920cf1054e7b12e3be267c942515cd4acd0252a"
+        }
+      }
+    },
+    "instrumented": {
+      "baseline": {
+        "schema": 3,
+        "compiler": "D:\\newpage-performance-20261022\\baseline\\build\\NewPageMergeMDL\\MinSizeRel\\NewPageMergeMDL.exe",
+        "compiler_sha256": "381e60752c890a43680754a605ecca51d926359489c0ca4beae77aa9fe2e63f9",
+        "measured_at_utc": "2026-10-22T09:04:35.710207+00:00",
+        "source_revision": "246ee12de661d271deb97b2d4aba0b18be4ae3ff",
+        "build_cache_sha256": "52014c588409d718ceaefc528dee543a115ed623deeeb73e3bcb2b7af5118439",
+        "build_configuration": {
+          "CMAKE_GENERATOR": "Visual Studio 18 2026",
+          "CMAKE_GENERATOR_PLATFORM": "x64",
+          "CMAKE_GENERATOR_TOOLSET": "",
+          "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+          "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "OFF",
+          "NEWPAGE_COMPACT_RELEASE": "ON",
+          "NEWPAGE_REPRODUCIBLE": "OFF",
+          "NEWPAGE_SEPARATE_SYMBOLS": "OFF",
+          "NEWPAGE_SANITIZERS": "",
+          "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "ON",
+          "NEWPAGE_BUILD_CXX_COMPILER_ID": "MSVC",
+          "NEWPAGE_BUILD_CXX_COMPILER_VERSION": "19.51.36260.0",
+          "CMAKE_C_FLAGS": "/DWIN32 /D_WINDOWS",
+          "CMAKE_C_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+          "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc",
+          "CMAKE_CXX_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+          "CMAKE_EXE_LINKER_FLAGS": "/machine:x64",
+          "CMAKE_EXE_LINKER_FLAGS_MINSIZEREL": "/INCREMENTAL:NO",
+          "CMAKE_STATIC_LINKER_FLAGS": "/machine:x64",
+          "CMAKE_STATIC_LINKER_FLAGS_MINSIZEREL": "",
+          "configuration": "MinSizeRel",
+          "C_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57",
+          "CXX_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57"
+        },
+        "machine": {
+          "system": "Windows-11-10.0.26340-SP0",
+          "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+          "node": "Kud-PC"
+        },
+        "runs": 5,
+        "warmup": 1,
+        "first_process_runs": 1,
+        "instrumentation": "perfjson",
+        "clock": "perf_counter subprocess wall time; compiler steady-clock stages; first process is not guaranteed disk-cold",
+        "thresholds": {
+          "time_fraction": 0.2,
+          "memory_fraction": 0.15,
+          "time_metrics": [
+            "median_wall_ms",
+            "median_total_ms"
+          ]
+        },
+        "input_contract": "Each QC parent directory must contain its complete input dependency tree and no outputs",
+        "cases": [
+          {
+            "qc": "small.qc",
+            "qc_sha256": "b349087700cf2ce0099c7e7d9d68688b440ff29798c7d1fe348edde9015f92f4",
+            "input_sha256": {
+              "clip0.smd": "a7f527a9ed22d7908bab6d8372b7ff01b816d496d9f4374ba8e6a82694496bd3",
+              "mesh.smd": "0abe8dc914cb9d590f8f92ee28e745abf741a64098ef4e0a5cf9d89521626aba",
+              "small.qc": "b349087700cf2ce0099c7e7d9d68688b440ff29798c7d1fe348edde9015f92f4"
+            },
+            "metrics_schema": 1,
+            "samples": [
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 1.7302,
+                "compile_ms": 0.2386,
+                "write_ms": 64.3808,
+                "total_ms": 66.3496,
+                "peak_working_set_bytes": 9195520,
+                "wall_seconds": 0.07925310000064201,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 1.5915,
+                "compile_ms": 0.2133,
+                "write_ms": 66.0683,
+                "total_ms": 67.8731,
+                "peak_working_set_bytes": 9187328,
+                "wall_seconds": 0.0765391000022646,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 1.6643,
+                "compile_ms": 0.2589,
+                "write_ms": 64.5554,
+                "total_ms": 66.4786,
+                "peak_working_set_bytes": 9191424,
+                "wall_seconds": 0.07650250000006054,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 1.6616,
+                "compile_ms": 0.2475,
+                "write_ms": 66.0883,
+                "total_ms": 67.9974,
+                "peak_working_set_bytes": 9195520,
+                "wall_seconds": 0.07693659999858937,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 1.6382,
+                "compile_ms": 0.2154,
+                "write_ms": 64.0517,
+                "total_ms": 65.9053,
+                "peak_working_set_bytes": 9207808,
+                "wall_seconds": 0.07545549999849754,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 1.5978,
+                "compile_ms": 0.2382,
+                "write_ms": 66.3649,
+                "total_ms": 68.2009,
+                "peak_working_set_bytes": 9207808,
+                "wall_seconds": 0.07696839999698568,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 1.6656,
+                "compile_ms": 0.2219,
+                "write_ms": 64.803,
+                "total_ms": 66.6905,
+                "peak_working_set_bytes": 9207808,
+                "wall_seconds": 0.07631949999995413,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": 66.3496,
+            "first_process_wall_ms": 79.25310000064201,
+            "median_wall_ms": 76.50250000006054,
+            "median_total_ms": 66.6905,
+            "median_peak_bytes": 9207808,
+            "main_stage_median_ms": {
+              "load_ms": 1.6616,
+              "compile_ms": 0.2382,
+              "write_ms": 64.803
+            },
+            "stage_median_ms": {
+              "pass/CullAnimations": 0.0073,
+              "pass/LoadLodSources": 0.0015,
+              "pass/ApplyBindPoseBake": 0.0009,
+              "pass/TagUsedBones": 0.0056,
+              "pass/BuildGlobalBonetable": 0.0106,
+              "pass/CollapseBones": 0.0002,
+              "pass/RebuildLocalPose": 0.0021,
+              "pass/MapSources": 0.0012,
+              "pass/RealignBones": 0.0002,
+              "pass/RemapVertices": 0.0017,
+              "pass/UnifyLods": 0.1264,
+              "pass/BuildCollisionModel": 0.0001,
+              "pass/RemapAnimations": 0.0033,
+              "pass/ProcessAnimations": 0.0039,
+              "pass/RemapVertexAnimations": 0.0001,
+              "pass/LockBoneLengths": 0.0001,
+              "pass/CullFlex": 0.0016,
+              "pass/BuildOutputMeshes": 0.0055,
+              "pass/SetupHitBoxes": 0.0026,
+              "pass/CompressAnimations": 0.004,
+              "pass/CalcSequenceBoundingBoxes": 0.0061,
+              "write/BuildVvd": 0.2194,
+              "vtx/strip build": 0.0378,
+              "vtx/serialize": 0.007,
+              "write/BuildVtx": 0.0828,
+              "write/FixupBuffers": 0.2121,
+              "total/script load": 1.6616,
+              "total/compile": 0.2382,
+              "total/write": 64.803,
+              "total/whole compile": 66.6905
+            },
+            "output_sha256": {
+              "benchmark\\small.dx80.vtx": "aa0de1e8f5ec62ffb084b441ce76f0cd6567df19520eeb1aaf08d3715f065197",
+              "benchmark\\small.dx90.vtx": "d3fe5a7ef9dfb204fd85d514201cf8b2dbe370c24e80710183cc4d51b80be64f",
+              "benchmark\\small.mdl": "8c741a92f30f902fba4072a6782721cc331e394af415bda6fe98b01d21141626",
+              "benchmark\\small.vvd": "c37f2364852812a7a4f2c30f4412fc7b31c594940d96938edb91a05ea204f6bc"
+            }
+          },
+          {
+            "qc": "large-grid.qc",
+            "qc_sha256": "fa81e6bc68612118d484bb0920a4ba041c6015fecb488461b1e3842d51a7da1b",
+            "input_sha256": {
+              "clip0.smd": "a7f527a9ed22d7908bab6d8372b7ff01b816d496d9f4374ba8e6a82694496bd3",
+              "large-grid.qc": "fa81e6bc68612118d484bb0920a4ba041c6015fecb488461b1e3842d51a7da1b",
+              "mesh.smd": "c698b177f1b36fa9e93d568efcace46c127d5b9f337a9ba418a65b3e53ca0090"
+            },
+            "metrics_schema": 1,
+            "samples": [
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 48.4457,
+                "compile_ms": 2.7599,
+                "write_ms": 80.0127,
+                "total_ms": 131.218,
+                "peak_working_set_bytes": 33398784,
+                "wall_seconds": 0.14055659999939962,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 49.3402,
+                "compile_ms": 2.828,
+                "write_ms": 80.2037,
+                "total_ms": 132.372,
+                "peak_working_set_bytes": 33423360,
+                "wall_seconds": 0.14348400000017136,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 49.069,
+                "compile_ms": 2.7169,
+                "write_ms": 78.5278,
+                "total_ms": 130.314,
+                "peak_working_set_bytes": 33390592,
+                "wall_seconds": 0.13984250000066822,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 48.9444,
+                "compile_ms": 2.7699,
+                "write_ms": 78.1382,
+                "total_ms": 129.852,
+                "peak_working_set_bytes": 33406976,
+                "wall_seconds": 0.14026599999851896,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 49.0173,
+                "compile_ms": 2.82,
+                "write_ms": 79.0306,
+                "total_ms": 130.868,
+                "peak_working_set_bytes": 33386496,
+                "wall_seconds": 0.14054829999804497,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 48.7655,
+                "compile_ms": 2.6226,
+                "write_ms": 77.3525,
+                "total_ms": 128.741,
+                "peak_working_set_bytes": 33415168,
+                "wall_seconds": 0.13881020000189892,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 48.4392,
+                "compile_ms": 2.7635,
+                "write_ms": 79.7234,
+                "total_ms": 130.926,
+                "peak_working_set_bytes": 33398784,
+                "wall_seconds": 0.1405711000006704,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": 131.218,
+            "first_process_wall_ms": 140.55659999939962,
+            "median_wall_ms": 140.26599999851896,
+            "median_total_ms": 130.314,
+            "median_peak_bytes": 33398784,
+            "main_stage_median_ms": {
+              "load_ms": 48.9444,
+              "compile_ms": 2.7635,
+              "write_ms": 78.5278
+            },
+            "stage_median_ms": {
+              "pass/CullAnimations": 0.007,
+              "pass/LoadLodSources": 0.0014,
+              "pass/ApplyBindPoseBake": 0.0009,
+              "pass/TagUsedBones": 0.0153,
+              "pass/BuildGlobalBonetable": 0.0105,
+              "pass/CollapseBones": 0.0002,
+              "pass/RebuildLocalPose": 0.0021,
+              "pass/MapSources": 0.0012,
+              "pass/RealignBones": 0.0002,
+              "pass/RemapVertices": 0.601,
+              "pass/UnifyLods": 1.238,
+              "pass/BuildCollisionModel": 0.0002,
+              "pass/RemapAnimations": 0.0037,
+              "pass/ProcessAnimations": 0.004,
+              "pass/RemapVertexAnimations": 0.0002,
+              "pass/LockBoneLengths": 0.0001,
+              "pass/CullFlex": 0.0016,
+              "pass/BuildOutputMeshes": 0.6257,
+              "pass/SetupHitBoxes": 0.0392,
+              "pass/CompressAnimations": 0.0051,
+              "pass/CalcSequenceBoundingBoxes": 0.1279,
+              "write/BuildVvd": 0.3871,
+              "vtx/strip build": 11.7942,
+              "vtx/serialize": 0.0815,
+              "write/BuildVtx": 12.2387,
+              "write/FixupBuffers": 1.471,
+              "total/script load": 48.9444,
+              "total/compile": 2.7635,
+              "total/write": 78.5278,
+              "total/whole compile": 130.314
+            },
+            "output_sha256": {
+              "benchmark\\large-grid.dx80.vtx": "250d4bda7dddec18ac91df106f02ca4711c4c7c4236b68b14f74d02a3eb90297",
+              "benchmark\\large-grid.dx90.vtx": "7daa1bec306fd5fbe0b428890e66b90751a97b3c7e922c8ec1f50822afe4ad91",
+              "benchmark\\large-grid.mdl": "241134433b96d7e5271e91dc135eae6dc2b9a50d46be2af34e15176cb2cf96a0",
+              "benchmark\\large-grid.vvd": "b3e0b89718d73c5fdba3286b8f56f2e51e5a5bc00a75f3aafbd7ebb9aedb33d7"
+            }
+          },
+          {
+            "qc": "clips-morphs.qc",
+            "qc_sha256": "b8f062811ec5292987f15a240ef533abef529b8bbdba53317709ad7fd9e3aa51",
+            "input_sha256": {
+              "clip0.smd": "3da3cfbee2599c7b2fcd1427abbf7b064357a661ed8fa141426d6e705aabbbde",
+              "clip1.smd": "0d6b889dcbf85659355504175df7f2dc3cacbb247a676e15c1b037538576e72d",
+              "clip10.smd": "66fcd22e61f159e5c5797cafdedbaf77a3f11335a1e7e2e2efde4f60e0296760",
+              "clip11.smd": "d4533fec7392c6f7f0eca4468b2c4c3acb80b36209ba032f7d7cabed8b34c735",
+              "clip12.smd": "59e2f2d88d0b08af7477e1f63bf7a737243211e77e6a881bc3b1ff082c0177df",
+              "clip13.smd": "47019067b96858b1d6462acf5416f8a6c7b22e7f63706972f7ccd37323fcc514",
+              "clip14.smd": "548346275d3fc329c8a646a3d8401c5cc57ca47c0f96830315a7714fcc886932",
+              "clip15.smd": "69417bf77dc978bac6754caae33dd52b41d272da402e48673d6f4314b4616481",
+              "clip16.smd": "3f63ef4c0eeaffdbf7efe4b5174548e3140e3f391b276a89f7acb8d6c7caf5e6",
+              "clip17.smd": "2544d12c68d35ca2455508a0bd6bea474915fb5fd1921d6526bfc65fe7ffa15e",
+              "clip18.smd": "f325bec1c87a51d2515636cc72eff3b92659f9bf2e5db41002efc37ad37833c7",
+              "clip19.smd": "4773edacd59fd5c54336751e6229de64e5369f94187554d4fdcdc475a48c824a",
+              "clip2.smd": "f1edc1026b8374a2da529ca095fbe0b0d2c66ef9f0f45b1852a13d87be54db80",
+              "clip20.smd": "ffa29ac6558f8565d46e876a7cb8a74e1791da2e3cb45902b149a71eb64e8de9",
+              "clip21.smd": "fcbd643d8ec4a03965c3996635e55f92e9694d0872c65fba1d4004e52cc63771",
+              "clip22.smd": "08532ec9b2f8248758e52d1a018a39655cf383f4a0ec098fd851f49bcb570198",
+              "clip23.smd": "0a1fcb4444004a58abda6a8a2eb21f9ae99868278659d1ab520b5b2b9660bf3f",
+              "clip3.smd": "85ed26d7654375cb0092c16f5ac428bd609d0b5950f956e4897a627533413af7",
+              "clip4.smd": "20f67474c6f5397291450e3267eef3c8b1380d26ed7b43bdd98a2d3ae4468337",
+              "clip5.smd": "efd42f4854b74e27145507c2e3e11bfb587e8dfae0e2fa02ba276f05e0e03a65",
+              "clip6.smd": "bc0db27187a0f2f238893c697084634851e476db29e3567861dfc32d096022e7",
+              "clip7.smd": "99e4204fa689c9ae9d9f63474c6a11045b177f66a87821f7cfc7de1eec0b49df",
+              "clip8.smd": "f32882e544c4a0f45034bd29cbeae5ed7f34ee46a4a9f2b77645c9512f3e4dfc",
+              "clip9.smd": "b6687ea979772af4c14d6d9a1f20ee13fc04714d5cb2ea916254191d0f784030",
+              "clips-morphs.qc": "b8f062811ec5292987f15a240ef533abef529b8bbdba53317709ad7fd9e3aa51",
+              "face.vta": "2d2c7c8059b99b7d4b391a13ec73a994002a5d7d432b15838e419721583dc343",
+              "mesh.smd": "142da89f98bc3d1c757464a38f05e88ab6ad02999de46287c0ea2679d1024b99"
+            },
+            "metrics_schema": 1,
+            "samples": [
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 14.4183,
+                "compile_ms": 3.0174,
+                "write_ms": 65.7885,
+                "total_ms": 83.2242,
+                "peak_working_set_bytes": 11522048,
+                "wall_seconds": 0.09298059999855468,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 14.0979,
+                "compile_ms": 3.0033,
+                "write_ms": 67.5095,
+                "total_ms": 84.6107,
+                "peak_working_set_bytes": 11587584,
+                "wall_seconds": 0.09332350000113365,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 16.8542,
+                "compile_ms": 2.9057,
+                "write_ms": 67.8626,
+                "total_ms": 87.6225,
+                "peak_working_set_bytes": 11583488,
+                "wall_seconds": 0.09798509999745875,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 14.1412,
+                "compile_ms": 3.0379,
+                "write_ms": 66.2267,
+                "total_ms": 83.4058,
+                "peak_working_set_bytes": 11501568,
+                "wall_seconds": 0.09188360000189277,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 13.883,
+                "compile_ms": 2.8842,
+                "write_ms": 65.9461,
+                "total_ms": 82.7133,
+                "peak_working_set_bytes": 11485184,
+                "wall_seconds": 0.09129690000190749,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 14.0748,
+                "compile_ms": 2.9019,
+                "write_ms": 66.3395,
+                "total_ms": 83.3162,
+                "peak_working_set_bytes": 11485184,
+                "wall_seconds": 0.09312929999941844,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.37",
+                "load_ms": 17.5571,
+                "compile_ms": 2.9619,
+                "write_ms": 66.7799,
+                "total_ms": 87.2989,
+                "peak_working_set_bytes": 11583488,
+                "wall_seconds": 0.09634210000149324,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": 83.2242,
+            "first_process_wall_ms": 92.98059999855468,
+            "median_wall_ms": 93.12929999941844,
+            "median_total_ms": 83.4058,
+            "median_peak_bytes": 11501568,
+            "main_stage_median_ms": {
+              "load_ms": 14.1412,
+              "compile_ms": 2.9057,
+              "write_ms": 66.3395
+            },
+            "stage_median_ms": {
+              "pass/CullAnimations": 0.0168,
+              "pass/LoadLodSources": 0.0013,
+              "pass/ApplyBindPoseBake": 0.0009,
+              "pass/TagUsedBones": 0.008,
+              "pass/BuildGlobalBonetable": 0.0115,
+              "pass/CollapseBones": 0.0002,
+              "pass/RebuildLocalPose": 0.002,
+              "pass/MapSources": 0.0019,
+              "pass/RealignBones": 0.0002,
+              "pass/RemapVertices": 0.0348,
+              "pass/UnifyLods": 0.1431,
+              "pass/BuildCollisionModel": 0.0001,
+              "pass/RemapAnimations": 0.6326,
+              "pass/ProcessAnimations": 0.0055,
+              "pass/RemapVertexAnimations": 0.2893,
+              "pass/LockBoneLengths": 0.0002,
+              "pass/CullFlex": 0.0099,
+              "pass/BuildOutputMeshes": 0.0361,
+              "pass/SetupHitBoxes": 0.0046,
+              "pass/CompressAnimations": 0.1555,
+              "pass/CalcSequenceBoundingBoxes": 1.4743,
+              "write/BuildVvd": 0.2316,
+              "vtx/strip build": 0.4729,
+              "vtx/serialize": 0.0084,
+              "write/BuildVtx": 0.5165,
+              "write/FixupBuffers": 0.2508,
+              "total/script load": 14.1412,
+              "total/compile": 2.9057,
+              "total/write": 66.3395,
+              "total/whole compile": 83.4058
+            },
+            "output_sha256": {
+              "benchmark\\clips-morphs.dx80.vtx": "c820ebb6144ab70492422ac95c746783ca52ad31066050fe2041f698e2e6f602",
+              "benchmark\\clips-morphs.dx90.vtx": "4927e57db20c322c4bffee017f32378b3999372155e6967a3df490cc82b4d9ee",
+              "benchmark\\clips-morphs.mdl": "3df23182e27b1072d5040c1882ba5f42aaec97bbbbd4653042c89e28df34bb15",
+              "benchmark\\clips-morphs.vvd": "1751e060cb08baa6aa1a3afabe91a4ff20725260c1d407fec26657180f8de15e"
+            }
+          }
+        ],
+        "regressions": []
+      },
+      "candidate": {
+        "schema": 3,
+        "compiler": "D:\\newpage-performance-20261022\\candidate\\build\\NewPageMergeMDL\\MinSizeRel\\NewPageMergeMDL.exe",
+        "compiler_sha256": "01772c2d47138d0758ef62989e7bfee0fec324de3c08f5cc5bfc48b4f60c5a62",
+        "measured_at_utc": "2026-10-22T09:04:38.166468+00:00",
+        "source_revision": "e2692717645babd387c937fd71669523538ef957",
+        "build_cache_sha256": "91af493db7b5a4d01b566cfa1fc485ef87a01c179e396402e5fc5378f6c8ed7c",
+        "build_configuration": {
+          "CMAKE_GENERATOR": "Visual Studio 18 2026",
+          "CMAKE_GENERATOR_PLATFORM": "x64",
+          "CMAKE_GENERATOR_TOOLSET": "",
+          "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
+          "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "OFF",
+          "NEWPAGE_COMPACT_RELEASE": "ON",
+          "NEWPAGE_REPRODUCIBLE": "OFF",
+          "NEWPAGE_SEPARATE_SYMBOLS": "OFF",
+          "NEWPAGE_SANITIZERS": "",
+          "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT": "ON",
+          "NEWPAGE_BUILD_CXX_COMPILER_ID": "MSVC",
+          "NEWPAGE_BUILD_CXX_COMPILER_VERSION": "19.51.36260.0",
+          "CMAKE_C_FLAGS": "/DWIN32 /D_WINDOWS",
+          "CMAKE_C_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+          "CMAKE_CXX_FLAGS": "/DWIN32 /D_WINDOWS /EHsc",
+          "CMAKE_CXX_FLAGS_MINSIZEREL": "/O1 /Ob1 /DNDEBUG",
+          "CMAKE_EXE_LINKER_FLAGS": "/machine:x64",
+          "CMAKE_EXE_LINKER_FLAGS_MINSIZEREL": "/INCREMENTAL:NO",
+          "CMAKE_STATIC_LINKER_FLAGS": "/machine:x64",
+          "CMAKE_STATIC_LINKER_FLAGS_MINSIZEREL": "",
+          "configuration": "MinSizeRel",
+          "C_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57",
+          "CXX_compiler_sha256": "b0a1818ebae6da7f18230a84e76ce839212584ac4c2ab55b97a0d5268085da57"
+        },
+        "machine": {
+          "system": "Windows-11-10.0.26340-SP0",
+          "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+          "node": "Kud-PC"
+        },
+        "runs": 5,
+        "warmup": 1,
+        "first_process_runs": 1,
+        "instrumentation": "perfjson",
+        "clock": "perf_counter subprocess wall time; compiler steady-clock stages; first process is not guaranteed disk-cold",
+        "thresholds": {
+          "time_fraction": 0.2,
+          "memory_fraction": 0.15,
+          "time_metrics": [
+            "median_wall_ms",
+            "median_total_ms"
+          ]
+        },
+        "input_contract": "Each QC parent directory must contain its complete input dependency tree and no outputs",
+        "cases": [
+          {
+            "qc": "small.qc",
+            "qc_sha256": "b349087700cf2ce0099c7e7d9d68688b440ff29798c7d1fe348edde9015f92f4",
+            "input_sha256": {
+              "clip0.smd": "a7f527a9ed22d7908bab6d8372b7ff01b816d496d9f4374ba8e6a82694496bd3",
+              "mesh.smd": "0abe8dc914cb9d590f8f92ee28e745abf741a64098ef4e0a5cf9d89521626aba",
+              "small.qc": "b349087700cf2ce0099c7e7d9d68688b440ff29798c7d1fe348edde9015f92f4"
+            },
+            "metrics_schema": 1,
+            "samples": [
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 1.1008,
+                "compile_ms": 0.2877,
+                "write_ms": 73.5748,
+                "total_ms": 74.9633,
+                "peak_working_set_bytes": 9285632,
+                "wall_seconds": 0.14706379999915953,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 1.0013,
+                "compile_ms": 0.2186,
+                "write_ms": 72.7299,
+                "total_ms": 73.9498,
+                "peak_working_set_bytes": 9269248,
+                "wall_seconds": 0.09890640000230633,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 1.2689,
+                "compile_ms": 0.2415,
+                "write_ms": 73.9593,
+                "total_ms": 75.4697,
+                "peak_working_set_bytes": 9289728,
+                "wall_seconds": 0.10029650000069523,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 1.1154,
+                "compile_ms": 0.2236,
+                "write_ms": 75.6579,
+                "total_ms": 76.9969,
+                "peak_working_set_bytes": 9273344,
+                "wall_seconds": 0.10173429999849759,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 0.9813,
+                "compile_ms": 0.2016,
+                "write_ms": 70.4202,
+                "total_ms": 71.6031,
+                "peak_working_set_bytes": 9289728,
+                "wall_seconds": 0.09461849999934202,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 0.9886,
+                "compile_ms": 0.1952,
+                "write_ms": 70.5139,
+                "total_ms": 71.6977,
+                "peak_working_set_bytes": 9293824,
+                "wall_seconds": 0.09430150000116555,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 0.9934,
+                "compile_ms": 0.2105,
+                "write_ms": 70.4971,
+                "total_ms": 71.701,
+                "peak_working_set_bytes": 9269248,
+                "wall_seconds": 0.09490680000089924,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": 74.9633,
+            "first_process_wall_ms": 147.06379999915953,
+            "median_wall_ms": 94.90680000089924,
+            "median_total_ms": 71.701,
+            "median_peak_bytes": 9289728,
+            "main_stage_median_ms": {
+              "load_ms": 0.9934,
+              "compile_ms": 0.2105,
+              "write_ms": 70.5139
+            },
+            "stage_median_ms": {
+              "pass/CullAnimations": 0.0067,
+              "pass/LoadLodSources": 0.0014,
+              "pass/ApplyBindPoseBake": 0.0008,
+              "pass/TagUsedBones": 0.0055,
+              "pass/BuildGlobalBonetable": 0.0097,
+              "pass/CollapseBones": 0.0001,
+              "pass/RebuildLocalPose": 0.002,
+              "pass/MapSources": 0.001,
+              "pass/RealignBones": 0.0002,
+              "pass/RemapVertices": 0.0016,
+              "pass/UnifyLods": 0.0949,
+              "pass/BuildCollisionModel": 0.0001,
+              "pass/RemapAnimations": 0.0041,
+              "pass/ProcessAnimations": 0.0036,
+              "pass/RemapVertexAnimations": 0.0002,
+              "pass/LockBoneLengths": 0.0001,
+              "pass/CullFlex": 0.0014,
+              "pass/BuildOutputMeshes": 0.0035,
+              "pass/SetupHitBoxes": 0.0033,
+              "pass/CompressAnimations": 0.0046,
+              "pass/CalcSequenceBoundingBoxes": 0.0068,
+              "write/BuildVvd": 0.223,
+              "vtx/strip build": 0.0397,
+              "vtx/serialize": 0.0067,
+              "write/BuildVtx": 0.0717,
+              "write/FixupBuffers": 0.2035,
+              "total/script load": 0.9934,
+              "total/compile": 0.2105,
+              "total/write": 70.5139,
+              "total/whole compile": 71.701
+            },
+            "output_sha256": {
+              "benchmark\\small.dx80.vtx": "aa0de1e8f5ec62ffb084b441ce76f0cd6567df19520eeb1aaf08d3715f065197",
+              "benchmark\\small.dx90.vtx": "d3fe5a7ef9dfb204fd85d514201cf8b2dbe370c24e80710183cc4d51b80be64f",
+              "benchmark\\small.mdl": "8c741a92f30f902fba4072a6782721cc331e394af415bda6fe98b01d21141626",
+              "benchmark\\small.vvd": "c37f2364852812a7a4f2c30f4412fc7b31c594940d96938edb91a05ea204f6bc"
+            }
+          },
+          {
+            "qc": "large-grid.qc",
+            "qc_sha256": "fa81e6bc68612118d484bb0920a4ba041c6015fecb488461b1e3842d51a7da1b",
+            "input_sha256": {
+              "clip0.smd": "a7f527a9ed22d7908bab6d8372b7ff01b816d496d9f4374ba8e6a82694496bd3",
+              "large-grid.qc": "fa81e6bc68612118d484bb0920a4ba041c6015fecb488461b1e3842d51a7da1b",
+              "mesh.smd": "c698b177f1b36fa9e93d568efcace46c127d5b9f337a9ba418a65b3e53ca0090"
+            },
+            "metrics_schema": 1,
+            "samples": [
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 56.8526,
+                "compile_ms": 2.8551,
+                "write_ms": 88.5503,
+                "total_ms": 148.258,
+                "peak_working_set_bytes": 33521664,
+                "wall_seconds": 0.17317969999930938,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 48.2067,
+                "compile_ms": 2.7872,
+                "write_ms": 85.8389,
+                "total_ms": 136.833,
+                "peak_working_set_bytes": 33501184,
+                "wall_seconds": 0.16111240000100224,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 49.0821,
+                "compile_ms": 2.8296,
+                "write_ms": 85.9249,
+                "total_ms": 137.837,
+                "peak_working_set_bytes": 33488896,
+                "wall_seconds": 0.1626746000001731,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 49.7283,
+                "compile_ms": 2.8956,
+                "write_ms": 86.9764,
+                "total_ms": 139.6,
+                "peak_working_set_bytes": 33447936,
+                "wall_seconds": 0.164685499999905,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 48.5906,
+                "compile_ms": 2.842,
+                "write_ms": 87.0147,
+                "total_ms": 138.447,
+                "peak_working_set_bytes": 33402880,
+                "wall_seconds": 0.162535299998126,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 48.5871,
+                "compile_ms": 2.6772,
+                "write_ms": 86.5007,
+                "total_ms": 137.765,
+                "peak_working_set_bytes": 33484800,
+                "wall_seconds": 0.16359830000146758,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 48.3419,
+                "compile_ms": 2.7569,
+                "write_ms": 89.5326,
+                "total_ms": 140.631,
+                "peak_working_set_bytes": 33361920,
+                "wall_seconds": 0.16597010000259615,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": 148.258,
+            "first_process_wall_ms": 173.17969999930938,
+            "median_wall_ms": 163.59830000146758,
+            "median_total_ms": 138.447,
+            "median_peak_bytes": 33447936,
+            "main_stage_median_ms": {
+              "load_ms": 48.5906,
+              "compile_ms": 2.8296,
+              "write_ms": 86.9764
+            },
+            "stage_median_ms": {
+              "pass/CullAnimations": 0.0068,
+              "pass/LoadLodSources": 0.0013,
+              "pass/ApplyBindPoseBake": 0.0008,
+              "pass/TagUsedBones": 0.0153,
+              "pass/BuildGlobalBonetable": 0.0101,
+              "pass/CollapseBones": 0.0001,
+              "pass/RebuildLocalPose": 0.0021,
+              "pass/MapSources": 0.0009,
+              "pass/RealignBones": 0.0003,
+              "pass/RemapVertices": 0.6039,
+              "pass/UnifyLods": 1.2826,
+              "pass/BuildCollisionModel": 0.0002,
+              "pass/RemapAnimations": 0.0053,
+              "pass/ProcessAnimations": 0.0039,
+              "pass/RemapVertexAnimations": 0.0002,
+              "pass/LockBoneLengths": 0.0001,
+              "pass/CullFlex": 0.0016,
+              "pass/BuildOutputMeshes": 0.6527,
+              "pass/SetupHitBoxes": 0.0397,
+              "pass/CompressAnimations": 0.0052,
+              "pass/CalcSequenceBoundingBoxes": 0.1296,
+              "write/BuildVvd": 0.4001,
+              "vtx/strip build": 11.9612,
+              "vtx/serialize": 0.0832,
+              "write/BuildVtx": 12.385,
+              "write/FixupBuffers": 1.4262,
+              "total/script load": 48.5906,
+              "total/compile": 2.8296,
+              "total/write": 86.9764,
+              "total/whole compile": 138.447
+            },
+            "output_sha256": {
+              "benchmark\\large-grid.dx80.vtx": "250d4bda7dddec18ac91df106f02ca4711c4c7c4236b68b14f74d02a3eb90297",
+              "benchmark\\large-grid.dx90.vtx": "7daa1bec306fd5fbe0b428890e66b90751a97b3c7e922c8ec1f50822afe4ad91",
+              "benchmark\\large-grid.mdl": "241134433b96d7e5271e91dc135eae6dc2b9a50d46be2af34e15176cb2cf96a0",
+              "benchmark\\large-grid.vvd": "b3e0b89718d73c5fdba3286b8f56f2e51e5a5bc00a75f3aafbd7ebb9aedb33d7"
+            }
+          },
+          {
+            "qc": "clips-morphs.qc",
+            "qc_sha256": "b8f062811ec5292987f15a240ef533abef529b8bbdba53317709ad7fd9e3aa51",
+            "input_sha256": {
+              "clip0.smd": "3da3cfbee2599c7b2fcd1427abbf7b064357a661ed8fa141426d6e705aabbbde",
+              "clip1.smd": "0d6b889dcbf85659355504175df7f2dc3cacbb247a676e15c1b037538576e72d",
+              "clip10.smd": "66fcd22e61f159e5c5797cafdedbaf77a3f11335a1e7e2e2efde4f60e0296760",
+              "clip11.smd": "d4533fec7392c6f7f0eca4468b2c4c3acb80b36209ba032f7d7cabed8b34c735",
+              "clip12.smd": "59e2f2d88d0b08af7477e1f63bf7a737243211e77e6a881bc3b1ff082c0177df",
+              "clip13.smd": "47019067b96858b1d6462acf5416f8a6c7b22e7f63706972f7ccd37323fcc514",
+              "clip14.smd": "548346275d3fc329c8a646a3d8401c5cc57ca47c0f96830315a7714fcc886932",
+              "clip15.smd": "69417bf77dc978bac6754caae33dd52b41d272da402e48673d6f4314b4616481",
+              "clip16.smd": "3f63ef4c0eeaffdbf7efe4b5174548e3140e3f391b276a89f7acb8d6c7caf5e6",
+              "clip17.smd": "2544d12c68d35ca2455508a0bd6bea474915fb5fd1921d6526bfc65fe7ffa15e",
+              "clip18.smd": "f325bec1c87a51d2515636cc72eff3b92659f9bf2e5db41002efc37ad37833c7",
+              "clip19.smd": "4773edacd59fd5c54336751e6229de64e5369f94187554d4fdcdc475a48c824a",
+              "clip2.smd": "f1edc1026b8374a2da529ca095fbe0b0d2c66ef9f0f45b1852a13d87be54db80",
+              "clip20.smd": "ffa29ac6558f8565d46e876a7cb8a74e1791da2e3cb45902b149a71eb64e8de9",
+              "clip21.smd": "fcbd643d8ec4a03965c3996635e55f92e9694d0872c65fba1d4004e52cc63771",
+              "clip22.smd": "08532ec9b2f8248758e52d1a018a39655cf383f4a0ec098fd851f49bcb570198",
+              "clip23.smd": "0a1fcb4444004a58abda6a8a2eb21f9ae99868278659d1ab520b5b2b9660bf3f",
+              "clip3.smd": "85ed26d7654375cb0092c16f5ac428bd609d0b5950f956e4897a627533413af7",
+              "clip4.smd": "20f67474c6f5397291450e3267eef3c8b1380d26ed7b43bdd98a2d3ae4468337",
+              "clip5.smd": "efd42f4854b74e27145507c2e3e11bfb587e8dfae0e2fa02ba276f05e0e03a65",
+              "clip6.smd": "bc0db27187a0f2f238893c697084634851e476db29e3567861dfc32d096022e7",
+              "clip7.smd": "99e4204fa689c9ae9d9f63474c6a11045b177f66a87821f7cfc7de1eec0b49df",
+              "clip8.smd": "f32882e544c4a0f45034bd29cbeae5ed7f34ee46a4a9f2b77645c9512f3e4dfc",
+              "clip9.smd": "b6687ea979772af4c14d6d9a1f20ee13fc04714d5cb2ea916254191d0f784030",
+              "clips-morphs.qc": "b8f062811ec5292987f15a240ef533abef529b8bbdba53317709ad7fd9e3aa51",
+              "face.vta": "2d2c7c8059b99b7d4b391a13ec73a994002a5d7d432b15838e419721583dc343",
+              "mesh.smd": "142da89f98bc3d1c757464a38f05e88ab6ad02999de46287c0ea2679d1024b99"
+            },
+            "metrics_schema": 1,
+            "samples": [
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 13.4617,
+                "compile_ms": 3.054,
+                "write_ms": 72.5367,
+                "total_ms": 89.0524,
+                "peak_working_set_bytes": 11620352,
+                "wall_seconds": 0.11368600000059814,
+                "sample": 0,
+                "phase": "first_process"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 17.119,
+                "compile_ms": 3.0045,
+                "write_ms": 77.1028,
+                "total_ms": 97.2263,
+                "peak_working_set_bytes": 11632640,
+                "wall_seconds": 0.12196929999845452,
+                "sample": 1,
+                "phase": "warmup"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 13.7367,
+                "compile_ms": 3.0394,
+                "write_ms": 76.1548,
+                "total_ms": 92.9309,
+                "peak_working_set_bytes": 11649024,
+                "wall_seconds": 0.11973489999945741,
+                "sample": 2,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 17.7459,
+                "compile_ms": 3.0199,
+                "write_ms": 76.9996,
+                "total_ms": 97.7654,
+                "peak_working_set_bytes": 11657216,
+                "wall_seconds": 0.12414450000142097,
+                "sample": 3,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 17.2127,
+                "compile_ms": 3.0377,
+                "write_ms": 75.7974,
+                "total_ms": 96.0478,
+                "peak_working_set_bytes": 11608064,
+                "wall_seconds": 0.12336339999819756,
+                "sample": 4,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 14.0072,
+                "compile_ms": 2.9975,
+                "write_ms": 73.6543,
+                "total_ms": 90.659,
+                "peak_working_set_bytes": 11608064,
+                "wall_seconds": 0.1145371000020532,
+                "sample": 5,
+                "phase": "measured"
+              },
+              {
+                "schema": 1,
+                "version": "1.2.38",
+                "load_ms": 16.9394,
+                "compile_ms": 3.2003,
+                "write_ms": 72.9895,
+                "total_ms": 93.1292,
+                "peak_working_set_bytes": 11649024,
+                "wall_seconds": 0.1179840000004333,
+                "sample": 6,
+                "phase": "measured"
+              }
+            ],
+            "first_process_ms": 89.0524,
+            "first_process_wall_ms": 113.68600000059814,
+            "median_wall_ms": 119.73489999945741,
+            "median_total_ms": 93.1292,
+            "median_peak_bytes": 11649024,
+            "main_stage_median_ms": {
+              "load_ms": 16.9394,
+              "compile_ms": 3.0377,
+              "write_ms": 75.7974
+            },
+            "stage_median_ms": {
+              "pass/CullAnimations": 0.0147,
+              "pass/LoadLodSources": 0.0013,
+              "pass/ApplyBindPoseBake": 0.0008,
+              "pass/TagUsedBones": 0.0087,
+              "pass/BuildGlobalBonetable": 0.0122,
+              "pass/CollapseBones": 0.0001,
+              "pass/RebuildLocalPose": 0.0021,
+              "pass/MapSources": 0.0021,
+              "pass/RealignBones": 0.0002,
+              "pass/RemapVertices": 0.0363,
+              "pass/UnifyLods": 0.1445,
+              "pass/BuildCollisionModel": 0.0001,
+              "pass/RemapAnimations": 0.649,
+              "pass/ProcessAnimations": 0.0053,
+              "pass/RemapVertexAnimations": 0.2974,
+              "pass/LockBoneLengths": 0.0001,
+              "pass/CullFlex": 0.0101,
+              "pass/BuildOutputMeshes": 0.0359,
+              "pass/SetupHitBoxes": 0.0054,
+              "pass/CompressAnimations": 0.162,
+              "pass/CalcSequenceBoundingBoxes": 1.5836,
+              "write/BuildVvd": 0.2427,
+              "vtx/strip build": 0.4961,
+              "vtx/serialize": 0.0082,
+              "write/BuildVtx": 0.549,
+              "write/FixupBuffers": 0.2814,
+              "total/script load": 16.9394,
+              "total/compile": 3.0377,
+              "total/write": 75.7974,
+              "total/whole compile": 93.1292
+            },
+            "output_sha256": {
+              "benchmark\\clips-morphs.dx80.vtx": "c820ebb6144ab70492422ac95c746783ca52ad31066050fe2041f698e2e6f602",
+              "benchmark\\clips-morphs.dx90.vtx": "4927e57db20c322c4bffee017f32378b3999372155e6967a3df490cc82b4d9ee",
+              "benchmark\\clips-morphs.mdl": "3df23182e27b1072d5040c1882ba5f42aaec97bbbbd4653042c89e28df34bb15",
+              "benchmark\\clips-morphs.vvd": "1751e060cb08baa6aa1a3afabe91a4ff20725260c1d407fec26657180f8de15e"
+            }
+          }
+        ],
+        "regressions": [
+          {
+            "case": "small.qc",
+            "metric": "median_wall_ms",
+            "previous": 76.50250000006054,
+            "current": 94.90680000089924,
+            "allowed_fraction": 0.2
+          },
+          {
+            "case": "clips-morphs.qc",
+            "metric": "median_wall_ms",
+            "previous": 93.12929999941844,
+            "current": 119.73489999945741,
+            "allowed_fraction": 0.2
+          }
+        ],
+        "source_overrides": {
+          "base_revision": "e2692717645babd387c937fd71669523538ef957",
+          "files": {
+            "mdlcompiler/reportoutput.h": "0fd3110c7f295ea38e75406da0551f42b3117c756522ee924b774cabb219daea"
+          },
+          "patch_sha256": "5c995e0ae15739f0195fbd4b5920cf1054e7b12e3be267c942515cd4acd0252a"
+        }
+      }
+    }
+  },
+  "result": {
+    "ordinary_cli_time_gate_passed": true,
+    "instrumented_internal_time_and_peak_gate_passed": true,
+    "instrumented_process_wall_gate_passed": false,
+    "time_threshold_fraction": 0.2,
+    "peak_threshold_fraction": 0.15,
+    "cross_version_outputs_identical": true,
+    "interpretation": "Optional durable performance-report publication adds process wall cost; do not infer a normal compile or mesh/animation algorithm regression from that overhead."
+  },
+  "source_archive_sha256": {
+    "baseline": "9a4e477b46bf1212cfe0e01d44cadcd4877dd64fb86a33f0873e4b3c31ddbdb2",
+    "candidate": "45dae59eaeb1066835270da69afcf6d8b5875feb38ae3b2492af5182034dd010"
+  }
+}

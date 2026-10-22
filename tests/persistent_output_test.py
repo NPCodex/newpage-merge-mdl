@@ -131,6 +131,20 @@ class PersistentOutputs(unittest.TestCase):
                 new = self.files()
                 self.run_tool(kind, 'recover'); self.assertEqual(self.files(), new); self.clean()
 
+    def test_report_kill_preserves_previous_or_committed_report(self):
+        target = self.root / 'perf.json'
+        previous = b'previous report\n'
+        for hook in ('begin:0', 'journal:0', 'prepared:0', 'ready:0', 'backed_up:0', 'published:0', 'committed:0'):
+            with self.subTest(hook=hook):
+                target.write_bytes(previous)
+                self.kill(self.pause('report', 'pause:' + hook))
+                self.run_tool('report', 'recover')
+                expected = b'{"result":"new report"}\n' if hook == 'committed:0' else previous
+                self.assertEqual(target.read_bytes(), expected)
+                self.clean()
+                self.run_tool('report', 'recover')
+                self.assertEqual(target.read_bytes(), expected)
+
     def test_first_publication_kill_removes_new_outputs_and_first_backup(self):
         for kind in ('ag2', 'directory'):
             with self.subTest(kind=kind):
