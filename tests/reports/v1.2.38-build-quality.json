@@ -2,11 +2,31 @@
   "schema": 1,
   "updated_date": "2026-10-22",
   "release_published": false,
-  "scope": "Verified intermediate snapshots; final integrated candidate must be checked again",
+  "scope": "Integrated quality validation of commit 2317571; this does not publish a release or imply success of a separate package-validation job",
+  "integrated_validation": {
+    "status": "passed",
+    "run_id": 39759274649,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
+    "windows_helper_staging": "passed; draft asset fetched and verified by an isolated contents:write preparation job, native build/repeat jobs remain contents:read",
+    "jobs": {
+      "gcc": 119759095579,
+      "clang": 119759095110,
+      "sanitizer": 119759095458,
+      "windows_helper": 119759095890,
+      "repro_linux": 119759202552,
+      "repro_windows": 119759202434
+    }
+  },
+  "discarded_local_validation": {
+    "suite": "18-case decompiler roundtrip",
+    "reason": "Accidentally combined new decompiler with stale v1.2.36 build-local L4D executable; neither a regression nor a passing candidate test",
+    "stale_l4d_sha256": "a4770dccc16e0a7771a5e5358447d1c69687433a33478f4f2735113b0f3594bd",
+    "maintained_local_build_directory": "build-local-20261019"
+  },
   "linux_package_validation": {
     "status": "passed",
-    "run_id": 39751372432,
-    "sha": "4e00894",
+    "run_id": 39759274649,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
     "configuration": "MinSizeRel",
     "ipo": false,
     "baseline": "Ubuntu 24.04 LTS x86_64",
@@ -14,7 +34,21 @@
       "GCC 13",
       "Clang 18"
     ],
-    "compatibility_tests_per_compiler": 445,
+    "compatibility_tests_per_compiler": 446,
+    "compatibility_passed_per_compiler": 444,
+    "compatibility_skipped_per_compiler": 2,
+    "compatibility_skip_reason": "Windows file-sharing locks and Windows output-directory aliases",
+    "roundtrip_tests_passed_per_compiler": 18,
+    "decompiler_integrity_tests_per_compiler": {
+      "total": 16,
+      "passed": 15,
+      "skipped": 1
+    },
+    "source_archive_sha256": "c9de5c55334ce6c38dcf6a1de165c245c52d65c55becae26029a530ecd03fc3e",
+    "validation_archive_sha256": {
+      "gcc": "51fd7c69e5e044cf86dbc2e9ef7d222539a53dfff1e750bc14bffe49320b37ab",
+      "clang": "0f7bf1703ea55845a02ad75469481f83a2376e47423a7421658870ac8b968deb"
+    },
     "native_elf_tools_per_compiler": 7,
     "additional_suites": "Recovery/format CTest, packaged VRML, report inputs, incremental cache, helpers, decompiler, subtools, VMD and output protection",
     "maximum_observed_required_symbols": {
@@ -29,16 +63,16 @@
     }
   },
   "reproducibility": {
-    "run_id": 39751372432,
-    "sha": "4e00894",
+    "run_id": 39759274649,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
     "linux64": {
       "schema": 1,
       "scope": "Two clean builds, one toolchain, distinct source/build paths",
-      "source_archive_sha256": "c3d47a361887f1feb4a5a02d6ac54e40ef76223650f6e97631708b58f3203746",
+      "source_archive_sha256": "c9de5c55334ce6c38dcf6a1de165c245c52d65c55becae26029a530ecd03fc3e",
       "platform": "linux64",
       "configuration": "MinSizeRel",
       "requested_ipo": "ON",
-      "source_date_epoch": "1792659301",
+      "source_date_epoch": "1792662701",
       "success": true,
       "executables": {
         "schema": 1,
@@ -51,7 +85,7 @@
       "runtime_packages": {
         "schema": 1,
         "equal": true,
-        "entries": 153,
+        "entries": 165,
         "missing": [],
         "extra": [],
         "changed": {},
@@ -75,11 +109,11 @@
     "win64": {
       "schema": 1,
       "scope": "Two clean builds, one toolchain, distinct source/build paths",
-      "source_archive_sha256": "c3d47a361887f1feb4a5a02d6ac54e40ef76223650f6e97631708b58f3203746",
+      "source_archive_sha256": "c9de5c55334ce6c38dcf6a1de165c245c52d65c55becae26029a530ecd03fc3e",
       "platform": "win64",
       "configuration": "MinSizeRel",
       "requested_ipo": "ON",
-      "source_date_epoch": "1792659301",
+      "source_date_epoch": "1792662701",
       "success": true,
       "executables": {
         "schema": 1,
@@ -92,7 +126,7 @@
       "runtime_packages": {
         "schema": 1,
         "equal": true,
-        "entries": 155,
+        "entries": 167,
         "missing": [],
         "extra": [],
         "changed": {},
@@ -106,36 +140,36 @@
         "extra": [],
         "changed": {
           "NewPageMergeMDL-symbols/NewPageMergeMDL-Decompiler.pdb": {
-            "left": "f55b3b985fac87f3263009263357313519da9d10997538a5532499cb634392e1",
-            "right": "e24cce34864077a14d518d12d9e9078a6a56a74e88d61f414edc6a43ea9a2b50"
+            "left": "a273c7137fae54f40fad9e73c784720d121c8cf306def0fccd0bb4258e601c7f",
+            "right": "85987cf3a5e1bfcdb0ccb223d91e12192d5f340eab51e494dbc1cac098231570"
           },
           "NewPageMergeMDL-symbols/NewPageMergeMDL.pdb": {
-            "left": "cee4bee5776f6863921c88cc0747c3f749fe673bc6df76b7c5cae605ffefb16c",
-            "right": "e640fb1e0a00a08512d9b4cd34b090873a3eabaaa84d371d62bb080b2b602947"
+            "left": "23cae73fc4a323d6a711232f20995a1e282a2e98f3ab07913c8a3fd08959b12d",
+            "right": "38897e55381b844530c910d5b90fab4f5793fc405e9cd6663f707c3a33892bb7"
           },
           "NewPageMergeMDL-symbols/NewPageVRMLtoX3D.pdb": {
-            "left": "301aa2a017881c190873f8278f0dca8ae7f6887a124cb497ae498bce88cd7edf",
-            "right": "934bca1ba6d0c5a7f5fe99a0296b10de7a4ea4f2a408936f156609c518970cc2"
+            "left": "a0b685430a37b7fe1c1c8cc766c6b7a3ec55ee16f51ab35ce32e65a37c827b9d",
+            "right": "0e3132c9594a3b4e7f41f014c6afb2a93a78a578e2ee40828da69d9d809584d4"
           },
           "NewPageMergeMDL-symbols/subtools/ag2proportions.pdb": {
-            "left": "9b0d978597453347b5c7a02e86a7e5d2dd8de74fc65b7d6ca00954ac446e2df5",
-            "right": "350bd7b43e0c430d73d846d1a5e2bda591ddf71a3a2182a40466d8aa23f2ee82"
+            "left": "57a572ec4f0bfc2e1c4a7044a2f338cfc00e5a5c3eed6150a043fff0dac8234b",
+            "right": "c2f1b35c4db4911594c5e049a32e3cdeb51346cc49099b5a75f1f2aad848ed2e"
           },
           "NewPageMergeMDL-symbols/subtools/l4d_animswap.pdb": {
-            "left": "5e319c0680df771cfa8584642a2508ac46c70d2233cd0695a8090a2e732b052b",
-            "right": "07bd985c53aaecc51cd9849516f851ba0131e5fbc5a444ee1fd73880810fd746"
+            "left": "23e13eee32a0c48b760e15834c3505e5297587b7002b078ff96ce838ce788872",
+            "right": "4d9dbe44f2f1138b586308e63271b10c0e9556fe7165ce45bb715d365a59b24e"
           },
           "NewPageMergeMDL-symbols/subtools/meshtool.pdb": {
-            "left": "15acf2b17a6372288ebd1274231e54eab55cb66d9d69e7ae631fbffdcd4375e8",
-            "right": "d2e7e3738c1068ff73f20e7aa3dc42aea20bd78e5f73c105b38200aa98f5be71"
+            "left": "6baecb3ffedb12e4c31ec7404f951040cfdfdfe996965b25e47432db1f86d657",
+            "right": "2a4646e296d52ef282376fbe91af88de73a6392432db1e134b43428d8c85a04d"
           },
           "NewPageMergeMDL-symbols/subtools/vmd2valvebiped.pdb": {
-            "left": "24b8291732f2119a8fca6918751dd6bd5c28a0266a34e852f9dcdfa5753ef867",
-            "right": "720574962a4b37c19b0b89bd225db0cf4d3ce89af48520f90f9b82386be6d73e"
+            "left": "2eb8e2c3d2255f1d3f106ca734b237a25c8e2b649176e2d85f494864632166a8",
+            "right": "fd23b61165cdae1876c1a1f04ecbf65a0c3022edfda04dda643967d9aa82c2e0"
           },
           "NewPageMergeMDL-symbols/symbols-manifest.json": {
-            "left": "6bc96f866f3aaaf99bce3645895e4265175db46f32fff9d1842509c5f6083f90",
-            "right": "ffbc836140df2505a132d2ae1bdf0a510e9902cfb304518928f97095d33796d8"
+            "left": "bcc619c923488e742a1074a324f555591e6b02b75b3341c72b2fe0181aeca8d2",
+            "right": "c8367c4c276936b3184e5b0f3cef5d506b4db586d212f76aac835c1c300c619f"
           }
         },
         "archive_bytes_equal": false
@@ -148,21 +182,16 @@
     }
   },
   "native_source_lines": {
-    "status": "passed_on_prior_local_snapshot",
-    "source_archive_sha256": "2cab60d51222695974a72dd0a7ce7e263c4e1431d5936f2260cf1c6495986eee",
-    "configuration": "MinSizeRel",
-    "ipo": false,
-    "method": "Windows DbgHelp native symbol and source line resolution",
     "platform": "win64",
     "executables": [
       {
         "binary": "NewPageMergeMDL.exe",
         "symbol": "main",
         "source": "src\\mdlcompiler\\main.cpp",
-        "line": 700,
+        "line": 702,
         "native_identity": {
           "format": "pdb",
-          "guid": "373d6dd0be15c29b6d723b332f160e58",
+          "guid": "2e9e8e30c939ebbd0384a3e262f2c0eb",
           "age": 1,
           "pdb_name": "NewPageMergeMDL.pdb"
         }
@@ -171,10 +200,10 @@
         "binary": "NewPageMergeMDL-Decompiler.exe",
         "symbol": "main",
         "source": "src\\mdldecompiler\\main.cpp",
-        "line": 3516,
+        "line": 3544,
         "native_identity": {
           "format": "pdb",
-          "guid": "a2e50abdc61fc36a5289cab83d0ee4e7",
+          "guid": "eca9f9bb8758f6d441377e239701a330",
           "age": 1,
           "pdb_name": "NewPageMergeMDL-Decompiler.pdb"
         }
@@ -186,7 +215,7 @@
         "line": 90,
         "native_identity": {
           "format": "pdb",
-          "guid": "a688080044ccf511ad24429599aa2fd4",
+          "guid": "3224e8229ede4c0a16b27c4477d47169",
           "age": 1,
           "pdb_name": "NewPageVRMLtoX3D.pdb"
         }
@@ -198,7 +227,7 @@
         "line": 151,
         "native_identity": {
           "format": "pdb",
-          "guid": "cd9b1de6726bf7fb044c32d494b4cc1a",
+          "guid": "31b2ee8aa5f62f178e0aa47d7dc794c0",
           "age": 1,
           "pdb_name": "ag2proportions.pdb"
         }
@@ -210,7 +239,7 @@
         "line": 1372,
         "native_identity": {
           "format": "pdb",
-          "guid": "95b44764164c04fa2653d32e6efa38b4",
+          "guid": "142b98734c0edccf19a1c4bbbe46bda4",
           "age": 1,
           "pdb_name": "l4d_animswap.pdb"
         }
@@ -222,7 +251,7 @@
         "line": 44,
         "native_identity": {
           "format": "pdb",
-          "guid": "d3bd660d02d9a3815b360d55e1214dc9",
+          "guid": "d48ce859acc216f5d59d46c57bb587d4",
           "age": 1,
           "pdb_name": "meshtool.pdb"
         }
@@ -234,14 +263,23 @@
         "line": 1502,
         "native_identity": {
           "format": "pdb",
-          "guid": "c0ff190af8df66cb055b93c3fdc729fd",
+          "guid": "15d7dad93eab1f112442f9ebf13b86f4",
           "age": 1,
           "pdb_name": "vmd2valvebiped.pdb"
         }
       }
     ],
     "scope": "Actual native executable entry points; not a claim that every optimized stack frame is recoverable.",
-    "dependency_source_line": "src/libs/assimp/contrib/draco/src/draco/compression/decode.cc:87"
+    "status": "passed",
+    "run_id": 39758743426,
+    "job_id": 119757400125,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
+    "configuration": "Release",
+    "ipo": false,
+    "method": "Windows DbgHelp native entry-point source line resolution",
+    "step_status": "passed",
+    "overall_dev_job_status": "failed_later_in_package_validation",
+    "dev_package_failure": "helpers_publication_test.py:241 compared RUNNER~1 and runneradmin path spellings; corrected test and remaining Windows package checks still require successful validation"
   },
   "ordinary_windows_mutations": {
     "status": "passed_without_sanitizers",
@@ -253,9 +291,10 @@
     "budget_overruns": 0
   },
   "asan_ubsan": {
-    "status": "in_progress",
-    "run_id": 39752234113,
-    "sha": "641b7e3",
+    "status": "passed",
+    "run_id": 39759274649,
+    "job_id": 119759095458,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
     "configuration": "RelWithDebInfo",
     "ipo": false,
     "samples_requested": 240,
@@ -267,6 +306,73 @@
       "fix_sha": "641b7e3",
       "fix": "Use uint32 wrapping arithmetic with unchanged bit-27 feedback and per-iteration header writeback"
     },
-    "bounded_mutation_result": null
+    "bounded_mutation_result": {
+      "samples": 240,
+      "accepted": 67,
+      "rejected": 173,
+      "sanitizer": 0,
+      "distinct_findings": 0,
+      "crashes": 0,
+      "timeouts": 0,
+      "memory_budget_overruns": 0,
+      "log_budget_overruns": 0,
+      "valid_controls": 8,
+      "valid_subd_tests": 2,
+      "mutation_seconds": 9.741607039000002,
+      "finished_at": "2026-10-22T09:57:25.716981+00:00",
+      "compiler_sha256": "1b5710ced3196dcd201460e4c02eaaa26ff1c87d96b7b5e75e3fd5efd8a9303e",
+      "decompiler_sha256": "b0b9c093b29fd70938d1ca18408adf2dd859235d17aa2c14ee37fc37cd9cfe06",
+      "vmd_sha256": "fca16cf620b982e4d7f2b1efaf11e835b2319194920f0caf3ebdb7124b8b89e2"
+    },
+    "additional_failures": [
+      {
+        "run_id": 39752234113,
+        "stage": "valid corpus seed compile",
+        "diagnostic": "writevtx.cpp:1445 misaligned int32 load in packed strip-group records",
+        "fix_sha": "d3930b8",
+        "fix": "Read all eight shared int32 strip/strip-group fields with memcpy without changing serialized offsets"
+      },
+      {
+        "run_id": 39755155127,
+        "stage": "valid corpus seed compile",
+        "diagnostic": "writemdl.cpp:2531 misaligned SGCommon access in packed strip-group records",
+        "fix_sha": "7216078",
+        "fix": "Copy the shared fields into aligned local structures at both FixupBuffers readers without changing output bytes"
+      },
+      {
+        "run_id": 39756067020,
+        "stage": "valid VMD control after successful model corpus compilation/decompilation and seven other controls",
+        "diagnostic": "vmd2valvebiped/main.cpp:1753 misaligned mstudioikchain_t access",
+        "fix_sha": "75c13ac",
+        "fix": "Copy IK chains and links into aligned locals while preserving original addresses for relative offsets; also use byte-wise memcpy for packed SubD topology"
+      },
+      {
+        "run_id": 39756572960,
+        "stage": "valid VMD control, after both valid SubD sanitizer tests passed",
+        "diagnostic": "vmd2valvebiped/main.cpp:1764 typed memcpy source retained an IK-link alignment assumption",
+        "fix_sha": "b91282c",
+        "fix": "Range-check IK-link data with At<char> and its original byte length, keeping the memcpy source byte-addressed"
+      },
+      {
+        "run_id": 39756932797,
+        "stage": "mutated SMD animation",
+        "diagnostic": "compile.cpp:245 SourceAnim null access after truncated SMD without skeleton",
+        "fix_sha": "5fc10b0",
+        "fix": "Reject missing skeleton blocks during SMD loading; regression checks mesh and animation failure preserve the previous outputs"
+      },
+      {
+        "run_id": 39756932797,
+        "stage": "mutated MDL and MDL animation",
+        "diagnostic": "WriteSequences group-size multiplication overflow and INT_MIN frame-count subtraction",
+        "fix_sha": "b0170c5",
+        "fix": "Validate animation frame counts and sequence grid dimensions/ranges before QC export, retaining valid external declarations"
+      }
+    ]
+  },
+  "historical_source_line_probes": {
+    "source_archive_sha256": "2cab60d51222695974a72dd0a7ce7e263c4e1431d5936f2260cf1c6495986eee",
+    "dependency_source_line": "src/libs/assimp/contrib/draco/src/draco/compression/decode.cc:87",
+    "tiny_probe_source_line": "src/probe.c:6",
+    "scope": "Prior local snapshot; separate from the integrated CI entry-point check"
   }
 }
