@@ -24,7 +24,7 @@
 | 工具平台 | 当前开发验证 | 保留的历史证据 |
 | --- | --- | --- |
 | Windows x64 | 本地 MSVC Release、动态 CRT、IPO 关闭的功能回归，以及真实 C4D 2027 保存缓存对照通过；独立 CI 构建的符号、源码行定位与复现结果见[构建报告](tests/reports/v1.2.38-build-quality.md)。最终候选包单独记录身份。 | [v1.2.37 整包及 Plum](tests/reports/toolkit-fixes-20261020.md) |
-| Linux x64 | 本轮 GCC/Clang 各 445 项兼容回归、完整开发包和 Ubuntu 24.04 运行检查通过；符号门槛 GLIBC 2.39 / GLIBCXX 3.4.32 / CXXABI 1.3.15。最终候选、sanitizer 与可复现结果见[构建报告](tests/reports/v1.2.38-build-quality.md)。 | v1.2.37 GCC/Clang 各 421 项及整包检查：[CI](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39411422872) |
+| Linux x64 | `2317571` 的 GCC/Clang 各执行 446 项兼容用例（444通过、2项Windows专属跳过），完整开发包和 Ubuntu 24.04 运行检查通过；符号门槛 GLIBC 2.39 / GLIBCXX 3.4.32 / CXXABI 1.3.15。240次sanitizer变异通过；候选包与复现结果见[构建报告](tests/reports/v1.2.38-build-quality.md)。 | v1.2.37 GCC/Clang 各 421 项及整包检查：[CI](https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39411422872) |
 
 更新规则：只在保存了对应版本/程序身份、样本、实际检查和限制后更新单个格子。
 资源级、数学/API 桩、编译产物和实际引擎运行分别记录；截图或工具启动不能替代其他层级。

@@ -225,6 +225,9 @@ class HelperPublication(unittest.TestCase):
 
     def test_failed_rollback_keeps_old_bytes_and_recovery_mapping(self):
         target = self.root/'model.json'; target.write_bytes(b'old')
+        # Publication stores canonical paths; TEMP can use an 8.3 alias on CI.
+        # Resolve before publication moves the destination into its backup.
+        expected_destination = str(target.resolve())
         replace = os.replace
         def inject(source, destination):
             if Path(source).name.startswith(('.newpage-helper-new-', '.newpage-helper-old-')):
@@ -238,7 +241,7 @@ class HelperPublication(unittest.TestCase):
                     with patch.object(output_transaction.os, 'replace', side_effect=inject):
                         publication.commit()
             recovery = json.loads((publication.work/'recovery.json').read_text())
-            self.assertEqual(recovery[0]['destination'], str(target))
+            self.assertEqual(recovery[0]['destination'], expected_destination)
             self.assertEqual(Path(recovery[0]['backup']).read_bytes(), b'old')
             self.assertEqual(Path(recovery[0]['staged']).read_bytes(), b'new')
         finally:

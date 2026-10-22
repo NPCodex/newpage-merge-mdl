@@ -160,7 +160,7 @@
       "report": "tests/reports/v1.2.38-build-quality.md",
       "source_version": "1.2.38-development",
       "period": "current_development",
-      "scope": "GCC/Clang 445 compatibility cases each, actual Ubuntu24.04 package/ELF checks; two-clean-build results retain exact source/toolchain/helper identity in report."
+      "scope": "Source 2317571: GCC/Clang each ran 446 compatibility cases (444 passed, two Windows-only skips); actual Ubuntu24.04 package/ELF and 240 sanitizer mutation checks passed. Two-clean-build results retain exact source/toolchain/helper identity in report."
     },
     "l4d_blends_1238": {
       "report": "tests/reports/v1.2.38-l4d-production.md",
