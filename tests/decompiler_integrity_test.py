@@ -193,6 +193,63 @@ class DecompilerIntegrity(unittest.TestCase):
         destination, _ = self.decompile(source)
         self.assertTrue((self.output_dir(destination) / 'anims/idle.smd').is_file())
 
+    def test_invalid_sequence_grid_counts_and_ranges_preserve_existing_output(self):
+        source = self.fixture()
+        original = source.read_bytes()
+        count, sequence = struct.unpack_from('<2i', original, 188)
+        self.assertEqual(count, 1)
+        destination, _ = self.decompile(source)
+        before = self.snapshot(destination)
+        cases = ((0, 1, None), (-1, 1, None), (12550144, 12550144, None),
+                 (81792, 14417920, None), (2147483647, 1, None),
+                 (1, 1, 0), (1, 1, len(original)))
+        for width, height, offset in cases:
+            with self.subTest(width=width, height=height, offset=offset):
+                data = bytearray(original)
+                struct.pack_into('<2i', data, sequence + 68, width, height)
+                if offset is not None:
+                    struct.pack_into('<i', data, sequence + 60, offset)
+                source.write_bytes(data)
+                _, log = self.decompile(source, success=False)
+                self.assertIn('invalid sequence blend grid', log)
+                self.assertEqual(self.snapshot(destination), before)
+                self.assert_no_staging(destination)
+
+    def test_invalid_animation_frame_counts_fail_even_without_animation_export(self):
+        source = self.fixture()
+        original = source.read_bytes()
+        count, animation = struct.unpack_from('<2i', original, 180)
+        self.assertEqual(count, 1)
+        destination, _ = self.decompile(source)
+        before = self.snapshot(destination)
+        for frames in (-2147483648, -1, 0):
+            for extra in ((), ('-noanimation',)):
+                with self.subTest(frames=frames, extra=extra):
+                    data = bytearray(original)
+                    struct.pack_into('<i', data, animation + 16, frames)
+                    source.write_bytes(data)
+                    _, log = self.decompile(source, extra=extra, success=False)
+                    self.assertIn('invalid animation frame count', log)
+                    self.assertEqual(self.snapshot(destination), before)
+                    self.assert_no_staging(destination)
+
+    def test_declared_animations_and_sequences_allow_absent_local_frames_and_grid(self):
+        source = self.fixture()
+        data = bytearray(source.read_bytes())
+        _, animation = struct.unpack_from('<2i', data, 180)
+        _, sequence = struct.unpack_from('<2i', data, 188)
+        for record in (animation, sequence):
+            flags, = struct.unpack_from('<i', data, record + 12)
+            struct.pack_into('<i', data, record + 12, flags | 0x0800)
+        struct.pack_into('<i', data, animation + 16, 0)
+        struct.pack_into('<i', data, sequence + 60, 0)
+        struct.pack_into('<2i', data, sequence + 68, 0, 0)
+        source.write_bytes(data)
+        destination, _ = self.decompile(source)
+        script = (self.output_dir(destination) / 'shared.qc').read_text(encoding='utf-8')
+        self.assertIn('$declareanimation', script)
+        self.assertIn('$declaresequence', script)
+
     def test_invalid_sidecar_fails_without_publishing_partial_output(self):
         source = self.fixture()
         for extension in ('.vvd', '.dx90.vtx'):

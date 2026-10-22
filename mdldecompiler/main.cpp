@@ -22,6 +22,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -166,9 +167,35 @@ bool ValidateModelTables(const Mdl& m, std::string& err) {
                 }
         }
     }
-    return table(h.numlocalanim, m.At<fm::mstudioanimdesc_t>(m.buf.data(), h.localanimindex, h.numlocalanim), "animation") &&
-           table(h.numlocalseq, m.At<fm::mstudioseqdesc_t>(m.buf.data(), h.localseqindex, h.numlocalseq), "sequence") &&
-           table(h.numbodyparts, m.At<fm::mstudiobodyparts_t>(m.buf.data(), h.bodypartindex, h.numbodyparts), "bodypart");
+    const auto* anims = m.At<fm::mstudioanimdesc_t>(m.buf.data(), h.localanimindex, h.numlocalanim);
+    const auto* seqs = m.At<fm::mstudioseqdesc_t>(m.buf.data(), h.localseqindex, h.numlocalseq);
+    if (!table(h.numlocalanim, anims, "animation") ||
+        !table(h.numlocalseq, seqs, "sequence") ||
+        !table(h.numbodyparts, m.At<fm::mstudiobodyparts_t>(m.buf.data(), h.bodypartindex, h.numbodyparts), "bodypart"))
+        return false;
+    // QC generation uses frame counts even with -noanimation. Reject invalid
+    // counts before any writer subtracts the final frame or follows a blend grid.
+    for (int i = 0; i < h.numlocalanim; ++i) {
+        if (anims[i].numframes < 0 ||
+            (anims[i].numframes == 0 && !(anims[i].flags & fm::STUDIO_OVERRIDE))) {
+            err = "invalid animation frame count at index " + std::to_string(i);
+            return false;
+        }
+    }
+    for (int i = 0; i < h.numlocalseq; ++i) {
+        const auto& seq = seqs[i];
+        if (seq.flags & fm::STUDIO_OVERRIDE)
+            continue; // Declared sequences have no local blend grid.
+        const int64_t cells = static_cast<int64_t>(seq.groupsize[0]) * seq.groupsize[1];
+        if (seq.groupsize[0] <= 0 || seq.groupsize[1] <= 0 ||
+            cells > std::numeric_limits<int>::max() ||
+            !m.At<int16_t>(&seq, seq.animindexindex, static_cast<int>(cells))) {
+            err = "invalid sequence blend grid at index " + std::to_string(i) +
+                  " (dimensions or byte range)";
+            return false;
+        }
+    }
+    return true;
 }
 
 bool ReadFile(const char* path, Mdl& m, int forceVersion, std::string& err) {
@@ -2745,11 +2772,12 @@ void WriteSequences(Qc& q, const Mdl& m) {
 
         // blend grid. The grid is stored in the order the script listed it, so
         // it reads straight back; groupsize only says how to fold it.
-        const int g0 = s.groupsize[0] > 0 ? s.groupsize[0] : 1;
-        const int g1 = s.groupsize[1] > 0 ? s.groupsize[1] : 1;
-        const int16_t* grid = m.At<int16_t>(&s, s.animindexindex, g0 * g1);
+        const int g0 = s.groupsize[0];
+        // ValidateModelTables checked the dimensions, representability and span.
+        const int cells = static_cast<int>(static_cast<int64_t>(g0) * s.groupsize[1]);
+        const int16_t* grid = m.At<int16_t>(&s, s.animindexindex, cells);
         int32_t animFlags = 0;
-        for (int k = 0; grid && k < g0 * g1; ++k) {
+        for (int k = 0; grid && k < cells; ++k) {
             const bool known = grid[k] >= 0 && grid[k] < static_cast<int>(animRefs.size());
             if (!known) {
                 opt("\"\"");
@@ -2762,12 +2790,12 @@ void WriteSequences(Qc& q, const Mdl& m) {
                           : "\"" + r.name + "\"");
             animFlags |= anims[grid[k]].flags;
         }
-        if (g0 * g1 > 1)
+        if (cells > 1)
             opt("blendwidth " + std::to_string(g0));
 
         // events and layer ramps are stored as cycle fractions of blend anim 0,
         // which is what turns them back into the frames a script writes
-        const int anim0 = (grid && g0 * g1 > 0) ? grid[0] : -1;
+        const int anim0 = (grid && cells > 0) ? grid[0] : -1;
         // animation options in a sequence body land on blend animation 0, so
         // they only belong here when that one was declared inline
         if (anims && anim0 >= 0 && anim0 < h.numlocalanim && animRefs[anim0].implied)
