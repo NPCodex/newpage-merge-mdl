@@ -48,6 +48,10 @@ def verify(archive, expected, destination):
             path = PurePosixPath(name.replace('\\', '/'))
             if path.is_absolute() or '..' in path.parts or ':' in name or not path.parts or path.parts[0] != 'NewPageMergeMDL':
                 raise ValueError('Unsafe archive member: ' + name)
+        files = {info.filename.rstrip('/') for info in package.infolist() if not info.is_dir()}
+        for name in names:
+            if any(str(parent) in files for parent in PurePosixPath(name).parents):
+                raise ValueError('Archive file/directory conflict: ' + name)
         manifest = json.loads(package.read('NewPageMergeMDL/upstream-manifest.json'))
         if manifest != expected:
             raise ValueError('Packaged source provenance does not match preparation manifest')
@@ -62,7 +66,7 @@ def verify(archive, expected, destination):
             'integration/gmod/newpage_vrm.lua', 'integration/gmod/newpage_vrm_materials.lua',
             'tools/mesh_states.py', 'tools/vrm_runtime.py', 'tools/vrml_import.py', 'tools/output_transaction.py',
             'subtools/meshtool-protocol.md',
-            'subtools/ag2proportions/README.md', 'subtools/vmd2valvebiped/README.md', 'subtools/l4d_animswap/RETARGET.md',
+            'subtools/ag2proportions.md', 'subtools/vmd2valvebiped.md', 'subtools/l4d_animswap-retarget.md',
             'tools/vrml_converter/CMakeLists.txt', 'tools/vrml_converter/main.cpp',
             'tools/vrml_converter/meshlab/Parser.cpp', 'tools/vrml_converter/meshlab/Parser.h',
             'tools/vrml_converter/meshlab/Scanner.cpp', 'tools/vrml_converter/meshlab/Scanner.h',

@@ -561,6 +561,28 @@ def write_inventory(archive):
 
 def package(args):
     dist, output = Path(args.dist), Path(args.output)
+    # Linux subtools are extensionless files, so their source directories cannot
+    # also exist in the runtime package. Keep guides beside those executables.
+    guide_paths = {
+        'subtools/ag2proportions/README.md': 'subtools/ag2proportions.md',
+        'subtools/vmd2valvebiped/README.md': 'subtools/vmd2valvebiped.md',
+        'subtools/l4d_animswap/RETARGET.md': 'subtools/l4d_animswap-retarget.md',
+    }
+
+    def write_source(archive, relative):
+        relative = Path(relative).as_posix()
+        path = Path(args.source) / relative
+        target = guide_paths.get(relative, relative)
+        if path.suffix == '.md':
+            content = path.read_text(encoding='utf-8')
+            for original, packaged in guide_paths.items():
+                content = content.replace(original, packaged)
+            if target != relative:
+                content = content.replace('](../../', '](../')
+            archive.writestr('NewPageMergeMDL/' + target, content)
+        else:
+            archive.write(path, 'NewPageMergeMDL/' + target)
+
     extension = '.exe' if args.platform == 'win64' else ''
     required = ['NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D']
     if args.platform == 'win64':
@@ -588,14 +610,14 @@ def package(args):
                         info.create_system = 3
                         info.external_attr = 0o100755 << 16
         for name in ('LICENSE', 'README.md', 'README.en.md', 'INSTALL.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
-            archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
+            write_source(archive, name)
         archive.write(Path(args.source) / 'subtools/meshtool/PROTOCOL.md',
                       'NewPageMergeMDL/subtools/meshtool-protocol.md')
         for name in ('subtools/ag2proportions/README.md', 'subtools/vmd2valvebiped/README.md',
                      'subtools/l4d_animswap/RETARGET.md'):
             path = Path(args.source) / name
             if path.is_file():
-                archive.write(path, 'NewPageMergeMDL/' + name)
+                write_source(archive, name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         # Keep README previews usable after extraction and retain the editable
         # brand source. Do not bundle workflow files with the runtime tools.
@@ -611,10 +633,10 @@ def package(args):
                      'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md',
                      'AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md'):
             if (Path(args.source) / name).is_file():
-                archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
+                write_source(archive, name)
         for path in sorted((Path(args.source) / 'tests/reports').glob('*')):
             if path.is_file() and path.suffix in ('.json', '.md'):
-                archive.write(path, 'NewPageMergeMDL/tests/reports/' + path.name)
+                write_source(archive, 'tests/reports/' + path.name)
         for path in sorted((Path(args.source) / 'integration').rglob('*')):
             if path.is_file():
                 archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())

@@ -7,6 +7,10 @@ on:
         description: Also validate GCC and retain standalone validation packages
         type: boolean
         default: true
+      quality-checks:
+        description: Run bounded ASan/UBSan mutations and two-clean-build comparisons
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       include-gcc:
@@ -17,11 +21,25 @@ on:
         description: Optional artifact containing the exact merged source
         type: string
         default: ''
+      quality-checks:
+        description: Run bounded ASan/UBSan mutations and two-clean-build comparisons
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
+  sanitizers:
+    if: inputs.quality-checks
+    uses: ./.github/workflows/sanitizer-mutations.yml
+    with:
+      source-artifact: ${{ inputs.source-artifact || '' }}
+  reproducibility:
+    if: inputs.quality-checks
+    uses: ./.github/workflows/reproducible-builds.yml
+    with:
+      source-artifact: ${{ inputs.source-artifact || '' }}
   clang:
     strategy:
       fail-fast: false

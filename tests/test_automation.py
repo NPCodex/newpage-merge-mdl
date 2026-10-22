@@ -463,7 +463,11 @@ class AutomationTests(unittest.TestCase):
                 self.assertEqual(archive.read('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'), (root / 'source.zip').read_bytes())
                 self.assertEqual(archive.read('NewPageMergeMDL/subtools/meshtool-protocol.md'), b'Binary protocol limits')
                 for name in new_docs:
-                    self.assertEqual(archive.read('NewPageMergeMDL/' + name), (source / name).read_bytes())
+                    packaged = {'subtools/ag2proportions/README.md': 'subtools/ag2proportions.md',
+                                'subtools/vmd2valvebiped/README.md': 'subtools/vmd2valvebiped.md',
+                                'subtools/l4d_animswap/RETARGET.md': 'subtools/l4d_animswap-retarget.md'}.get(name, name)
+                    self.assertEqual(archive.read('NewPageMergeMDL/' + packaged),
+                                     (source / name).read_bytes().replace(name.encode(), packaged.encode()))
                 for name in branding:
                     self.assertEqual(archive.read('NewPageMergeMDL/' + name), (source / name).read_bytes())
                 self.assertIn('NewPageMergeMDL/INSTALL.md', archive.namelist())
@@ -723,7 +727,7 @@ class PackageValidationTests(unittest.TestCase):
                 'libs/tinyusdz/SOURCE.md','libs/tinyusdz/THIRD_PARTY_NOTICES.md',
                 'subtools/licenses/zstd.txt','subtools/licenses/ValveResourceFormat.txt',
                 'subtools/meshtool-protocol.md',
-                'subtools/ag2proportions/README.md','subtools/vmd2valvebiped/README.md','subtools/l4d_animswap/RETARGET.md',
+                'subtools/ag2proportions.md','subtools/vmd2valvebiped.md','subtools/l4d_animswap-retarget.md',
             ):
                 if name != omit:
                     z.writestr('NewPageMergeMDL/'+name, '' if name == empty else 'fixture')
@@ -754,7 +758,7 @@ class PackageValidationTests(unittest.TestCase):
                      'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
                      'assets/branding/README.md', 'subtools/meshtool-protocol.md',
                      'AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md',
-                     'subtools/ag2proportions/README.md', 'subtools/vmd2valvebiped/README.md', 'subtools/l4d_animswap/RETARGET.md',
+                     'subtools/ag2proportions.md', 'subtools/vmd2valvebiped.md', 'subtools/l4d_animswap-retarget.md',
                      'tests/reports/toolkit-fixes-20261020.md', 'tests/reports/2026-10-18-rea-second-pass.md',
                      'tests/reports/ag2-gameplay-20261020.md',
                      'tests/reports/v1.2.34-replacement-validation.md', 'tests/reports/v1.2.36-replacement-validation.md'):
@@ -799,6 +803,39 @@ class PackageValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);archive=self.make_package(root,manifest={'project_version':'wrong'})
             with self.assertRaisesRegex(ValueError,'provenance'):self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted')
+
+    def test_file_directory_conflict_is_rejected_before_extracting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            suffix = '.exe' if os.name == 'nt' else ''
+            archive = self.make_package(root, extra='NewPageMergeMDL/subtools/ag2proportions' + suffix + '/README.md')
+            with self.assertRaisesRegex(ValueError, 'file/directory conflict'):
+                self.verifier().verify(archive, {'project_version': '1.2.6'}, root / 'extracted')
+            self.assertFalse((root / 'extracted').exists())
+
+    def test_linux_package_guides_do_not_collide_with_executables(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dist = root / 'dist'
+            (dist / 'subtools/licenses').mkdir(parents=True)
+            for name in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D',
+                         'subtools/ag2proportions', 'subtools/l4d_animswap',
+                         'subtools/meshtool', 'subtools/vmd2valvebiped'):
+                (dist / name).write_bytes(b'\x7fELFfixture')
+            for name in ('zstd.txt', 'ValveResourceFormat.txt'):
+                (dist / 'subtools/licenses' / name).write_text('dependency notice')
+            manifest = root / 'manifest.json'
+            manifest.write_text('{"project_version":"test"}')
+            archive = root / 'linux.zip'
+            sync.package(argparse.Namespace(source=ROOT, dist=dist, platform='linux64',
+                                             manifest=manifest, output=archive, source_archive=None))
+            compiler = self.verifier().verify(archive, {'project_version': 'test'}, root / 'unpacked')
+            self.assertTrue(compiler.is_file())
+            readme = (compiler.parent / 'README.md').read_text(encoding='utf-8')
+            self.assertIn('](subtools/ag2proportions.md)', readme)
+            self.assertNotIn('subtools/ag2proportions/README.md', readme)
+            guide = (compiler.parent / 'subtools/vmd2valvebiped.md').read_text(encoding='utf-8')
+            self.assertIn('](../tests/reports/', guide)
 
     def test_unlisted_payload_is_rejected_before_extracting(self):
         with tempfile.TemporaryDirectory() as directory:
