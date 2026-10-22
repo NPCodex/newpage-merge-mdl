@@ -1128560,7 +1128560,7 @@ index 0000000..42f1d4d
 +} // namespace newpage
 +#endif
 diff --git a/mdlcompiler/smdloader.cpp b/mdlcompiler/smdloader.cpp
-index 149ae76..868c931 100644
+index 149ae76..e07a16f 100644
 --- a/mdlcompiler/smdloader.cpp
 +++ b/mdlcompiler/smdloader.cpp
 @@ -7,9 +7,12 @@
@@ -1128947,7 +1128947,15 @@ index 149ae76..868c931 100644
  
          tc.y = 1.0f - tc.y; // invert V
  
-@@ -661,11 +721,10 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
+@@ -647,6 +707,7 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
+         return false;
+ 
+     bool sawNodes = false;
++    bool sawSkeleton = false;
+     int version = 1; // reference Load_SMD default
+ 
+     for (;;) {
+@@ -661,11 +722,10 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
              continue; // blank line
  
          if (_stricmp(cmd, "version") == 0) {
@@ -1128963,16 +1128971,28 @@ index 149ae76..868c931 100644
          } else if (_stricmp(cmd, "nodes") == 0) {
              if (!GrabNodes(r, out, err))
                  return false;
-@@ -703,7 +762,7 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
+@@ -677,6 +737,7 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
+             }
+             if (!GrabAnimation(r, scale, out, err))
+                 return false;
++            sawSkeleton = true;
+         } else if (_stricmp(cmd, "triangles") == 0) {
+             if (!sawNodes) {
+                 if (err) *err = "`triangles` before `nodes` in SMD";
+@@ -703,7 +764,11 @@ bool LoadSmdSource(const std::string& path, Source& out, MaterialTable& mats, fl
          if (err) *err = "SMD has no `nodes` block";
          return false;
      }
 -    return true;
++    if (!sawSkeleton) {
++        if (err) *err = "SMD has no `skeleton` block";
++        return false;
++    }
 +    return ValidateSourceAnimationNames(out, err);
  }
  
  // ---------------------------------------------------------------------------
-@@ -748,40 +807,33 @@ bool GrabVertexAnimation(LineReader& r, float scale, std::vector<VtaFrame>& out,
+@@ -748,40 +813,33 @@ bool GrabVertexAnimation(LineReader& r, float scale, std::vector<VtaFrame>& out,
              return false;
          }
  
@@ -1129038,7 +1129058,7 @@ index 149ae76..868c931 100644
      }
  }
  
-@@ -890,7 +942,13 @@ bool BindVta(const std::string& path, const Source& mesh, float scale, VtaBind&
+@@ -890,7 +948,13 @@ bool BindVta(const std::string& path, const Source& mesh, float scale, VtaBind&
          char cmd[1024] = {0};
          if (std::sscanf(line->c_str(), "%1023s", cmd) != 1)
              continue;
@@ -1129053,7 +1129073,7 @@ index 149ae76..868c931 100644
              if (!GrabVertexAnimation(r, scale, bind.frames, err))
                  return false;
              sawBlock = true;
-@@ -962,6 +1020,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
+@@ -962,6 +1026,7 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
      const int count = static_cast<int>(morph.vanims.size());
      SrcFlexKey key;
      key.name = morph.name;
@@ -1129061,7 +1129081,7 @@ index 149ae76..868c931 100644
      key.target1 = position;
      out.flexkeys.push_back(std::move(key));
      out.morphs.push_back(std::move(morph));
-@@ -970,6 +1029,38 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
+@@ -970,6 +1035,38 @@ int ImportFrame(const VtaBind& bind, const VtaFrame& frame, const std::string& n
  
  } // namespace
  
@@ -1129100,7 +1129120,7 @@ index 149ae76..868c931 100644
  bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                     const std::vector<VtaFlexOption>& opts, std::string* err) {
      VtaBind bind;
-@@ -996,13 +1087,14 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
+@@ -996,13 +1093,14 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
                           opt.name.c_str(), opt.frame, path.c_str());
              continue;
          }
@@ -1129121,7 +1129141,7 @@ index 149ae76..868c931 100644
          std::printf("    flex %-32s frame %-4d %6d deltas  position %.3f decay %.3f\n",
                      opt.name.c_str(), opt.frame, deltas, opt.position, opt.decay);
      }
-@@ -1014,6 +1106,29 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
+@@ -1014,6 +1112,29 @@ bool LoadVtaMorphs(const std::string& path, Source& out, float scale,
  // becomes flexdesc "f<i>" and ONE NWAY controller sweeps the whole run over
  // 0..1. Stock also emits a "default" flexkey on the basis; it is an empty morph
  // that only exists to make its indices line up, so we leave it out.
@@ -1130233,7 +1130253,7 @@ index b8947a1..ae1655e 100644
      }
      BLOCK "VarFileInfo"
 diff --git a/mdlcompiler/writemdl.cpp b/mdlcompiler/writemdl.cpp
-index ffc6104..4c02d5c 100644
+index ffc6104..c2cbe43 100644
 --- a/mdlcompiler/writemdl.cpp
 +++ b/mdlcompiler/writemdl.cpp
 @@ -9,6 +9,8 @@
@@ -1130454,7 +1130474,36 @@ index ffc6104..4c02d5c 100644
          static_cast<int32_t>(buf.p() - reinterpret_cast<uint8_t*>(phdr2));
      buf.pos += m.bodygrouppresets.size() * sizeof(fmt::mstudiobodygrouppreset_t);
      buf.Align4();
-@@ -2713,6 +2797,25 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
+@@ -2442,11 +2526,13 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
+                         fmt::vtx::MeshHeader_t* vmesh = vtx.mesh(vlh, k);
+                         for (int mm = 0; mm < vmesh->numStripGroups; mm++) {
+                             uint8_t* sgRaw = vtx.stripGroupRaw(vmesh, mm);
+-                            SGCommon* sg = reinterpret_cast<SGCommon*>(sgRaw);
++                            SGCommon sg;
++                            // VTX records are byte-packed and may start unaligned.
++                            std::memcpy(&sg, sgRaw, sizeof(sg));
+                             VertexPool& pool = pools[poolStart + k];
+-                            for (int n = 0; n < sg->numVerts; n++) {
++                            for (int n = 0; n < sg.numVerts; n++) {
+                                 auto* v = reinterpret_cast<fmt::vtx::Vertex_t*>(
+-                                    sgRaw + sg->vertOffset) + n;
++                                    sgRaw + sg.vertOffset) + n;
+                                 if (v->origMeshVertID >= pool.numVertexes) {
+                                     if (err) *err = "vtx vertex out of range";
+                                     return false;
+@@ -2705,14 +2791,40 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
+                         fmt::vtx::MeshHeader_t* vmesh = nav.mesh(vlh, k);
+                         for (int mm = 0; mm < vmesh->numStripGroups; mm++) {
+                             uint8_t* sgRaw = nav.stripGroupRaw(vmesh, mm);
+-                            SGCommon* sg = reinterpret_cast<SGCommon*>(sgRaw);
+-                            for (int n = 0; n < sg->numVerts; n++) {
++                            SGCommon sg;
++                            std::memcpy(&sg, sgRaw, sizeof(sg));
++                            for (int n = 0; n < sg.numVerts; n++) {
+                                 auto* v = reinterpret_cast<fmt::vtx::Vertex_t*>(
+-                                    sgRaw + sg->vertOffset) + n;
++                                    sgRaw + sg.vertOffset) + n;
+                                 int newID = pools[poolStart + k].vertexMap[v->origMeshVertID];
                                  newID = vertexList[newID].finalMeshVertID;
                                  v->origMeshVertID = static_cast<uint16_t>(newID);
                              }
@@ -1130462,17 +1130511,23 @@ index ffc6104..4c02d5c 100644
 +                            // one-ring/control indices name the unchanged SG table.
 +                            if (!legacyVtx && (pStudioHdr->flags & (1<<19))) {
 +                                auto* full=reinterpret_cast<fmt::vtx::StripGroupHeader_t*>(sgRaw);
-+                                auto* topology=reinterpret_cast<uint16_t*>(sgRaw+full->topologyOffset);
++                                auto* topology=sgRaw+full->topologyOffset;
++                                const auto readTopology = [topology](size_t index) {
++                                    uint16_t value;
++                                    std::memcpy(&value, topology + index * sizeof(value), sizeof(value));
++                                    return value;
++                                };
 +                                size_t cursor=0, count=size_t(full->numTopologyIndices);
 +                                while(cursor<count) {
 +                                    if(count-cursor<60)throw std::runtime_error("truncated SubD patch topology");
-+                                    size_t ring=0;for(int corner=0;corner<4;++corner)ring+=topology[cursor+corner];
++                                    size_t ring=0;for(int corner=0;corner<4;++corner)ring+=readTopology(cursor+corner);
 +                                    if(ring>count-cursor-60)throw std::runtime_error("truncated SubD one-ring");
 +                                    for(size_t uv=44;uv<60;++uv) {
-+                                        int old=topology[cursor+uv];
++                                        int old=readTopology(cursor+uv);
 +                                        if(old>=pools[poolStart+k].numVertexes)throw std::runtime_error("invalid SubD UV vertex reference");
 +                                        int mapped=pools[poolStart+k].vertexMap[old];
-+                                        topology[cursor+uv]=uint16_t(vertexList[mapped].finalMeshVertID);
++                                        const auto vertexID=uint16_t(vertexList[mapped].finalMeshVertID);
++                                        std::memcpy(topology+(cursor+uv)*sizeof(vertexID), &vertexID, sizeof(vertexID));
 +                                    }
 +                                    cursor+=60+ring;
 +                                }
@@ -1130480,7 +1130535,7 @@ index ffc6104..4c02d5c 100644
                          }
                      }
                  }
-@@ -2783,28 +2886,103 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
+@@ -2783,28 +2895,103 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
      return true;
  }
  
@@ -1130601,7 +1130656,7 @@ index ffc6104..4c02d5c 100644
      Buf buf(kFileBuffer);
  
      fmt::studiohdr_t* phdr = buf.Reserve<fmt::studiohdr_t>();
-@@ -2819,7 +2997,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -2819,7 +3006,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::unique_ptr<Buf> blockBuf;
      fmt::studiohdr_t* pblockhdr = nullptr;
      if (m.animblocksize != 0) {
@@ -1130610,7 +1130665,7 @@ index ffc6104..4c02d5c 100644
          blockBuf = std::make_unique<Buf>(kFileBuffer);
          pblockhdr = blockBuf->Reserve<fmt::studiohdr_t>();
          pblockhdr->id = fmt::kIdStudioAnimGroupHeader;
-@@ -2858,20 +3036,23 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -2858,20 +3045,23 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      CopyV3(phdr->view_bbmax, cbox1);
  
      phdr->flags = m.gflags;
@@ -1130639,7 +1130694,7 @@ index ffc6104..4c02d5c 100644
  
      // per-block byte accounting, in the reference's own order and wording
      g_mdlReport.clear();
-@@ -2948,6 +3129,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -2948,6 +3138,29 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
  
      g_strings.Write(buf);
  
@@ -1130669,7 +1130724,7 @@ index ffc6104..4c02d5c 100644
      size_t total = buf.pos;
  
      // the reference takes this delta AFTER the string table, so it is the
-@@ -2957,8 +3161,16 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -2957,8 +3170,16 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      // checksum over the whole buffer, BEFORE AssignMeshIDs and the fixup pass
      phdr->checksum = 0;
      for (size_t i = 0; i < total; i += 4) {
@@ -1130688,7 +1130743,7 @@ index ffc6104..4c02d5c 100644
      }
  
      AssignMeshIDs(buf, phdr);
-@@ -3030,6 +3242,40 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3030,6 +3251,40 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
      std::vector<uint8_t> phyBuf =
          BuildPhy(m, reinterpret_cast<fmt::studiohdr_t*>(mdlBuf.data())->checksum);
  
@@ -1130729,7 +1130784,7 @@ index ffc6104..4c02d5c 100644
      // save. Reference hardcodes a "models/" root in the disk path (not in the
      // header name), so $modelname stays prefix-free and the .mdl bytes match.
      std::filesystem::path base =
-@@ -3051,16 +3297,18 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3051,16 +3306,18 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          return path;
      };
  
@@ -1130750,7 +1130805,7 @@ index ffc6104..4c02d5c 100644
  
          // which strip layout went out. SFM reads the Alien Swarm/CS:GO 35-byte
          // strips and crashes on the legacy ones, so make the format explicit.
-@@ -3069,14 +3317,14 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3069,14 +3326,14 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          vtxPath = announce(".dx90.vtx");
          FlushReport(vtxReport);
          std::printf("everything (%zu bytes)\n", vtxBuf.size());
@@ -1130767,7 +1130822,7 @@ index ffc6104..4c02d5c 100644
          }
      }
  
-@@ -3086,11 +3334,10 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3086,11 +3343,10 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          // the .ani sits beside the .mdl under the same "models/" root, and its
          // name is what szanimblocknameindex already recorded
          pblockhdr->length = static_cast<int32_t>(blockBuf->pos);
@@ -1130781,7 +1130836,7 @@ index ffc6104..4c02d5c 100644
      }
  
      if (!phyBuf.empty()) {
-@@ -3115,9 +3362,11 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
+@@ -3115,9 +3371,11 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
          else if (!m.physCollisionPairs.empty())
              std::printf("pairs      %7zu\n", m.physCollisionPairs.size());
          std::printf("total      %7zu\n", phyBuf.size());
@@ -1130849,7 +1130904,7 @@ index 1034afa..56da2ad 100644
      AppendText(buf, "}\n");
  
 diff --git a/mdlcompiler/writevtx.cpp b/mdlcompiler/writevtx.cpp
-index f2981a8..98f55fc 100644
+index f2981a8..cddee90 100644
 --- a/mdlcompiler/writevtx.cpp
 +++ b/mdlcompiler/writevtx.cpp
 @@ -22,6 +22,10 @@
@@ -1131142,6 +1131197,50 @@ index f2981a8..98f55fc 100644
                      }
                      // WriteMesh
                      {
+@@ -1330,6 +1423,13 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
+ 
+     // MapGlobalBonesToHardwareBoneIDsAndSortBones
+     {
++        // VTX strip/strip-group records are byte-packed (notably fields at
++        // +19 and +23). Read their shared fields without an aligned int pointer.
++        const auto readPackedInt32 = [](const uint8_t* bytes) {
++            int32_t value;
++            std::memcpy(&value, bytes, sizeof(value));
++            return value;
++        };
+         std::vector<int> globalToHardware(b.numBones, -1);
+         fmt::vtx::FileHeader_t* header = reinterpret_cast<fmt::vtx::FileHeader_t*>(out.data());
+         for (int bodyPartID = 0; bodyPartID < header->numBodyParts; bodyPartID++) {
+@@ -1349,10 +1449,10 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
+                         for (int sgID = 0; sgID < meshHdr->numStripGroups; sgID++) {
+                             uint8_t* sgRaw = reinterpret_cast<uint8_t*>(meshHdr) +
+                                              meshHdr->stripGroupHeaderOffset + sgID * stripGroupSize;
+-                            int32_t sgNumVerts = *reinterpret_cast<int32_t*>(sgRaw);
+-                            int32_t sgVertOffset = *reinterpret_cast<int32_t*>(sgRaw + 4);
+-                            int32_t sgNumStrips = *reinterpret_cast<int32_t*>(sgRaw + 16);
+-                            int32_t sgStripOffset = *reinterpret_cast<int32_t*>(sgRaw + 20);
++                            int32_t sgNumVerts = readPackedInt32(sgRaw);
++                            int32_t sgVertOffset = readPackedInt32(sgRaw + 4);
++                            int32_t sgNumStrips = readPackedInt32(sgRaw + 16);
++                            int32_t sgStripOffset = readPackedInt32(sgRaw + 20);
+                             // flags sits at +24 in both layouts (the six shared
+                             // int32s); same for the strip field offsets below
+                             uint8_t sgFlags = *(sgRaw + 24);
+@@ -1360,10 +1460,10 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
+                                 continue;
+                             for (int stripID = 0; stripID < sgNumStrips; stripID++) {
+                                 uint8_t* stRaw = sgRaw + sgStripOffset + stripID * stripSize;
+-                                int32_t stNumVerts = *reinterpret_cast<int32_t*>(stRaw + 8);
+-                                int32_t stVertOffset = *reinterpret_cast<int32_t*>(stRaw + 12);
+-                                int32_t stNumBSC = *reinterpret_cast<int32_t*>(stRaw + 19);
+-                                int32_t stBSCOffset = *reinterpret_cast<int32_t*>(stRaw + 23);
++                                int32_t stNumVerts = readPackedInt32(stRaw + 8);
++                                int32_t stVertOffset = readPackedInt32(stRaw + 12);
++                                int32_t stNumBSC = readPackedInt32(stRaw + 19);
++                                int32_t stBSCOffset = readPackedInt32(stRaw + 23);
+                                 auto* bsc = reinterpret_cast<fmt::vtx::BoneStateChangeHeader_t*>(
+                                     stRaw + stBSCOffset);
+                                 for (int c = 0; c < stNumBSC; c++)
 diff --git a/mdldecompiler/CMakeLists.txt b/mdldecompiler/CMakeLists.txt
 index 5d40c04..82dd9eb 100644
 --- a/mdldecompiler/CMakeLists.txt
@@ -1134259,14 +1134358,15 @@ index 0000000..83d5e25
 +}
 +}
 diff --git a/mdldecompiler/main.cpp b/mdldecompiler/main.cpp
-index c1a5fbb..3b2d78d 100644
+index c1a5fbb..51c4c1d 100644
 --- a/mdldecompiler/main.cpp
 +++ b/mdldecompiler/main.cpp
-@@ -21,13 +21,21 @@
+@@ -21,13 +21,22 @@
  #include <cstring>
  #include <exception>
  #include <filesystem>
 +#include <fstream>
++#include <limits>
  #include <map>
 +#include <memory>
 +#include <stdexcept>
@@ -1134284,7 +1134384,7 @@ index c1a5fbb..3b2d78d 100644
  #include "animwrite.h"
  #include "dmxwrite.h"
  #include "fatalerror.h"
-@@ -36,6 +44,11 @@
+@@ -36,6 +45,11 @@
  #include "format/phy.h"
  #include "mdlfile.h"
  #include "perf.h"
@@ -1134296,7 +1134396,7 @@ index c1a5fbb..3b2d78d 100644
  
  using namespace mdldecompiler;
  using pulse::fatal::Fail;
-@@ -47,17 +60,15 @@ using pulse::fatal::Fail;
+@@ -47,17 +61,15 @@ using pulse::fatal::Fail;
  static constexpr const char* kAppVersion = PULSEMODEL_VERSION;
  
  namespace {
@@ -1134318,7 +1134418,7 @@ index c1a5fbb..3b2d78d 100644
      std::printf("                     [-forceversion <n>] [-dmxencoding <enc>] [-dmxmodel <n>]\n");
      std::printf("                     [-smdanimation] [-pulseqc]\n");
      std::printf("                     [-nomesh] [-noanimation] [-declaresequence]\n");
-@@ -79,7 +90,7 @@ int Usage() {
+@@ -79,7 +91,7 @@ int Usage() {
      std::printf("                keyvalues2 text\n");
      std::printf("  -dmxmodel <n> the `format model` version they declare: 15 (default),\n");
      std::printf("                1, 18, or 22 for Source 2 modeldoc\n");
@@ -1134327,7 +1134427,7 @@ index c1a5fbb..3b2d78d 100644
      std::printf("                still lists their commands\n");
      std::printf("  -noanimation  skip the animation clip files; the script still lists them\n");
      std::printf("  -declaresequence\n");
-@@ -90,9 +101,76 @@ int Usage() {
+@@ -90,9 +102,102 @@ int Usage() {
      std::printf("                <name>_joints.dmx the script imports with $datamodeljoints\n");
      std::printf("  -pause        wait for a keypress before exiting (drag-and-drop runs)\n");
      std::printf("  -perfmetrics  print wall time in ms per process once the run ends\n");
@@ -1134396,15 +1134496,41 @@ index c1a5fbb..3b2d78d 100644
 +                }
 +        }
 +    }
-+    return table(h.numlocalanim, m.At<fm::mstudioanimdesc_t>(m.buf.data(), h.localanimindex, h.numlocalanim), "animation") &&
-+           table(h.numlocalseq, m.At<fm::mstudioseqdesc_t>(m.buf.data(), h.localseqindex, h.numlocalseq), "sequence") &&
-+           table(h.numbodyparts, m.At<fm::mstudiobodyparts_t>(m.buf.data(), h.bodypartindex, h.numbodyparts), "bodypart");
++    const auto* anims = m.At<fm::mstudioanimdesc_t>(m.buf.data(), h.localanimindex, h.numlocalanim);
++    const auto* seqs = m.At<fm::mstudioseqdesc_t>(m.buf.data(), h.localseqindex, h.numlocalseq);
++    if (!table(h.numlocalanim, anims, "animation") ||
++        !table(h.numlocalseq, seqs, "sequence") ||
++        !table(h.numbodyparts, m.At<fm::mstudiobodyparts_t>(m.buf.data(), h.bodypartindex, h.numbodyparts), "bodypart"))
++        return false;
++    // QC generation uses frame counts even with -noanimation. Reject invalid
++    // counts before any writer subtracts the final frame or follows a blend grid.
++    for (int i = 0; i < h.numlocalanim; ++i) {
++        if (anims[i].numframes < 0 ||
++            (anims[i].numframes == 0 && !(anims[i].flags & fm::STUDIO_OVERRIDE))) {
++            err = "invalid animation frame count at index " + std::to_string(i);
++            return false;
++        }
++    }
++    for (int i = 0; i < h.numlocalseq; ++i) {
++        const auto& seq = seqs[i];
++        if (seq.flags & fm::STUDIO_OVERRIDE)
++            continue; // Declared sequences have no local blend grid.
++        const int64_t cells = static_cast<int64_t>(seq.groupsize[0]) * seq.groupsize[1];
++        if (seq.groupsize[0] <= 0 || seq.groupsize[1] <= 0 ||
++            cells > std::numeric_limits<int>::max() ||
++            !m.At<int16_t>(&seq, seq.animindexindex, static_cast<int>(cells))) {
++            err = "invalid sequence blend grid at index " + std::to_string(i) +
++                  " (dimensions or byte range)";
++            return false;
++        }
++    }
++    return true;
 +}
 +
  bool ReadFile(const char* path, Mdl& m, int forceVersion, std::string& err) {
      std::FILE* f = std::fopen(path, "rb");
      if (!f) {
-@@ -129,10 +207,11 @@ bool ReadFile(const char* path, Mdl& m, int forceVersion, std::string& err) {
+@@ -129,10 +234,11 @@ bool ReadFile(const char* path, Mdl& m, int forceVersion, std::string& err) {
      // never moved a field, so the v49 structs below read them all. studiohdr2_t
      // only exists from 45 on; earlier files simply have studiohdr2index == 0,
      // which every reader here already treats as "no extension header".
@@ -1134417,7 +1134543,7 @@ index c1a5fbb..3b2d78d 100644
  }
  
  // Angles we recover through trig (acos, MatrixAngles' atan2/asin) come back a
-@@ -431,14 +510,23 @@ bool ModelHasFace(const Mdl& m, const fm::mstudiomodel_t& mo) {
+@@ -431,14 +537,23 @@ bool ModelHasFace(const Mdl& m, const fm::mstudiomodel_t& mo) {
  
  // The alias each model's .dmx is written under, "" for a blank body. dmxwrite
  // writes <alias>.dmx and every reference in the script names it.
@@ -1134443,7 +1134569,7 @@ index c1a5fbb..3b2d78d 100644
      out.resize(h.numbodyparts);
      for (int i = 0; i < h.numbodyparts; ++i) {
          const fm::mstudiomodel_t* models =
-@@ -449,12 +537,18 @@ std::vector<std::vector<std::string>> MeshNames(const Mdl& m) {
+@@ -449,12 +564,18 @@ std::vector<std::vector<std::string>> MeshNames(const Mdl& m) {
                  continue;
              }
              const std::string file(models[j].name, strnlen(models[j].name, sizeof models[j].name));
@@ -1134466,7 +1134592,7 @@ index c1a5fbb..3b2d78d 100644
              out[i].push_back(unique);
          }
      }
-@@ -819,6 +913,70 @@ void WriteAimAtBones(Qc& q, const Mdl& m) {
+@@ -819,6 +940,70 @@ void WriteAimAtBones(Qc& q, const Mdl& m) {
      }
  }
  
@@ -1134537,7 +1134663,7 @@ index c1a5fbb..3b2d78d 100644
  // $proceduralbones + the .vrd it names - the file form of $driverbone and
  // $driveraimat, and the only spelling stock studiomdl has for either. Written
  // beside the script; the aim-at block carries its own <basepos>, which the
-@@ -938,8 +1096,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
+@@ -938,8 +1123,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
      if (!g_nomesh) {
          std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
          if (!f) {
@@ -1134547,7 +1134673,7 @@ index c1a5fbb..3b2d78d 100644
              return;
          }
          // a .vrd has no way to quote, so a name with a space in it splits into two
-@@ -949,7 +1106,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
+@@ -949,7 +1133,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
                           s.c_str());
          for (const std::string& l : lines)
              std::fprintf(f, "%s\n", l.c_str());
@@ -1134556,7 +1134682,7 @@ index c1a5fbb..3b2d78d 100644
          std::printf("\nprocedural bones:\n  wrote %s\n", name.c_str());
      }
  
-@@ -988,12 +1145,22 @@ struct PhySection {
+@@ -988,12 +1172,22 @@ struct PhySection {
  };
  
  // Skips the header and the per-solid collision blobs, then reads the text that
@@ -1134583,7 +1134709,7 @@ index c1a5fbb..3b2d78d 100644
      std::fseek(f, 0, SEEK_END);
      const long size = std::ftell(f);
      std::fseek(f, 0, SEEK_SET);
-@@ -1001,21 +1168,29 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
+@@ -1001,21 +1195,29 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
      const size_t got = buf.empty() ? 0 : std::fread(buf.data(), 1, buf.size(), f);
      std::fclose(f);
      if (got != buf.size() || buf.size() < sizeof(fm::phyheader_t))
@@ -1134616,7 +1134742,7 @@ index c1a5fbb..3b2d78d 100644
      struct PhyToken {
          std::string text;
          size_t begin = 0;
-@@ -1032,7 +1207,7 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
+@@ -1032,7 +1234,7 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
              while (e < buf.size() && buf[e] && buf[e] != '"')
                  ++e;
              if (e >= buf.size() || !buf[e])
@@ -1134625,7 +1134751,7 @@ index c1a5fbb..3b2d78d 100644
              p = e + 1;
              toks.push_back({std::string(&buf[begin + 1], e - begin - 1), begin, p});
          } else if (c == '{' || c == '}') {
-@@ -1074,11 +1249,15 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
+@@ -1074,11 +1276,15 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
              }
          }
          if (depth != 0)
@@ -1134642,7 +1134768,7 @@ index c1a5fbb..3b2d78d 100644
      return out;
  }
  
-@@ -1088,7 +1267,7 @@ void EmitKeyValues(Qc& q, const std::string& text, std::string indent,
+@@ -1088,7 +1294,7 @@ void EmitKeyValues(Qc& q, const std::string& text, std::string indent,
  // $physicsmodel. The hulls go out as a DMX collision mesh beside the render
  // meshes; everything else round-trips out of the .phy's text tail.
  void WritePhysics(Qc& q, const Mdl& m, const std::string& mdlPath, const std::string& dir) {
@@ -1134651,7 +1134777,7 @@ index c1a5fbb..3b2d78d 100644
      std::vector<const PhySection*> solids;
      std::vector<const PhySection*> collisionText;
      const PhySection* edit = nullptr;
-@@ -2003,11 +2182,14 @@ void WriteFlexes(Qc& q, const Mdl& m, const FlexRig& rig, const std::string& fac
+@@ -2003,11 +2209,14 @@ void WriteFlexes(Qc& q, const Mdl& m, const FlexRig& rig, const std::string& fac
          q.Line((ok ? "" : "// ") + (g_studiomdl ? "%" + target + " = " + expr
                                                  : "$flexrule \"" + target + "\" = " + expr));
      }
@@ -1134666,7 +1134792,7 @@ index c1a5fbb..3b2d78d 100644
          q.Line("// " + std::to_string(skipped) + " of " + std::to_string(h.numflexrules) +
                 " flex rules use ops with no expression spelling");
          q.Line(importRig ? "// - they come back from the DMX rig via $datamodelflexes."
-@@ -2515,12 +2697,12 @@ void WriteDeclareSequenceFile(const Mdl& m, const std::string& dir) {
+@@ -2515,12 +2724,12 @@ void WriteDeclareSequenceFile(const Mdl& m, const std::string& dir) {
      const std::string name = BaseName(dir) + "_declaresequence.qci";
      std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
      if (!f) {
@@ -1134681,7 +1134807,39 @@ index c1a5fbb..3b2d78d 100644
      std::printf("\nwrote %s (%zu sequences)\n", name.c_str(), labels.size());
  }
  
-@@ -2609,7 +2791,9 @@ void WriteSequences(Qc& q, const Mdl& m) {
+@@ -2563,11 +2772,12 @@ void WriteSequences(Qc& q, const Mdl& m) {
+ 
+         // blend grid. The grid is stored in the order the script listed it, so
+         // it reads straight back; groupsize only says how to fold it.
+-        const int g0 = s.groupsize[0] > 0 ? s.groupsize[0] : 1;
+-        const int g1 = s.groupsize[1] > 0 ? s.groupsize[1] : 1;
+-        const int16_t* grid = m.At<int16_t>(&s, s.animindexindex, g0 * g1);
++        const int g0 = s.groupsize[0];
++        // ValidateModelTables checked the dimensions, representability and span.
++        const int cells = static_cast<int>(static_cast<int64_t>(g0) * s.groupsize[1]);
++        const int16_t* grid = m.At<int16_t>(&s, s.animindexindex, cells);
+         int32_t animFlags = 0;
+-        for (int k = 0; grid && k < g0 * g1; ++k) {
++        for (int k = 0; grid && k < cells; ++k) {
+             const bool known = grid[k] >= 0 && grid[k] < static_cast<int>(animRefs.size());
+             if (!known) {
+                 opt("\"\"");
+@@ -2580,12 +2790,12 @@ void WriteSequences(Qc& q, const Mdl& m) {
+                           : "\"" + r.name + "\"");
+             animFlags |= anims[grid[k]].flags;
+         }
+-        if (g0 * g1 > 1)
++        if (cells > 1)
+             opt("blendwidth " + std::to_string(g0));
+ 
+         // events and layer ramps are stored as cycle fractions of blend anim 0,
+         // which is what turns them back into the frames a script writes
+-        const int anim0 = (grid && g0 * g1 > 0) ? grid[0] : -1;
++        const int anim0 = (grid && cells > 0) ? grid[0] : -1;
+         // animation options in a sequence body land on blend animation 0, so
+         // they only belong here when that one was declared inline
+         if (anims && anim0 >= 0 && anim0 < h.numlocalanim && animRefs[anim0].implied)
+@@ -2609,7 +2819,9 @@ void WriteSequences(Qc& q, const Mdl& m) {
              opt("autoplay");
          if (f & fm::STUDIO_HIDDEN)
              opt("hidden");
@@ -1134692,7 +1134850,7 @@ index c1a5fbb..3b2d78d 100644
              opt("realtime");
          if (f & fm::STUDIO_WORLD_AND_RELATIVE)
              opt("worldrelative");
-@@ -2852,12 +3036,19 @@ std::string OutFolder(const std::string& in, const std::string& root, const char
+@@ -2852,12 +3064,19 @@ std::string OutFolder(const std::string& in, const std::string& root, const char
          std::filesystem::path(root.empty() ? in : root).parent_path();
      const std::filesystem::path base = outDir ? std::filesystem::path(outDir) : parent;
      std::filesystem::path rel;
@@ -1134714,7 +1134872,7 @@ index c1a5fbb..3b2d78d 100644
  }
  
  std::string OutScript(const std::string& dir) {
-@@ -2865,14 +3056,14 @@ std::string OutScript(const std::string& dir) {
+@@ -2865,14 +3084,14 @@ std::string OutScript(const std::string& dir) {
          .string();
  }
  
@@ -1134732,7 +1134890,7 @@ index c1a5fbb..3b2d78d 100644
          std::error_code ec;
          std::filesystem::create_directories(dir, ec);
          return DecompileGoldSrc(in, dir, OutScript(dir));
-@@ -2889,12 +3080,33 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2889,12 +3108,33 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      std::string err;
      if (!ReadFile(in.c_str(), m, forceVersion, err))
          return Fail("read error", err);
@@ -1134766,7 +1134924,7 @@ index c1a5fbb..3b2d78d 100644
      std::printf("model:       \"%s\"\n", h.name);
      std::printf("contents:    %d bones, %d bodyparts, %d materials, %d animations, %d sequences,\n"
                  "             %d flex controllers, %d attachments, %d hitbox sets\n",
-@@ -2903,9 +3115,18 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2903,9 +3143,18 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      STAGE(PrintMaterials, m);
  
      pulse::fatal::g_stage = "output folder";
@@ -1134786,7 +1134944,7 @@ index c1a5fbb..3b2d78d 100644
      const std::string outPath = OutScript(dir);
      std::FILE* f = std::fopen(outPath.c_str(), "wb");
      if (!f)
-@@ -2913,6 +3134,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2913,6 +3162,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
                      "cannot write \"" + outPath + "\"" +
                          (ec ? " (" + ec.message() + ")" : std::string()));
  
@@ -1134794,7 +1134952,7 @@ index c1a5fbb..3b2d78d 100644
      Qc q{f};
      q.Line("// mdldecompiler version " + std::string(kAppVersion));
      q.Line("// " + in);
-@@ -2923,9 +3145,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2923,9 +3173,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      // stock has no top-level flex/eye commands - they are $model options, so
      // capture them here and let WriteBodyParts put them in the block.
      pulse::fatal::g_stage = "MeshNames";
@@ -1134807,7 +1134965,7 @@ index c1a5fbb..3b2d78d 100644
      const std::string faceMesh = FaceMesh(m, meshNames);
      std::string faceBody;
      if (g_studiomdl) {
-@@ -2956,7 +3180,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2956,7 +3208,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      // re-derive their weights from LOD 0 the way an authored LOD needs.
      if (g_studiomdl && lods.size() > 1) {
          q.Blank();
@@ -1134816,7 +1134974,7 @@ index c1a5fbb..3b2d78d 100644
      }
      for (size_t l = 1; l < lods.size(); ++l) {
          q.Blank();
-@@ -3010,6 +3234,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3010,6 +3262,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
              joints = JointsInfo();
          } else {
              q.Blank();
@@ -1134824,7 +1134982,7 @@ index c1a5fbb..3b2d78d 100644
              if (joints.namedHitboxes)
                  q.Line("// " + std::to_string(joints.namedHitboxes) +
                         " hitbox name(s) are lost - a DMX hitbox has no name");
-@@ -3028,6 +3253,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3028,6 +3281,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
          STAGE(WriteHitboxes, q, m);
      STAGE(WriteBones, q, m);
      STAGE(WriteBoneMerges, q, m);
@@ -1134836,7 +1134994,7 @@ index c1a5fbb..3b2d78d 100644
      // stock has neither $driverbone nor $driveraimat - only the .vrd file form
      if (!joints.procedural && g_studiomdl) {
          STAGE(WriteProceduralBones, q, m, dir);
-@@ -3048,7 +3278,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3048,7 +3306,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      STAGE(WritePhysics, q, m, in, dir);
      const auto tPhys1 = Clock::now();
      STAGE(WriteKeyValues, q, m);
@@ -1134845,7 +1135003,7 @@ index c1a5fbb..3b2d78d 100644
  
      if (h.numlocalanim > 0)
          std::printf("\nanimations:\n");
-@@ -3060,8 +3290,9 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3060,8 +3318,9 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      if (g_declareseq)
          STAGE(WriteDeclareSequenceFile, m, dir);
  
@@ -1134856,7 +1135014,7 @@ index c1a5fbb..3b2d78d 100644
  
      if (pulse::perf::g_enabled) {
          pulse::perf::Record("total", "read", ms(t0, tRead));
-@@ -3073,6 +3304,76 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3073,6 +3332,76 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      return 0;
  }
  
@@ -1134933,7 +1135091,7 @@ index c1a5fbb..3b2d78d 100644
  } // namespace
  
  int RunDecompile(int argc, char** argv) {
-@@ -3083,14 +3384,26 @@ int RunDecompile(int argc, char** argv) {
+@@ -3083,14 +3412,26 @@ int RunDecompile(int argc, char** argv) {
      std::string dmxEncoding = "binary";
      int dmxModel = 15;
      for (int i = 1; i < argc; ++i) {
@@ -1134964,7 +1135122,7 @@ index c1a5fbb..3b2d78d 100644
          else if (std::strcmp(argv[i], "-smdanimation") == 0)
              SetAnimFormat(true);
          else if (std::strcmp(argv[i], "-pulseqc") == 0)
-@@ -3109,11 +3422,32 @@ int RunDecompile(int argc, char** argv) {
+@@ -3109,11 +3450,32 @@ int RunDecompile(int argc, char** argv) {
              pulse::fatal::g_pause = true;
          else if (std::strcmp(argv[i], "-perfmetrics") == 0)
              pulse::perf::g_enabled = true;
@@ -1134997,7 +1135155,7 @@ index c1a5fbb..3b2d78d 100644
      if (const char* err = SetDmxOutput(dmxEncoding, dmxModel))
          return Fail("command line", err);
  
-@@ -3134,17 +3468,42 @@ int RunDecompile(int argc, char** argv) {
+@@ -3134,17 +3496,42 @@ int RunDecompile(int argc, char** argv) {
      if (files.empty())
          return Fail("command line", "no .mdl files found");
  
@@ -1139106,7 +1139264,7 @@ index 0000000..c742810
 +}
 +} // namespace vmdtool
 diff --git a/subtools/vmd2valvebiped/main.cpp b/subtools/vmd2valvebiped/main.cpp
-index 0117649..21a73cf 100644
+index 0117649..cc7cbfc 100644
 --- a/subtools/vmd2valvebiped/main.cpp
 +++ b/subtools/vmd2valvebiped/main.cpp
 @@ -5,6 +5,8 @@
@@ -1139945,20 +1140103,38 @@ index 0117649..21a73cf 100644
                      t.world[i] = t.parent[i] >= 0 ? pm::ConcatTransforms(t.world[t.parent[i]], t.local[i])
                                                    : t.local[i];
              };
-@@ -1366,6 +1741,12 @@ int main(int argc, char** argv) {
+@@ -1366,18 +1741,33 @@ int main(int argc, char** argv) {
  
      // Leg chains come from the model's own $ikchain data.
      Leg legs[2];
+-    const fm::mstudioikchain_t* chains =
+-        m.At<fm::mstudioikchain_t>(m.buf.data(), h.ikchainindex, h.numikchains);
 +    if (profile.enabled)
 +        for (int side = 0; side < 2; ++side) {
 +            const std::string prefix = side ? "R_" : "L_";
 +            legs[side] = {t.Find(prefix + "Thigh"), t.Find(prefix + "Calf"), t.Find(prefix + "Foot"), {},
 +                          mmd.Find("legik", side)};
 +        }
-     const fm::mstudioikchain_t* chains =
-         m.At<fm::mstudioikchain_t>(m.buf.data(), h.ikchainindex, h.numikchains);
++    const char* chains = reinterpret_cast<const char*>(
++        m.At<fm::mstudioikchain_t>(m.buf.data(), h.ikchainindex, h.numikchains));
      for (int c = 0; chains && c < h.numikchains; ++c) {
-@@ -1377,7 +1758,8 @@ int main(int argc, char** argv) {
+-        if (chains[c].numlinks != 3)
++        // Imported MDL records may start unaligned. Keep the on-disk address
++        // for relative offsets, but read each record through an aligned copy.
++        const char* chainRaw = chains + size_t(c) * sizeof(fm::mstudioikchain_t);
++        fm::mstudioikchain_t chain;
++        std::memcpy(&chain, chainRaw, sizeof(chain));
++        if (chain.numlinks != 3)
++            continue;
++        const char* linkRaw = m.At<char>(chainRaw, chain.linkindex, 3 * sizeof(fm::mstudioiklink_t));
++        if (!linkRaw)
+             continue;
+-        const fm::mstudioiklink_t* link =
+-            m.At<fm::mstudioiklink_t>(&chains[c], chains[c].linkindex, 3);
+-        if (!link || link[2].bone < 0 || link[2].bone >= t.n || link[0].bone < 0 ||
++        fm::mstudioiklink_t link[3];
++        std::memcpy(link, linkRaw, sizeof(link));
++        if (link[2].bone < 0 || link[2].bone >= t.n || link[0].bone < 0 ||
              link[0].bone >= t.n || link[1].bone < 0 || link[1].bone >= t.n)
              continue;
          for (int side = 0; side < 2; ++side)
@@ -1139968,7 +1140144,7 @@ index 0117649..21a73cf 100644
                  legs[side] = {link[0].bone, link[1].bone, link[2].bone, link[0].kneeDir,
                                mmd.Find("legik", side)};
      }
-@@ -1388,10 +1770,12 @@ int main(int argc, char** argv) {
+@@ -1388,10 +1778,12 @@ int main(int argc, char** argv) {
      // MMD -> target basis from each rig's own left/up/forward. MMD is left-handed
      // Y-up facing -Z, so this is a reflection and M*R*Mt stays a proper rotation.
      Vector3 up = Sub(Origin(t.world[top]), Origin(t.world[pelvis]));
@@ -1139983,7 +1140159,7 @@ index 0117649..21a73cf 100644
      const Vector3 fwd = Cross(left, up);
      matrix3x4 M;
      for (int r = 0; r < 3; ++r) {
-@@ -1418,9 +1802,11 @@ int main(int argc, char** argv) {
+@@ -1418,9 +1810,11 @@ int main(int argc, char** argv) {
                           Len(Sub(restOf("ankle", 0), restOf("knee", 0)));
      const float tgtLeg = Len(Sub(Origin(t.world[legs[0].knee]), Origin(t.world[legs[0].thigh]))) +
                           Len(Sub(Origin(t.world[legs[0].foot]), Origin(t.world[legs[0].knee])));
@@ -1139998,7 +1140174,7 @@ index 0117649..21a73cf 100644
  
      // Per target bone: its MMD source and the rest alignment O that poses the
      // target's arms into the MMD rest pose. Fingers take the hand's O.
-@@ -1465,9 +1851,11 @@ int main(int argc, char** argv) {
+@@ -1465,9 +1859,11 @@ int main(int argc, char** argv) {
              align[g.bone] = RotationBetween(g.from, g.to);
          }
          if (hand >= 0)
@@ -1140013,7 +1140189,7 @@ index 0117649..21a73cf 100644
      }
  
      const auto toTarget = [&](const matrix3x4& g) {
-@@ -1479,14 +1867,110 @@ int main(int argc, char** argv) {
+@@ -1479,14 +1875,110 @@ int main(int argc, char** argv) {
      std::string srcDir;
      if (!compileName.empty()) {
          if (gameDir.empty())
@@ -1140023,10 +1140199,7 @@ index 0117649..21a73cf 100644
 -                                 : (fs::path(vmdPaths[0]).parent_path() / (ClipName(compileName) + "_src")).string();
 -        fs::create_directories(srcDir, ec);
 +                                 : (fs::u8path(vmdPaths[0]).parent_path() / (ClipName(compileName) + "_src")).u8string();
-     }
--    const fs::path dataDir = compileName.empty() ? fs::path() : fs::path(gameDir) / "datamodel";
--    if (!dataDir.empty())
--        fs::create_directories(dataDir / "flex_anims", ec);
++    }
 +    const fs::path dataDir = compileName.empty() ? fs::path() : fs::u8path(gameDir) / "datamodel";
 +
 +    struct OutputPlan { std::string path, clip; };
@@ -1140124,13 +1140297,16 @@ index 0117649..21a73cf 100644
 +                break;
 +            }
 +        }
-+    }
+     }
+-    const fs::path dataDir = compileName.empty() ? fs::path() : fs::path(gameDir) / "datamodel";
+-    if (!dataDir.empty())
+-        fs::create_directories(dataDir / "flex_anims", ec);
 +    const fs::path compiler = compileName.empty() ? fs::path() : vmdtool::CompilerPath(argv[0]);
 +    subtool::OutputTransaction outputs;
      std::set<std::string> faceMissing;
  
      const int lower = mmd.Find("lower");
-@@ -1494,16 +1978,19 @@ int main(int argc, char** argv) {
+@@ -1494,16 +1986,19 @@ int main(int argc, char** argv) {
      const long limit = pulse::limits::kMaxAnimFrames;
      // MMD space -> target: the MMD lower-body rest lands on the bind Pelvis
      const Vector3 camAnchor = Sub(Origin(t.world[pelvis]), Mul(pm::VectorRotate(lowerRest, M), scale));
@@ -1140157,7 +1140333,7 @@ index 0117649..21a73cf 100644
          std::vector<const std::vector<Key>*> mmdKeys(mmd.bones.size(), nullptr);
          int keyed = 0;
          for (size_t b = 0; b < mmd.bones.size(); ++b) {
-@@ -1519,23 +2006,24 @@ int main(int argc, char** argv) {
+@@ -1519,23 +2014,24 @@ int main(int argc, char** argv) {
              continue;
          }
  
@@ -1140188,7 +1140364,7 @@ index 0117649..21a73cf 100644
  
          std::vector<std::vector<AnimPose>> frames;
          frames.reserve(static_cast<size_t>(count));
-@@ -1553,7 +2041,7 @@ int main(int argc, char** argv) {
+@@ -1553,7 +2049,7 @@ int main(int argc, char** argv) {
                  G[b] = mb.parent >= 0 ? pm::ConcatTransforms(G[mb.parent], lm) : lm;
              }
  
@@ -1140197,7 +1140373,7 @@ index 0117649..21a73cf 100644
                  const int p = t.parent[i];
                  if (src[i] < 0) {
                      L[i] = t.local[i];
-@@ -1572,6 +2060,10 @@ int main(int argc, char** argv) {
+@@ -1572,6 +2068,10 @@ int main(int argc, char** argv) {
  
              for (int side = 0; side < 2; ++side) {
                  const Leg& g = legs[side];
@@ -1140208,7 +1140384,7 @@ index 0117649..21a73cf 100644
                  const Vector3 ikRest = mmd.bones[g.ik].rest;
                  const Vector3 goal = Add(Origin(t.world[g.foot]),
                                           Mul(pm::VectorRotate(Sub(Origin(G[g.ik]), ikRest), M), scale));
-@@ -1597,50 +2089,43 @@ int main(int argc, char** argv) {
+@@ -1597,50 +2097,43 @@ int main(int argc, char** argv) {
              // Roots stay in the stored bind space, the frame the model's own
              // decompiled clips use - no inverse compile yaw.
              std::vector<AnimPose> fr(static_cast<size_t>(t.n));
@@ -1140285,7 +1140461,7 @@ index 0117649..21a73cf 100644
              return Fail("cannot write \"" + path + "\"");
          int root = pelvis;
          while (t.parent[root] >= 0)
-@@ -1648,9 +2133,9 @@ int main(int argc, char** argv) {
+@@ -1648,9 +2141,9 @@ int main(int argc, char** argv) {
          const std::string walkOpts = walkEvery >= 0 ? WalkFrames(frames, root, walkEvery, walkTol) : std::string();
          clips.push_back({clip, fps, std::string(), false, walkOpts});
  
@@ -1140298,7 +1140474,7 @@ index 0117649..21a73cf 100644
              std::printf(" (resampled from %ld MMD frames to fit the %ld-frame limit)", span + 1, limit);
          std::printf("\n  %d MMD bones keyed, %d target bones mapped, legs by $ikchain\n", keyed, mapped);
          if (!morphs.empty())
-@@ -1665,33 +2150,26 @@ int main(int argc, char** argv) {
+@@ -1665,33 +2158,26 @@ int main(int argc, char** argv) {
  
          // -compile: the SFM / PulseWorkshop copy, always model 22
          if (!dataDir.empty()) {
@@ -1140340,7 +1140516,7 @@ index 0117649..21a73cf 100644
                  Vector3 eye, look, up;
                  SampleCamera(cams, f, eye, look, up, fov[static_cast<size_t>(k)]);
                  look = pm::VectorRotate(look, M);
-@@ -1705,29 +2183,32 @@ int main(int argc, char** argv) {
+@@ -1705,29 +2191,32 @@ int main(int argc, char** argv) {
                  }
                  SetOrigin(cm, Add(camAnchor, Mul(pm::VectorRotate(eye, M), scale)));
                  pm::MatrixAngles(cm, cf[static_cast<size_t>(k)].rot, cf[static_cast<size_t>(k)].pos);
@@ -1140382,7 +1140558,7 @@ index 0117649..21a73cf 100644
              }
          }
  
-@@ -1736,7 +2217,7 @@ int main(int argc, char** argv) {
+@@ -1736,7 +2225,7 @@ int main(int argc, char** argv) {
          if (sound) {
              std::string audio;
              for (const char* ext : {".wav", ".mp3"})
@@ -1140391,7 +1140567,7 @@ index 0117649..21a73cf 100644
                      audio = mdldecompiler::StripExt(vmdPath) + ext;
                      break;
                  }
-@@ -1748,19 +2229,18 @@ int main(int argc, char** argv) {
+@@ -1748,19 +2237,18 @@ int main(int argc, char** argv) {
              if (rel.size() > 64)
                  return Fail("sound path \"" + rel + "\" is over the 64-character event limit - "
                              "rename the .vmd shorter");
@@ -1140415,7 +1140591,7 @@ index 0117649..21a73cf 100644
                          mdldecompiler::BaseName(path).c_str(), fps, walkOpts.c_str());
      }
      if (clips.empty())
-@@ -1773,20 +2253,45 @@ int main(int argc, char** argv) {
+@@ -1773,20 +2261,45 @@ int main(int argc, char** argv) {
              std::printf(" %s", c.c_str());
          std::printf("\n");
      }
