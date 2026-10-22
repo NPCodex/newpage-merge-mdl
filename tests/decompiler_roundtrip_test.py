@@ -480,6 +480,55 @@ class DecompilerRoundtrip(unittest.TestCase):
         self.assertEqual(failure['written_files'], [])
         self.assertEqual(snapshot(dest), before)
 
+    def test_quality_report_lists_auxiliary_writes_without_preserved_files(self):
+        from procedural_cases import axis_fixture, skeletal_smd
+        names = ['root', 'child', 'driver', 'axis_helper', 'vrd_helper']
+        source = self.fixture(qc='$bonecullmethod none\n$body body mesh.smd\n'
+            '$sequence idle mesh.smd\n$proceduralbones axis.bones\n'
+            '$driverbone vrd_helper driver { trigger 90 0 0 0 0 0 0 1 2 3 }\n',
+            files={'mesh.smd': skeletal_smd(names, [-1, 0, 0, 0, 0],
+                                          [(0, 0, 0)]*5, [(0, 0, 0)]*5),
+                   'axis.bones': axis_fixture().replace('"helper"', '"axis_helper"')})
+        dest, log = self.decompile(source, 'auxiliary-quality', True,
+                                   '-qualityreport', '-declaresequence')
+        saved = next(dest.rglob('export-report.json'))
+        folder = saved.parent
+        report = self.quality_record(log)
+        auxiliary = {'shared.vrd', 'shared_axis.bones', 'shared_declaresequence.qci'}
+        self.assertTrue(auxiliary <= set(report['written_files']),
+                        f"Unreported auxiliary files: {sorted(auxiliary - set(report['written_files']))}")
+        self.assertEqual(json.loads(saved.read_text()), report)
+        actual = {p.relative_to(folder).as_posix() for p in folder.rglob('*') if p.is_file()}
+        self.assertEqual(set(report['written_files']), actual)
+        qc = (folder/'shared.qc').read_text()
+        self.assertIn('$proceduralbones "shared.vrd"', qc)
+        self.assertIn('$proceduralbones "shared_axis.bones"', qc)
+        # This QCI is intentionally standalone, for another model's includemodel.
+        self.assertIn('$declaresequence "idle"', (folder/'shared_declaresequence.qci').read_text())
+        self.assertNotIn('$include "shared_declaresequence.qci"', qc)
+
+        preserved = {'author-note.txt': b'keep author notes', 'old.vrd': b'keep old helper'}
+        for name, content in preserved.items():
+            (folder/name).write_bytes(content)
+        _, log = self.decompile(source, 'auxiliary-quality', True,
+                                '-qualityreport', '-declaresequence')
+        report = self.quality_record(log)
+        actual = {p.relative_to(folder).as_posix() for p in folder.rglob('*') if p.is_file()}
+        self.assertEqual(set(report['written_files']), actual - preserved.keys())
+        for name, content in preserved.items():
+            self.assertEqual((folder/name).read_bytes(), content)
+
+        previous_helpers = {name: (folder/name).read_bytes()
+                            for name in ('shared.vrd', 'shared_axis.bones')}
+        _, log = self.decompile(source, 'auxiliary-quality', True,
+                                '-qualityreport', '-declaresequence', '-nomesh')
+        written = set(self.quality_record(log)['written_files'])
+        self.assertTrue(written.isdisjoint(previous_helpers))
+        self.assertTrue(written.isdisjoint(preserved))
+        self.assertIn('shared_declaresequence.qci', written)
+        for name, content in previous_helpers.items():
+            self.assertEqual((folder/name).read_bytes(), content)
+
     def test_selected_assets_preserve_paths_and_animation_dependency_closure(self):
         source = self.fixture(qc='$body body mesh.smd\n$body extra lower.smd\n'
             '$skinnedlods\n$lod 10 { replacemodel mesh.smd lower.smd }\n'

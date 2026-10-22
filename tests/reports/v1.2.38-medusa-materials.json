@@ -1463,5 +1463,110 @@
   "assets_committed": false,
   "gameplay_claimed": false,
   "scope": "Local MDL-to-VMT/VTF resolution and byte-preserving publication for four pre-existing user MDLs and two freshly compiled combine variants; not shader rendering or universal/custom-shader completeness.",
-  "local_evidence_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238"
+  "local_evidence_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-materials-v1238",
+  "native_followup": {
+    "source_commit": "2317571e536cee11937713226a17bd469a46491d",
+    "compiler_sha256": "3d2dcb269d467e5e951cc8886623a08cfea90fb30958021d09145f55900b267d",
+    "decompiler_sha256": "39924ee299663d48c5bd99215172370ad1f5e87eb8d7681506a6c8e8a8aa9e95",
+    "compile_evidence_path": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\final-source-2317571\\result.json",
+    "compile_evidence_sha256": "870f000731ef76f322565105102dbf10b48e5019d82abdf8bfe0bd79e8009e7d",
+    "source_unchanged": true,
+    "gameinfo_unchanged": true,
+    "original_source_files_checked_by_compile_run": 236,
+    "scope": "Both unmodified QC variants compile, serialize and fully decompile; model families remain identical to the earlier material-closure inputs. This does not add an in-game rendering test.",
+    "runs": [
+      {
+        "variant": "expressions",
+        "compile_exit_code": 0,
+        "structure": {
+          "model": "combine_soldier.mdl",
+          "bones": 81,
+          "vertices": 46510
+        },
+        "model_family_matches_previous_build": true,
+        "decompile_log_sha256": "ccc92366b839a4afe5d8fa47ae8b2ec89c6e829d3c9a31a4429055efc9b9f023",
+        "decompile_success": true,
+        "decompile_errors": [],
+        "decompile_missing_dependencies": []
+      },
+      {
+        "variant": "no_expressions",
+        "compile_exit_code": 0,
+        "structure": {
+          "model": "combine_soldier.mdl",
+          "bones": 81,
+          "vertices": 46510
+        },
+        "model_family_matches_previous_build": true,
+        "decompile_log_sha256": "b6a7fa5debdde699d42507e968db3359024018960c0ccbecd13840be7b444752",
+        "decompile_success": true,
+        "decompile_errors": [],
+        "decompile_missing_dependencies": []
+      }
+    ]
+  },
+  "quality_inventory_followup": {
+    "decompiler_sha256": "b682135403f0996ddc8cf5c0dfb56c239dd2f08675fb5c6c23bd9ca16df1ab89",
+    "scope": "Real Medusa auxiliary output inventory; compiled model inputs from source 2317571 are unchanged. No new compilation or game rendering claim.",
+    "runs": [
+      {
+        "variant": "expressions",
+        "exit_code": 0,
+        "command": [
+          "D:\\newpage-merge-mdl\\build-local-20261019\\NewPageMergeMDL\\Release\\NewPageMergeMDL-Decompiler.exe",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\final-source-2317571\\expressions\\compiled\\models\\combine_soldier.mdl",
+          "-outdir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\quality-file-followup-verified\\expressions",
+          "-qualityreport",
+          "-declaresequence"
+        ],
+        "model_sha256": "c9bcb72d7d3e632314ea1b8ed895aa4eb850c76abb0e554ed8439fa3ac0a93b2",
+        "inputs_unchanged": true,
+        "quality_matches_actual_files": true,
+        "written_files": [
+          "anims/a_proportion.dmx",
+          "anims/a_reference.dmx",
+          "combine_soldier.qc",
+          "combine_soldier.vrd",
+          "combine_soldier_declaresequence.qci",
+          "export-report.json",
+          "meshes/body.dmx",
+          "meshes/combine_soldier_physics.dmx",
+          "meshes/hair.dmx",
+          "meshes/reference.dmx"
+        ],
+        "log_sha256": "3d086ab4c20a8e1ad2fb08da28d4b1f01707d8c99831817d46be2a3b67374eef"
+      },
+      {
+        "variant": "no_expressions",
+        "exit_code": 0,
+        "command": [
+          "D:\\newpage-merge-mdl\\build-local-20261019\\NewPageMergeMDL\\Release\\NewPageMergeMDL-Decompiler.exe",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\final-source-2317571\\no_expressions\\compiled\\models\\combine_soldier.mdl",
+          "-outdir",
+          "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\quality-file-followup-verified\\no_expressions",
+          "-qualityreport",
+          "-declaresequence"
+        ],
+        "model_sha256": "29094daff7d90f8fbc9e3790b7fd631a3a144fe452e49670254df37e9c3b7be9",
+        "inputs_unchanged": true,
+        "quality_matches_actual_files": true,
+        "written_files": [
+          "anims/a_proportion.dmx",
+          "anims/a_reference.dmx",
+          "combine_soldier.qc",
+          "combine_soldier.vrd",
+          "combine_soldier_declaresequence.qci",
+          "export-report.json",
+          "meshes/body.dmx",
+          "meshes/combine_soldier_physics.dmx",
+          "meshes/hair.dmx",
+          "meshes/reference.dmx"
+        ],
+        "log_sha256": "1142a46e42f0a4f3913be957387ad4f402620e8edcc0206dbda6743846a78615"
+      }
+    ],
+    "passed": true,
+    "evidence_path": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\medusa-compile-v1238\\quality-file-followup-verified\\result.json"
+  }
 }

@@ -1134358,7 +1134358,7 @@ index 0000000..83d5e25
 +}
 +}
 diff --git a/mdldecompiler/main.cpp b/mdldecompiler/main.cpp
-index c1a5fbb..51c4c1d 100644
+index c1a5fbb..a520d9f 100644
 --- a/mdldecompiler/main.cpp
 +++ b/mdldecompiler/main.cpp
 @@ -21,13 +21,22 @@
@@ -1134592,7 +1134592,7 @@ index c1a5fbb..51c4c1d 100644
              out[i].push_back(unique);
          }
      }
-@@ -819,6 +940,70 @@ void WriteAimAtBones(Qc& q, const Mdl& m) {
+@@ -819,6 +940,71 @@ void WriteAimAtBones(Qc& q, const Mdl& m) {
      }
  }
  
@@ -1134655,6 +1134655,7 @@ index c1a5fbb..51c4c1d 100644
 +        const bool written=std::fwrite(text.data(),1,text.size(),f)==text.size();
 +        const bool closed=std::fclose(f)==0;
 +        if(!written||!closed){error="could not finish AxisInterp file '"+path+"'";return false;}
++        QualityWritten(path);
 +        std::printf("\naxis-interpolation bones:\n  wrote %s\n",name.c_str());
 +    }
 +    q.Blank();q.Line("$proceduralbones \""+name+"\"");return true;
@@ -1134663,9 +1134664,13 @@ index c1a5fbb..51c4c1d 100644
  // $proceduralbones + the .vrd it names - the file form of $driverbone and
  // $driveraimat, and the only spelling stock studiomdl has for either. Written
  // beside the script; the aim-at block carries its own <basepos>, which the
-@@ -938,8 +1123,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
+@@ -936,10 +1122,10 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
+ 
+     const std::string name = BaseName(dir) + ".vrd";
      if (!g_nomesh) {
-         std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
+-        std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
++        const auto path = (std::filesystem::path(dir) / name).string();
++        std::FILE* f = std::fopen(path.c_str(), "wb");
          if (!f) {
 -            q.Blank();
 -            q.Line("// could not write " + name + " - the procedural bones are lost");
@@ -1134673,16 +1134678,16 @@ index c1a5fbb..51c4c1d 100644
              return;
          }
          // a .vrd has no way to quote, so a name with a space in it splits into two
-@@ -949,7 +1133,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
+@@ -949,7 +1135,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
                           s.c_str());
          for (const std::string& l : lines)
              std::fprintf(f, "%s\n", l.c_str());
 -        std::fclose(f);
-+        if (!CloseOutput(f, name)) return;
++        if (!CloseOutput(f, path)) return;
          std::printf("\nprocedural bones:\n  wrote %s\n", name.c_str());
      }
  
-@@ -988,12 +1172,22 @@ struct PhySection {
+@@ -988,12 +1174,22 @@ struct PhySection {
  };
  
  // Skips the header and the per-solid collision blobs, then reads the text that
@@ -1134709,7 +1134714,7 @@ index c1a5fbb..51c4c1d 100644
      std::fseek(f, 0, SEEK_END);
      const long size = std::ftell(f);
      std::fseek(f, 0, SEEK_SET);
-@@ -1001,21 +1195,29 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
+@@ -1001,21 +1197,29 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
      const size_t got = buf.empty() ? 0 : std::fread(buf.data(), 1, buf.size(), f);
      std::fclose(f);
      if (got != buf.size() || buf.size() < sizeof(fm::phyheader_t))
@@ -1134742,7 +1134747,7 @@ index c1a5fbb..51c4c1d 100644
      struct PhyToken {
          std::string text;
          size_t begin = 0;
-@@ -1032,7 +1234,7 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
+@@ -1032,7 +1236,7 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
              while (e < buf.size() && buf[e] && buf[e] != '"')
                  ++e;
              if (e >= buf.size() || !buf[e])
@@ -1134751,7 +1134756,7 @@ index c1a5fbb..51c4c1d 100644
              p = e + 1;
              toks.push_back({std::string(&buf[begin + 1], e - begin - 1), begin, p});
          } else if (c == '{' || c == '}') {
-@@ -1074,11 +1276,15 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
+@@ -1074,11 +1278,15 @@ std::vector<PhySection> ReadPhy(const std::string& mdlPath) {
              }
          }
          if (depth != 0)
@@ -1134768,7 +1134773,7 @@ index c1a5fbb..51c4c1d 100644
      return out;
  }
  
-@@ -1088,7 +1294,7 @@ void EmitKeyValues(Qc& q, const std::string& text, std::string indent,
+@@ -1088,7 +1296,7 @@ void EmitKeyValues(Qc& q, const std::string& text, std::string indent,
  // $physicsmodel. The hulls go out as a DMX collision mesh beside the render
  // meshes; everything else round-trips out of the .phy's text tail.
  void WritePhysics(Qc& q, const Mdl& m, const std::string& mdlPath, const std::string& dir) {
@@ -1134777,7 +1134782,7 @@ index c1a5fbb..51c4c1d 100644
      std::vector<const PhySection*> solids;
      std::vector<const PhySection*> collisionText;
      const PhySection* edit = nullptr;
-@@ -2003,11 +2209,14 @@ void WriteFlexes(Qc& q, const Mdl& m, const FlexRig& rig, const std::string& fac
+@@ -2003,11 +2211,14 @@ void WriteFlexes(Qc& q, const Mdl& m, const FlexRig& rig, const std::string& fac
          q.Line((ok ? "" : "// ") + (g_studiomdl ? "%" + target + " = " + expr
                                                  : "$flexrule \"" + target + "\" = " + expr));
      }
@@ -1134792,9 +1134797,13 @@ index c1a5fbb..51c4c1d 100644
          q.Line("// " + std::to_string(skipped) + " of " + std::to_string(h.numflexrules) +
                 " flex rules use ops with no expression spelling");
          q.Line(importRig ? "// - they come back from the DMX rig via $datamodelflexes."
-@@ -2515,12 +2724,12 @@ void WriteDeclareSequenceFile(const Mdl& m, const std::string& dir) {
+@@ -2513,14 +2724,15 @@ void WriteDeclareSequenceFile(const Mdl& m, const std::string& dir) {
+     if (labels.empty())
+         return;
      const std::string name = BaseName(dir) + "_declaresequence.qci";
-     std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
+-    std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
++    const auto path = (std::filesystem::path(dir) / name).string();
++    std::FILE* f = std::fopen(path.c_str(), "wb");
      if (!f) {
 -        std::printf("\ncould not write %s\n", name.c_str());
 +        ExtractionError("cannot write \"" + name + "\"");
@@ -1134803,11 +1134812,11 @@ index c1a5fbb..51c4c1d 100644
      for (const std::string& l : labels)
          std::fprintf(f, "$declaresequence \"%s\"\n", l.c_str());
 -    std::fclose(f);
-+    if (!CloseOutput(f, name)) return;
++    if (!CloseOutput(f, path)) return;
      std::printf("\nwrote %s (%zu sequences)\n", name.c_str(), labels.size());
  }
  
-@@ -2563,11 +2772,12 @@ void WriteSequences(Qc& q, const Mdl& m) {
+@@ -2563,11 +2775,12 @@ void WriteSequences(Qc& q, const Mdl& m) {
  
          // blend grid. The grid is stored in the order the script listed it, so
          // it reads straight back; groupsize only says how to fold it.
@@ -1134824,7 +1134833,7 @@ index c1a5fbb..51c4c1d 100644
              const bool known = grid[k] >= 0 && grid[k] < static_cast<int>(animRefs.size());
              if (!known) {
                  opt("\"\"");
-@@ -2580,12 +2790,12 @@ void WriteSequences(Qc& q, const Mdl& m) {
+@@ -2580,12 +2793,12 @@ void WriteSequences(Qc& q, const Mdl& m) {
                            : "\"" + r.name + "\"");
              animFlags |= anims[grid[k]].flags;
          }
@@ -1134839,7 +1134848,7 @@ index c1a5fbb..51c4c1d 100644
          // animation options in a sequence body land on blend animation 0, so
          // they only belong here when that one was declared inline
          if (anims && anim0 >= 0 && anim0 < h.numlocalanim && animRefs[anim0].implied)
-@@ -2609,7 +2819,9 @@ void WriteSequences(Qc& q, const Mdl& m) {
+@@ -2609,7 +2822,9 @@ void WriteSequences(Qc& q, const Mdl& m) {
              opt("autoplay");
          if (f & fm::STUDIO_HIDDEN)
              opt("hidden");
@@ -1134850,7 +1134859,7 @@ index c1a5fbb..51c4c1d 100644
              opt("realtime");
          if (f & fm::STUDIO_WORLD_AND_RELATIVE)
              opt("worldrelative");
-@@ -2852,12 +3064,19 @@ std::string OutFolder(const std::string& in, const std::string& root, const char
+@@ -2852,12 +3067,19 @@ std::string OutFolder(const std::string& in, const std::string& root, const char
          std::filesystem::path(root.empty() ? in : root).parent_path();
      const std::filesystem::path base = outDir ? std::filesystem::path(outDir) : parent;
      std::filesystem::path rel;
@@ -1134872,7 +1134881,7 @@ index c1a5fbb..51c4c1d 100644
  }
  
  std::string OutScript(const std::string& dir) {
-@@ -2865,14 +3084,14 @@ std::string OutScript(const std::string& dir) {
+@@ -2865,14 +3087,14 @@ std::string OutScript(const std::string& dir) {
          .string();
  }
  
@@ -1134890,7 +1134899,7 @@ index c1a5fbb..51c4c1d 100644
          std::error_code ec;
          std::filesystem::create_directories(dir, ec);
          return DecompileGoldSrc(in, dir, OutScript(dir));
-@@ -2889,12 +3108,33 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2889,12 +3111,33 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      std::string err;
      if (!ReadFile(in.c_str(), m, forceVersion, err))
          return Fail("read error", err);
@@ -1134924,7 +1134933,7 @@ index c1a5fbb..51c4c1d 100644
      std::printf("model:       \"%s\"\n", h.name);
      std::printf("contents:    %d bones, %d bodyparts, %d materials, %d animations, %d sequences,\n"
                  "             %d flex controllers, %d attachments, %d hitbox sets\n",
-@@ -2903,9 +3143,18 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2903,9 +3146,18 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      STAGE(PrintMaterials, m);
  
      pulse::fatal::g_stage = "output folder";
@@ -1134944,7 +1134953,7 @@ index c1a5fbb..51c4c1d 100644
      const std::string outPath = OutScript(dir);
      std::FILE* f = std::fopen(outPath.c_str(), "wb");
      if (!f)
-@@ -2913,6 +3162,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2913,6 +3165,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
                      "cannot write \"" + outPath + "\"" +
                          (ec ? " (" + ec.message() + ")" : std::string()));
  
@@ -1134952,7 +1134961,7 @@ index c1a5fbb..51c4c1d 100644
      Qc q{f};
      q.Line("// mdldecompiler version " + std::string(kAppVersion));
      q.Line("// " + in);
-@@ -2923,9 +3173,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2923,9 +3176,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      // stock has no top-level flex/eye commands - they are $model options, so
      // capture them here and let WriteBodyParts put them in the block.
      pulse::fatal::g_stage = "MeshNames";
@@ -1134965,7 +1134974,7 @@ index c1a5fbb..51c4c1d 100644
      const std::string faceMesh = FaceMesh(m, meshNames);
      std::string faceBody;
      if (g_studiomdl) {
-@@ -2956,7 +3208,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -2956,7 +3211,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      // re-derive their weights from LOD 0 the way an authored LOD needs.
      if (g_studiomdl && lods.size() > 1) {
          q.Blank();
@@ -1134974,7 +1134983,7 @@ index c1a5fbb..51c4c1d 100644
      }
      for (size_t l = 1; l < lods.size(); ++l) {
          q.Blank();
-@@ -3010,6 +3262,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3010,6 +3265,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
              joints = JointsInfo();
          } else {
              q.Blank();
@@ -1134982,7 +1134991,7 @@ index c1a5fbb..51c4c1d 100644
              if (joints.namedHitboxes)
                  q.Line("// " + std::to_string(joints.namedHitboxes) +
                         " hitbox name(s) are lost - a DMX hitbox has no name");
-@@ -3028,6 +3281,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3028,6 +3284,11 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
          STAGE(WriteHitboxes, q, m);
      STAGE(WriteBones, q, m);
      STAGE(WriteBoneMerges, q, m);
@@ -1134994,7 +1135003,7 @@ index c1a5fbb..51c4c1d 100644
      // stock has neither $driverbone nor $driveraimat - only the .vrd file form
      if (!joints.procedural && g_studiomdl) {
          STAGE(WriteProceduralBones, q, m, dir);
-@@ -3048,7 +3306,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3048,7 +3309,7 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      STAGE(WritePhysics, q, m, in, dir);
      const auto tPhys1 = Clock::now();
      STAGE(WriteKeyValues, q, m);
@@ -1135003,7 +1135012,7 @@ index c1a5fbb..51c4c1d 100644
  
      if (h.numlocalanim > 0)
          std::printf("\nanimations:\n");
-@@ -3060,8 +3318,9 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3060,8 +3321,9 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      if (g_declareseq)
          STAGE(WriteDeclareSequenceFile, m, dir);
  
@@ -1135014,7 +1135023,7 @@ index c1a5fbb..51c4c1d 100644
  
      if (pulse::perf::g_enabled) {
          pulse::perf::Record("total", "read", ms(t0, tRead));
-@@ -3073,6 +3332,76 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
+@@ -3073,6 +3335,76 @@ int DecompileOne(const std::string& in, const std::string& root, const char* out
      return 0;
  }
  
@@ -1135091,7 +1135100,7 @@ index c1a5fbb..51c4c1d 100644
  } // namespace
  
  int RunDecompile(int argc, char** argv) {
-@@ -3083,14 +3412,26 @@ int RunDecompile(int argc, char** argv) {
+@@ -3083,14 +3415,26 @@ int RunDecompile(int argc, char** argv) {
      std::string dmxEncoding = "binary";
      int dmxModel = 15;
      for (int i = 1; i < argc; ++i) {
@@ -1135122,7 +1135131,7 @@ index c1a5fbb..51c4c1d 100644
          else if (std::strcmp(argv[i], "-smdanimation") == 0)
              SetAnimFormat(true);
          else if (std::strcmp(argv[i], "-pulseqc") == 0)
-@@ -3109,11 +3450,32 @@ int RunDecompile(int argc, char** argv) {
+@@ -3109,11 +3453,32 @@ int RunDecompile(int argc, char** argv) {
              pulse::fatal::g_pause = true;
          else if (std::strcmp(argv[i], "-perfmetrics") == 0)
              pulse::perf::g_enabled = true;
@@ -1135155,7 +1135164,7 @@ index c1a5fbb..51c4c1d 100644
      if (const char* err = SetDmxOutput(dmxEncoding, dmxModel))
          return Fail("command line", err);
  
-@@ -3134,17 +3496,42 @@ int RunDecompile(int argc, char** argv) {
+@@ -3134,17 +3499,42 @@ int RunDecompile(int argc, char** argv) {
      if (files.empty())
          return Fail("command line", "no .mdl files found");
  

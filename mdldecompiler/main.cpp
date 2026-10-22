@@ -999,6 +999,7 @@ bool WriteAxisInterpBones(Qc& q,const std::string& dir,const std::string& text,s
         const bool written=std::fwrite(text.data(),1,text.size(),f)==text.size();
         const bool closed=std::fclose(f)==0;
         if(!written||!closed){error="could not finish AxisInterp file '"+path+"'";return false;}
+        QualityWritten(path);
         std::printf("\naxis-interpolation bones:\n  wrote %s\n",name.c_str());
     }
     q.Blank();q.Line("$proceduralbones \""+name+"\"");return true;
@@ -1121,7 +1122,8 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
 
     const std::string name = BaseName(dir) + ".vrd";
     if (!g_nomesh) {
-        std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
+        const auto path = (std::filesystem::path(dir) / name).string();
+        std::FILE* f = std::fopen(path.c_str(), "wb");
         if (!f) {
             ExtractionError("cannot write procedural bones file \"" + name + "\"");
             return;
@@ -1133,7 +1135,7 @@ void WriteProceduralBones(Qc& q, const Mdl& m, const std::string& dir) {
                          s.c_str());
         for (const std::string& l : lines)
             std::fprintf(f, "%s\n", l.c_str());
-        if (!CloseOutput(f, name)) return;
+        if (!CloseOutput(f, path)) return;
         std::printf("\nprocedural bones:\n  wrote %s\n", name.c_str());
     }
 
@@ -2722,14 +2724,15 @@ void WriteDeclareSequenceFile(const Mdl& m, const std::string& dir) {
     if (labels.empty())
         return;
     const std::string name = BaseName(dir) + "_declaresequence.qci";
-    std::FILE* f = std::fopen((std::filesystem::path(dir) / name).string().c_str(), "wb");
+    const auto path = (std::filesystem::path(dir) / name).string();
+    std::FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) {
         ExtractionError("cannot write \"" + name + "\"");
         return;
     }
     for (const std::string& l : labels)
         std::fprintf(f, "$declaresequence \"%s\"\n", l.c_str());
-    if (!CloseOutput(f, name)) return;
+    if (!CloseOutput(f, path)) return;
     std::printf("\nwrote %s (%zu sequences)\n", name.c_str(), labels.size());
 }
 
