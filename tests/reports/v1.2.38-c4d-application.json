@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "application_version": 2027000,
+  "meshes": [
+    {
+      "name": "PlainGenerator",
+      "reference_quads": 56,
+      "triangles": 112
+    },
+    {
+      "name": "BentGenerator",
+      "reference_quads": 56,
+      "triangles": 112
+    }
+  ],
+  "source_hierarchy_nodes_checked": 4,
+  "max_world_position_error_m": 2.5526078939464014e-07,
+  "max_local_position_error_cm": 3.6055407690582797e-06,
+  "max_uv_error": 2.9802322387695312e-08,
+  "max_normal_component_error": 1.1920928955078125e-07,
+  "diffuse_colors_checked": 0,
+  "success": true,
+  "skin_assessment": {
+    "application_version": 2027000,
+    "fps": 30,
+    "frames": [
+      {
+        "frame": 0,
+        "max_position_error_cm": 0.0
+      },
+      {
+        "frame": 15,
+        "max_position_error_cm": 0.00011884104685577768
+      },
+      {
+        "frame": 30,
+        "max_position_error_cm": 6.062906822990044e-05
+      }
+    ],
+    "max_position_error_cm": 0.00011884104685577768,
+    "tolerance_cm": 0.0002,
+    "scope": "Assessment of authored bind/weight model; skeletal import remains unsupported"
+  }
+}

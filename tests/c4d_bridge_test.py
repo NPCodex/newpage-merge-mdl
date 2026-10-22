@@ -19,6 +19,8 @@ COMPILER = Path(sys.argv.pop(1)).resolve()
 HELPER = COMPILER.with_name('NewPageMergeMDL-C4D.exe')
 FIXTURE = Path(__file__).parent / 'fixtures/cineware-static.c4d'
 MATERIAL_FIXTURE = Path(__file__).parent / 'fixtures/cineware-materials.c4d'
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools/c4d_bridge'))
+from compare_application import compare as compare_application
 
 
 def read_glb(path):
@@ -154,6 +156,33 @@ class C4dBridge(unittest.TestCase):
         text = self.run_process([HELPER, self.source, output], success=False)
         self.assertIn('Refusing to overwrite', text)
         self.assertEqual(output.read_bytes(), b'previous scene')
+
+    def test_cinema4d_2027_saved_caches_match_application_geometry(self):
+        source = FIXTURE.parent / 'cineware-app-cache-2027.c4d'
+        reference = FIXTURE.parent / 'cineware-app-cache-2027-reference.json'
+        output = self.root / 'application-caches.glb'
+        self.run_process([HELPER, source.resolve(), output])
+        comparison = compare_application(reference, output)
+        self.assertTrue(comparison['success'])
+        self.assertEqual(comparison['source_hierarchy_nodes_checked'], 4)
+        self.assertEqual(sum(mesh['triangles'] for mesh in comparison['meshes']), 224)
+        # The generating script authors this diffuse color; the independent
+        # application JSON supplies the mesh, corner and transform references.
+        doc, _ = read_glb(output)
+        self.assertEqual(len(doc['materials']), 1)
+        for actual, expected in zip(doc['materials'][0]['pbrMetallicRoughness']['baseColorFactor'], (.2, .4, .8, 1)):
+            self.assertAlmostEqual(actual, expected, places=6)
+
+    def test_cinema4d_2027_animated_skin_is_explicitly_rejected(self):
+        source = FIXTURE.parent / 'cineware-app-animated-skin-2027.c4d'
+        output = self.root / 'application-skin.glb'
+        text = self.run_process([HELPER, source.resolve(), output], success=False)
+        self.assertIn('animated C4D object is not supported', text)
+        self.assertFalse(output.exists())
+        self.compile()
+        original = self.outputs()
+        self.compile(source=source.resolve(), success=False)
+        self.assertEqual(self.outputs(), original)
 
     def test_missing_cache_animation_skin_and_corrupt_geometry_fail_without_output(self):
         expected = {

@@ -30,10 +30,11 @@ required plugins installed. A generator or plugin without usable polygon caches
 fails with an explicit diagnostic. This is a static snapshot of the saved state:
 the bridge does not run Cinema 4D generators, third-party plugins or simulations.
 
-**Validation status:** editable polygons and failure diagnostics pass the checked-in
-regressions. Real Cinema 4D generator/deformer cache comparisons are still pending
-an activated Cinema 4D installation; do not treat the candidate traversal as
-validated against Cinema 4D 2026. See [VALIDATION.md](VALIDATION.md).
+**Validation status:** thirteen checked-in regression groups pass with the rebuilt
+candidate. Two Cinema 4D 2027 generator/deformer caches match the application's
+Current State to Object geometry, hierarchy, materials, normals and UVs within
+float tolerances. This is bounded evidence for the authored fixtures, not every
+generator, application version or plugin. See [VALIDATION.md](VALIDATION.md).
 
 Skin weights and animated objects are explicitly rejected, rather than silently
 producing a static unskinned model. Export the rig and animation as FBX or glTF
