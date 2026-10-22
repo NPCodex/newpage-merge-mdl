@@ -1757,7 +1757,7 @@ int main(int argc, char** argv) try {
         std::memcpy(&chain, chainRaw, sizeof(chain));
         if (chain.numlinks != 3)
             continue;
-        const auto* linkRaw = m.At<fm::mstudioiklink_t>(chainRaw, chain.linkindex, 3);
+        const char* linkRaw = m.At<char>(chainRaw, chain.linkindex, 3 * sizeof(fm::mstudioiklink_t));
         if (!linkRaw)
             continue;
         fm::mstudioiklink_t link[3];
