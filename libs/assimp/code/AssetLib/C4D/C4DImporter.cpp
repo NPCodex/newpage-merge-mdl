@@ -50,6 +50,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "PostProcessing/GenVertexNormalsProcess.h"
 #include "PostProcessing/ProcessHelper.h"
 #include <memory>
+#include <cmath>
+#include <limits>
 #include <assimp/IOSystem.hpp>
 #include <assimp/scene.h>
 #include <assimp/ai_assert.h>
@@ -155,16 +157,23 @@ void C4DImporter::InternReadFile( const std::string& pFile, aiScene* pScene, IOS
     pScene->mRootNode->mTransformation.b2 = 0.01f;
     pScene->mRootNode->mTransformation.c3 = -0.01f;
 
-    // first convert all materials
-    ReadMaterials(doc->GetFirstMaterial());
-
-    // process C4D scene-graph recursively
+    // A failed read must release data not yet owned by aiScene. Keep material
+    // creation and traversal inside the same cleanup boundary.
+    meshes.clear();
+    materials.clear();
+    material_mapping.clear();
+    visitedObjects.clear();
+    cacheNodeId = 0;
     try {
+        ReadMaterials(doc->GetFirstMaterial());
         RecurseHierarchy(doc->GetFirstObject(), pScene->mRootNode);
     } catch(...) {
         for(aiMesh* mesh : meshes) {
             delete mesh;
         }
+        for(aiMaterial* material : materials) delete material;
+        meshes.clear();
+        materials.clear();
         BaseDocument::Free(doc);
         throw;
     }
@@ -297,48 +306,56 @@ void C4DImporter::ReadMaterials(BaseMaterial* mat) {
 }
 
 // ------------------------------------------------------------------------------------------------
-void C4DImporter::RecurseHierarchy(BaseObject* object, aiNode* parent) {
-    ai_assert(parent != nullptr );
-    std::vector<aiNode*> nodes;
+void C4DImporter::RecurseHierarchy(BaseObject* object, aiNode* parent,
+    std::vector<BaseObject*> materialOwners, unsigned int depth, bool consumed, bool cache) {
+    ai_assert(parent != nullptr);
+    if (depth > 256) ThrowException("object/cache hierarchy exceeds 256 levels");
+    std::vector<std::unique_ptr<aiNode>> nodes;
 
-    // based on Cineware sample code
     while (object) {
+        if (!visitedObjects.insert(object).second)
+            ThrowException("cyclic or multiply referenced object/cache hierarchy");
+        if (visitedObjects.size() > 1000000)
+            ThrowException("object/cache hierarchy exceeds 1000000 objects");
         const Int32 type = object->GetType();
+        const auto name = aiStringFrom(object->GetName());
+        // This bridge exports a static evaluated snapshot. Reject sources whose
+        // animation or skin would otherwise disappear in a successful GLB.
+        if (object->GetFirstCTrack())
+            ThrowException("animated C4D object is not supported by the static bridge: ", name.C_Str(),
+                "; bake/export skeletal animation as FBX or glTF in Cinema 4D");
+        if (object->GetTag(Tweights))
+            ThrowException("C4D skin weights are not supported by the static bridge: ", name.C_Str(),
+                "; export the rig and animation as FBX or glTF in Cinema 4D");
+
         const Matrix& ml = object->GetMl();
-
-        aiNode* const nd = new aiNode();
-
+        std::unique_ptr<aiNode> owned(new aiNode());
+        aiNode* const nd = owned.get();
         nd->mParent = parent;
-        nd->mName = aiStringFrom(object->GetName());
+        nd->mName = cache ? aiString(std::string(parent->mName.C_Str()) + "__cache_" +
+            std::to_string(++cacheNodeId)) : name;
+        nd->mTransformation.a1 = ml.v1.x; nd->mTransformation.b1 = ml.v1.y; nd->mTransformation.c1 = ml.v1.z;
+        nd->mTransformation.a2 = ml.v2.x; nd->mTransformation.b2 = ml.v2.y; nd->mTransformation.c2 = ml.v2.z;
+        nd->mTransformation.a3 = ml.v3.x; nd->mTransformation.b3 = ml.v3.y; nd->mTransformation.c3 = ml.v3.z;
+        nd->mTransformation.a4 = ml.off.x; nd->mTransformation.b4 = ml.off.y; nd->mTransformation.c4 = ml.off.z;
+        for (unsigned int row = 0; row < 4; ++row)
+            for (unsigned int col = 0; col < 4; ++col)
+                if (!std::isfinite(nd->mTransformation[row][col]))
+                    ThrowException("non-finite C4D object transform: ", name.C_Str());
 
-        nd->mTransformation.a1 = ml.v1.x;
-        nd->mTransformation.b1 = ml.v1.y;
-        nd->mTransformation.c1 = ml.v1.z;
-
-        nd->mTransformation.a2 = ml.v2.x;
-        nd->mTransformation.b2 = ml.v2.y;
-        nd->mTransformation.c2 = ml.v2.z;
-
-        nd->mTransformation.a3 = ml.v3.x;
-        nd->mTransformation.b3 = ml.v3.y;
-        nd->mTransformation.c3 = ml.v3.z;
-
-        nd->mTransformation.a4 = ml.off.x;
-        nd->mTransformation.b4 = ml.off.y;
-        nd->mTransformation.c4 = ml.off.z;
-
-        nodes.push_back(nd);
-
-        GeData data;
-        if (type == Ocamera) {
-            object->GetParameter(CAMERAOBJECT_FOV, data);
-            // TODO: read camera
-        } else if (type == Olight) {
-            // TODO: read light
-        } else if (type == Opolygon) {
+        auto owners = materialOwners;
+        owners.push_back(object);
+        // Deform cache supersedes the generator cache and editable geometry.
+        // Both can contain further caches/hierarchies, and the generator cache
+        // can be a sibling list. Never emit the underlying polygon twice.
+        BaseObject* evaluated = object->GetDeformCache();
+        if (!evaluated) evaluated = object->GetCache();
+        if (evaluated) {
+            RecurseHierarchy(evaluated, nd, owners, depth + 1, false, true);
+        } else if (type == Opolygon && !object->GetBit(BIT_CONTROLOBJECT)) {
             std::unique_ptr<aiMesh> mesh(ReadMesh(object));
-            if(mesh) {
-                const auto assignments = ResolveMaterials(static_cast<PolygonObject*>(object));
+            if (mesh) {
+                const auto assignments = ResolveMaterials(static_cast<PolygonObject*>(object), owners);
                 std::map<unsigned int, std::vector<unsigned int>> groups;
                 for (unsigned int i = 0; i < mesh->mNumFaces; ++i) groups[assignments[i]].push_back(i);
                 nd->mNumMeshes = static_cast<unsigned int>(groups.size());
@@ -348,9 +365,7 @@ void C4DImporter::RecurseHierarchy(BaseObject* object, aiNode* parent) {
                     nd->mMeshes[0] = static_cast<unsigned int>(meshes.size());
                     meshes.push_back(mesh.release());
                 } else {
-                    // Generate missing smooth normals on the original connected
-                    // mesh. Generating them after splitting would create hard
-                    // seams solely because neighboring faces use different materials.
+                    // Smooth on the connected geometry before material splitting.
                     if (!mesh->HasNormals()) {
                         GenVertexNormalsProcess generator;
                         generator.GenMeshVertexNormals(mesh.get(), 0);
@@ -364,19 +379,27 @@ void C4DImporter::RecurseHierarchy(BaseObject* object, aiNode* parent) {
                     }
                 }
             }
-        } else {
-            LogWarn("ignoring object type: ", type);
+        } else if (!consumed && !object->GetBit(BIT_CONTROLOBJECT) &&
+                   type != Onull && type != Ocamera && type != Olight && type != Ojoint) {
+            ThrowException("missing saved polygon cache or unsupported C4D object/plugin: ",
+                name.C_Str(), " (type ", type, "); save the evaluated scene for Cineware with its plugins installed, "
+                "or make the object editable in Cinema 4D");
         }
-
-        RecurseHierarchy(object->GetDown(), nd);
+        // Control children of a generator are still hierarchy nodes; their
+        // geometry is excluded by BIT_CONTROLOBJECT. Unknown modifiers/splines
+        // are only harmless when their parent has a saved evaluated cache.
+        RecurseHierarchy(object->GetDown(), nd, owners, depth + 1, consumed || evaluated != nullptr, cache);
+        nodes.push_back(std::move(owned));
         object = object->GetNext();
     }
-
-    // copy nodes over to parent
-    parent->mNumChildren = static_cast<unsigned int>(nodes.size());
-    if (parent->mNumChildren) {
-        parent->mChildren = new aiNode*[parent->mNumChildren]();
-        std::copy(nodes.begin(), nodes.end(), parent->mChildren);
+    if (!nodes.empty()) {
+        const unsigned int oldCount = parent->mNumChildren;
+        auto** children = new aiNode*[oldCount + nodes.size()]();
+        if (oldCount) std::copy(parent->mChildren, parent->mChildren + oldCount, children);
+        for (size_t i = 0; i < nodes.size(); ++i) children[oldCount + i] = nodes[i].release();
+        delete[] parent->mChildren;
+        parent->mChildren = children;
+        parent->mNumChildren = oldCount + static_cast<unsigned int>(nodes.size());
     }
 }
 
@@ -399,10 +422,19 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     }
 
     const Vector* points = polyObject->GetPointR();
-    ai_assert(points != nullptr);
+    if (!points) ThrowException("missing polygon point data");
 
     const CPolygon* polys = polyObject->GetPolygonR();
-    ai_assert(polys != nullptr);
+    if (!polys) ThrowException("missing polygon face data");
+    if (static_cast<uint64_t>(polyCount) * 4 > std::numeric_limits<unsigned int>::max())
+        ThrowException("polygon corner count exceeds supported range");
+    for (Int32 i = 0; i < pointCount; ++i)
+        if (!std::isfinite(points[i].x) || !std::isfinite(points[i].y) || !std::isfinite(points[i].z))
+            ThrowException("non-finite C4D polygon point: ", i);
+    for (Int32 i = 0; i < polyCount; ++i)
+        for (Int32 index : {polys[i].a, polys[i].b, polys[i].c, polys[i].d})
+            if (index < 0 || index >= pointCount)
+                ThrowException("C4D polygon point index out of range at polygon ", i);
 
     std::unique_ptr<aiMesh> mesh(new aiMesh());
     mesh->mName = aiStringFrom(object->GetName());
@@ -439,6 +471,8 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     NormalTag* normals_src = nullptr;
     if(tag) {
         normals_src = static_cast<NormalTag*>(tag);
+        if (normals_src->GetDataCount() != polyCount)
+            ThrowException("C4D normal tag count does not match polygon count");
         normals = mesh->mNormals = new aiVector3D[mesh->mNumVertices]();
     }
 
@@ -446,6 +480,8 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     TangentTag* tangents_src = nullptr;
     if(tag) {
         tangents_src = static_cast<TangentTag*>(tag);
+        if (tangents_src->GetDataCount() != pointCount)
+            ThrowException("C4D tangent tag count does not match point count");
         tangents = mesh->mTangents = new aiVector3D[mesh->mNumVertices]();
         bitangents = mesh->mBitangents = new aiVector3D[mesh->mNumVertices]();
     }
@@ -454,6 +490,8 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
     UVWTag* uvs_src = nullptr;
     if(tag) {
         uvs_src = static_cast<UVWTag*>(tag);
+        if (uvs_src->GetDataCount() != polyCount)
+            ThrowException("C4D UV tag count does not match polygon count");
         uvs = mesh->mTextureCoords[0] = new aiVector3D[mesh->mNumVertices]();
         mesh->mNumUVComponents[0] = 2;
     }
@@ -609,14 +647,16 @@ aiMesh* C4DImporter::ReadMesh(BaseObject* object) {
 }
 
 // ------------------------------------------------------------------------------------------------
-std::vector<unsigned int> C4DImporter::ResolveMaterials(PolygonObject* obj) {
+std::vector<unsigned int> C4DImporter::ResolveMaterials(PolygonObject* obj,
+    const std::vector<BaseObject*>& owners) {
     ai_assert(obj != nullptr);
     const unsigned int mat_count = static_cast<unsigned int>(materials.size());
     std::vector<unsigned int> result(obj->GetPolygonCount(), mat_count);
     // Texture tags are ordered layers. For this static, single-material-per-face
     // import the last applicable tag wins. A nonempty restriction refers to a
     // named polygon-selection tag; a missing selection must not paint the mesh.
-    for (BaseTag* tag = obj->GetFirstTag(); tag; tag = tag->GetNext()) {
+    for (BaseObject* owner : owners) {
+    for (BaseTag* tag = owner->GetFirstTag(); tag; tag = tag->GetNext()) {
         if (tag->GetType() != Ttexture) continue;
         TextureTag& texture = static_cast<TextureTag&>(*tag);
         const auto material = material_mapping.find(texture.GetMaterial());
@@ -637,6 +677,7 @@ std::vector<unsigned int> C4DImporter::ResolveMaterials(PolygonObject* obj) {
         }
         for (unsigned int face = 0; face < result.size(); ++face)
             if (!selected || selected->IsSelected(static_cast<Int32>(face))) result[face] = material->second;
+    }
     }
     return result;
 }

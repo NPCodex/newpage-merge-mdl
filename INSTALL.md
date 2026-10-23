@@ -10,11 +10,15 @@
 .\NewPageMergeMDL.exe "D:/models/model.qc" -game "D:/Games/csgo legacy/csgo" -OutDir "D:/build/model"
 ```
 
+本轮 Linux x86-64 构建配置的最低验收环境为 Ubuntu 24.04 LTS（glibc 2.39、libstdc++ 提供 GLIBCXX_3.4.32/CXXABI_1.3.15）；CI 固定该系统并检查所需符号上限。当前候选是否已完成整包运行验收见 [平台矩阵](GAME_PLATFORM_MATRIX.md)，配置本身不代表验收通过。更旧发行版可自行构建，不以能解压视为可运行。
+
 Linux 使用 `./NewPageMergeMDL` 并换成实际 Linux 路径；若解压工具未保留可执行权限，先为需要运行的程序设置执行权限。
+
+Windows 程序支持系统已启用的 Win32 长路径策略。输出目录过深时，事务暂存路径可能超过 260 字符；系统未启用该策略时请使用较短输出目录。工具不会修改系统策略。
 
 包内根目录提供 `INSTALL.md`、`upstream-manifest.json` 和 `SHA256SUMS.txt`，验证报告在 `tests/reports/`。自动合并包与手动维护包均在 `sources/NewPageMergeMDL-source.zip` 保存精确构建源码。以包内 `upstream-manifest.json` 的 `controller_sha`、来源散列及构建信息识别附件；同标签替换构建可能保留旧标签，标签或 GitHub 自动 Source code 归档不能替代包内源码。独立 GPL 转换器的对应源码始终随包附带。
 
-v1.2.26 精简包保留所有工具和导入功能，Windows 继续附带原先已验证的 C4D helper。tinyusdz 已静态链接，运行目录仅保留它的 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，无需下载源码或开发图片来使用 USD 导入。上述完整项目源码与 GPL 转换器对应源码的获取方式不变。
+完整包保留所有工具和导入功能，Windows 附带由构建清单固定版本及散列的 C4D helper，其支持范围和验证记录见 [格式指南](O5_FORMAT_IMPORTS.md)。tinyusdz 已静态链接，运行目录仅保留它的 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，无需下载源码或开发图片来使用 USD 导入。上述完整项目源码与 GPL 转换器对应源码的获取方式不变。
 
 - **更新：** 解压到新目录并使用整套新工具，保留自己的模型和配置；不要只覆盖主程序或混用旧版辅助文件。模型发布也应整套替换匹配的 MDL/VVD/VTX/PHY/ANI，先在目标游戏验证。
 - **无需另找插件包：** Windows 直接 C4D 导入使用包内 helper；Linux 需要先在 Windows 将 C4D 转为 GLB。VRML 转换器保持独立程序及 GPL 许可，使用同一个 ZIP 不改变主程序许可。
@@ -36,7 +40,7 @@ Linux 对应使用 `./subtools/ag2proportions`。工具需要已安装的 CS2 �
 
 v1.2.34 先预检编译工具链，源文件、VMDL/首次备份与编译产物暂存成功后才统一发布，普通文件错误或编译失败会回滚；首次备份不替换。同一 VMDL 的并发任务会被拒绝；进程被强制终止后，下次处理该 VMDL 会先恢复未完成事务，或清理已经提交的事务。反编译器对同一模型输出目录采用相同的锁定和恢复机制，并保留目录中的用户文件。
 
-事务记录和暂存数据位于输出旁的 `.newpage-output-transactions`，锁文件位于 `.newpage-output-locks`；异常后不要删除这些文件或带 `.newpage-txn-` 的恢复文件。若输出或恢复备份被其他程序改动，工具会停止恢复并保留现场，避免覆盖外部修改。多个文件的发布过程可能被其他读取程序看到；进程中断恢复不代表对断电、硬件故障或不遵守锁定的外部写入提供绝对保证。历史资源验证见 [VALIDATION.md](VALIDATION.md)，当前有界人物/动作实测见 [SAS 实机报告](tests/reports/ag2-gameplay-20261020.md)；不扩为任意模型或生成第一人称图认证。
+事务记录和暂存数据位于输出旁的 `.newpage-output-transactions`，锁文件位于 `.newpage-output-locks`；异常后不要删除这些文件或带 `.newpage-txn-` 的恢复文件。若输出或恢复备份被其他程序改动，工具会停止恢复并保留现场，避免覆盖外部修改。多个文件的发布过程可能被其他读取程序看到；进程中断恢复不代表对断电、硬件故障或不遵守锁定的外部写入提供绝对保证。历史资源验证见 [VALIDATION.md](VALIDATION.md)，当前有界人物/动作实测见 [SAS 实机报告](tests/reports/ag2-gameplay-v1238.md)：涵盖该样本的生成第一人称图与列出的武器动作，不扩为任意模型、附件或动作认证。
 
 随包许可位于 `subtools/licenses/zstd.txt` 和 `subtools/licenses/ValveResourceFormat.txt`；源码许可位于 `libs/zstd/LICENSE` 和 `libs/keyvalues3/ValveResourceFormat.LICENSE`。无需下载独立辅助包。
 
@@ -44,9 +48,9 @@ v1.2.34 先预检编译工具链，源文件、VMDL/首次备份与编译产物�
 
 VMD/L4D 同样支持整批持久恢复和同目标并发保护。输出旁的 `<文件名>.newpage-subtool-journal` 指向系统临时目录中的 `newpage-subtool-stage-*`；发布备份位于目标目录的 `.newpage-subtool-publish-*`。中断后不要清理这些文件或系统临时目录，按原命令重跑；内容冲突时先检查外部修改并保留现场。系统临时目录中的 `newpage-subtool-lock-*.lock` 是进程锁，不应通过删锁绕过正在运行的任务。
 
-Python 准备脚本 `mesh_states.py`、`vrm_runtime.py` 和 `vrml_import.py` 先隔离生成并编译，再统一发布相关输出；普通写入错误会回滚，同目标 helper 并发会被拒绝。它们尚不提供强杀/断电后的持久自动恢复；不要将此范围与原生 VMD/L4D 混同。输入与生成输出不能是同一文件，VRM 应使用独立的 `--out` 目录。
+Python 准备脚本及作者包装脚本先隔离生成并编译，再统一发布相关输出，具有同目标进程锁和持久 journal。下次保留任一组成员的任务会先锁定整组，恢复未提交的事务或清理已提交事务；恢复中再次中断仍可重试。输入与生成输出不能是同一文件，VRM 应使用独立的 `--out` 目录。
 
-若 Python helper 连回滚也失败，错误会给出保留的暂存目录；其中 `recovery.json` 记录原输出与备份的对应关系。保留该目录和输出旁的 `.newpage-helper-old-*`，核对外部修改后再手工恢复。已成功提交但无法清理旧备份时只显示警告，当前新输出仍然有效。
+中断后保留 `.newpage-helper-*` 和 `*.newpage-helper-journal` 文件，按原命令重跑。若外部改动与记录指纹冲突，自动恢复停止并保留日志/备份；先核对这些改动再处理。文件内容会刷新，支持的平台还刷新目录，但这不保证任意文件系统、硬件断电或外部并发读取的安全。细节见 [作者工作流](AUTHORING_WORKFLOWS.md#interrupted-helper-publication)。
 
 ## English
 
@@ -58,11 +62,15 @@ Python 准备脚本 `mesh_states.py`、`vrm_runtime.py` 和 `vrml_import.py` 先
 ./NewPageMergeMDL "/models/model.qc" -game "/games/csgo legacy/csgo" -OutDir "/build/model"
 ```
 
+The configured minimum Linux x86-64 acceptance environment is Ubuntu 24.04 LTS (glibc 2.39 and libstdc++ providing GLIBCXX_3.4.32/CXXABI_1.3.15). CI pins this baseline and rejects newer required symbols. See the [platform matrix](GAME_PLATFORM_MATRIX.md) for the current candidate's actual package-run status; configuration alone is not a passing run. Older distributions require a source build and their own validation.
+
 On Windows, use `NewPageMergeMDL.exe` and your Windows paths. On Linux, restore executable permission for the required programs if your extractor did not preserve it.
+
+Windows programs opt into the system's enabled Win32 long-path policy. Transaction staging can push a deeply nested export beyond 260 characters; use a shorter output directory if that policy is disabled. The tools do not change system policy.
 
 `INSTALL.md`, `upstream-manifest.json` and `SHA256SUMS.txt` are at the package root; validation reports are in `tests/reports/`. Both automatic and maintained packages contain their exact build input at `sources/NewPageMergeMDL-source.zip`. Identify the archive by `controller_sha`, source hashes and build information in its `upstream-manifest.json`. Replacing assets may retain the original tag, so the tag and GitHub-generated source archive may describe an earlier build. The separate GPL converter's corresponding source is always bundled.
 
-The smaller v1.2.26 packages retain all tools and import features, including the previously verified Windows C4D helper. tinyusdz is statically linked, so its runtime directory retains only `LICENSE`, `LICENSE-APACHE-2.0`, `SOURCE.md` and `THIRD_PARTY_NOTICES.md`; USD import needs no source or developer-image download. Complete project source and the GPL converter's corresponding source remain available as described above.
+The complete packages retain all tools and import features. Windows includes the C4D helper pinned by version and hash in the build manifest; see the [format guide](O5_FORMAT_IMPORTS.md) for its supported scope and validation. tinyusdz is statically linked, so its runtime directory retains only `LICENSE`, `LICENSE-APACHE-2.0`, `SOURCE.md` and `THIRD_PARTY_NOTICES.md`; USD import needs no source or developer-image download. Complete project source and the GPL converter's corresponding source remain available as described above.
 
 - **Updates:** extract into a fresh directory and use the complete new tool set. Preserve your own inputs and configuration; do not mix older helpers with a new compiler. Deploy matching MDL/VVD/VTX/PHY/ANI files together after validation in the target game.
 - **Bundled helpers:** Windows C4D input uses the included helper; Linux requires GLB conversion on Windows first. The VRML converter remains a separate GPL program in the same archive; the main program retains its existing license.
@@ -84,7 +92,7 @@ Use the `.exe` on Windows. Installed CS2 data is required. Compiling the generat
 
 Since v1.2.34, compiler dependencies are checked first; sources, optional VMDL/first backup and compiled assets are staged and published with rollback for ordinary errors. The first backup is retained. A concurrent job for the same VMDL is rejected. After forced process termination, the next invocation for that VMDL first restores an unfinished transaction or finishes cleanup of a committed one. The decompiler applies the same locking and recovery to each model output directory while retaining user files in that directory.
 
-Transaction records and work files live beside the output in `.newpage-output-transactions`; locks live in `.newpage-output-locks`. After an interruption, retain these and any `.newpage-txn-` recovery files. If another program has changed an output or recovery backup, recovery stops and preserves the evidence instead of replacing the external edit. Readers can observe a multi-file publication in progress. Process-interruption recovery is not an absolute guarantee against power loss, hardware failure, or external writers that ignore the lock. See [VALIDATION.md](VALIDATION.md) for historical resource checks and the [SAS gameplay report](tests/reports/ag2-gameplay-20261020.md) for current bounded model/action observations; arbitrary rigs and generated first-person graphs are not certified.
+Transaction records and work files live beside the output in `.newpage-output-transactions`; locks live in `.newpage-output-locks`. After an interruption, retain these and any `.newpage-txn-` recovery files. If another program has changed an output or recovery backup, recovery stops and preserves the evidence instead of replacing the external edit. Readers can observe a multi-file publication in progress. Process-interruption recovery is not an absolute guarantee against power loss, hardware failure, or external writers that ignore the lock. See [VALIDATION.md](VALIDATION.md) for historical resource checks and the [SAS gameplay report](tests/reports/ag2-gameplay-v1238.md) for current bounded model/action observations, including that fixture's generated first-person graph and listed weapon actions; arbitrary rigs, attachments and actions are not certified.
 
 Bundled notices are at `subtools/licenses/zstd.txt` and `subtools/licenses/ValveResourceFormat.txt`; source notices are at `libs/zstd/LICENSE` and `libs/keyvalues3/ValveResourceFormat.LICENSE`. No separate helper archive is required.
 
@@ -92,6 +100,6 @@ See [Before compiling](README.en.md#before-compiling), [format imports](O5_FORMA
 
 VMD/L4D also support batch recovery and same-target locking. Each `<filename>.newpage-subtool-journal` beside an output points to `newpage-subtool-stage-*` in the system temporary directory; publication backups use `.newpage-subtool-publish-*` beside their targets. Preserve these and the temporary directory after interruption, then rerun the original command. Inspect external-edit conflicts before altering recovery data. The temporary `newpage-subtool-lock-*.lock` files implement process locks; deleting them is not a way to bypass a running job.
 
-The Python preparation scripts `mesh_states.py`, `vrm_runtime.py` and `vrml_import.py` generate and compile in isolation before publishing related outputs together. Ordinary write failures roll back, and concurrent helper writers are rejected. They do not provide persistent recovery after forced termination or power loss. Input and generated output files must differ; use a separate VRM `--out` directory.
+Python preparation and authoring helpers generate/compile in isolation and publish related outputs with process locks and a persistent journal. The next invocation reserving any group member locks the entire group and restores an uncommitted transaction or finishes committed cleanup. Recovery interrupted a second time can be retried. Input and generated output files must differ; use a separate VRM `--out` directory.
 
-If rollback itself fails, the error identifies retained staging with a `recovery.json` mapping original destinations to backups. Keep that directory and adjacent `.newpage-helper-old-*` files until external edits are reviewed and recovery is completed manually. Failure to remove an old backup after a successful commit is a warning; the new outputs remain valid.
+Keep `.newpage-helper-*` files and `*.newpage-helper-journal` pointers after interruption, then rerun the original command. Fingerprint conflicts from external edits stop automatic recovery and retain its journal/backups for inspection. File contents are flushed, with directory flushing where supported; this is not an absolute filesystem/hardware power-loss guarantee or an atomic snapshot for readers. See [authoring workflows](AUTHORING_WORKFLOWS.md#interrupted-helper-publication).

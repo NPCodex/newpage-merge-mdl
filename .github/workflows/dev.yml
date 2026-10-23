@@ -6,49 +6,83 @@ on:
     paths-ignore: ['**.md']
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  windows-extras:
+    permissions:
+      contents: write
+    uses: ./.github/workflows/windows-extras.yml
   build:
+    needs: windows-extras
+    # A helper download failure must not suppress the independent Linux build.
+    if: ${{ always() && !cancelled() }}
     strategy:
       # a Linux failure must not cancel win64
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2025
             plat: win64
             ext: .exe
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             plat: linux64
             ext: ""
     runs-on: ${{ matrix.os }}
-    # linux64 is best-effort
-    continue-on-error: ${{ matrix.plat == 'linux64' }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Lua validation dependency
+        run: python -m pip install lupa==2.6
 
+      - name: Set reproducible source timestamp
+        shell: bash
+        run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+      - name: Select Ubuntu 24.04 GCC 13
+        if: matrix.plat == 'linux64'
+        run: |
+          echo CC=gcc-13 >> "$GITHUB_ENV"
+          echo CXX=g++-13 >> "$GITHUB_ENV"
       - name: Configure
         # no -G: use whatever toolchain the runner image ships
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DPULSE_BUILD_MESHTOOL=OFF -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DNEWPAGE_SEPARATE_SYMBOLS=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
 
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build build --config Release --parallel 2
 
-      - name: Stage
+      - name: Verify native symbols and source line lookup
         shell: bash
         run: |
-          # both tools ship in one NewPageMergeMDL/ folder, subtools under it
-          mkdir -p NewPageMergeMDL
-          cp "dist/NewPageMergeMDL${{ matrix.ext }}" "dist/NewPageMergeMDL-Decompiler${{ matrix.ext }}" \
-             LICENSE NewPageMergeMDL/
-          cp -r dist/subtools NewPageMergeMDL/
-          cp "dist/NewPageVRMLtoX3D${{ matrix.ext }}" NewPageMergeMDL/
-          cp -r tools integration NewPageMergeMDL/
-          cp README.md README.en.md FIVE_COMPILER_COMPLETION.md O5_FORMAT_IMPORTS.md \
-             MESH_STATE_WORKFLOW.md VRM_RUNTIME.md NewPageMergeMDL/
-          mkdir -p NewPageMergeMDL/libs/assimp/contrib
-          cp -r libs/assimp/contrib/pugixml NewPageMergeMDL/libs/assimp/contrib/
-          cp -r libs/tinyusdz NewPageMergeMDL/libs/
+          python tests/test_symbol_packages.py
+          python tests/symbol_line_probe.py --output symbol-line-probe.json
+          python tests/symbol_line_probe.py --dist dist --output symbol-line-evidence.json
+
+      - name: Stage verified Windows C4D helper
+        if: matrix.plat == 'win64'
+        uses: actions/download-artifact@v8
+        with:
+          name: verified-windows-extras
+          path: dist
+
+      - name: Build recovery probe
+        shell: bash
+        run: |
+          cmake -S tests/output_transactions -B output-tests -DCMAKE_BUILD_TYPE=Release
+          cmake --build output-tests --config Release --parallel 2
+          ctest --test-dir output-tests -C Release --output-on-failure
+
+      - name: Package and verify development build
+        shell: bash
+        run: |
+          probe=$(find output-tests -type f -name 'subtool_transaction_probe${{ matrix.ext }}' -print -quit)
+          test -n "$probe"
+          python .github/scripts/package_maintained.py --source . --dist dist --platform ${{ matrix.plat }} --cache build/CMakeCache.txt --configuration Release --tag "dev-$GITHUB_SHA" --output newpage-merge-mdl-dev-${{ matrix.plat }}.zip --symbols-output newpage-merge-mdl-dev-${{ matrix.plat }}-symbols.zip --subtool-probe "$probe"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: newpage-merge-mdl-${{ matrix.plat }}
-          path: NewPageMergeMDL/
+          name: development-package-${{ matrix.plat }}
+          path: newpage-merge-mdl-dev-${{ matrix.plat }}*.zip
+          if-no-files-found: error

@@ -1,0 +1,683 @@
+{
+  "schema": 1,
+  "updated_date": "2026-10-22",
+  "release_published": false,
+  "scope": "Integrated quality validation at 2317571 and final Linux package reporting follow-up at ddea46e; no Release publication or unverified Windows package claim",
+  "integrated_validation": {
+    "status": "passed",
+    "run_id": 39759274649,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
+    "windows_helper_staging": "passed; draft asset fetched and verified by an isolated contents:write preparation job, native build/repeat jobs remain contents:read",
+    "jobs": {
+      "gcc": 119759095579,
+      "clang": 119759095110,
+      "sanitizer": 119759095458,
+      "windows_helper": 119759095890,
+      "repro_linux": 119759202552,
+      "repro_windows": 119759202434
+    }
+  },
+  "discarded_local_validation": {
+    "suite": "18-case decompiler roundtrip",
+    "reason": "Accidentally combined new decompiler with stale v1.2.36 build-local L4D executable; neither a regression nor a passing candidate test",
+    "stale_l4d_sha256": "a4770dccc16e0a7771a5e5358447d1c69687433a33478f4f2735113b0f3594bd",
+    "maintained_local_build_directory": "build-local-20261019"
+  },
+  "linux_package_validation": {
+    "status": "passed",
+    "run_id": 39759274649,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
+    "configuration": "MinSizeRel",
+    "ipo": false,
+    "baseline": "Ubuntu 24.04 LTS x86_64",
+    "compilers": [
+      "GCC 13",
+      "Clang 18"
+    ],
+    "compatibility_tests_per_compiler": 446,
+    "compatibility_passed_per_compiler": 444,
+    "compatibility_skipped_per_compiler": 2,
+    "compatibility_skip_reason": "Windows file-sharing locks and Windows output-directory aliases",
+    "roundtrip_tests_passed_per_compiler": 18,
+    "decompiler_integrity_tests_per_compiler": {
+      "total": 16,
+      "passed": 15,
+      "skipped": 1
+    },
+    "source_archive_sha256": "c9de5c55334ce6c38dcf6a1de165c245c52d65c55becae26029a530ecd03fc3e",
+    "validation_archive_sha256": {
+      "gcc": "51fd7c69e5e044cf86dbc2e9ef7d222539a53dfff1e750bc14bffe49320b37ab",
+      "clang": "0f7bf1703ea55845a02ad75469481f83a2376e47423a7421658870ac8b968deb"
+    },
+    "native_elf_tools_per_compiler": 7,
+    "additional_suites": "Recovery/format CTest, packaged VRML, report inputs, incremental cache, helpers, decompiler, subtools, VMD and output protection",
+    "maximum_observed_required_symbols": {
+      "GLIBC": "2.38",
+      "GLIBCXX": "3.4.30",
+      "CXXABI": "1.3.13"
+    },
+    "contract_ceilings": {
+      "GLIBC": "2.39",
+      "GLIBCXX": "3.4.32",
+      "CXXABI": "1.3.15"
+    }
+  },
+  "reproducibility": {
+    "run_id": 39759274649,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
+    "linux64": {
+      "schema": 1,
+      "scope": "Two clean builds, one toolchain, distinct source/build paths",
+      "source_archive_sha256": "c9de5c55334ce6c38dcf6a1de165c245c52d65c55becae26029a530ecd03fc3e",
+      "platform": "linux64",
+      "configuration": "MinSizeRel",
+      "requested_ipo": "ON",
+      "source_date_epoch": "1792662701",
+      "success": true,
+      "executables": {
+        "schema": 1,
+        "equal": true,
+        "entries": 7,
+        "missing": [],
+        "extra": [],
+        "changed": {}
+      },
+      "runtime_packages": {
+        "schema": 1,
+        "equal": true,
+        "entries": 165,
+        "missing": [],
+        "extra": [],
+        "changed": {},
+        "archive_bytes_equal": true
+      },
+      "symbol_packages": {
+        "schema": 1,
+        "equal": true,
+        "entries": 8,
+        "missing": [],
+        "extra": [],
+        "changed": {},
+        "archive_bytes_equal": true
+      },
+      "required_equal": [
+        "executables",
+        "runtime_packages",
+        "symbol_packages"
+      ]
+    },
+    "win64": {
+      "schema": 1,
+      "scope": "Two clean builds, one toolchain, distinct source/build paths",
+      "source_archive_sha256": "c9de5c55334ce6c38dcf6a1de165c245c52d65c55becae26029a530ecd03fc3e",
+      "platform": "win64",
+      "configuration": "MinSizeRel",
+      "requested_ipo": "ON",
+      "source_date_epoch": "1792662701",
+      "success": true,
+      "executables": {
+        "schema": 1,
+        "equal": true,
+        "entries": 8,
+        "missing": [],
+        "extra": [],
+        "changed": {}
+      },
+      "runtime_packages": {
+        "schema": 1,
+        "equal": true,
+        "entries": 167,
+        "missing": [],
+        "extra": [],
+        "changed": {},
+        "archive_bytes_equal": true
+      },
+      "symbol_packages": {
+        "schema": 1,
+        "equal": false,
+        "entries": 8,
+        "missing": [],
+        "extra": [],
+        "changed": {
+          "NewPageMergeMDL-symbols/NewPageMergeMDL-Decompiler.pdb": {
+            "left": "a273c7137fae54f40fad9e73c784720d121c8cf306def0fccd0bb4258e601c7f",
+            "right": "85987cf3a5e1bfcdb0ccb223d91e12192d5f340eab51e494dbc1cac098231570"
+          },
+          "NewPageMergeMDL-symbols/NewPageMergeMDL.pdb": {
+            "left": "23cae73fc4a323d6a711232f20995a1e282a2e98f3ab07913c8a3fd08959b12d",
+            "right": "38897e55381b844530c910d5b90fab4f5793fc405e9cd6663f707c3a33892bb7"
+          },
+          "NewPageMergeMDL-symbols/NewPageVRMLtoX3D.pdb": {
+            "left": "a0b685430a37b7fe1c1c8cc766c6b7a3ec55ee16f51ab35ce32e65a37c827b9d",
+            "right": "0e3132c9594a3b4e7f41f014c6afb2a93a78a578e2ee40828da69d9d809584d4"
+          },
+          "NewPageMergeMDL-symbols/subtools/ag2proportions.pdb": {
+            "left": "57a572ec4f0bfc2e1c4a7044a2f338cfc00e5a5c3eed6150a043fff0dac8234b",
+            "right": "c2f1b35c4db4911594c5e049a32e3cdeb51346cc49099b5a75f1f2aad848ed2e"
+          },
+          "NewPageMergeMDL-symbols/subtools/l4d_animswap.pdb": {
+            "left": "23e13eee32a0c48b760e15834c3505e5297587b7002b078ff96ce838ce788872",
+            "right": "4d9dbe44f2f1138b586308e63271b10c0e9556fe7165ce45bb715d365a59b24e"
+          },
+          "NewPageMergeMDL-symbols/subtools/meshtool.pdb": {
+            "left": "6baecb3ffedb12e4c31ec7404f951040cfdfdfe996965b25e47432db1f86d657",
+            "right": "2a4646e296d52ef282376fbe91af88de73a6392432db1e134b43428d8c85a04d"
+          },
+          "NewPageMergeMDL-symbols/subtools/vmd2valvebiped.pdb": {
+            "left": "2eb8e2c3d2255f1d3f106ca734b237a25c8e2b649176e2d85f494864632166a8",
+            "right": "fd23b61165cdae1876c1a1f04ecbf65a0c3022edfda04dda643967d9aa82c2e0"
+          },
+          "NewPageMergeMDL-symbols/symbols-manifest.json": {
+            "left": "bcc619c923488e742a1074a324f555591e6b02b75b3341c72b2fe0181aeca8d2",
+            "right": "c8367c4c276936b3184e5b0f3cef5d506b4db586d212f76aac835c1c300c619f"
+          }
+        },
+        "archive_bytes_equal": false
+      },
+      "required_equal": [
+        "executables",
+        "runtime_packages"
+      ],
+      "symbol_reproducibility_limit": "Windows PDBs retain absolute linker object/CVTRES paths. Matching GUID/age and source provenance are required; symbol ZIP byte equality is reported but not claimed or required on Windows."
+    }
+  },
+  "native_source_lines": {
+    "platform": "win64",
+    "executables": [
+      {
+        "binary": "NewPageMergeMDL.exe",
+        "symbol": "main",
+        "source": "src\\mdlcompiler\\main.cpp",
+        "line": 702,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "2e9e8e30c939ebbd0384a3e262f2c0eb",
+          "age": 1,
+          "pdb_name": "NewPageMergeMDL.pdb"
+        }
+      },
+      {
+        "binary": "NewPageMergeMDL-Decompiler.exe",
+        "symbol": "main",
+        "source": "src\\mdldecompiler\\main.cpp",
+        "line": 3544,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "eca9f9bb8758f6d441377e239701a330",
+          "age": 1,
+          "pdb_name": "NewPageMergeMDL-Decompiler.pdb"
+        }
+      },
+      {
+        "binary": "NewPageVRMLtoX3D.exe",
+        "symbol": "wmain",
+        "source": "src\\tools\\vrml_converter\\main.cpp",
+        "line": 90,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "3224e8229ede4c0a16b27c4477d47169",
+          "age": 1,
+          "pdb_name": "NewPageVRMLtoX3D.pdb"
+        }
+      },
+      {
+        "binary": "subtools/ag2proportions.exe",
+        "symbol": "wmain",
+        "source": "src\\subtools\\ag2proportions\\main.cpp",
+        "line": 151,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "31b2ee8aa5f62f178e0aa47d7dc794c0",
+          "age": 1,
+          "pdb_name": "ag2proportions.pdb"
+        }
+      },
+      {
+        "binary": "subtools/l4d_animswap.exe",
+        "symbol": "main",
+        "source": "src\\subtools\\l4d_animswap\\main.cpp",
+        "line": 1372,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "142b98734c0edccf19a1c4bbbe46bda4",
+          "age": 1,
+          "pdb_name": "l4d_animswap.pdb"
+        }
+      },
+      {
+        "binary": "subtools/meshtool.exe",
+        "symbol": "main",
+        "source": "src\\subtools\\meshtool\\main.cpp",
+        "line": 44,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "d48ce859acc216f5d59d46c57bb587d4",
+          "age": 1,
+          "pdb_name": "meshtool.pdb"
+        }
+      },
+      {
+        "binary": "subtools/vmd2valvebiped.exe",
+        "symbol": "main",
+        "source": "src\\subtools\\vmd2valvebiped\\main.cpp",
+        "line": 1502,
+        "native_identity": {
+          "format": "pdb",
+          "guid": "15d7dad93eab1f112442f9ebf13b86f4",
+          "age": 1,
+          "pdb_name": "vmd2valvebiped.pdb"
+        }
+      }
+    ],
+    "scope": "Actual native executable entry points; not a claim that every optimized stack frame is recoverable.",
+    "status": "passed",
+    "run_id": 39758743426,
+    "job_id": 119757400125,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
+    "configuration": "Release",
+    "ipo": false,
+    "method": "Windows DbgHelp native entry-point source line resolution",
+    "step_status": "passed",
+    "overall_dev_job_status": "failed_later_in_package_validation",
+    "dev_package_failure": "helpers_publication_test.py:241 compared RUNNER~1 and runneradmin path spellings; corrected test and remaining Windows package checks still require successful validation"
+  },
+  "ordinary_windows_mutations": {
+    "status": "passed_without_sanitizers",
+    "samples": 240,
+    "accepted": 69,
+    "rejected": 171,
+    "crashes": 0,
+    "timeouts": 0,
+    "budget_overruns": 0
+  },
+  "asan_ubsan": {
+    "status": "passed",
+    "run_id": 39759274649,
+    "job_id": 119759095458,
+    "sha": "2317571e536cee11937713226a17bd469a46491d",
+    "configuration": "RelWithDebInfo",
+    "ipo": false,
+    "samples_requested": 240,
+    "time_budget_seconds": 180,
+    "prior_failure": {
+      "run_id": 39749658951,
+      "stage": "valid corpus seed compile",
+      "diagnostic": "writemdl.cpp:3164 left shift of negative checksum",
+      "fix_sha": "641b7e3",
+      "fix": "Use uint32 wrapping arithmetic with unchanged bit-27 feedback and per-iteration header writeback"
+    },
+    "bounded_mutation_result": {
+      "samples": 240,
+      "accepted": 67,
+      "rejected": 173,
+      "sanitizer": 0,
+      "distinct_findings": 0,
+      "crashes": 0,
+      "timeouts": 0,
+      "memory_budget_overruns": 0,
+      "log_budget_overruns": 0,
+      "valid_controls": 8,
+      "valid_subd_tests": 2,
+      "mutation_seconds": 9.741607039000002,
+      "finished_at": "2026-10-22T09:57:25.716981+00:00",
+      "compiler_sha256": "1b5710ced3196dcd201460e4c02eaaa26ff1c87d96b7b5e75e3fd5efd8a9303e",
+      "decompiler_sha256": "b0b9c093b29fd70938d1ca18408adf2dd859235d17aa2c14ee37fc37cd9cfe06",
+      "vmd_sha256": "fca16cf620b982e4d7f2b1efaf11e835b2319194920f0caf3ebdb7124b8b89e2"
+    },
+    "additional_failures": [
+      {
+        "run_id": 39752234113,
+        "stage": "valid corpus seed compile",
+        "diagnostic": "writevtx.cpp:1445 misaligned int32 load in packed strip-group records",
+        "fix_sha": "d3930b8",
+        "fix": "Read all eight shared int32 strip/strip-group fields with memcpy without changing serialized offsets"
+      },
+      {
+        "run_id": 39755155127,
+        "stage": "valid corpus seed compile",
+        "diagnostic": "writemdl.cpp:2531 misaligned SGCommon access in packed strip-group records",
+        "fix_sha": "7216078",
+        "fix": "Copy the shared fields into aligned local structures at both FixupBuffers readers without changing output bytes"
+      },
+      {
+        "run_id": 39756067020,
+        "stage": "valid VMD control after successful model corpus compilation/decompilation and seven other controls",
+        "diagnostic": "vmd2valvebiped/main.cpp:1753 misaligned mstudioikchain_t access",
+        "fix_sha": "75c13ac",
+        "fix": "Copy IK chains and links into aligned locals while preserving original addresses for relative offsets; also use byte-wise memcpy for packed SubD topology"
+      },
+      {
+        "run_id": 39756572960,
+        "stage": "valid VMD control, after both valid SubD sanitizer tests passed",
+        "diagnostic": "vmd2valvebiped/main.cpp:1764 typed memcpy source retained an IK-link alignment assumption",
+        "fix_sha": "b91282c",
+        "fix": "Range-check IK-link data with At<char> and its original byte length, keeping the memcpy source byte-addressed"
+      },
+      {
+        "run_id": 39756932797,
+        "stage": "mutated SMD animation",
+        "diagnostic": "compile.cpp:245 SourceAnim null access after truncated SMD without skeleton",
+        "fix_sha": "5fc10b0",
+        "fix": "Reject missing skeleton blocks during SMD loading; regression checks mesh and animation failure preserve the previous outputs"
+      },
+      {
+        "run_id": 39756932797,
+        "stage": "mutated MDL and MDL animation",
+        "diagnostic": "WriteSequences group-size multiplication overflow and INT_MIN frame-count subtraction",
+        "fix_sha": "b0170c5",
+        "fix": "Validate animation frame counts and sequence grid dimensions/ranges before QC export, retaining valid external declarations"
+      }
+    ]
+  },
+  "historical_source_line_probes": {
+    "source_archive_sha256": "2cab60d51222695974a72dd0a7ce7e263c4e1431d5936f2260cf1c6495986eee",
+    "dependency_source_line": "src/libs/assimp/contrib/draco/src/draco/compression/decode.cc:87",
+    "tiny_probe_source_line": "src/probe.c:6",
+    "scope": "Prior local snapshot; separate from the integrated CI entry-point check"
+  },
+  "final_reporting_followup": {
+    "sha": "ddea46e39246bf9dd6047016ddb4ac2df10b493f",
+    "native_delta": "QualityWritten for AxisInterp output and full output paths for VRD/QCI CloseOutput; exporter behavior otherwise unchanged",
+    "new_regression": "Auxiliary quality inventory matches actual writes; preserved files are excluded and -nomesh remains respected",
+    "clang": {
+      "status": "passed",
+      "sha": "ddea46e39246bf9dd6047016ddb4ac2df10b493f",
+      "ipo": false,
+      "baseline": "Ubuntu 24.04 LTS x86_64",
+      "compatibility": {
+        "total": 446,
+        "passed": 444,
+        "skipped": 2,
+        "skip_reason": "Windows file-sharing locks and Windows output-directory aliases"
+      },
+      "roundtrip": {
+        "total": 19,
+        "passed": 19,
+        "skipped": 0
+      },
+      "decompiler_integrity": {
+        "total": 16,
+        "passed": 15,
+        "skipped": 1
+      },
+      "native_runtime_tools_passed": 7,
+      "maximum_observed_required_symbols": {
+        "GLIBC": "2.38",
+        "GLIBCXX": "3.4.30",
+        "CXXABI": "1.3.13"
+      },
+      "compiler": "Clang 18",
+      "configuration": "MinSizeRel",
+      "run_id": 39763619493,
+      "job_id": 119773573946,
+      "completed_at": "2026-10-22T10:40:54Z",
+      "ctest_passed_groups": [
+        7,
+        1,
+        2
+      ],
+      "artifact_retention": "Complete package tested in CI; upload skipped by include-gcc=false, zero artifacts. Retained complete job log and run metadata."
+    },
+    "gcc_dev": {
+      "status": "passed",
+      "sha": "ddea46e39246bf9dd6047016ddb4ac2df10b493f",
+      "ipo": false,
+      "baseline": "Ubuntu 24.04 LTS x86_64",
+      "compatibility": {
+        "total": 446,
+        "passed": 444,
+        "skipped": 2,
+        "skip_reason": "Windows file-sharing locks and Windows output-directory aliases"
+      },
+      "roundtrip": {
+        "total": 19,
+        "passed": 19,
+        "skipped": 0
+      },
+      "decompiler_integrity": {
+        "total": 16,
+        "passed": 15,
+        "skipped": 1
+      },
+      "native_runtime_tools_passed": 7,
+      "maximum_observed_required_symbols": {
+        "GLIBC": "2.38",
+        "GLIBCXX": "3.4.30",
+        "CXXABI": "1.3.13"
+      },
+      "compiler": "GCC 13",
+      "configuration": "Release",
+      "run_id": 39763614054,
+      "job_id": 119773659863,
+      "ctest_passed_groups": [
+        7
+      ],
+      "runtime_archive_sha256": "56c5b8decdcb6f73b5b971d1cbf667817470ca3305cf6a167fcd0d2da853706f",
+      "native_source_lines": {
+        "platform": "linux64",
+        "executables": [
+          {
+            "binary": "NewPageMergeMDL",
+            "symbol": "main",
+            "source": "build/mdlcompiler/src/mdlcompiler/main.cpp",
+            "line": 702,
+            "native_identity": {
+              "format": "elf",
+              "build_id": "e01be5db892cd4f1dafa7d46e64f355ad28b4545",
+              "debuglink_crc32": "9e027307"
+            }
+          },
+          {
+            "binary": "NewPageMergeMDL-Decompiler",
+            "symbol": "main",
+            "source": "build/mdldecompiler/src/mdldecompiler/main.cpp",
+            "line": 3547,
+            "native_identity": {
+              "format": "elf",
+              "build_id": "e453c1d8d53cb1daa66b8cba1e339946388954e7",
+              "debuglink_crc32": "560c5d88"
+            }
+          },
+          {
+            "binary": "NewPageVRMLtoX3D",
+            "symbol": "main",
+            "source": "build/vrml_converter/src/tools/vrml_converter/main.cpp",
+            "line": 95,
+            "native_identity": {
+              "format": "elf",
+              "build_id": "8d1e6691138e9ef739daa18ad2bd1e8c71c171e4",
+              "debuglink_crc32": "26f1c901"
+            }
+          },
+          {
+            "binary": "subtools/ag2proportions",
+            "symbol": "main",
+            "source": "build/subtools/ag2proportions/src/subtools/ag2proportions/main.cpp",
+            "line": 165,
+            "native_identity": {
+              "format": "elf",
+              "build_id": "8cf8779f384e254ba00c212fbfc6b81ce5e22c9d",
+              "debuglink_crc32": "f0cfe459"
+            }
+          },
+          {
+            "binary": "subtools/l4d_animswap",
+            "symbol": "main",
+            "source": "build/subtools/l4d_animswap/src/subtools/l4d_animswap/main.cpp",
+            "line": 1372,
+            "native_identity": {
+              "format": "elf",
+              "build_id": "ffab18634fbebe29d345456f3247d885e982e426",
+              "debuglink_crc32": "2999a312"
+            }
+          },
+          {
+            "binary": "subtools/meshtool",
+            "symbol": "main",
+            "source": "build/subtools/meshtool/src/subtools/meshtool/main.cpp",
+            "line": 44,
+            "native_identity": {
+              "format": "elf",
+              "build_id": "2dba3b0648a46e321ea18fd1db61c37db0eaa254",
+              "debuglink_crc32": "69f50cc1"
+            }
+          },
+          {
+            "binary": "subtools/vmd2valvebiped",
+            "symbol": "main",
+            "source": "build/subtools/vmd2valvebiped/src/subtools/vmd2valvebiped/main.cpp",
+            "line": 1502,
+            "native_identity": {
+              "format": "elf",
+              "build_id": "86f48a606ae4c42409033e4cf354e8a50c0841c5",
+              "debuglink_crc32": "35e265a9"
+            }
+          }
+        ],
+        "scope": "Actual native executable entry points; not a claim that every optimized stack frame is recoverable."
+      }
+    },
+    "earlier_quality_checkpoint": {
+      "sha": "2317571e536cee11937713226a17bd469a46491d",
+      "run_id": 39759274649,
+      "sanitizer": "passed at this exact earlier commit, not rerun for reporting delta",
+      "reproducibility": "passed at this exact earlier commit, not rerun for reporting delta"
+    },
+    "windows_dev_scope": "Independently passed final Windows Dev package job and downloaded artifact/source/symbol checks at the recorded candidate commit.",
+    "local_evidence_directory": "C:/Users/Kud/Desktop/CODEMDL/.diagnostics/v1238-final-clang-39763619493",
+    "evidence_sha256": {
+      "run.json": "d6b2d79a26dd3021d6c5ce0a0ca84a0ed7fd7efa8d98003f0a6ea43b12527dab",
+      "clang-job.log": "a63cdf92b2602d36c73d9131adb42b78ed9d4e7030082a285af5129bb12a4b2f",
+      "artifacts.json": "244563f989470892c537c9a4622920af0d228ee4528f7d00c64a06d6cd95856c",
+      "dev-run-linux-completed.json": "4cc778036407aa950a4508e0624cc01b7f47fd48feb3338eab8977e5d5af7e0f",
+      "dev-linux-job.log": "38e145266a91a2853ca7d41e47eb6820977e3908a4d23fdf8d404e1b0875d1c6"
+    },
+    "windows_dev": {
+      "status": "passed",
+      "sha": "ddea46e39246bf9dd6047016ddb4ac2df10b493f",
+      "run_id": 39763614054,
+      "job_id": 119773659923,
+      "configuration": {
+        "configuration": "Release",
+        "c_compiler": "C:/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe",
+        "cxx_compiler": "C:/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe",
+        "compiler_id": "MSVC",
+        "compiler_version": "19.51.36260.0",
+        "interprocedural_optimization": false,
+        "reproducible": true,
+        "separate_symbols": true,
+        "source_date_epoch": "1792665005"
+      },
+      "compatibility": {
+        "total": 446,
+        "passed": 446,
+        "skipped": 0
+      },
+      "roundtrip": {
+        "total": 19,
+        "passed": 19,
+        "skipped": 0
+      },
+      "helpers_publication": {
+        "total": 19,
+        "passed": 19,
+        "skipped": 0
+      },
+      "native_source_lines": {
+        "platform": "win64",
+        "executables": [
+          {
+            "binary": "NewPageMergeMDL.exe",
+            "symbol": "main",
+            "source": "src\\mdlcompiler\\main.cpp",
+            "line": 702,
+            "native_identity": {
+              "format": "pdb",
+              "guid": "8fc6015810d0863a0032aa76cce6340a",
+              "age": 1,
+              "pdb_name": "NewPageMergeMDL.pdb"
+            }
+          },
+          {
+            "binary": "NewPageMergeMDL-Decompiler.exe",
+            "symbol": "main",
+            "source": "src\\mdldecompiler\\main.cpp",
+            "line": 3547,
+            "native_identity": {
+              "format": "pdb",
+              "guid": "5bb1f201608f2ce5cf84c291af351cb8",
+              "age": 1,
+              "pdb_name": "NewPageMergeMDL-Decompiler.pdb"
+            }
+          },
+          {
+            "binary": "NewPageVRMLtoX3D.exe",
+            "symbol": "wmain",
+            "source": "src\\tools\\vrml_converter\\main.cpp",
+            "line": 90,
+            "native_identity": {
+              "format": "pdb",
+              "guid": "3224e8229ede4c0a16b27c4477d47169",
+              "age": 1,
+              "pdb_name": "NewPageVRMLtoX3D.pdb"
+            }
+          },
+          {
+            "binary": "subtools/ag2proportions.exe",
+            "symbol": "wmain",
+            "source": "src\\subtools\\ag2proportions\\main.cpp",
+            "line": 151,
+            "native_identity": {
+              "format": "pdb",
+              "guid": "31b2ee8aa5f62f178e0aa47d7dc794c0",
+              "age": 1,
+              "pdb_name": "ag2proportions.pdb"
+            }
+          },
+          {
+            "binary": "subtools/l4d_animswap.exe",
+            "symbol": "main",
+            "source": "src\\subtools\\l4d_animswap\\main.cpp",
+            "line": 1372,
+            "native_identity": {
+              "format": "pdb",
+              "guid": "142b98734c0edccf19a1c4bbbe46bda4",
+              "age": 1,
+              "pdb_name": "l4d_animswap.pdb"
+            }
+          },
+          {
+            "binary": "subtools/meshtool.exe",
+            "symbol": "main",
+            "source": "src\\subtools\\meshtool\\main.cpp",
+            "line": 44,
+            "native_identity": {
+              "format": "pdb",
+              "guid": "d48ce859acc216f5d59d46c57bb587d4",
+              "age": 1,
+              "pdb_name": "meshtool.pdb"
+            }
+          },
+          {
+            "binary": "subtools/vmd2valvebiped.exe",
+            "symbol": "main",
+            "source": "src\\subtools\\vmd2valvebiped\\main.cpp",
+            "line": 1502,
+            "native_identity": {
+              "format": "pdb",
+              "guid": "15d7dad93eab1f112442f9ebf13b86f4",
+              "age": 1,
+              "pdb_name": "vmd2valvebiped.pdb"
+            }
+          }
+        ],
+        "scope": "Actual native executable entry points; not a claim that every optimized stack frame is recoverable."
+      },
+      "runtime_archive_sha256": "ad017614c738910bf99df43d2d65c6bc89f8d2f840370ce7b159f36eb10e35da",
+      "symbols_archive_sha256": "b440e9d4ecdceeb0c40b061f4746932caf5157fd2accb57da695fbc47854efb2",
+      "source_archive_sha256": "7bcdf6d8b9c08e75df30295a76f43b4120dcc7c0a2f25bd37ab68baec5d9295f",
+      "downloaded_artifact_verification": "tests/reports/v1.2.38-candidate.json",
+      "job_log_sha256": "703ec06e45acec82a92df9123c668997ee57aecfe3497479f46488831f8f98a9"
+    }
+  }
+}

@@ -30,7 +30,7 @@ $body model triangle.a3d
 
 内置启用 Assimp 的 tinyusdz 后端，固定版本为 `6050eef932f7d2788656d63297aa488fb0961ed1`。完整项目源码中的 `libs/tinyusdz/` 提供所需源码与许可证，配置和构建不访问网络。tinyusdz 主体采用 Apache-2.0，嵌入依赖保留各自许可证。
 
-v1.2.26 的安装包运行目录仅保留 tinyusdz 的 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，省去静态链接后运行无需的源码和开发图片；USD 导入功能完整保留。自动上游包内嵌的精确源码仍含完整 tinyusdz，手动维护版完整源码来自发布标签。独立 GPL VRML 转换器的对应源码不受此项精简影响。
+v1.2.26 的安装包运行目录仅保留 tinyusdz 的 `LICENSE`、`LICENSE-APACHE-2.0`、`SOURCE.md` 和 `THIRD_PARTY_NOTICES.md`，省去静态链接后运行无需的源码和开发图片；USD 导入功能完整保留。该段记录 v1.2.26 的历史瘦身范围。当前自动及手动维护包均在 `sources/NewPageMergeMDL-source.zip` 内嵌精确构建源码和完整 tinyusdz，以包内 manifest 为准。独立 GPL VRML 转换器的对应源码不受此项精简影响。
 
 ```text
 $modelname example
@@ -38,7 +38,7 @@ $UpAxis z assimp
 $body model scene.usda
 ```
 
-固定验收覆盖 USDA 三角网格、单根/多根父节点平移及空场景错误处理。复杂 USD composition、材质着色网络、层变体以及动画的可用范围由固定 tinyusdz/Assimp 后端决定；本工具不会把 USD 场景系统转换为完整的游戏运行时。`InNode`、网格筛选、材质重命名等共用场景选项仍可使用。
+静态 USD 支持有界单引用、作者选定的 variant、实例、激活状态和层级变换；使用 OpenUSD 独立展开结果核对世界顶点。具体支持列表、拒绝的组合形式和预算见 [场景导入说明](SCENE_IMPORT.md#usd-组合的明确范围) 与 [验证记录](tests/reports/v1.2.38-import-validation.md)。没有声称完整 USD composition、材质网络、骨架/动画组合或真实 DCC 场景均已支持。`InNode`、网格筛选、材质重命名等共用场景选项仍可使用。
 
 ## VRML97 / Classic VRML
 
@@ -85,4 +85,4 @@ NewPageMergeMDL-C4D source.c4d converted.glb
 
 固定验收覆盖可编辑多边形、层级变换、UV/法线、材质名称、逐多边形材质及基本漫反射颜色，以及中文/空格路径、原始依赖保留和失败时旧输出保护。纹理标签按顺序应用，命名多边形选择集限制其作用范围，最后适用的标签优先；失效的选择集引用会跳过，未覆盖面使用默认材质。按材质拆分时保留 UV、作者法线与连续的自动平滑法线。10 项回归使用真实 Cineware 文档，核对转换后的 GLB 和最终 MDL/VVD，未声称游戏内渲染验收。
 
-C4D 厘米及左右手坐标系经 GLB 统一后进入模型编译。当前 importer 不遍历程序化生成缓存，因此生成器必须先在 C4D 中转为可编辑多边形。骨骼蒙皮、动画、模拟、标签着色叠加及完整着色网络烘焙不在此路径内；Source 材质需另行准备。
+C4D 厘米及左右手坐标系经 GLB 统一后进入模型编译。桥接器可读取已保存的静态生成器和变形器多边形缓存；请在安装所需插件的 C4D 中求值并为 Cineware 保存缓存，缺少可用缓存会明确失败。桥接器本身不运行生成器、插件或模拟。真实 C4D 2027 自制缓存的层级、材质、UV、法线和世界坐标对照见[应用验证](tests/reports/v1.2.38-c4d-application.md)。骨骼蒙皮及动画输入明确拒绝；标签着色叠加和完整着色网络不烘焙，Source 材质需另行准备。

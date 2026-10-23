@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-PATHS = ['libs', 'mdlcompiler', 'mdldecompiler', 'subtools', 'CMakeLists.txt', 'CMakePresets.json', 'utf8.manifest']
+PATHS = ['libs', 'mdlcompiler', 'mdldecompiler', 'subtools', 'cmake', 'CMakeLists.txt', 'CMakePresets.json', 'utf8.manifest']
 
 
 def run(*args, cwd=None, capture=False):
@@ -36,7 +36,8 @@ def main():
                 # Delete only our temporary clone's selected source directory.
                 if repo.resolve() not in target.resolve().parents:
                     raise ValueError('Target escapes temporary clone')
-                shutil.rmtree(target)
+                if target.exists():
+                    shutil.rmtree(target)
                 shutil.copytree(source, target, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
             else:
                 shutil.copy2(source, target)

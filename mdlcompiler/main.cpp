@@ -32,6 +32,7 @@
 #include "sceneloader.h"
 #include "outputfiles.h"
 #include "cliargs.h"
+#include "reportoutput.h"
 #ifdef _WIN32
 #include <windows.h>
 #include <psapi.h>
@@ -118,6 +119,8 @@ static int Usage() {
     std::printf("  -pause        wait for a keypress before exiting (drag-and-drop runs)\n");
     std::printf("  -perfmetrics  print wall time in ms for each stage of the compile\n");
     std::printf("  -perfjson <file> write stage timings and peak working set as JSON\n");
+    std::printf("  -dependencyjson <file> write successful input/output identities for incremental builds\n");
+    std::printf("  -diagnosticsjson emit an @diagnostic JSON summary on stdout; human logs are retained\n");
     std::printf("  -steamdir <dir> override Steam root for gameinfo AppID mounts\n");
     std::printf("  -nodefaultargs skip gameinfo Tools/studiomdl and cfg/commandline.cfg defaults\n");
     std::printf("                Default priority: gameinfo < QC-stem cfg entry < explicit CLI.\n");
@@ -240,11 +243,12 @@ static int RunCompile(int argc, char** argv) {
     bool noDefaultArgs=false;
     const std::vector<std::string> oneValue={"-game","-outdir","-steamdir","-modelname","-includeanimprefix",
         "-eyeballscale","-maxbones","-outputbuffersize","-mdloutputbuffersize","-anioutputbuffersize",
-        "-includesearchdir","-filesearchdir","-tempcontent","-vtxformat","-minlod","-alwayscollapsebyprefix","-perfjson"};
+        "-includesearchdir","-filesearchdir","-tempcontent","-vtxformat","-minlod","-alwayscollapsebyprefix","-perfjson","-dependencyjson"};
     auto isDefinition = [](const std::string& key, const char* raw) {
         return raw[0] == '-' && raw[1] == 'D' && raw[2] &&
             key != "-dontdestroy" && key != "-defaqscale" && key != "-defvar" && key != "-definebones" &&
-            key != "-dumpprocedural" && key != "-dumpdependencies" && key != "-dumpmaterials";
+            key != "-dumpprocedural" && key != "-dumpdependencies" && key != "-dumpmaterials" &&
+            key != "-dependencyjson" && key != "-diagnosticsjson";
     };
     auto validateArguments = [&](int count, char** args) -> std::string {
         for (int i = 1; i < count; ++i) {
@@ -285,6 +289,7 @@ static int RunCompile(int argc, char** argv) {
     std::string outdir;
     std::string gameDirectory,steamDirectory;
     std::string perfJson;
+    std::string dependencyJson;
     std::string modelname; // -modelname: overrides the script's $modelname
     int vtxFormat = -1; // unset; otherwise wins over the script's $vtxformat
     bool noDx80 = false; // -nodx80: force-skip .dx80.vtx, overriding the script
@@ -431,6 +436,11 @@ static int RunCompile(int argc, char** argv) {
         } else if(option == "-perfjson" && i+1<argc) {
             perfJson=argv[++i];
             pulse::perf::g_enabled = true;
+        } else if (option == "-dependencyjson") {
+            dependencyJson = argv[++i];
+            pulse::dependencies::g_enabled = true;
+        } else if (option == "-diagnosticsjson") {
+            pulse::diagnostics::enabled = true;
         } else if (option == "-perfmetrics") {
             pulse::perf::g_enabled = true;
         } else if (option == "-nodefaultargs") {
@@ -441,6 +451,7 @@ static int RunCompile(int argc, char** argv) {
             // studiomdl GUI front ends pass switches we do not have (-nop4,
             // -verbose, ...). Warn and carry on rather than refusing to run.
             std::printf("warning: ignoring unknown option: %s\n", argv[i]);
+            pulse::diagnostics::Warning("NP2001", g_stage, std::string("Ignoring unknown option: ") + argv[i]);
         } else if (!script || pulse::loader::IsQcScriptPath(argv[i])) {
             // an ignored option may have eaten a value we now see as
             // positional, so a real script extension always wins
@@ -449,6 +460,9 @@ static int RunCompile(int argc, char** argv) {
     }
     if (!script)
         return Usage();
+    pulse::diagnostics::source = script;
+    if (pulse::dependencies::g_enabled)
+        for (const auto& path : pulse::dependencies::Paths()) pulse::dependencies::Note(path);
 
     std::printf("Compiling: %s\n", script);
 
@@ -466,9 +480,6 @@ static int RunCompile(int argc, char** argv) {
                     std::string(script) + ": only .pulseqc/.qc compile scripts are supported");
 
     std::string err;
-    std::ofstream metrics;
-    if(!perfJson.empty()){auto path=pulse::FilePath(perfJson);if(path.has_parent_path())std::filesystem::create_directories(path.parent_path());
-        metrics.open(path);if(!metrics)return Fail("metrics error","cannot create performance JSON");}
     if(!pulse::resources::Initialize(gameDirectory,steamDirectory,&err))return Fail("mount error",err);
     pulse::resources::Print();
     pulse::compile::CompileInput input;
@@ -551,6 +562,23 @@ static int RunCompile(int argc, char** argv) {
         return 0;
     }
 
+    std::unique_ptr<pulse::reports::Report> performanceReport, dependencyReport;
+    std::vector<std::filesystem::path> protectedOutputs;
+    if (!perfJson.empty() || !dependencyJson.empty()) {
+        const auto root = pulse::FilePath(outdir.empty() ? "." : outdir) / "models";
+        const auto stem = root / pulse::FilePath(model.outname);
+        for (const char* suffix : {".mdl", ".vvd", ".dx90.vtx", ".dx80.vtx", ".phy", ".ani", ".vertexanim.json"})
+            protectedOutputs.emplace_back(stem.string() + suffix);
+        if (!model.physName.empty()) protectedOutputs.emplace_back((root / pulse::FilePath(model.physName)).string() + ".phy");
+        if (!model.internalName.empty()) protectedOutputs.emplace_back((root / pulse::FilePath(model.internalName).replace_extension()).string() + ".ani");
+        try {
+            if (!perfJson.empty() && !dependencyJson.empty() && pulse::reports::Aliases(pulse::FilePath(perfJson), pulse::FilePath(dependencyJson)))
+                throw std::runtime_error("performance and dependency reports alias one another");
+            if (!perfJson.empty()) performanceReport = std::make_unique<pulse::reports::Report>(pulse::FilePath(perfJson), protectedOutputs);
+            if (!dependencyJson.empty()) dependencyReport = std::make_unique<pulse::reports::Report>(pulse::FilePath(dependencyJson), protectedOutputs);
+        } catch (const std::exception& e) { return Fail("metrics error", e.what()); }
+    }
+
     if (!verify) {
         const auto outputRoot=pulse::FilePath(outdir.empty()?".":outdir)/"models";
         const auto outputModel=outputRoot/pulse::FilePath(model.outname+".mdl");
@@ -560,6 +588,7 @@ static int RunCompile(int argc, char** argv) {
             if (!newpage::PreserveSequenceOrder(model, outdir, warning)) {
                 if(input.csgo.errorOnRemapFailure)return Fail("sequence remapping error",warning);
                 std::fprintf(stderr, "warning: %s\n", warning.c_str());
+                pulse::diagnostics::Warning("NP2500", g_stage, warning);
             }
         }
         g_stage = "write";
@@ -572,6 +601,33 @@ static int RunCompile(int argc, char** argv) {
     }
     if (dumpDependencies)
         pulse::dependencies::Print();
+    if (dependencyReport) {
+        std::ostringstream json;
+        bool cacheable = !scriptFromStdin && !verify;
+        for (const auto& path : pulse::dependencies::Paths())
+            if (!std::filesystem::is_regular_file(pulse::FilePath(path))) cacheable = false;
+        json << "{\"schema\":1,\"success\":true,\"cacheable\":" << (cacheable ? "true" : "false") << ",\"dependencies\":[";
+        bool first = true;
+        for (const auto& [path, entry] : pulse::dependencies::Files()) {
+            if (!first) json << ',';
+            first = false;
+            std::ostringstream hash; hash << std::hex << std::setfill('0') << std::setw(16) << entry.hash;
+            const char* kind = entry.kind == pulse::dependencies::Kind::Script ? "script" : entry.kind == pulse::dependencies::Kind::Include ? "include" : "source";
+            json << "{\"path\":" << pulse::diagnostics::Json(path) << ",\"kind\":" << pulse::diagnostics::Json(kind)
+                 << ",\"fnv1a64\":" << pulse::diagnostics::Json(hash.str()) << '}';
+        }
+        json << "],\"outputs\":[";
+        first = true;
+        if (!verify) for (const auto& path : protectedOutputs) {
+            if (!std::filesystem::is_regular_file(path)) continue;
+            if (!first) json << ',';
+            first = false;
+            json << "{\"path\":" << pulse::diagnostics::Json(std::filesystem::absolute(path).string()) << '}';
+        }
+        json << "]}\n";
+        try { dependencyReport->Write(json.str()); }
+        catch (const std::exception& e) { return Fail("dependency report error", e.what()); }
+    }
     auto tWrite = Clock::now();
     g_stage = "done";
     if(reloadHlmv && !verify) {
@@ -610,7 +666,10 @@ static int RunCompile(int argc, char** argv) {
         pulse::perf::Record("total", "whole compile", ms(t0, tWrite));
         pulse::perf::Report();
     }
-    if(metrics) {
+    if(performanceReport) {
+        std::ostringstream metrics;
+        metrics.imbue(std::locale::classic());
+        const auto sceneCache = pulse::source::GetSceneCacheStats();
         uint64_t peak=0;
 #ifdef _WIN32
         PROCESS_MEMORY_COUNTERS info{};info.cb=sizeof(info);if(GetProcessMemoryInfo(GetCurrentProcess(),&info,sizeof(info)))peak=info.PeakWorkingSetSize;
@@ -619,7 +678,14 @@ static int RunCompile(int argc, char** argv) {
 #endif
         metrics<<"{\"schema\":1,\"version\":\""<<PULSEMODEL_VERSION<<"\",\"load_ms\":"<<ms(t0,tLoad)
                <<",\"compile_ms\":"<<ms(tLoad,tCompile)<<",\"write_ms\":"<<ms(tCompile,tWrite)<<",\"total_ms\":"<<ms(t0,tWrite)
-               <<",\"peak_working_set_bytes\":"<<peak<<",\"bones\":"<<model.bones.size()<<",\"vertices\":"<<vertsPool<<",\"stages\":[";
+               <<",\"peak_working_set_bytes\":"<<peak<<",\"bones\":"<<model.bones.size()<<",\"vertices\":"<<vertsPool
+               <<",\"scene_cache\":{\"hits\":"<<sceneCache.hits<<",\"misses\":"<<sceneCache.misses
+               <<",\"evictions\":"<<sceneCache.evictions<<",\"stale\":"<<sceneCache.stale
+               <<",\"bypasses\":"<<sceneCache.bypasses<<",\"estimated_retained_bytes\":"<<sceneCache.retainedBytes
+               <<",\"estimated_peak_retained_bytes\":"<<sceneCache.peakRetainedBytes<<",\"budget_bytes\":"<<sceneCache.budgetBytes
+               <<",\"geometry_imports\":"<<sceneCache.geometryImports<<",\"geometry_reuses\":"<<sceneCache.geometryReuses
+               <<",\"peak_entries\":"<<sceneCache.peakEntries
+               <<",\"import_seconds\":"<<sceneCache.importSeconds<<"},\"stages\":[";
         bool first=true;
         for(const auto& entry:pulse::perf::g_entries) {
             if(!first) metrics<<","; first=false;
@@ -627,6 +693,8 @@ static int RunCompile(int argc, char** argv) {
                    <<",\"ms\":"<<entry.ms<<",\"calls\":"<<entry.calls<<"}";
         }
         metrics<<"]}\n";
+        try { performanceReport->Write(metrics.str()); }
+        catch (const std::exception& e) { return Fail("metrics error", e.what()); }
     }
     return 0;
 }
@@ -653,6 +721,15 @@ int main(int argc, char** argv) {
 
     PrintHeader();
 
+    // Enable before parsing so malformed options receive the same structured
+    // footer. JSON is emitted to stdout, never to an unchecked filesystem path.
+    for (int i = 1; i < argc; ++i) {
+        std::string option = argv[i];
+        for (char& c : option) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (option == "-diagnosticsjson") pulse::diagnostics::enabled = true;
+        if (pulse::loader::IsQcScriptPath(argv[i])) pulse::diagnostics::source = argv[i];
+    }
+
     // a leak past a stage's own error path still gets named in the footer
     int rc;
     try {
@@ -672,6 +749,7 @@ int main(int argc, char** argv) {
 #endif
         break;
     }
+    pulse::diagnostics::Emit(rc, kAppVersion);
     pulse::fatal::PauseIfAsked();
     return rc;
 }

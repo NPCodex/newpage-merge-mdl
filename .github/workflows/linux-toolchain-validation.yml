@@ -7,6 +7,14 @@ on:
         description: Also validate GCC and retain standalone validation packages
         type: boolean
         default: true
+      quality-checks:
+        description: Run bounded ASan/UBSan mutations and two-clean-build comparisons
+        type: boolean
+        default: false
+      sanitizers-only:
+        description: Run only the bounded sanitizer check while diagnosing a sanitizer failure
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       include-gcc:
@@ -17,22 +25,39 @@ on:
         description: Optional artifact containing the exact merged source
         type: string
         default: ''
+      quality-checks:
+        description: Run bounded ASan/UBSan mutations and two-clean-build comparisons
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
+  sanitizers:
+    if: inputs.quality-checks || inputs.sanitizers-only
+    uses: ./.github/workflows/sanitizer-mutations.yml
+    with:
+      source-artifact: ${{ inputs.source-artifact || '' }}
+  reproducibility:
+    if: inputs.quality-checks && !inputs.sanitizers-only
+    permissions:
+      contents: write
+    uses: ./.github/workflows/reproducible-builds.yml
+    with:
+      source-artifact: ${{ inputs.source-artifact || '' }}
   clang:
+    if: ${{ !inputs.sanitizers-only }}
     strategy:
       fail-fast: false
       matrix:
         compiler: ${{ fromJSON(inputs.include-gcc && '["clang", "gcc"]' || '["clang"]') }}
     name: Linux ${{ matrix.compiler }} validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      VALIDATION_CC: ${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
-      VALIDATION_CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
+      VALIDATION_CC: ${{ matrix.compiler == 'gcc' && 'gcc-13' || 'clang-18' }}
+      VALIDATION_CXX: ${{ matrix.compiler == 'gcc' && 'g++-13' || 'clang++-18' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -121,7 +146,7 @@ jobs:
           python .github/scripts/upstream_release.py record-build --manifest prepared/upstream-manifest.json --cache clang-build/CMakeCache.txt --configuration MinSizeRel
           python .github/scripts/upstream_release.py package --source "$VALIDATION_SOURCE" --dist clang-dist --platform linux64 --manifest prepared/upstream-manifest.json --source-archive prepared/NewPageMergeMDL-source.zip --output clang-validation.zip
           python "$VALIDATION_SOURCE/tests/verify_package.py" clang-validation.zip --manifest prepared/upstream-manifest.json --subtool-probe clang-output-tests/bin/subtool_transaction_probe
-          python "$VALIDATION_SOURCE/tests/linux_package_smoke.py" clang-validation.zip
+          python "$VALIDATION_SOURCE/tests/linux_package_smoke.py" clang-validation.zip --require-baseline
       - uses: actions/upload-artifact@v7
         if: inputs.include-gcc
         with:

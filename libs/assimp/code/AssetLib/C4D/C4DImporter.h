@@ -48,6 +48,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <assimp/LogAux.h>
 
 #include <map>
+#include <set>
+#include <vector>
 
 // Forward declarations
 struct aiNode;
@@ -91,9 +93,12 @@ protected:
 private:
 
     void ReadMaterials(cineware::BaseMaterial* mat);
-    void RecurseHierarchy(cineware::BaseObject* object, aiNode* parent);
+    void RecurseHierarchy(cineware::BaseObject* object, aiNode* parent,
+        std::vector<cineware::BaseObject*> materialOwners = {},
+        unsigned int depth = 0, bool consumed = false, bool cache = false);
     aiMesh* ReadMesh(cineware::BaseObject* object);
-    std::vector<unsigned int> ResolveMaterials(cineware::PolygonObject* obj);
+    std::vector<unsigned int> ResolveMaterials(cineware::PolygonObject* obj,
+        const std::vector<cineware::BaseObject*>& owners);
 
     bool ReadShader(aiMaterial* out, cineware::BaseShader* shader);
 
@@ -102,6 +107,8 @@ private:
 
     typedef std::map<cineware::BaseMaterial*, unsigned int> MaterialMap;
     MaterialMap material_mapping;
+    std::set<cineware::BaseObject*> visitedObjects;
+    unsigned int cacheNodeId = 0;
 
 }; // !class C4DImporter
 

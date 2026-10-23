@@ -1,6 +1,7 @@
 // graph.cpp - the AnimGraph2 side: the installed worldmodel skeleton, the
 // wrapper graphs, the additive clip and the skeleton source descriptor.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -128,10 +129,10 @@ kv::Value SkeletonDescriptor(const StockSkeleton& stock, const std::string& refe
     };
 }
 
-kv::Value ProportionClip(const std::string& relative) {
+kv::Value ProportionClip(const std::string& relative, bool firstPerson) {
     return kv::Value::Object{
         {"m_sourceFilename", relative + "/" + kProportionsFile},
-        {"m_animationSkeletonName", kStockSkeleton},
+        {"m_animationSkeletonName", firstPerson ? kStockViewSkeleton : kStockSkeleton},
         {"m_additiveType", "RelativeToAnimationFrame"},
         {"m_additiveBaseFilename", relative + "/" + kReferenceFile},
         {"m_additiveBaseFrame", "FirstFrame"},
@@ -144,8 +145,9 @@ kv::Value ProportionClip(const std::string& relative) {
 // The template's chain (referenced graph -> additive proportion layer -> SnapWeapon)
 // over `stockPath`. The wrapper redeclares the stock graph's control parameters,
 // which the referenced graph reads by name; Snap's inputs rewire by name.
-kv::Value WrapperGraph(const kv::Value& stockGraph, const std::string& stockPath, const std::string& clip) {
-    if (stockGraph.At("m_skeleton").String() != kStockSkeleton)
+kv::Value WrapperGraph(const kv::Value& stockGraph, const std::string& stockPath, const std::string& clip,
+                       bool firstPerson) {
+    if (stockGraph.At("m_skeleton").String() != (firstPerson ? kStockViewSkeleton : kStockSkeleton))
         throw runtime_error(stockPath + " uses a different skeleton");
     const auto& ids = stockGraph.At("m_controlParameterIDs").Items();
     std::map<int64_t, std::string> nodeClass;
@@ -154,6 +156,36 @@ kv::Value WrapperGraph(const kv::Value& stockGraph, const std::string& stockPath
 
     kv::Value wrapper = kv::ParseText(kWrapperTemplate);
     kv::Value& root = wrapper["m_pRootGraph"];
+    if (firstPerson) {
+        for (auto& variation : wrapper["m_variationHierarchy"]["m_variations"].Items())
+            variation["m_skeleton"] = kStockViewSkeleton;
+        std::string snapId, poseInput;
+        for (const auto& node : root["m_nodes"].Items())
+            if (ClassOf(node) == "CnmGraphDocSnapWeaponNode") {
+                snapId = node.At("m_ID").String();
+                for (const auto& pin : node.At("m_inputPins").Items())
+                    if (pin.At("m_type").String() == "Pose") poseInput = pin.At("m_ID").String();
+            }
+        kv::Value incoming;
+        for (const auto& link : root["m_connections"].Items())
+            if (link.At("m_toNodeID").String() == snapId && link.At("m_inputPinID").String() == poseInput)
+                incoming = link;
+        if (!incoming.IsObject()) throw runtime_error("wrapper template lacks the SnapWeapon pose input");
+        kv::Value::Array links;
+        for (auto link : root["m_connections"].Items()) {
+            if (link.At("m_toNodeID").String() == snapId) continue;
+            if (link.At("m_fromNodeID").String() == snapId) {
+                link["m_fromNodeID"] = incoming.At("m_fromNodeID");
+                link["m_outputPinID"] = incoming.At("m_outputPinID");
+            }
+            links.push_back(std::move(link));
+        }
+        root["m_connections"] = std::move(links);
+        auto& nodes = root["m_nodes"].Items();
+        nodes.erase(std::remove_if(nodes.begin(),nodes.end(),[&](const auto& node) {
+            return node.At("m_ID").String() == snapId;
+        }),nodes.end());
+    }
     std::map<std::string, kv::Value> prototypes; // doc class -> first template node of it
     std::map<std::string, std::string> templateNames; // template parameter node id -> name
     kv::Value::Array nodes;

@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.rel.outputs.tag }}
       version: ${{ steps.rel.outputs.version }}
@@ -57,9 +57,8 @@ jobs:
             echo "tag=$replace" >> "$GITHUB_OUTPUT"
             echo "replace=true" >> "$GITHUB_OUTPUT"
           else
-            tag=$(git tag --list "v$version-r*" --sort=-v:refname | head -n 1)
-            [ -n "$tag" ] && revision=$((${tag##*-r} + 1)) || revision=1
-            echo "tag=v$version-r$revision" >> "$GITHUB_OUTPUT"
+            tag=$(python3 .github/scripts/manual_release.py choose --repo "$GITHUB_REPOSITORY" --version "$version" --head "$GITHUB_SHA")
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
             echo "replace=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -69,10 +68,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2025
             plat: win64
             ext: .exe
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             plat: linux64
             ext: ""
     runs-on: ${{ matrix.os }}
@@ -93,13 +92,19 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_automation.py -v
           python -m unittest discover -s tests -p test_replacement_notes.py -v
+          python tests/test_diagnostic_bundle.py
+          python tests/test_reproducible_archives.py
+          python -m unittest discover -s tests -p test_manual_release.py -v
 
+      - name: Set reproducible source timestamp
+        shell: bash
+        run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Configure
         # no -G: use whatever toolchain the runner image ships
         shell: bash
         run: |
-          if [ "${{ matrix.plat }}" = "linux64" ]; then export CC=gcc CXX=g++; fi
-          cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
+          if [ "${{ matrix.plat }}" = "linux64" ]; then export CC=gcc-13 CXX=g++-13; fi
+          cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DNEWPAGE_SEPARATE_SYMBOLS=ON -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DPULSE_BUILD_MESHTOOL=ON -DPULSE_BUILD_L4D_ANIMSWAP=ON -DPULSE_BUILD_VMD2VALVEBIPED=ON -DPULSE_BUILD_AG2PROPORTIONS=ON -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL="${{ github.workspace }}/dist" -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="${{ github.workspace }}/dist"
 
       - name: Build
         run: cmake --build build --config MinSizeRel --parallel 2
@@ -110,6 +115,13 @@ jobs:
           python tests/vmd2valvebiped_input_test.py --bin-dir dist/subtools
           python tests/l4d_retarget_names_test.py dist/NewPageMergeMDL${{ matrix.ext }} dist/subtools/l4d_animswap${{ matrix.ext }}
           python tests/subtools_cli_arguments_test.py --bin-dir dist
+
+      - name: Verify native symbols and source line lookup
+        shell: bash
+        run: |
+          python tests/test_symbol_packages.py
+          python tests/symbol_line_probe.py --output symbol-line-probe.json
+          python tests/symbol_line_probe.py --dist dist --output symbol-line-evidence.json
 
       - name: Test pinned helper staging
         run: python -m unittest discover -s tests -p test_windows_extras.py -v
@@ -147,24 +159,12 @@ jobs:
       - name: Test AG2 resource integrity
         run: ctest --test-dir subtool-format-tests -C Release --output-on-failure
 
-      - name: Package with maintained source provenance
-        shell: bash
-        run: |
-          git -c core.autocrlf=false -c core.eol=lf archive --format=zip --prefix=NewPageMergeMDL/ --output="$RUNNER_TEMP/NewPageMergeMDL-source.zip" HEAD
-          python .github/scripts/upstream_release.py maintained-manifest --source . --output upstream-manifest.json --tag "${{ needs.prepare.outputs.tag }}"
-          python .github/scripts/upstream_release.py record-build --manifest upstream-manifest.json --cache build/CMakeCache.txt --configuration MinSizeRel
-          python .github/scripts/upstream_release.py package --source . --dist dist --platform ${{ matrix.plat }} --manifest upstream-manifest.json --source-archive "$RUNNER_TEMP/NewPageMergeMDL-source.zip" --output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip
-
-      - name: Verify actual packaged binaries
-        id: verify
+      - name: Package and verify maintained binaries
         shell: bash
         run: |
           probe=$(find output-tests -type f -name 'subtool_transaction_probe${{ matrix.ext }}' -print -quit)
           test -n "$probe"
-          python tests/verify_package.py newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip --manifest upstream-manifest.json --subtool-probe "$probe"
-          if [ "${{ matrix.plat }}" = "linux64" ]; then
-            python tests/linux_package_smoke.py newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip
-          fi
+          python .github/scripts/package_maintained.py --source . --dist dist --platform ${{ matrix.plat }} --cache build/CMakeCache.txt --configuration MinSizeRel --tag "${{ needs.prepare.outputs.tag }}" --output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}.zip --symbols-output newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-${{ matrix.plat }}-symbols.zip --subtool-probe "$probe"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -176,11 +176,23 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/linux-toolchain-validation.yml
     permissions:
+      contents: write
+
+  reproducible:
+    needs: prepare
+    uses: ./.github/workflows/reproducible-builds.yml
+    permissions:
+      contents: write
+
+  sanitizers:
+    needs: prepare
+    uses: ./.github/workflows/sanitizer-mutations.yml
+    permissions:
       contents: read
 
   publish:
-    needs: [prepare, build, linux-clang]
-    runs-on: ubuntu-latest
+    needs: [prepare, build, linux-clang, reproducible, sanitizers]
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -213,7 +225,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ needs.prepare.outputs.tag }}" newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-win64.zip newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-linux64.zip --target "${{ github.sha }}" --title "${{ needs.prepare.outputs.tag }}" --notes-file notes.txt --draft
+          python3 .github/scripts/manual_release.py upload --repo "$GITHUB_REPOSITORY" --head "$GITHUB_SHA" --tag "${{ needs.prepare.outputs.tag }}" --notes notes.txt --symbols newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-win64-symbols.zip newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-linux64-symbols.zip -- newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-win64.zip newpage-merge-mdl-${{ needs.prepare.outputs.tag }}-linux64.zip
 
       - name: Replace existing stable release assets
         if: needs.prepare.outputs.replace == 'true'
@@ -227,9 +239,11 @@ jobs:
           test -n "$before"
           cp "newpage-merge-mdl-$tag-win64.zip" newpage-merge-mdl-win64.zip
           cp "newpage-merge-mdl-$tag-linux64.zip" newpage-merge-mdl-linux64.zip
-          python3 .github/scripts/replacement_notes.py --repo "$GITHUB_REPOSITORY" --tag "$tag" --head "$GITHUB_SHA" --output notes.txt --checkpoint replacement-checkpoint.txt newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip
+          cp "newpage-merge-mdl-$tag-win64-symbols.zip" newpage-merge-mdl-win64-symbols.zip
+          cp "newpage-merge-mdl-$tag-linux64-symbols.zip" newpage-merge-mdl-linux64-symbols.zip
+          python3 .github/scripts/replacement_notes.py --repo "$GITHUB_REPOSITORY" --tag "$tag" --head "$GITHUB_SHA" --output notes.txt --checkpoint replacement-checkpoint.txt newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip newpage-merge-mdl-win64-symbols.zip newpage-merge-mdl-linux64-symbols.zip
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file replacement-checkpoint.txt
-          gh release upload "$tag" newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip --clobber
+          gh release upload "$tag" newpage-merge-mdl-win64.zip newpage-merge-mdl-linux64.zip newpage-merge-mdl-win64-symbols.zip newpage-merge-mdl-linux64-symbols.zip --clobber
           python3 - <<'PY'
           import hashlib, os, subprocess, json
           tag = os.environ['RELEASE_TAG']
@@ -239,6 +253,8 @@ jobs:
           expected = {
               'newpage-merge-mdl-win64.zip',
               'newpage-merge-mdl-linux64.zip',
+              'newpage-merge-mdl-win64-symbols.zip',
+              'newpage-merge-mdl-linux64-symbols.zip',
           }
           for name in expected:
               local = name

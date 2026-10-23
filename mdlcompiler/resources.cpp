@@ -2,6 +2,7 @@
 #include "pathcompat.h"
 #include "dependencies.h"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cctype>
 #include <cstdlib>
@@ -91,8 +92,8 @@ std::vector<KV> ReadKV(const fs::path& path) {
  dependencies::Note(path.string());return out;
 }
 const KV* Child(const std::vector<KV>& nodes,const std::string& name){for(const auto& n:nodes)if(Lower(n.key)==Lower(name))return &n;return nullptr;}
-struct Entry {uint16_t archive=0;uint32_t offset=0,length=0;std::vector<char> preload;};
-struct Mount {fs::path path;bool loaded=false;uint64_t dataStart=0;std::map<std::string,Entry> entries;};
+struct Entry {uint16_t archive=0;uint32_t crc=0,offset=0,length=0;std::vector<char> preload;};
+struct Mount {fs::path path;bool loaded=false;uint64_t dataStart=0,dataLength=UINT64_MAX;std::map<std::string,Entry> entries;};
 struct State {
  std::vector<Mount> mounts,contentMounts;bool contentSearch=false,csgoTarget=false;int targetVtx=-1;fs::path cache,gameDirectory;
  ~State(){if(!cache.empty()){std::error_code ec;auto parent=fs::temp_directory_path(ec).lexically_normal();
@@ -100,6 +101,12 @@ struct State {
 } state;
 uint16_t U16(const std::vector<char>& b,size_t& i){if(i+2>b.size())throw std::runtime_error("truncated VPK entry");uint16_t x=uint8_t(b[i])|(uint16_t(uint8_t(b[i+1]))<<8);i+=2;return x;}
 uint32_t U32(const std::vector<char>& b,size_t& i){uint32_t lo=U16(b,i),hi=U16(b,i);return lo|(hi<<16);}
+uint32_t Crc32(uint32_t crc,const char* bytes,size_t size) {
+ static const auto table=[](){std::array<uint32_t,256> result{};
+  for(uint32_t i=0;i<256;++i){uint32_t v=i;for(int bit=0;bit<8;++bit)v=(v>>1)^((v&1)?0xedb88320u:0);result[i]=v;}return result;}();
+ for(size_t i=0;i<size;++i)crc=table[(crc^uint8_t(bytes[i]))&255]^(crc>>8);
+ return crc;
+}
 std::string CString(const std::vector<char>& b,size_t& i){size_t start=i;while(i<b.size()&&b[i])++i;if(i==b.size())throw std::runtime_error("truncated VPK string");std::string s(b.data()+start,i-start);++i;return s;}
 bool SafeRelative(const fs::path& p){if(p.empty()||p.is_absolute()||p.has_root_name())return false;for(const auto& part:p)if(part=="..")return false;return true;}
 std::string ArchivePath(std::string name) {
@@ -122,24 +129,25 @@ std::string ArchivePath(std::string name) {
  return Lower(std::move(result));
 }
 void Index(Mount& m) {
- if(m.loaded)return;m.loaded=true;std::ifstream f(m.path,std::ios::binary);
+ if(m.loaded)return;m.entries.clear();m.dataLength=UINT64_MAX;std::ifstream f(m.path,std::ios::binary);
  std::vector<char> header(12);f.read(header.data(),12);size_t h=0;
  if(!f||U32(header,h)!=0x55aa1234)throw std::runtime_error("invalid VPK signature: "+m.path.string());
  uint32_t version=U32(header,h),size=U32(header,h);
  if(version!=1&&version!=2)throw std::runtime_error("unsupported VPK version");
  if(size>256*1024*1024)throw std::runtime_error("VPK directory exceeds 256 MiB");
+ if(version==2){std::vector<char> extra(16);f.read(extra.data(),extra.size());if(!f)throw std::runtime_error("truncated VPK v2 header");size_t p=0;m.dataLength=U32(extra,p);}
  m.dataStart=(version==1?12:28)+uint64_t(size);f.seekg(version==1?12:28);
  std::vector<char> tree(size);f.read(tree.data(),size);if(!f)throw std::runtime_error("truncated VPK directory");size_t i=0;
  for(std::string ext=CString(tree,i);!ext.empty();ext=CString(tree,i))
   for(std::string dir=CString(tree,i);!dir.empty();dir=CString(tree,i))
    for(std::string name=CString(tree,i);!name.empty();name=CString(tree,i)) {
-    U32(tree,i);uint16_t preload=U16(tree,i);Entry e;e.archive=U16(tree,i);e.offset=U32(tree,i);e.length=U32(tree,i);
+    Entry e;e.crc=U32(tree,i);uint16_t preload=U16(tree,i);e.archive=U16(tree,i);e.offset=U32(tree,i);e.length=U32(tree,i);
     if(U16(tree,i)!=0xffff||preload>tree.size()-i)throw std::runtime_error("invalid VPK entry");
     e.preload.assign(tree.begin()+i,tree.begin()+i+preload);i+=preload;
     auto key=ArchivePath((dir==" "?"":dir+"/")+name+(ext==" "?"":"."+ext));
     m.entries.emplace(std::move(key),std::move(e));
    }
- dependencies::Note(m.path.string());
+ dependencies::Note(m.path.string());m.loaded=true;
 }
 bool WildcardMatch(const std::string& pattern,const std::string& name) {
  size_t p=0,n=0,star=std::string::npos,retry=0;
@@ -280,10 +288,28 @@ fs::path Find(const fs::path& input) {
   auto archive=m.path;uint64_t offset=m.dataStart+e.offset;
   if(e.archive!=0x7fff){auto name=m.path.stem().string();if(name.size()>4&&name.substr(name.size()-4)=="_dir")name.resize(name.size()-4);
    char index[16];std::snprintf(index,sizeof(index),"_%03u.vpk",e.archive);archive=m.path.parent_path()/(name+index);offset=e.offset;}
-  std::ifstream f(archive,std::ios::binary|std::ios::ate);auto length=f.tellg();if(!f||length<0||offset>uint64_t(length)||e.length>uint64_t(length)-offset)throw std::runtime_error("VPK entry exceeds archive: "+relative.string());
-  std::ofstream out(output,std::ios::binary);out.write(e.preload.data(),e.preload.size());f.seekg(offset);
-  char buffer[65536];uint32_t left=e.length;while(left){size_t size=std::min<size_t>(left,sizeof(buffer));f.read(buffer,size);out.write(buffer,size);if(!f||!out)throw std::runtime_error("cannot extract VPK resource");left-=uint32_t(size);}
-  dependencies::Note(archive.string());return output;
+  std::ifstream f;
+  if(e.length){
+   if(e.archive==0x7fff&&(e.offset>m.dataLength||e.length>m.dataLength-e.offset))throw std::runtime_error("VPK entry exceeds data section: "+relative.string());
+   f.open(archive,std::ios::binary|std::ios::ate);auto length=f.tellg();if(!f||length<0||offset>uint64_t(length)||e.length>uint64_t(length)-offset)throw std::runtime_error("VPK entry exceeds archive: "+relative.string());
+   f.seekg(offset);
+  }
+  // Only publish a cache file after its complete preload + body passed CRC.
+  // Failed reads/checks must not leave a partial file for a later lookup.
+  auto pending=output;pending+=".npmdl-vpk-pending";
+  struct Cleanup {fs::path path;~Cleanup(){std::error_code ec;fs::remove(path,ec);}} cleanup{pending};
+  std::ofstream out(pending,std::ios::binary|std::ios::trunc);
+  out.write(e.preload.data(),e.preload.size());uint32_t crc=Crc32(0xffffffffu,e.preload.data(),e.preload.size());
+  if(!out)throw std::runtime_error("cannot write VPK preload: "+relative.string());
+  char buffer[65536];uint32_t left=e.length;
+  while(left){size_t size=std::min<size_t>(left,sizeof(buffer));f.read(buffer,size);
+   if(!f)throw std::runtime_error("cannot read VPK resource: "+relative.string());
+   crc=Crc32(crc,buffer,size);out.write(buffer,size);if(!out)throw std::runtime_error("cannot extract VPK resource: "+relative.string());left-=uint32_t(size);}
+  out.close();if(!out)throw std::runtime_error("cannot close VPK resource: "+relative.string());
+  if((crc^0xffffffffu)!=e.crc)throw std::runtime_error("VPK CRC32 mismatch for resource "+relative.string()+" in "+m.path.string());
+  fs::remove(output,ec);if(ec)throw std::runtime_error("cannot replace VPK resource cache: "+relative.string());
+  fs::rename(pending,output);
+  if(e.length)dependencies::Note(archive.string());return output;
  }
  return {};
 }

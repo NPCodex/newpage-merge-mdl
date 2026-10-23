@@ -418,6 +418,12 @@ class AutomationTests(unittest.TestCase):
                 (source / name).write_text(name)
             (source / 'subtools/meshtool').mkdir(parents=True)
             (source / 'subtools/meshtool/PROTOCOL.md').write_text('Binary protocol limits')
+            new_docs = ('AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md',
+                        'subtools/ag2proportions/README.md', 'subtools/vmd2valvebiped/README.md', 'subtools/l4d_animswap/RETARGET.md')
+            for name in new_docs:
+                path = source / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('Authoring and recovery documentation: ' + name)
             branding = ('.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
                         'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
                         'assets/branding/README.md')
@@ -456,6 +462,12 @@ class AutomationTests(unittest.TestCase):
             with zipfile.ZipFile(root / 'out.zip') as archive:
                 self.assertEqual(archive.read('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'), (root / 'source.zip').read_bytes())
                 self.assertEqual(archive.read('NewPageMergeMDL/subtools/meshtool-protocol.md'), b'Binary protocol limits')
+                for name in new_docs:
+                    packaged = {'subtools/ag2proportions/README.md': 'subtools/ag2proportions.md',
+                                'subtools/vmd2valvebiped/README.md': 'subtools/vmd2valvebiped.md',
+                                'subtools/l4d_animswap/RETARGET.md': 'subtools/l4d_animswap-retarget.md'}.get(name, name)
+                    self.assertEqual(archive.read('NewPageMergeMDL/' + packaged),
+                                     (source / name).read_bytes().replace(name.encode(), packaged.encode()))
                 for name in branding:
                     self.assertEqual(archive.read('NewPageMergeMDL/' + name), (source / name).read_bytes())
                 self.assertIn('NewPageMergeMDL/INSTALL.md', archive.namelist())
@@ -537,6 +549,320 @@ class AutomationTests(unittest.TestCase):
                             'Alexey Chernov', 'ArangoDB GmbH', 'Georgi Gerganov'):
             self.assertIn(attribution, notices)
 
+
+
+class ReleaseContentDeduplicationTests(unittest.TestCase):
+    """Exercise the release gate with legacy packages, not fabricated hash matches."""
+
+    controller = 'a' * 40
+    pulse = 'b' * 40
+
+    def make_source(self, root):
+        config = dict(project_version='1.2.38', pulsemodel='official/pulse', pulse_base=self.pulse,
+                      studiomdl_ce='official/ce', tools_repository='official/tools', tools_tag='v1',
+                      tools_assets=['tools.zip'])
+        files = {
+            'CMakeLists.txt': b'project(NewPageMergeMDL VERSION 1.2.38 LANGUAGES CXX C)\n',
+            'automation/upstreams.json': (json.dumps(config) + '\n').encode(),
+            'automation/compatibility.patch': b'maintained native overlay\n',
+            'automation/windows-extras.json': b'{"source":{"sha256":"pinned-helper"}}\n',
+            'mdlcompiler/main.cpp': b'int main() { return 0; }\n',
+            'mdldecompiler/main.cpp': b'int decompile() { return 0; }\n',
+            'subtools/vmd2valvebiped/main.cpp': b'int convert() { return 0; }\n',
+            'tools/output_transaction.py': b'def recover(): return True\n',
+            'integration/gmod/newpage_vrm.lua': b'return { enabled = true }\n',
+            'libs/example/LICENSE.md': b'Copyright fixture author\n',
+            'assets/branding/NewPage-logo.png': b'\x89PNG\r\n\x1a\nfixture',
+            'README.md': b'User guide\n',
+            'subtools/vmd2valvebiped/README.md': b'Converter guide\n',
+            'tests/reports/candidate.json': b'{"passed":true}\n',
+            '.github/scripts/upstream_release.py': b'# workflow implementation\n',
+            '.github/workflows/upstream-release.yml': b'name: release\n',
+        }
+        for name, data in files.items():
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        return config
+
+    def legacy_manifest(self, root, config):
+        # Released v1.2.38 predates content deduplication. Its provenance must
+        # migrate from the embedded source, never from a newly trusted field.
+        manifest = sync.source_state(config, self.controller, self.pulse, root)
+        manifest.pop('release_inputs_sha256', None)
+        manifest.update(version_base=config['project_version'], source_kind='maintained checkout',
+                        release_tag='dev-' + self.controller)
+        return manifest
+
+    def package_bytes(self, root, manifest, changes=None, include_source=True):
+        source_bytes = io.BytesIO()
+        with zipfile.ZipFile(source_bytes, 'w') as source:
+            source.comment = manifest['controller_sha'].encode('ascii')
+            for path in sorted(root.rglob('*')):
+                if path.is_file():
+                    relative = path.relative_to(root).as_posix()
+                    source.writestr('NewPageMergeMDL/' + relative,
+                                    (changes or {}).get(relative, path.read_bytes()))
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, 'w') as package:
+            package.writestr('NewPageMergeMDL/upstream-manifest.json', json.dumps(manifest))
+            package.writestr('NewPageMergeMDL/runtime-fixture', b'fixture executable')
+            if include_source:
+                package.writestr('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip', source_bytes.getvalue())
+            sync.write_inventory(package)
+        return output.getvalue()
+
+    def published(self, linux, windows=None, digest=None, tag='v1.2.38'):
+        payloads, assets = {}, []
+        for identifier, platform, payload in ((1, 'linux64', linux), (2, 'win64', windows or linux)):
+            item = asset('NewPageMergeMDL-' + tag + '-' + platform + '.zip', identifier)
+            item.update(size=len(payload), digest=digest or 'sha256:' + hashlib.sha256(payload).hexdigest())
+            assets.append(item)
+            payloads[item['url']] = payload
+        release = dict(draft=False, tag_name=tag, published_at='2026-10-23T03:00:00Z', assets=assets)
+        with patch.object(sync, 'api', return_value=[release]), \
+             patch.object(sync, 'fetch', side_effect=lambda url, **_: payloads[url]) as download:
+            result = sync.published_manifest('owner/project')
+        self.assertEqual(download.call_count, 2)
+        return result
+
+    def prepare_until_build(self, root, previous, *, force=False, pulse=None):
+        class BuildStarted(Exception):
+            pass
+
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, 'w') as source:
+            source.writestr('reference/README.md', 'reference only')
+        allocations = []
+        allocate = sync.release_version
+
+        def record_allocation(*args):
+            result = allocate(*args)
+            allocations.append(result)
+            return result
+
+        with patch.object(sync, 'ROOT', root), \
+             patch.dict(os.environ, GITHUB_SHA='c' * 40, GITHUB_REPOSITORY='owner/project'), \
+             patch.object(sync, 'latest_commit', side_effect=lambda repo: (pulse or self.pulse) if repo == 'official/pulse' else 'ce'), \
+             patch.object(sync, 'published_manifest', return_value=previous), \
+             patch.object(sync, 'api', return_value={'assets': [asset()]}), \
+             patch.object(sync, 'fetch', side_effect=lambda url, **_: archive.getvalue() if 'codeload' in url else b'abc') as fetch, \
+             patch.object(sync, 'create_source', side_effect=BuildStarted) as build, \
+             patch.object(sync, 'release_version', side_effect=record_allocation), \
+             patch.object(sync, 'emit') as emit:
+            try:
+                sync.prepare(argparse.Namespace(work=root.parent / 'work', force=force))
+            except BuildStarted:
+                pass
+        return allocations, build, fetch, emit
+
+    def test_merge_and_documentation_changes_do_not_republish_legacy_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'source'
+            config = self.make_source(root)
+            previous = self.published(self.package_bytes(root, self.legacy_manifest(root, config)))
+            for name in ('README.md', 'subtools/vmd2valvebiped/README.md',
+                         'tests/reports/candidate.json', '.github/scripts/upstream_release.py',
+                         '.github/workflows/upstream-release.yml'):
+                (root / name).write_bytes(b'Updated documentation or validation\n')
+            # Regenerating the overlay after a subtool README edit also changes
+            # its bytes; the actual native inputs remain identical.
+            (root / 'automation/compatibility.patch').write_bytes(b'overlay with updated documentation hunk\n')
+            allocations, build, fetch, emit = self.prepare_until_build(root, previous)
+            self.assertEqual(allocations, [('1.2.38', 'v1.2.38')])
+            build.assert_not_called()
+            fetch.assert_not_called()
+            emit.assert_called_once_with(changed=False, tag='v1.2.38')
+            self.assertFalse((root.parent / 'work').exists())
+
+    def test_real_release_inputs_still_trigger_new_version_after_merge(self):
+        for name in ('mdlcompiler/main.cpp', 'mdldecompiler/main.cpp',
+                     'subtools/vmd2valvebiped/main.cpp', 'tools/output_transaction.py',
+                     'integration/gmod/newpage_vrm.lua', 'automation/windows-extras.json',
+                     'assets/branding/NewPage-logo.png', 'libs/example/LICENSE.md'):
+            with self.subTest(path=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / 'source'
+                config = self.make_source(root)
+                previous = self.published(self.package_bytes(root, self.legacy_manifest(root, config)))
+                (root / name).write_bytes((root / name).read_bytes() + b'changed')
+                allocations, build, _, emit = self.prepare_until_build(root, previous)
+                self.assertEqual(allocations, [('1.2.39', 'v1.2.39')])
+                build.assert_called_once()
+                emit.assert_not_called()
+
+    def test_added_and_removed_runtime_inputs_are_changes(self):
+        for operation in ('add', 'remove'):
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / 'source'
+                config = self.make_source(root)
+                previous = self.published(self.package_bytes(root, self.legacy_manifest(root, config)))
+                if operation == 'add':
+                    (root / 'tools/new_helper.py').write_bytes(b'print("new helper")\n')
+                else:
+                    (root / 'tools/output_transaction.py').unlink()
+                allocations, build, _, _ = self.prepare_until_build(root, previous)
+                self.assertEqual(allocations, [('1.2.39', 'v1.2.39')])
+                build.assert_called_once()
+
+    def test_version_configuration_and_pulse_changes_still_trigger_release(self):
+        for mutation in ('version', 'configuration', 'pulse'):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / 'source'
+                config = self.make_source(root)
+                previous = self.published(self.package_bytes(root, self.legacy_manifest(root, config)))
+                if mutation == 'version':
+                    config['project_version'] = '1.3.0'
+                    path = root / 'CMakeLists.txt'
+                    path.write_bytes(path.read_bytes().replace(b'1.2.38', b'1.3.0'))
+                elif mutation == 'configuration':
+                    config['tools_tag'] = 'v2'
+                (root / 'automation/upstreams.json').write_text(json.dumps(config))
+                allocations, build, _, _ = self.prepare_until_build(
+                    root, previous, pulse='d' * 40 if mutation == 'pulse' else None)
+                expected = ('1.3.0', 'v1.3.0') if mutation == 'version' else ('1.2.39', 'v1.2.39')
+                self.assertEqual(allocations, [expected])
+                build.assert_called_once()
+
+    def test_forced_retry_preserves_public_tag_and_original_dev_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'source'
+            config = self.make_source(root)
+            previous = self.published(self.package_bytes(root, self.legacy_manifest(root, config)))
+            self.assertEqual(previous['release_tag'], 'v1.2.38')
+            self.assertEqual(previous['build_tag'], 'dev-' + self.controller)
+            allocations, build, _, _ = self.prepare_until_build(root, previous, force=True)
+            self.assertEqual(allocations, [('1.2.38', 'v1.2.38')])
+            build.assert_called_once()
+
+    def test_next_schedule_after_auto_release_uses_original_controller_inputs(self):
+        for force in (False, True):
+            with self.subTest(force=force), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / 'source'
+                config = self.make_source(root)
+                new_pulse = 'd' * 40
+                manifest = sync.source_state(config, self.controller, new_pulse, root)
+                manifest.update(version_base='1.2.38', project_version='1.2.39', release_tag='v1.2.39')
+                stamped_config = dict(config, project_version='1.2.39')
+                new_overlay = b'auto overlay for updated upstream\n'
+                manifest['build_overlay_sha256'] = sync.source_text_sha256(new_overlay)
+                payload = self.package_bytes(root, manifest, {
+                    'CMakeLists.txt': b'project(NewPageMergeMDL VERSION 1.2.39 LANGUAGES CXX C)\n',
+                    'automation/upstreams.json': json.dumps(stamped_config).encode(),
+                    'automation/compatibility.patch': new_overlay,
+                    'mdlcompiler/main.cpp': b'int main() { return updated_upstream(); }\n',
+                })
+                previous = self.published(payload, tag='v1.2.39')
+                allocations, build, fetch, emit = self.prepare_until_build(
+                    root, previous, force=force, pulse=new_pulse)
+                self.assertEqual(allocations, [('1.2.39', 'v1.2.39')])
+                if force:
+                    build.assert_called_once()
+                    emit.assert_not_called()
+                else:
+                    build.assert_not_called()
+                    fetch.assert_not_called()
+                    emit.assert_called_once_with(changed=False, tag='v1.2.39')
+
+    def test_checkout_identity_ignores_untracked_files_and_reads_tracked_working_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'source'
+            config = self.make_source(root)
+            sync.subprocess.run(['git', 'init', '--quiet', str(root)], check=True)
+            sync.subprocess.run(['git', '-C', str(root), '-c', 'core.autocrlf=false', 'add', '.'], check=True)
+            baseline = sync.source_state(config, self.controller, self.pulse, root)['release_inputs_sha256']
+            (root / '.gitignore').write_text('libs/example/local-cache.cpp\n')
+            (root / 'libs/example/local-cache.cpp').write_bytes(b'ignored cache content\n')
+            (root / 'tools/untracked-helper.py').write_bytes(b'local experiment\n')
+            unchanged = sync.source_state(config, 'c' * 40, self.pulse, root)['release_inputs_sha256']
+            self.assertEqual(baseline, unchanged)
+            (root / 'tools/output_transaction.py').write_bytes(b'def recover(): return "changed"\n')
+            changed = sync.source_state(config, 'c' * 40, self.pulse, root)['release_inputs_sha256']
+            self.assertNotEqual(baseline, changed)
+
+    def test_tracked_cpp_checkout_newlines_have_the_same_release_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'source'
+            config = self.make_source(root)
+            sync.subprocess.run(['git', 'init', '--quiet', str(root)], check=True)
+            sync.subprocess.run(['git', '-C', str(root), '-c', 'core.autocrlf=false', 'add', '.'], check=True)
+            baseline = sync.source_state(config, self.controller, self.pulse, root)['release_inputs_sha256']
+            source = root / 'mdlcompiler/main.cpp'
+            original = source.read_bytes()
+            source.write_bytes(original.replace(b'\n', b'\r\n'))
+            self.assertNotEqual(original, source.read_bytes())
+            current = sync.source_state(config, 'c' * 40, self.pulse, root)['release_inputs_sha256']
+            self.assertEqual(baseline, current)
+
+    def test_binary_resource_newline_bytes_trigger_release_even_without_nul(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'source'
+            config = self.make_source(root)
+            resource = root / 'libs/example/table.bin'
+            resource.write_bytes(b'\x80Binary resource\r\nwith no NUL bytes\r\n')
+            previous = self.published(self.package_bytes(root, self.legacy_manifest(root, config)))
+            resource.write_bytes(resource.read_bytes().replace(b'\r\n', b'\n'))
+            allocations, build, _, _ = self.prepare_until_build(root, previous)
+            self.assertEqual(allocations, [('1.2.39', 'v1.2.39')])
+            build.assert_called_once()
+
+    def test_vendored_test_changes_skip_but_their_licenses_remain_release_inputs(self):
+        for folder in ('test', 'tests'):
+            with self.subTest(folder=folder), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / 'source'
+                config = self.make_source(root)
+                vendor = root / 'libs/example' / folder
+                vendor.mkdir()
+                fixture = vendor / 'parser_fixture.cpp'
+                notice = vendor / 'LICENSE.md'
+                fixture.write_bytes(b'int test_fixture() { return 0; }\n')
+                notice.write_bytes(b'Copyright fixture author\n')
+                previous = self.published(self.package_bytes(root, self.legacy_manifest(root, config)))
+                fixture.write_bytes(b'int test_fixture() { return 1; }\n')
+                allocations, build, fetch, emit = self.prepare_until_build(root, previous)
+                self.assertEqual(allocations, [('1.2.38', 'v1.2.38')])
+                build.assert_not_called()
+                fetch.assert_not_called()
+                emit.assert_called_once_with(changed=False, tag='v1.2.38')
+                notice.write_bytes(b'Copyright fixture author; updated distribution terms\n')
+                allocations, build, _, _ = self.prepare_until_build(root, previous)
+                self.assertEqual(allocations, [('1.2.39', 'v1.2.39')])
+                build.assert_called_once()
+
+    def test_platform_sources_must_agree_even_for_documentation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'source'
+            config = self.make_source(root)
+            manifest = self.legacy_manifest(root, config)
+            linux = self.package_bytes(root, manifest)
+            windows = self.package_bytes(root, manifest, {'README.md': b'Different source snapshot\n'})
+            with self.assertRaisesRegex(ValueError, 'different source identities'):
+                self.published(linux, windows)
+
+    def test_content_migration_rejects_invalid_source_proof_and_asset_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'source'
+            config = self.make_source(root)
+            manifest = self.legacy_manifest(root, config)
+            for name, value in (
+                    ('automation/compatibility.patch', b'wrong overlay\n'),
+                    ('automation/upstreams.json', b'{}\n'),
+                    ('CMakeLists.txt', b'project(NewPageMergeMDL VERSION 9.9.9 LANGUAGES CXX C)\n')):
+                with self.subTest(path=name), self.assertRaises(ValueError):
+                    self.published(self.package_bytes(root, manifest, {name: value}))
+            with self.assertRaisesRegex(ValueError, 'digest mismatch'):
+                self.published(self.package_bytes(root, manifest), digest='sha256:' + '0' * 64)
+
+    def test_unverified_legacy_hash_cannot_suppress_a_changed_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'source'
+            config = self.make_source(root)
+            manifest = self.legacy_manifest(root, config)
+            manifest['release_inputs_sha256'] = sync.source_state(
+                config, 'c' * 40, self.pulse, root)['release_inputs_sha256']
+            previous = self.published(self.package_bytes(root, manifest, include_source=False))
+            allocations, build, _, _ = self.prepare_until_build(root, previous)
+            self.assertEqual(allocations, [('1.2.39', 'v1.2.39')])
+            build.assert_called_once()
 
 
 class ReleasePublishingTests(unittest.TestCase):
@@ -698,6 +1024,7 @@ class PackageValidationTests(unittest.TestCase):
                 '.github/images/newpage-compiler.png','.github/images/newpage-decompiler.png',
                 'assets/branding/NewPage-logo.png','assets/branding/generate_icons.py','assets/branding/README.md',
                 'FIVE_COMPILER_COMPLETION.md','O5_FORMAT_IMPORTS.md','MESH_STATE_WORKFLOW.md','VRM_RUNTIME.md',
+                'AUTHORING_WORKFLOWS.md','DECOMPILER_EXPORTS.md','SCENE_IMPORT.md','GAME_PLATFORM_MATRIX.md',
                 'tests/reports/toolkit-fixes-20261020.md','tests/reports/2026-10-18-rea-second-pass.md',
                 'tests/reports/ag2-gameplay-20261020.md',
                 'tests/reports/v1.2.34-replacement-validation.md','tests/reports/v1.2.36-replacement-validation.md',
@@ -714,6 +1041,7 @@ class PackageValidationTests(unittest.TestCase):
                 'libs/tinyusdz/SOURCE.md','libs/tinyusdz/THIRD_PARTY_NOTICES.md',
                 'subtools/licenses/zstd.txt','subtools/licenses/ValveResourceFormat.txt',
                 'subtools/meshtool-protocol.md',
+                'subtools/ag2proportions.md','subtools/vmd2valvebiped.md','subtools/l4d_animswap-retarget.md',
             ):
                 if name != omit:
                     z.writestr('NewPageMergeMDL/'+name, '' if name == empty else 'fixture')
@@ -743,6 +1071,8 @@ class PackageValidationTests(unittest.TestCase):
                      '.github/images/newpage-compiler.png', '.github/images/newpage-decompiler.png',
                      'assets/branding/NewPage-logo.png', 'assets/branding/generate_icons.py',
                      'assets/branding/README.md', 'subtools/meshtool-protocol.md',
+                     'AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md',
+                     'subtools/ag2proportions.md', 'subtools/vmd2valvebiped.md', 'subtools/l4d_animswap-retarget.md',
                      'tests/reports/toolkit-fixes-20261020.md', 'tests/reports/2026-10-18-rea-second-pass.md',
                      'tests/reports/ag2-gameplay-20261020.md',
                      'tests/reports/v1.2.34-replacement-validation.md', 'tests/reports/v1.2.36-replacement-validation.md'):
@@ -787,6 +1117,39 @@ class PackageValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);archive=self.make_package(root,manifest={'project_version':'wrong'})
             with self.assertRaisesRegex(ValueError,'provenance'):self.verifier().verify(archive,{'project_version':'1.2.6'},root/'extracted')
+
+    def test_file_directory_conflict_is_rejected_before_extracting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            suffix = '.exe' if os.name == 'nt' else ''
+            archive = self.make_package(root, extra='NewPageMergeMDL/subtools/ag2proportions' + suffix + '/README.md')
+            with self.assertRaisesRegex(ValueError, 'file/directory conflict'):
+                self.verifier().verify(archive, {'project_version': '1.2.6'}, root / 'extracted')
+            self.assertFalse((root / 'extracted').exists())
+
+    def test_linux_package_guides_do_not_collide_with_executables(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dist = root / 'dist'
+            (dist / 'subtools/licenses').mkdir(parents=True)
+            for name in ('NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D',
+                         'subtools/ag2proportions', 'subtools/l4d_animswap',
+                         'subtools/meshtool', 'subtools/vmd2valvebiped'):
+                (dist / name).write_bytes(b'\x7fELFfixture')
+            for name in ('zstd.txt', 'ValveResourceFormat.txt'):
+                (dist / 'subtools/licenses' / name).write_text('dependency notice')
+            manifest = root / 'manifest.json'
+            manifest.write_text('{"project_version":"test"}')
+            archive = root / 'linux.zip'
+            sync.package(argparse.Namespace(source=ROOT, dist=dist, platform='linux64',
+                                             manifest=manifest, output=archive, source_archive=None))
+            compiler = self.verifier().verify(archive, {'project_version': 'test'}, root / 'unpacked')
+            self.assertTrue(compiler.is_file())
+            readme = (compiler.parent / 'README.md').read_text(encoding='utf-8')
+            self.assertIn('](subtools/ag2proportions.md)', readme)
+            self.assertNotIn('subtools/ag2proportions/README.md', readme)
+            guide = (compiler.parent / 'subtools/vmd2valvebiped.md').read_text(encoding='utf-8')
+            self.assertIn('](../tests/reports/', guide)
 
     def test_unlisted_payload_is_rejected_before_extracting(self):
         with tempfile.TemporaryDirectory() as directory:

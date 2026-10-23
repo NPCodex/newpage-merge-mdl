@@ -2,7 +2,12 @@ cmake_minimum_required(VERSION 3.22)
 # Distributed tools share the NewPageMergeMDL project version.
 # Upstream TOOL_VERSION declarations remain as merge context only.
 # C is enabled only for vendored dependencies; toolkit code is C++.
-project(NewPageMergeMDL VERSION 1.2.37 LANGUAGES CXX C)
+project(NewPageMergeMDL VERSION 1.2.38 LANGUAGES CXX C)
+
+option(NEWPAGE_REPRODUCIBLE "Normalize source paths and deterministic executable identity" ON)
+option(NEWPAGE_SEPARATE_SYMBOLS "Produce matching separate native debug symbols" OFF)
+set(NEWPAGE_SANITIZERS "" CACHE STRING "Developer sanitizers: address,undefined (GCC/Clang); address (MSVC)")
+include(cmake/BuildQuality.cmake)
 
 # Keep all Windows tools portable, including helpers without Assimp's runtime
 # link settings. MSVC distribution builds select MultiThreaded in their preset.
@@ -21,8 +26,10 @@ if(NEWPAGE_COMPACT_RELEASE)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND (WIN32 OR UNIX AND NOT APPLE))
         add_compile_options("$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CONFIG:Release,MinSizeRel>>:-ffunction-sections>"
                             "$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<CONFIG:Release,MinSizeRel>>:-fdata-sections>")
-        add_link_options("$<$<CONFIG:Release,MinSizeRel>:-Wl,--gc-sections>"
-                         "$<$<CONFIG:Release,MinSizeRel>:-s>")
+        add_link_options("$<$<CONFIG:Release,MinSizeRel>:-Wl,--gc-sections>")
+        if(NOT NEWPAGE_SEPARATE_SYMBOLS AND NOT NEWPAGE_SANITIZERS)
+            add_link_options("$<$<CONFIG:Release,MinSizeRel>:-s>")
+        endif()
     endif()
 endif()
 

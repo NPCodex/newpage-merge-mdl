@@ -244,12 +244,11 @@ end
 function M.StepSprings(entity,state,seconds)
     if not IsValid(entity) or not finite(seconds) or seconds<0 then return false,"invalid spring step" end
     if entity.GetModelScale and math.abs(entity:GetModelScale()-1)>1e-5 then return false,"bake entity scale before VRM spring playback" end
-    if seconds>.25 then state.tails={};seconds=0 end
     local original,current={},{}
     for _,i in ipairs(state.order) do
         local matrix=entity:GetBoneMatrix(i)
         if not matrix then return false,"spring step needs built bone matrices" end
-        original[i]=Matrix(matrix);current[i]=Matrix(matrix)
+        original[i]=Matrix(matrix)
     end
     local function descendants(parent)
         local changed={[parent]=true}
@@ -260,8 +259,29 @@ function M.StepSprings(entity,state,seconds)
             end
         end
     end
-    local steps=math.max(1,math.ceil(seconds*60));local dt=seconds/steps
+    -- VRM drag is a per-step factor. A maximum step alone would apply it
+    -- twice as often at 120 FPS as at 60 FPS. Accumulate real time and use
+    -- one fixed 60 Hz simulation clock for every rendering frame rate.
+    if seconds>.25 then state.tails={};state.accumulator=0;seconds=0 end
+    local accumulated=(state.accumulator or 0)+seconds
+    local steps=math.floor(accumulated*60+1e-9);local dt=1/60
+    state.accumulator=math.max(0,accumulated-steps*dt)
+    -- Initialize the whole chain at the same time-zero pose, before a parent
+    -- takes its first simulation step. Otherwise a high-FPS render-only frame
+    -- would give children a different initial history from a 30/60 FPS frame.
     for _,entry in ipairs(state.joints) do
+        local spring,j=entry.spring,entry.joint
+        if not state.tails[j.bone] then
+            local matrix=original[state.bones[j.bone]]
+            local tail=matrix:GetTranslation()+direction(matrix,vec(j.tail))
+            local center=spring.center and original[state.bones[spring.center]] or nil
+            local localTail=center and inversePosition(center,tail) or tail
+            state.tails[j.bone]={now=localTail,previous=localTail}
+        end
+    end
+    for _=1,math.max(1,steps) do
+      for _,i in ipairs(state.order) do current[i]=Matrix(original[i]) end
+      for _,entry in ipairs(state.joints) do
         local spring,j=entry.spring,entry.joint
         local center=spring.center and current[state.bones[spring.center]] or nil
             local id=state.bones[j.bone];local matrix=current[id];local origin=matrix:GetTranslation()
@@ -272,7 +292,7 @@ function M.StepSprings(entity,state,seconds)
             local gravity=vec(j.gravity_dir)
             -- Gravity is in model space, then rotated into this entity's world.
             if entity.LocalToWorld then gravity=entity:LocalToWorld(gravity)-entity:LocalToWorld(Vector(0,0,0)) end
-            for _=1,steps do
+            if steps>0 then
                 local candidate=tail+(tail-previous)*(1-j.drag)+rest:GetNormalized()*(j.stiffness*dt)+gravity*(j.gravity*dt)
                 candidate=project(origin,candidate,length,rest)
                 for _=1,2 do
@@ -284,9 +304,9 @@ function M.StepSprings(entity,state,seconds)
                 end
                 previous=tail;tail=candidate
             end
-            if seconds==0 and history then tail=center and position(center,history.now) or history.now;previous=center and position(center,history.previous) or history.previous end
             state.tails[j.bone]={now=center and inversePosition(center,tail) or tail,previous=center and inversePosition(center,previous) or previous}
             current[id]=align(matrix,rest,tail-origin);descendants(id)
+      end
     end
     for _,i in ipairs(state.order) do entity:SetBoneMatrix(i,current[i]) end
     return true

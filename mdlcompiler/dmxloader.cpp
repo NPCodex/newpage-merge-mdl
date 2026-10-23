@@ -5,6 +5,7 @@
 
 #include "perf.h"
 #include "dmxloader.h"
+#include "sourcevalidation.h"
 #include "dmxeval.h"
 
 #include <algorithm>
@@ -217,6 +218,9 @@ int LoadSkeleton(const dmx::Element* skeletonRoot, const dmx::Element* model,
     boneMap.defaultRootNode = static_cast<int>(boneMap.transforms.size());
     LocalBone lb;
     lb.name = "defaultRoot";
+    for (unsigned suffix = 1; std::any_of(out.localBone.begin(), out.localBone.end(),
+            [&](const LocalBone& bone) { return _stricmp(bone.name.c_str(), lb.name.c_str()) == 0; }); ++suffix)
+        lb.name = "defaultRoot_" + std::to_string(suffix);
     lb.parent = -1;
     lb.isNonSkeletal = true; // synthetic - only survives if vertices actually land on it
     out.localBone.push_back(lb);
@@ -448,7 +452,7 @@ int SortAndBalanceBones(int iCount, int iMaxCount, int bones[], float weights[])
         iCount = iMaxCount;
     }
 
-    float t = 0;
+    double t = 0;
     for (i = 0; i < iCount; i++) {
         t += weights[i];
     }
@@ -456,13 +460,12 @@ int SortAndBalanceBones(int iCount, int iMaxCount, int bones[], float weights[])
         // missing weights - evenly share
         t = 1.0f / iCount;
         for (i = 0; i < iCount; i++) {
-            weights[i] = t;
+            weights[i] = static_cast<float>(t);
         }
     } else {
         // scale to sum 1
-        t = 1.0f / t;
         for (i = 0; i < iCount; i++) {
-            weights[i] = weights[i] * t;
+            weights[i] = static_cast<float>(weights[i] / t);
         }
     }
     return iCount;
@@ -891,7 +894,7 @@ void DefineUniqueVertices(FlexTemp& flex,
 }
 
 // reference LoadVertices: positions/weights/normals/uvs into the temp streams
-void LoadVertices(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Element* bindState,
+bool LoadVertices(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Element* bindState,
                   const pm::matrix3x4& mat, int nBoneAssign,
                   const std::vector<dmx::Vector3>& normals /*post-collapse*/) {
     MeshTemp& tmp = *info.tmp;
@@ -910,7 +913,7 @@ void LoadVertices(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::
     const std::vector<dmx::Vector3>* positions = PickV3Array(bindState, "position$0", "positions");
     const std::vector<dmx::Vector2>* texcoords = bindState->GetVector2Array("texcoord$0");
     if (!texcoords) texcoords = bindState->GetVector2Array("textureCoordinates");
-    if (!positions) return;
+    if (!positions) return true;
 
     int nCount = static_cast<int>(positions->size());
 
@@ -918,7 +921,48 @@ void LoadVertices(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::
     const std::vector<float>* jw = PickFloatArray(bindState, "jointWeights", "blendweights$0");
     const std::vector<int32_t>* ji = PickIntArray(bindState, "jointIndices", "blendindices$0");
     int nJointCount = bindState->GetInt("jointCount", 0);
-    if (!(jw && ji) || nJointCount <= 0) nJointCount = 0;
+    auto badSkin = [&](const std::string& reason) {
+        if (info.err) *info.err = "DMX skinning in mesh '" + dag->name + "': " + reason;
+        return false;
+    };
+    const auto* countAttribute = bindState->Get("jointCount");
+    if (countAttribute && !std::get_if<int32_t>(&countAttribute->value))
+        return badSkin("jointCount must be an integer");
+    if ((!jw && (bindState->Get("jointWeights") || bindState->Get("blendweights$0"))) ||
+        (!ji && (bindState->Get("jointIndices") || bindState->Get("blendindices$0"))))
+        return badSkin("jointWeights/jointIndices have incorrect array types");
+    if (nJointCount < 0) return badSkin("jointCount must be nonnegative");
+    if (nJointCount == 0) {
+        // Absent streams and the explicit zero-count/empty-stream spelling
+        // both describe intentionally unskinned geometry.
+        if ((jw && !jw->empty()) || (ji && !ji->empty()) || (bool(jw) != bool(ji)))
+            return badSkin("jointCount is zero or missing but skinning arrays are present");
+    } else {
+        if (!jw || !ji) return badSkin("jointCount requires both jointWeights and jointIndices");
+        const size_t count = static_cast<size_t>(nJointCount);
+        if (jw->size() != ji->size() || jw->size() / count != positions->size() || jw->size() % count)
+            return badSkin("jointWeights/jointIndices size must equal position count * jointCount");
+        for (size_t vertex = 0; vertex < positions->size(); ++vertex) {
+            bool weighted = false;
+            for (size_t influence = 0; influence < count; ++influence) {
+                const size_t index = vertex * count + influence;
+                const float weight = (*jw)[index];
+                if (!std::isfinite(weight) || weight < 0)
+                    return badSkin("invalid joint weight at vertex " + std::to_string(vertex));
+                // Zero-weight padding may use a sentinel joint index. It must
+                // never become an influence through the normalizer fallback.
+                if (weight == 0) continue;
+                weighted = true;
+                const int joint = (*ji)[index];
+                if (joint < 0 || static_cast<size_t>(joint) >= boneMap.dmeModelToMdl.size() ||
+                    boneMap.dmeModelToMdl[joint] < 0)
+                    return badSkin("joint index out of range or unmapped at vertex " + std::to_string(vertex) +
+                                   ", influence " + std::to_string(influence) + ": " + std::to_string(joint));
+            }
+            if (!weighted) return badSkin("unbound vertex " + std::to_string(vertex) + " has no positive joint weight");
+        }
+    }
+    if (positions->empty()) return true;
     if (nJointCount > lim::kMaxSrcBoneWeights) {
         std::fprintf(stderr, "warning: mesh \"%s\" has %d bone influences per vertex (max %d)\n",
                      dag->name.c_str(), nJointCount, lim::kMaxSrcBoneWeights);
@@ -954,8 +998,8 @@ void LoadVertices(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::
         } else {
             for (int k = 0; k < nJointCount; ++k) {
                 size_t idx = static_cast<size_t>(i) * nJointCount + k;
-                weightBuf[k] = (idx < jw->size()) ? (*jw)[idx] : 0.0f;
-                indexBuf[k] = (idx < ji->size()) ? (*ji)[idx] : 0;
+                weightBuf[k] = (*jw)[idx];
+                indexBuf[k] = (*ji)[idx];
             }
             int nBoneCount = SortAndBalanceBones(nJointCount, lim::kMaxSrcBoneWeights,
                                                  indexBuf.data(), weightBuf.data());
@@ -987,6 +1031,7 @@ void LoadVertices(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::
             tmp.texcoord.push_back(uv);
         }
     }
+    return true;
 }
 
 // find the vertex-data bind state of a mesh
@@ -1227,7 +1272,7 @@ bool LoadMesh(const LoadMeshInfo& info, const dmx::Element* dag, const dmx::Elem
     }
 
     { PULSE_PERF("mesh", "LoadVertices");
-      LoadVertices(info, dag, bindState, mat, nBoneAssign, normals); }
+      if (!LoadVertices(info, dag, bindState, mat, nBoneAssign, normals)) return false; }
 
     // $toonoutline's per-corner float stream (a Blender vertex group), -1 when absent
     tmp.outline.resize(tmp.vertex.size(), -1.0f);
@@ -2640,6 +2685,7 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
 
     BoneMap boneMap;
     out.numbones = LoadSkeleton(skeleton, model, out, boneMap);
+    if (!ValidateSourceBoneNames(out, err)) return false;
 
     LoadBindPose(model, scale, boneMap, out);
 

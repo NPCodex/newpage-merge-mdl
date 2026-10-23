@@ -1174,7 +1174,7 @@ static nonstd::optional<Prim> ReconstructPrimFromPrimSpec(
   RECONSTRUCT_PRIM(GeomCapsule)
   RECONSTRUCT_PRIM(GeomBasisCurves)
   RECONSTRUCT_PRIM(GeomCamera)
-  // RECONSTRUCT_PRIM(GeomSubset)
+  RECONSTRUCT_PRIM(GeomSubset)
   RECONSTRUCT_PRIM(SphereLight)
   RECONSTRUCT_PRIM(DomeLight)
   RECONSTRUCT_PRIM(CylinderLight)
@@ -1191,6 +1191,27 @@ static nonstd::optional<Prim> ReconstructPrimFromPrimSpec(
   }
 
 #undef RECONSTRUCT_PRIM
+}
+
+static nonstd::optional<Prim> ReconstructPrimTreeFromPrimSpec(
+    const PrimSpec &spec, uint32_t depth, std::string *warn, std::string *err) {
+  if (depth > 128) {
+    PUSH_ERROR("Composed Prim tree exceeds 128 levels.");
+    return nonstd::nullopt;
+  }
+  auto prim = ReconstructPrimFromPrimSpec(spec, warn, err);
+  if (!prim) {
+    PUSH_ERROR("Cannot reconstruct composed Prim: " << spec.name()
+               << " (" << spec.typeName() << ")");
+    return nonstd::nullopt;
+  }
+  for (const auto &child : spec.children()) {
+    auto built = ReconstructPrimTreeFromPrimSpec(child, depth + 1, warn, err);
+    if (!built || !prim->add_child(std::move(built.value()), false, err)) {
+      return nonstd::nullopt;
+    }
+  }
+  return prim;
 }
 
 static bool OverridePrimSpecRec(uint32_t depth, PrimSpec &dst,
@@ -1313,12 +1334,23 @@ bool LayerToStage(const Layer &layer, Stage *stage_out, std::string *warn,
 
   stage.metas() = layer.metas();
 
-  // TODO: primChildren metadatum
-  for (const auto &primspec : layer.primspecs()) {
-    if (auto pv =
-            detail::ReconstructPrimFromPrimSpec(primspec.second, warn, err)) {
-      stage.add_root_prim(std::move(pv.value()));
+  std::map<std::string, const PrimSpec *> remaining;
+  for (const auto &entry : layer.primspecs()) remaining.emplace(entry.first, &entry.second);
+  std::vector<const PrimSpec *> ordered;
+  for (const auto &name : layer.metas().primChildren) {
+    const auto found = remaining.find(name.str());
+    if (found != remaining.end()) { ordered.push_back(found->second); remaining.erase(found); }
+  }
+  for (const auto &entry : remaining) ordered.push_back(entry.second);
+  for (const auto *primspec : ordered) {
+    auto pv = detail::ReconstructPrimTreeFromPrimSpec(*primspec, 0, warn, err);
+    if (!pv || !stage.add_root_prim(std::move(pv.value()), false)) {
+      PUSH_ERROR_AND_RETURN("Failed to reconstruct composed root Prim.");
     }
+  }
+
+  if (!stage.compute_absolute_prim_path_and_assign_prim_id()) {
+    PUSH_ERROR_AND_RETURN("Failed to assign composed Prim paths and IDs.");
   }
 
   (*stage_out) = stage;

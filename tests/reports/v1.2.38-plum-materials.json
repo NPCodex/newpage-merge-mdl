@@ -1,0 +1,637 @@
+{
+  "schema": 1,
+  "date": "2026-10-22",
+  "item": 30,
+  "status": "not_accepted_user_confirmed_materials_lost",
+  "user_confirmation": {
+    "date": "2026-10-22",
+    "original_materials_lost": true,
+    "real_material_closure_acceptance": "cannot_complete_without_original_materials",
+    "further_search_planned": false,
+    "replacement_materials_planned": false,
+    "note": "The user confirmed that the original Plum materials are lost. Retain the 65 requests and historical hashes as evidence; failed collection is not published. No restoration is requested for this round."
+  },
+  "original_qc": "C:/Users/Kud/Desktop/gmod/playermodel_f_compile2_hair.qc",
+  "original_qc_exists": false,
+  "collection_run": {
+    "command": [
+      "C:\\Users\\Kud\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "D:\\newpage-merge-mdl\\tools\\material_collect.py",
+      "--mdl",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1238-final-regressions\\production\\native\\models\\player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.mdl",
+      "--output",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\plum-material-closure-v1238\\collected",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\gmod-v1238\\validated-addon\\materials",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\l4d-real-v1238\\gameplay-20261022\\before\\4\\remote\\materials",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\l4d-real-v1238\\gameplay-netconsole-20261022\\before\\4\\remote\\materials",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\runtime-v1216\\mcv\\materials",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\runtime-v1220-subd\\game\\materials",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\runtime-v1223\\addon\\materials",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1219-physics-reference\\game\\materials",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1220-cloth-extras\\game\\materials",
+      "--root",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1222-animation-runtime\\materials",
+      "--root",
+      "G:\\SteamLibrary\\steamapps\\common\\GarrysMod\\garrysmod\\gamemodes\\terrortown\\content\\materials",
+      "--root",
+      "G:\\SteamLibrary\\steamapps\\common\\GarrysMod\\garrysmod\\materials",
+      "--root",
+      "G:\\SteamLibrary\\steamapps\\workshop\\content\\4000\\3029152157\\gfl2_sharkry\\materials",
+      "--root",
+      "G:\\SteamLibrary\\steamapps\\workshop\\content\\4000\\3268140585\\gmpublisher\\materials",
+      "--root",
+      "G:\\SteamLibrary\\steamapps\\workshop\\content\\4000\\3495531940\\gmpublisher\\materials"
+    ],
+    "exit_code": 2,
+    "collector_sha256": "5459188297e445d6b8811303149adc51ab92a8f41747019926fc89795411fe96",
+    "mdl": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1238-final-regressions\\production\\native\\models\\player\\dewobedil\\sodau\\plum\\plum_dreaming_hair_p.mdl",
+    "mdl_sha256": "9ffc3e1d5ac2b78da5e2b80e3c031c40c53f9d4c8fa798de41f1daab5d53e0fb",
+    "mdl_unchanged": true,
+    "roots": 14,
+    "complete": false,
+    "published": false,
+    "missing": 65,
+    "files": 0,
+    "errors": []
+  },
+  "collector_manifest": {
+    "schema": 1,
+    "complete": false,
+    "root_priority": [
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\gmod-v1238\\validated-addon\\materials",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\l4d-real-v1238\\gameplay-20261022\\before\\4\\remote\\materials",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\l4d-real-v1238\\gameplay-netconsole-20261022\\before\\4\\remote\\materials",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\runtime-v1216\\mcv\\materials",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\runtime-v1220-subd\\game\\materials",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\runtime-v1223\\addon\\materials",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1219-physics-reference\\game\\materials",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1220-cloth-extras\\game\\materials",
+      "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1222-animation-runtime\\materials",
+      "G:\\SteamLibrary\\steamapps\\common\\GarrysMod\\garrysmod\\gamemodes\\terrortown\\content\\materials",
+      "G:\\SteamLibrary\\steamapps\\common\\GarrysMod\\garrysmod\\materials",
+      "G:\\SteamLibrary\\steamapps\\workshop\\content\\4000\\3029152157\\gfl2_sharkry\\materials",
+      "G:\\SteamLibrary\\steamapps\\workshop\\content\\4000\\3268140585\\gmpublisher\\materials",
+      "G:\\SteamLibrary\\steamapps\\workshop\\content\\4000\\3495531940\\gmpublisher\\materials"
+    ],
+    "files": [],
+    "missing": [
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Face.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Face_alpha.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/outline_skin.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Body.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Hair1.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Eye.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Eye_2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Eye_3.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/outline_black.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/lens.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Scarf_Base_color.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Scarf_Base_color2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_alpha.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_2_alpha.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_3.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_3_alpha.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_4.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_4_alpha.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes2_2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes2_3.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes2_4.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Outer_Base_color.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/white.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/ACC_Base_color.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Outer_Base_color_2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/ACC_Base_color_2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/ClothesDefault.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_stocking.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_stocking2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Stocking.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/SailorStocking.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/SailorStocking_alpha.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Shoes.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Socks.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Socks_2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_7.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_7_alpha.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_3.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_4.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_5.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_6.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_7.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_8.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_9.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_10.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_11.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_5.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_5_alpha.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_12.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_6.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Clothes1_6_alpha.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Dreaming_13.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Hair1_2.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Hair1_4.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Hair1_5.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Hair1_6.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Hair1_8.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Hair1_9.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Hair1_10.vmt",
+        "requested_by": "requested model/material"
+      },
+      {
+        "kind": "vmt",
+        "name": "models/dewobedil/sodau/plum/Hair1_14.vmt",
+        "requested_by": "requested model/material"
+      }
+    ],
+    "errors": [],
+    "runtime_resources": [],
+    "texture_keys": [
+      "$basetexture",
+      "$blendmodulatetexture",
+      "$bumpmap",
+      "$compress",
+      "$detail",
+      "$dudvmap",
+      "$envmap",
+      "$envmapmask",
+      "$flashlighttexture",
+      "$flow_bounds_texture",
+      "$flow_noise_texture",
+      "$flowmap",
+      "$gradienttexture",
+      "$lightwarptexture",
+      "$noisetexture",
+      "$normalmap",
+      "$phongexponenttexture",
+      "$phongwarptexture",
+      "$refracttinttexture",
+      "$selfillummask",
+      "$stretch",
+      "$wrinkle"
+    ],
+    "published": false
+  },
+  "search": {
+    "loose_materials": {
+      "historical_manifest": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\v1223-plum\\material-input-sha256.json",
+      "historical_file_count": 249,
+      "scopes": [
+        {
+          "scope": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics",
+          "material_files_scanned": 41,
+          "bytes_hashed": 7576229
+        },
+        {
+          "scope": "G:\\SteamLibrary\\steamapps\\common\\GarrysMod\\garrysmod",
+          "material_files_scanned": 221,
+          "bytes_hashed": 207254091
+        },
+        {
+          "scope": "G:\\SteamLibrary\\steamapps\\workshop\\content\\4000",
+          "material_files_scanned": 439,
+          "bytes_hashed": 445776492
+        }
+      ],
+      "matches": [
+        {
+          "source": "G:\\SteamLibrary\\steamapps\\workshop\\content\\4000\\3029152157\\gfl2_sharkry\\materials\\models\\gfl2_sharkry\\normal.vtf",
+          "sha256": "856c88d845d96b51dff2a39906a0a533c551a0f19e26e55da692057ebff84b42",
+          "historical_paths": [
+            "models/dewobedil/sodau/plum/normal.vtf"
+          ]
+        },
+        {
+          "source": "G:\\SteamLibrary\\steamapps\\workshop\\content\\4000\\3268140585\\gmpublisher\\materials\\models\\gfl2_1dorm_stockings\\normal.vtf",
+          "sha256": "856c88d845d96b51dff2a39906a0a533c551a0f19e26e55da692057ebff84b42",
+          "historical_paths": [
+            "models/dewobedil/sodau/plum/normal.vtf"
+          ]
+        }
+      ]
+    },
+    "diagnostic_zip_count": 39,
+    "diagnostic_zip_material_matches": 0,
+    "gma_archive_count": 44,
+    "gma_vmt_members_hashed": 12492,
+    "gma_vmt_history_hash_matches": [],
+    "game_vpk_index_count": 9,
+    "game_vpk_entries": 78904,
+    "game_vpk_plum_name_matches": [],
+    "game_addons_entries": 0
+  },
+  "historical_evidence": {
+    "source_version": "v1.2.23",
+    "manifest_sha256": "94e44f6ec348dc7f625e377b2447419374bdf5b99f6b7524cc07e70852a0474f",
+    "validation_sha256": "30421712ba995cb02a14b073cc1e3e0c0cd9241bb7fecc8080c993c3676c62c1",
+    "original_files": 249,
+    "original_vmt": 131,
+    "original_vtf": 118,
+    "current_requested_vmt_set_equals_historical": true,
+    "requested_vmt_sha256": {
+      "models/dewobedil/sodau/plum/ACC_Base_color.vmt": "61ba5c278f6cc7e87678bf4395dc68de994b0922ef403e2ab5404c43ccf772d0",
+      "models/dewobedil/sodau/plum/ACC_Base_color_2.vmt": "c5e890f16de9eb2550843e491cbd5fc6a22624364839f82a900ff40e4ceb795d",
+      "models/dewobedil/sodau/plum/Body.vmt": "900d34b60c6b8f9bd538ba48fae1638d8cccd5bdddf4dd1ce51ad5a0cb7a1518",
+      "models/dewobedil/sodau/plum/Clothes1.vmt": "c7492e6d9b27d2fd6fe5f1dfe13fe4a53e95245a566a62bb1df2c714c8f1a28e",
+      "models/dewobedil/sodau/plum/Clothes1_2.vmt": "f828062cead6ff24b7ecdbc07da7fa7aa42fc4f4bc66966db215795874eeca7d",
+      "models/dewobedil/sodau/plum/Clothes1_2_alpha.vmt": "6869584ca463947e418834b5ccefd6e29aa05480cdb559e7aa4e272729568f17",
+      "models/dewobedil/sodau/plum/Clothes1_3.vmt": "959dbb50b74789626d475547762ac136d4effffd65d1e6f309e5fcd7bc2eda8b",
+      "models/dewobedil/sodau/plum/Clothes1_3_alpha.vmt": "c7c7eda5fdb8f6808cc4fee216015a9784c2c991caafa429472bed8e8c710816",
+      "models/dewobedil/sodau/plum/Clothes1_4.vmt": "753eb84c92e8cb39ee95d5b4482d0407c08cfbc3ea2ffcf81baf783050a95635",
+      "models/dewobedil/sodau/plum/Clothes1_4_alpha.vmt": "aba241904319a01773e9136cd0d70ce4b2d7f30bfb147a732bf564b55e1ae1c5",
+      "models/dewobedil/sodau/plum/Clothes1_5.vmt": "da477e5c4a278d461ec8e4ae9f2aed7537bce0ab73a2e02159f7f30165a74480",
+      "models/dewobedil/sodau/plum/Clothes1_5_alpha.vmt": "93c9cc364a8c3afed25b7b81272aec60cb35fb75e9da0aa198e43d704b431ba9",
+      "models/dewobedil/sodau/plum/Clothes1_6.vmt": "67cb60692865bc0774a76e4d230ea3c741c839ba670865e7ad196267c0351091",
+      "models/dewobedil/sodau/plum/Clothes1_6_alpha.vmt": "4edd1f55ef5b414aecca14c0a33f61c9768d68f11fc2d1a564275586f82e5dba",
+      "models/dewobedil/sodau/plum/Clothes1_7.vmt": "71128a162086b21b3887f51aa70adeb3ff46b4b272058644a252e203d569ab63",
+      "models/dewobedil/sodau/plum/Clothes1_7_alpha.vmt": "7892d4cc3f4adb6ba513739da557b78dd46077be7f360b46ea755082c21e927c",
+      "models/dewobedil/sodau/plum/Clothes1_alpha.vmt": "2142728a4479777996ce69459b3757cf8c2c65b268560580683b5c8ec970d876",
+      "models/dewobedil/sodau/plum/Clothes1_stocking.vmt": "f2654d4b45774e37f7beee8e0569439c06ae51f3e8c1df1b93ddc1986f5a47d6",
+      "models/dewobedil/sodau/plum/Clothes1_stocking2.vmt": "510030dbf3ed7587c92f3eb19d3bf255a8e1bd41493380a8c2cae28671985a90",
+      "models/dewobedil/sodau/plum/Clothes2.vmt": "906fe65a3e226129678c119a7a022227d9aae923cb1aec7b3df7aa2836d3b363",
+      "models/dewobedil/sodau/plum/Clothes2_2.vmt": "f3fd39196ddf7498b8f2b989e20e7c265c86325762885b61d9bfff8db049d6e6",
+      "models/dewobedil/sodau/plum/Clothes2_3.vmt": "963f1d8a8188318749665d76ebda427cf03ab424f3389231becf1e24b9725254",
+      "models/dewobedil/sodau/plum/Clothes2_4.vmt": "4e868f88a82d4fdef99ac477c04f70ba5698477b0de10f6aa8344a34fafd10f5",
+      "models/dewobedil/sodau/plum/ClothesDefault.vmt": "e7e8e37efd0cf0214c2484c85247bf8f50c51f81c5d227cfa223a52f522a3980",
+      "models/dewobedil/sodau/plum/Dreaming.vmt": "fe67b96b3c0d9fe361e7d9007820f25e0b57badff40484151137634e2952d4e7",
+      "models/dewobedil/sodau/plum/Dreaming_10.vmt": "6e5c11c245f31fea772f7812b136eaab199b55b86dc39aa4e4ec782fabaef522",
+      "models/dewobedil/sodau/plum/Dreaming_11.vmt": "60a75725a582ebf659ea1fbea2f2715517c162a5f8decb25abd9550e68517ac4",
+      "models/dewobedil/sodau/plum/Dreaming_12.vmt": "4fe8d50c4e8f0bd510cee578080359ea7a9c008c376b00a52a72557e3628f169",
+      "models/dewobedil/sodau/plum/Dreaming_13.vmt": "a3e70844030fbb0c64ac6bc581cda11d46f064c58c089f1a5038082d501198bb",
+      "models/dewobedil/sodau/plum/Dreaming_2.vmt": "ef5e1fc28eefcf1b2fb5b4b7faacd2300d185bf8fcd4dceb46508d3a0430f725",
+      "models/dewobedil/sodau/plum/Dreaming_3.vmt": "50cabcd001f74595470da6381d377d07fc9565e4a581142ef57697fbbc4283e9",
+      "models/dewobedil/sodau/plum/Dreaming_4.vmt": "9ed22497aa14cc2af7171a6ab8b24fd604370dfd516c3551b977dddca8bea06c",
+      "models/dewobedil/sodau/plum/Dreaming_5.vmt": "0716a28d422c68d624b74658ddbd6d61b971c4f8aaa12ef2d0e72fd5dd6162b9",
+      "models/dewobedil/sodau/plum/Dreaming_6.vmt": "e5c5a102391d92119826a216d2fd4e154d4d1591155dc1396dd3974baedc59db",
+      "models/dewobedil/sodau/plum/Dreaming_7.vmt": "a735b6a98965cfcdbfa34da1a7a5cd5580580d4dce9f4ad945b35dda5567ab14",
+      "models/dewobedil/sodau/plum/Dreaming_8.vmt": "b32f65f8ecbf8840794c20084009198f6a53f27065fcf339f6e9a9bea32cdf76",
+      "models/dewobedil/sodau/plum/Dreaming_9.vmt": "47bcbc91e2d748254ef2fa88e78b3a2c1fb81c51a078ee879f91baa579f38569",
+      "models/dewobedil/sodau/plum/Eye.vmt": "0aae817b07a346c43bd00cd02d880302ab0f1fe3d9532ef4802d551d66b0482d",
+      "models/dewobedil/sodau/plum/Eye_2.vmt": "89d6738df1561f18af9cb4b3f5ed157161eda24d4dc50219dce91a6f55404302",
+      "models/dewobedil/sodau/plum/Eye_3.vmt": "2b179c05e3852bdd7e6b52e2a54d3a2a7a3a0b3489c1d142bf15eaeb8ec1f866",
+      "models/dewobedil/sodau/plum/Face.vmt": "b5474c070eba38cbd58fbc1ad08a8e3e66b395899ca1ac0b6e207f3a7f2e31cd",
+      "models/dewobedil/sodau/plum/Face_alpha.vmt": "4a4b4e49d36d6f2959f4277da4298e59d3a12de49b2dbb9640baff2b585f8a6c",
+      "models/dewobedil/sodau/plum/Hair1.vmt": "30dd8a837392dfb5b700f83a0a5eede0ee882f87ee47a97e57bc4902e71dda1c",
+      "models/dewobedil/sodau/plum/Hair1_10.vmt": "b526e40c469ab5cf7e9d04702fa095e90327f73357bc0832717a7c328b971510",
+      "models/dewobedil/sodau/plum/Hair1_14.vmt": "6c0c40e202ed1e331d715ab332c1c242612ca85fd636f8af608f73bb4a82ea9d",
+      "models/dewobedil/sodau/plum/Hair1_2.vmt": "59dd2a1eb707790def1e9d2ab410d60ff6cca204188491b936fa7517bbdbcbab",
+      "models/dewobedil/sodau/plum/Hair1_4.vmt": "7e8d632112b9047d8b2079f7a0b3af9a09243750a0e8ecb4cc03f4a3383a426d",
+      "models/dewobedil/sodau/plum/Hair1_5.vmt": "f499f6631a9de3220bb6fd51bf9c02b10969ad93a15eb89eddb4bf58b817f54c",
+      "models/dewobedil/sodau/plum/Hair1_6.vmt": "d5c4c182d0a349e52ce37d72b59b0ad4c8f0a8bec86c1916f622560ec190ca42",
+      "models/dewobedil/sodau/plum/Hair1_8.vmt": "1731a05dce06a00e97d5a63a7f64e7bf493fe16fd4461b4a2c19fdca308b562a",
+      "models/dewobedil/sodau/plum/Hair1_9.vmt": "23444b8318d260c42c78d3aeeafef9bfa5febe3142732d72863e9fe2ec0b5beb",
+      "models/dewobedil/sodau/plum/Outer_Base_color.vmt": "1fdd03c7241233fae8270e9a5997d175b8c57e52f85460eb95a900a8ab2bf6e3",
+      "models/dewobedil/sodau/plum/Outer_Base_color_2.vmt": "8df6836fc2551f3fd778805ff12ac1ef75606a6ea04dcf361ab03d421df47046",
+      "models/dewobedil/sodau/plum/SailorStocking.vmt": "e32fd1008cb6fd42ea62613edb4a0ae7a6c0def683a2f3b85aedc394fdd5b7c2",
+      "models/dewobedil/sodau/plum/SailorStocking_alpha.vmt": "764dd6da925950da0626c8650333b448216b552674e7cdd8dd5a6fe9c586f891",
+      "models/dewobedil/sodau/plum/Scarf_Base_color.vmt": "ca0df6a6bd788ea4839e910454dcb12f6b8b3b9d94f54068b715f5cadb80764c",
+      "models/dewobedil/sodau/plum/Scarf_Base_color2.vmt": "6b7773b419be7841cb64d84ea7144520ef4528cfd599f20c05d20a89a95e4cd1",
+      "models/dewobedil/sodau/plum/Shoes.vmt": "370b2f766f7cb05b231432c07042708299f3e68889c9d4beb278fdb7f83b42e8",
+      "models/dewobedil/sodau/plum/Socks.vmt": "e3bd1a1c05cd912257494f3bd6cf28bfdd67f83f09fccefb83f7b32e5735ac42",
+      "models/dewobedil/sodau/plum/Socks_2.vmt": "fa9158b93d0801cf8f1d5f3e05d474d64d15a554da3c174ee0384a89dd372490",
+      "models/dewobedil/sodau/plum/Stocking.vmt": "dde399aa9ee3d0916c87315db4886c3481b61e556ad510cd0a42696520f31c7f",
+      "models/dewobedil/sodau/plum/lens.vmt": "165d802c2546275f21c924f79ebe766b7121a6b26162527a414079ed7cc73a9f",
+      "models/dewobedil/sodau/plum/outline_black.vmt": "150f450f61bf519ceda47b616db0aaca7a2e8d5f9218c1f192f07125439e6487",
+      "models/dewobedil/sodau/plum/outline_skin.vmt": "7c7bed5ee6ed19ad917f9f66bc3a058b6f0210fe157a068a4b9cd29d9b5f082b",
+      "models/dewobedil/sodau/plum/white.vmt": "7090b39601f2966579dad02d153d9bcc2c7da5f47cba62812388275fd55ad12a"
+    },
+    "known_texture_reference_count": 66,
+    "known_texture_sha256": {
+      "models/dewobedil/sodau/plum/ACC_Base_color.vtf": "2fbeb38b7eed688532e8a5edaf41b81da310535b8e929aa13ec81ad3945cfd89",
+      "models/dewobedil/sodau/plum/ACC_Base_color_2.vtf": "9783613d85f1e37a4ef5f92f512f415fb873852db7ef6a40f963a87485ae814e",
+      "models/dewobedil/sodau/plum/ACC_Normal.vtf": "3ad6ba6fe1f2ff17d286d65dd6688bd00b3ebbec0914261c4e8246b5a50298f5",
+      "models/dewobedil/sodau/plum/Body.vtf": "e393fdcd2f2c7b9f40574af2698c1d98c722757375100a8ea75fd1b1f18e4de4",
+      "models/dewobedil/sodau/plum/Clothes1.vtf": "dbe7b16b0c9f4ee02661d8afc33c4e6a75199baf8cd1fbdbb56c809c17dbd53e",
+      "models/dewobedil/sodau/plum/Clothes1_2.vtf": "44983733ea27c694ccf4f2bae3e7e01531f1c8a26efd557a1eb4eac2faa9b510",
+      "models/dewobedil/sodau/plum/Clothes1_3.vtf": "f143598166ea38c0be5009dfadd0eb3a6f94de2efc347b9e517ea62197bac118",
+      "models/dewobedil/sodau/plum/Clothes1_4.vtf": "f0d20d3aa72a7938d413a07f004177f3fd3ecd06a1b37cfb0747137ce62ef7c1",
+      "models/dewobedil/sodau/plum/Clothes1_5.vtf": "3e91ad3572cb613019308dd444010763b4af8644a7ec9c45118172138785fc8c",
+      "models/dewobedil/sodau/plum/Clothes1_6.vtf": "dba8c865075f816bcdf6e3a33407622e74134783fe3581565544a1f0bc7bafed",
+      "models/dewobedil/sodau/plum/Clothes1_7.vtf": "b4952e3ad61c51bfc603bc389935498e3631641f3a95d7150d234ee91c2655b7",
+      "models/dewobedil/sodau/plum/Clothes1_glow.vtf": "c31b000debc9a36adcc3c592e0cf81944a89823984534c2d35148ea0872948ba",
+      "models/dewobedil/sodau/plum/Clothes1_nm.vtf": "2ca86d7b3698acb2b20afd1dfde4f6b4c56b25d0b8b0d20ac3683fe347d2ede4",
+      "models/dewobedil/sodau/plum/Clothes2.vtf": "7b1780b91c81f2fd743e624aeb40f6844932c3614a5c9a72531d313ad30200ed",
+      "models/dewobedil/sodau/plum/Clothes2_2.vtf": "a15b68dfa71819b624f340a9cf7c53613b67972dfec47103a8859dafaec6ec26",
+      "models/dewobedil/sodau/plum/Clothes2_3.vtf": "bb6193161b7776d2adee8375ba495aa7fbeff3b773c82544317c7aac17acb076",
+      "models/dewobedil/sodau/plum/Clothes2_4.vtf": "2e97f5afca3044cc173d7ffbaa0319bf1b467a1921aac87bec9e069a00bb39a5",
+      "models/dewobedil/sodau/plum/Clothes2_nm.vtf": "6e97d183afbba06315f6469257528f39a6f62e60dfda916eba632f01fb75233e",
+      "models/dewobedil/sodau/plum/ClothesDefault.vtf": "491de3d827f5606ccc365a7f8e01106f1aff9429b9c3fb495b39473c55510013",
+      "models/dewobedil/sodau/plum/Dreaming.vtf": "8d7b5a0807d260cbf9ececc90fca6f16086e23932cf9591e00ca0527a031895d",
+      "models/dewobedil/sodau/plum/Dreaming_10.vtf": "750d4e85570268241f28c2f6d721cae14b12cbe58dc067682789ad8f4a7a113c",
+      "models/dewobedil/sodau/plum/Dreaming_11.vtf": "93c071e39b5e6ec617cd08655e49be611528a467a258a9046b51ea86ff9a5b67",
+      "models/dewobedil/sodau/plum/Dreaming_12.vtf": "0afdd89a44b1959509b4793a9c2aecbcccdac3bdecf97341aa0187cc844ae554",
+      "models/dewobedil/sodau/plum/Dreaming_13.vtf": "3c4959cec2b2a277dfbb3d4a3dc2edcbadcd47acae9709eb6278e598d2c0f3ec",
+      "models/dewobedil/sodau/plum/Dreaming_2.vtf": "9e75290a8502d9484a1c56f2204c3377fecaa1bff8450189655c6dbdba76cac5",
+      "models/dewobedil/sodau/plum/Dreaming_3.vtf": "18944256f6ad2a9b19c295fac50a38b78d8a4eca25d0c62352d18f9fc318a1d4",
+      "models/dewobedil/sodau/plum/Dreaming_4.vtf": "d77e5f1896ad0454016642b25dafabebb25c5cb506cea3accf91840e4ef7976d",
+      "models/dewobedil/sodau/plum/Dreaming_5.vtf": "e0e9ea68f099416311ed92f1a65dc7e50f40e01bc8b56b62e2993ea1a1177b8f",
+      "models/dewobedil/sodau/plum/Dreaming_6.vtf": "4f3311e4fc3a1cb3112c8e098fd1b72d6230f03f1b9095774bac44c24b29707f",
+      "models/dewobedil/sodau/plum/Dreaming_7.vtf": "fa31c803256b7566aa63cebc3fbfa11d60753658536e12a048b1d09a2e564037",
+      "models/dewobedil/sodau/plum/Dreaming_8.vtf": "d0a260ae35b01c1b3de152c5e98c5b8b9d25997299b5b0c9f2627079d64a1525",
+      "models/dewobedil/sodau/plum/Dreaming_9.vtf": "9d5fc524f523521f4158723c2299181330cfa3c52de64ddcb64789c62a8fc7fc",
+      "models/dewobedil/sodau/plum/Dreaming_ems.vtf": "c01eaa590284f8047593cafe7b53d52dd9d5840bd88ed7be91a743fcbf095028",
+      "models/dewobedil/sodau/plum/Dreaming_n.vtf": "92b00ffc9561cc0a511d267867553251f45759ff7daaade0a9fa4cf2d2cf2015",
+      "models/dewobedil/sodau/plum/Eye.vtf": "517a6584385d8331c471ae7b011d2d7592db35ffddef1425ae983c8a643589ef",
+      "models/dewobedil/sodau/plum/Eye_2.vtf": "2f396790138af8721189a02b0358eb7d11fa5360c183ab65fa1c65e585167f31",
+      "models/dewobedil/sodau/plum/Eye_3.vtf": "b276fff19ae664eccd4ef9ef4cbab3b6effc444e68e5a8974f9ef1a346b3aba8",
+      "models/dewobedil/sodau/plum/Face.vtf": "eefa8f7857463b1eaf5bb489a8baa998f5cd6ccbec9910b83a91c0e04e2326ff",
+      "models/dewobedil/sodau/plum/Face_alpha.vtf": "477eec0721e186b05ea25e4e827dbd56d6c5a4f3eeb3f393f0ec04c58d39bf05",
+      "models/dewobedil/sodau/plum/Hair1.vtf": "9b523931c14ce8861f1f7e1f67210240c386f9f7527b222817f5b6779110403a",
+      "models/dewobedil/sodau/plum/Hair1_10.vtf": "e7793f300dae14af4f2daa38a9db2eb602ba38e9439858d55b0380fae4543414",
+      "models/dewobedil/sodau/plum/Hair1_14.vtf": "567576a316687c2f8901e35507405bfc81fbc857c0fd0333c659de556c4b32fb",
+      "models/dewobedil/sodau/plum/Hair1_2.vtf": "7b9b7722dd5739c0972f013eabb868e082eb1b7eb0329161f4b211ab92509419",
+      "models/dewobedil/sodau/plum/Hair1_4.vtf": "2c329e5c09e8f6c760db826f0f70e00646dfec3680fbecc28b5805dd077b6cd4",
+      "models/dewobedil/sodau/plum/Hair1_5.vtf": "de89d7d6336c741ac2e4fb9e74cc3ccdf48a41ea369eac4b2f0a0f7a23221995",
+      "models/dewobedil/sodau/plum/Hair1_6.vtf": "adc35fc186a2742491907b5b7a9d5946682f82cd44a33fb5285fd59262f42ec1",
+      "models/dewobedil/sodau/plum/Hair1_8.vtf": "9e9ff1bb82953b0d6c2687c7dce4165d484eebe642768813f7b475f6ddd0d960",
+      "models/dewobedil/sodau/plum/Hair1_9.vtf": "d114c07fe8ded97582b3d052e296e07cebd2276f402b33373f75dcbf890185e4",
+      "models/dewobedil/sodau/plum/Outer_Base_color.vtf": "e38b132b288271551ff4f313cd094d15dee44c36fd7ee19429cd4f960fcf8878",
+      "models/dewobedil/sodau/plum/Outer_Base_color_2.vtf": "93dd2b9783073d51df70c0b9128a96159f0ccc9c29605e7c273d93d315abc19c",
+      "models/dewobedil/sodau/plum/Outer_Normal.vtf": "784a0a9191db78fe111bd85ad6454572e4da224287cf7bc6b4cfc3869abbe02a",
+      "models/dewobedil/sodau/plum/SailorStocking.vtf": "2d04a92245a4f2d7d20afc49ab9189d841e6c3e1a63a770f738dc994c0df0c9f",
+      "models/dewobedil/sodau/plum/SailorStocking_nm.vtf": "56a672af2d96908c6aedfabf869be7c65448b57e981a58bcea4d939b82180c96",
+      "models/dewobedil/sodau/plum/Scarf_Base_color.vtf": "e6675c1c32137cd344978e332336c8fc804312657703bc336984164ff666d863",
+      "models/dewobedil/sodau/plum/Scarf_Base_color2.vtf": "4219e54a767ec4a7a79a737c6fc85f7c93b708089d5c540afd2d70b627d6caeb",
+      "models/dewobedil/sodau/plum/Shoes.vtf": "f7740d63a2025c46afb55b33d9f5464c600896ecd59005eac882640d66f74263",
+      "models/dewobedil/sodau/plum/Socks.vtf": "6b63374a6d2cef3d743f570477188ca2f9a7b68a5917d2e879f52c47310ac74c",
+      "models/dewobedil/sodau/plum/Socks_2.vtf": "c5c9b4bfec692afd771871865b016e4372919be42b23ab632db5789075e609b7",
+      "models/dewobedil/sodau/plum/Stocking.vtf": "0d250674bcd1ec6f6a870628cfcb0e7ce6e216cf8ad75a6a3f499bd9619af386",
+      "models/dewobedil/sodau/plum/Stocking_nm.vtf": "72caaca2d82613aa7c3b7f843b5c8e6dc5bd3b35f027067b5f960f2ce05415cc",
+      "models/dewobedil/sodau/plum/normal.vtf": "856c88d845d96b51dff2a39906a0a533c551a0f19e26e55da692057ebff84b42",
+      "models/dewobedil/sodau/plum/phong_exp2.vtf": "e9915e64edb0d94ffcba7b3ab931b3118e2fee246c74a474c2d577a34ff28faf",
+      "models/dewobedil/sodau/plum/toon_all.vtf": "ea0be2b0ceaca16114ef363f77f385a87e3fc29ff30135c20a41ad5fca3df8d8",
+      "models/dewobedil/sodau/plum/toon_head.vtf": "f7c62a856f588c87c430ee3384a6c210607e4c48f25b2e90bc44072f05c6ff82",
+      "models/dewobedil/sodau/plum/toon_skin.vtf": "10337243980a1925476effcaccc32ae21b84733dc6f42b63334d81b142eee249",
+      "models/dewobedil/sodau/plum/white.vtf": "4508cebb53b4ca9d51001448fcaaedca8f209056a9e4af1ce9901bc1a00179e9"
+    },
+    "note": "Historical references are not a fresh complete closure: current VMT files are absent and cannot be parsed."
+  },
+  "materials_copied": false,
+  "assets_committed": false,
+  "local_evidence_root": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\plum-material-closure-v1238"
+}

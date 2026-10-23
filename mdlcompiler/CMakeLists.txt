@@ -33,3 +33,7 @@ target_link_libraries(mdlcompiler PRIVATE pulse_libs pulse_dmx pulse_math pulse_
                                           pulse_nvtristrip pulse_phys pulse_vhacd pulse_ufbx assimp pulse_cgltf draco::draco Threads::Threads)
 
 set_target_properties(mdlcompiler PROPERTIES OUTPUT_NAME "NewPageMergeMDL")
+
+if(COMMAND newpage_separate_symbols)
+    newpage_separate_symbols(mdlcompiler)
+endif()

@@ -26,7 +26,7 @@ using std::runtime_error;
 // transaction as replacements; an input reused from a previous run is read
 // completely before any output is changed.
 const char* const kGeneratedFiles[] = {
-    kWorldGraphFile, kUiGraphFile, kClipFile, kProportionsFile, kReferenceFile, kSkeletonFile,
+    kWorldGraphFile, kUiGraphFile, kViewGraphFile, kClipFile, kProportionsFile, kReferenceFile, kSkeletonFile,
     "debug/skeleton_descriptor.kv3", "debug/report.kv3", "debug/MODEL_SETUP.txt",
 };
 
@@ -207,16 +207,26 @@ std::unique_ptr<dmx::Datamodel> LoadDmx(const fs::path& path) {
 
 // The skeleton's stock bones as nested Bone nodes. ModelDoc takes a bone's parent
 // from the render mesh over any SkeletonFile; only a Bone node overrides it.
-kv::Value::Array StockBoneNodes(const std::vector<Bone>& bones, const std::vector<Bone>& stock) {
+kv::Value::Array StockBoneNodes(const std::vector<Bone>& bones, const std::vector<Bone>& stock,
+                                const std::vector<std::string>& authored) {
     auto isStock = [&](const std::string& name) {
         return std::any_of(stock.begin(), stock.end(),
                            [&](const Bone& s) { return _stricmp(s.name.c_str(), name.c_str()) == 0; });
     };
     std::vector<kv::Value> nodes(bones.size());
     std::vector<bool> emitted(bones.size(), false);
+    // The replacement removes the original Bone nodes. Carry authored helpers
+    // and their ancestors into that replacement too: the generated SkeletonFile
+    // is disabled by default and cannot keep them alive by itself.
+    for (size_t i = 0; i < bones.size(); ++i) {
+        if (!isStock(bones[i].name) &&
+            std::find(authored.begin(), authored.end(), bones[i].name) == authored.end()) continue;
+        for (int parent = static_cast<int>(i); parent >= 0; parent = bones[parent].parent)
+            emitted[parent] = true;
+    }
     for (size_t i = 0; i < bones.size(); ++i) {
         const Bone& bone = bones[i];
-        if (!isStock(bone.name) || (bone.parent >= 0 && !emitted[bone.parent]))
+        if (!emitted[i])
             continue;
         pm::RadianEuler e;
         pm::QuaternionAngles(bone.rotation, e);
@@ -228,7 +238,6 @@ kv::Value::Array StockBoneNodes(const std::vector<Bone>& bones, const std::vecto
             {"do_not_discard", true},
             {"children", kv::Value::Array{}},
         };
-        emitted[i] = true;
     }
     // children before parents, so each finished subtree moves into its parent
     kv::Value::Array roots;
@@ -339,7 +348,17 @@ std::string EditedModel(const std::string& originalText, kv::Value model, const 
 }
 
 std::string SetupNotes(const Paths& paths, const SkeletonBuild& skeleton, const std::vector<std::string>& warnings,
-                       bool wroteModel) {
+                       bool wroteModel, bool firstPerson) {
+    if (firstPerson) {
+        std::string note = "AG2 FIRST-PERSON PROPORTIONS (experimental)\n\nSet the hudmodel AnimGraph2 to:\n  " +
+            paths.relative + "/" + kViewGraphFile +
+            "\n\nThe wrapper references the installed viewmodel graph and adds translation-only\n"
+            "proportions from the explicit arms DMX. Body/UI graphs and model skeleton stay\n"
+            "unchanged. This does not re-rig meshes or correct bind axes. Validate arms,\n"
+            "weapon grip, recoil, inspect and reload in an isolated local game.\n";
+        for (const auto& warning : warnings) note += "WARNING: " + warning + "\n";
+        return note;
+    }
     std::string note = "AG2 PROPORTIONS (experimental)\n\n"
                        "Use this as the VMDL's only SkeletonFile, with its stock bones as nested Bone nodes\n"
                        "(write_model does this):\n  " +
@@ -384,7 +403,8 @@ kv::Value Report(const Job& job, const std::string& rig, const std::string& pose
         {"model", job.vmdl.generic_u8string()},
         {"rig", rig},
         {"pose", pose},
-        {"graph", paths.relative + "/" + kWorldGraphFile},
+        {"graph", paths.relative + "/" + (job.firstPerson ? kViewGraphFile : kWorldGraphFile)},
+        {"firstPerson", job.firstPerson},
         {"boneTranslations", bones},
         {"compiled", false},
     };
@@ -395,11 +415,13 @@ bool IsAxisNote(const std::string& warning) { return warning.rfind("bone axes di
 // What the user has to do next, on the console; the full notes are --debug only.
 void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::vector<std::string>& warnings,
                   const Job& job, bool generateOnly) {
-    std::cout << "Skeleton " << paths.relative << "/" << kSkeletonFile << ": " << skeleton.added.size()
+    std::cout << (job.firstPerson ? "First-person diagnostic skeleton " : "Skeleton ") << paths.relative << "/" << kSkeletonFile << ": " << skeleton.added.size()
               << " stock bones added, " << skeleton.reparented.size() << " moved under their stock parent\n";
     if (job.writeModel)
         std::cout << "Edited " << job.vmdl.filename().u8string() << " (original kept as "
                   << job.vmdl.filename().u8string() << ".bak)\n";
+    else if (job.firstPerson)
+        std::cout << "Set the hudmodel AnimGraph2 to " << paths.relative << "/" << kViewGraphFile << "\n";
     else
         std::cout << "Run with write_model to make it the VMDL's only SkeletonFile with its stock bones as Bone nodes\n"
                   << "Set the worldmodel AnimGraph2 to " << paths.relative << "/" << kWorldGraphFile << "\n"
@@ -423,13 +445,18 @@ void PrintSummary(const Paths& paths, const SkeletonBuild& skeleton, const std::
 
 void Generate(const Job& job, const Options& options) {
     std::cout << "Processing " << job.vmdl.u8string() << '\n';
-    const Paths paths = Locate(job.vmdl);
+    Paths paths = Locate(job.vmdl);
+    if (job.firstPerson) {
+        if (job.modelDmx.empty()) throw runtime_error("first_person requires an explicit arms model_dmx");
+        paths.output += "_viewmodel";
+        paths.relative = paths.output.lexically_relative(paths.addon).generic_u8string();
+    }
     // Register every possible output so interrupted jobs remain recoverable
     // even when this run changes debug/generate-only/write_model switches.
     std::vector<fs::path> destinations{job.vmdl, fs::u8path(job.vmdl.u8string() + ".bak")};
     for (const char* name : kGeneratedFiles) destinations.push_back(paths.output / name);
     const fs::path compiledOutput = paths.cs2 / "game/csgo_addons" / paths.addon.filename() / fs::u8path(paths.relative);
-    for (const char* name : {kClipFile, kWorldGraphFile, kUiGraphFile})
+    for (const char* name : {kClipFile, kWorldGraphFile, kUiGraphFile, kViewGraphFile})
         destinations.push_back(compiledOutput / fs::u8path(std::string(name) + "_c"));
     OutputTransaction transaction(job.vmdl, destinations);
     // Recover saved user outputs even if the game data disappeared after a
@@ -444,7 +471,7 @@ void Generate(const Job& job, const Options& options) {
     const std::string vmdlText = ReadText(job.vmdl);
     kv::Value vmdl = kv::ParseText(vmdlText);
     const Vpk package(paths.cs2 / "game/csgo/pak01_dir.vpk");
-    std::vector<uint8_t> skeletonBytes = package.Read(std::string(kStockSkeleton) + "_c");
+    std::vector<uint8_t> skeletonBytes = package.Read(std::string(job.firstPerson ? kStockViewSkeleton : kStockSkeleton) + "_c");
     const StockSkeleton installed = ReadStockSkeleton(skeletonBytes);
     if (!job.vnmskel.empty()) {
         skeletonBytes = kv::ReadFile(job.vnmskel.u8string());
@@ -454,23 +481,27 @@ void Generate(const Job& job, const Options& options) {
     const RigSource rigSource = FindRig(vmdl, job, paths, viewmodel.bones, installed.bones);
     const std::vector<Bone> nodes = BoneNodes(vmdl);
     const std::string clip = paths.relative + "/" + kClipFile;
-    const std::vector<uint8_t> graphBytes = package.Read(std::string(kStockGraph) + "_c");
-    const std::vector<uint8_t> uiGraphBytes = package.Read(std::string(kStockUiGraph) + "_c");
-    const kv::Value graph = WrapperGraph(kv::ReadResource(graphBytes), kStockGraph, clip);
-    const kv::Value uiGraph = WrapperGraph(kv::ReadResource(uiGraphBytes), kStockUiGraph, clip);
+    const auto stockGraphPath = job.firstPerson ? kStockViewGraph : kStockGraph;
+    const std::vector<uint8_t> graphBytes = package.Read(std::string(stockGraphPath) + "_c");
+    const std::vector<uint8_t> uiGraphBytes = job.firstPerson ? std::vector<uint8_t>{} : package.Read(std::string(kStockUiGraph) + "_c");
+    const kv::Value graph = WrapperGraph(kv::ReadResource(graphBytes), stockGraphPath, clip, job.firstPerson);
+    const kv::Value uiGraph = job.firstPerson ? kv::Value{} : WrapperGraph(kv::ReadResource(uiGraphBytes), kStockUiGraph, clip);
 
     std::vector<std::string> warnings;
-    const std::vector<Bone> modelStock = ModelStock(installed.bones);
+    const std::vector<Bone> modelStock = job.firstPerson ? installed.bones : ModelStock(installed.bones);
+    const auto rig = ReadRig(*LoadDmx(rigSource.path), rigSource.scale, false);
     const SkeletonBuild skeleton =
-        BuildSkeleton(ReadRig(*LoadDmx(rigSource.path), rigSource.scale, false), modelStock, nodes);
+        BuildSkeleton(rig, modelStock, nodes, job.firstPerson);
     for (const std::string& bone : skeleton.added)
         warnings.push_back("custom model is missing stock bone " + bone +
                            "; added to the generated skeleton at its stock offset");
     for (const std::string& change : skeleton.reparented)
         warnings.push_back("custom model bone parenting differs from stock: " + change +
                            "; corrected in the generated skeleton with the model-space bind pose kept");
-    const std::vector<Bone> target =
-        job.proportions.empty()
+    const std::vector<Bone> target = job.firstPerson
+        ? TargetViewPose(job.proportions.empty() ? rig : ReadRig(*LoadDmx(job.proportions),rigSource.scale,true),
+                         installed.bones,warnings)
+        : job.proportions.empty()
             ? TargetPose(skeleton.bones, installed.bones, warnings)
             : TargetPose(BuildSkeleton(ReadRig(*LoadDmx(job.proportions), rigSource.scale, true), installed.bones, {})
                              .bones,
@@ -479,6 +510,7 @@ void Generate(const Job& job, const Options& options) {
     struct WeaponAttachment { const char *name, *parent; };
     const WeaponAttachment kAttachments[] = {{"weapon", "wpn"}, {"weapon_hand_r", "hand_R"}, {"weapon_hand_l", "hand_L"}};
     for (const WeaponAttachment& want : kAttachments) {
+        if (job.firstPerson) break;
         std::string parent;
         bool found = false;
         Walk(vmdl, [&](kv::Value& node) {
@@ -528,12 +560,27 @@ void Generate(const Job& job, const Options& options) {
     WriteHeldPose(staged.output / kReferenceFile, installed.bones, installed.lowLodCount);
     WriteHeldPose(staged.output / kProportionsFile, target, installed.lowLodCount);
     const kv::Value descriptor = SkeletonDescriptor(ReadStockSkeleton(skeletonBytes), paths.relative + "/" + kReferenceFile);
-    kv::WriteFile((staged.output / kClipFile).u8string(), kv::WriteText(ProportionClip(paths.relative)));
-    kv::WriteFile((staged.output / kWorldGraphFile).u8string(), kv::WriteText(graph));
-    kv::WriteFile((staged.output / kUiGraphFile).u8string(), kv::WriteText(uiGraph));
+    kv::WriteFile((staged.output / kClipFile).u8string(), kv::WriteText(ProportionClip(paths.relative, job.firstPerson)));
+    kv::WriteFile((staged.output / (job.firstPerson ? kViewGraphFile : kWorldGraphFile)).u8string(), kv::WriteText(graph));
+    if (!job.firstPerson) kv::WriteFile((staged.output / kUiGraphFile).u8string(), kv::WriteText(uiGraph));
     if (job.writeModel) {
         const fs::path stagedModel = transaction.StageRoot() / "model.vmdl";
-        kv::WriteFile(stagedModel.u8string(), EditedModel(vmdlText, vmdl, paths, StockBoneNodes(skeleton.bones, modelStock)));
+        if (job.firstPerson) {
+            bool found = false;
+            Walk(vmdl, [&](kv::Value& node) {
+                if (ClassOf(node) == "AnimGraph2" && node.Has("name") && node.At("name").String() == "hudmodel") {
+                    node["filename"] = paths.relative + "/" + kViewGraphFile;
+                    found = true;
+                }
+            });
+            if (!found) throw runtime_error("first_person write_model requires an enabled hudmodel AnimGraph2 entry");
+            const auto header = vmdlText.find("-->");
+            if (header == std::string::npos) throw runtime_error("the VMDL has no KV3 header");
+            kv::WriteFile(stagedModel.u8string(), vmdlText.substr(0,header+3) + "\n" + kv::TextBody(vmdl) + "\n");
+        } else {
+            kv::WriteFile(stagedModel.u8string(), EditedModel(vmdlText, vmdl, paths,
+                StockBoneNodes(skeleton.bones, modelStock, skeleton.fromNodes)));
+        }
         fs::path backup = job.vmdl;
         backup += ".bak";
         const auto backupStatus = fs::symlink_status(backup);
@@ -554,13 +601,13 @@ void Generate(const Job& job, const Options& options) {
         kv::WriteFile((staged.output / "debug/report.kv3").u8string(),
                       kv::WriteText(Report(job, rigName, poseName, paths, installed.bones, target)));
         kv::WriteFile((staged.output / "debug/MODEL_SETUP.txt").u8string(),
-                      SetupNotes(paths, skeleton, warnings, job.writeModel));
+                      SetupNotes(paths, skeleton, warnings, job.writeModel, job.firstPerson));
     }
     if (!options.generateOnly) {
         const fs::path stagedCompiled = transaction.StageRoot() / "compiled";
-        Compile(options, staged, skeletonBytes, graphBytes, uiGraphBytes, descriptor, stagedCompiled);
+        Compile(options, staged, skeletonBytes, graphBytes, uiGraphBytes, descriptor, stagedCompiled, job.firstPerson);
         const fs::path published = paths.cs2 / "game/csgo_addons" / paths.addon.filename() / fs::u8path(paths.relative);
-        for (const char* source : {kClipFile, kWorldGraphFile, kUiGraphFile}) {
+        for (const char* source : RuntimeAssets(job.firstPerson)) {
             const fs::path name = fs::u8path(std::string(source) + "_c");
             transaction.Replace(stagedCompiled / name, published / name);
         }
@@ -569,7 +616,7 @@ void Generate(const Job& job, const Options& options) {
         // newly generated sources. Remove them in the same transaction so a
         // caller cannot accidentally consume an *_c file made from an older
         // VMDL/DMX/graph set.
-        RemoveUncompiledResources(transaction, compiledOutput, {kClipFile, kWorldGraphFile, kUiGraphFile});
+        RemoveUncompiledResources(transaction, compiledOutput, {kClipFile, kWorldGraphFile, kUiGraphFile, kViewGraphFile});
     }
     for (const char* name : kGeneratedFiles) {
         if (fs::is_regular_file(staged.output / name)) {

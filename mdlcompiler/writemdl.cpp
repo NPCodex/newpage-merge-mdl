@@ -2526,11 +2526,13 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
                         fmt::vtx::MeshHeader_t* vmesh = vtx.mesh(vlh, k);
                         for (int mm = 0; mm < vmesh->numStripGroups; mm++) {
                             uint8_t* sgRaw = vtx.stripGroupRaw(vmesh, mm);
-                            SGCommon* sg = reinterpret_cast<SGCommon*>(sgRaw);
+                            SGCommon sg;
+                            // VTX records are byte-packed and may start unaligned.
+                            std::memcpy(&sg, sgRaw, sizeof(sg));
                             VertexPool& pool = pools[poolStart + k];
-                            for (int n = 0; n < sg->numVerts; n++) {
+                            for (int n = 0; n < sg.numVerts; n++) {
                                 auto* v = reinterpret_cast<fmt::vtx::Vertex_t*>(
-                                    sgRaw + sg->vertOffset) + n;
+                                    sgRaw + sg.vertOffset) + n;
                                 if (v->origMeshVertID >= pool.numVertexes) {
                                     if (err) *err = "vtx vertex out of range";
                                     return false;
@@ -2789,10 +2791,11 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
                         fmt::vtx::MeshHeader_t* vmesh = nav.mesh(vlh, k);
                         for (int mm = 0; mm < vmesh->numStripGroups; mm++) {
                             uint8_t* sgRaw = nav.stripGroupRaw(vmesh, mm);
-                            SGCommon* sg = reinterpret_cast<SGCommon*>(sgRaw);
-                            for (int n = 0; n < sg->numVerts; n++) {
+                            SGCommon sg;
+                            std::memcpy(&sg, sgRaw, sizeof(sg));
+                            for (int n = 0; n < sg.numVerts; n++) {
                                 auto* v = reinterpret_cast<fmt::vtx::Vertex_t*>(
-                                    sgRaw + sg->vertOffset) + n;
+                                    sgRaw + sg.vertOffset) + n;
                                 int newID = pools[poolStart + k].vertexMap[v->origMeshVertID];
                                 newID = vertexList[newID].finalMeshVertID;
                                 v->origMeshVertID = static_cast<uint16_t>(newID);
@@ -2801,17 +2804,23 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
                             // one-ring/control indices name the unchanged SG table.
                             if (!legacyVtx && (pStudioHdr->flags & (1<<19))) {
                                 auto* full=reinterpret_cast<fmt::vtx::StripGroupHeader_t*>(sgRaw);
-                                auto* topology=reinterpret_cast<uint16_t*>(sgRaw+full->topologyOffset);
+                                auto* topology=sgRaw+full->topologyOffset;
+                                const auto readTopology = [topology](size_t index) {
+                                    uint16_t value;
+                                    std::memcpy(&value, topology + index * sizeof(value), sizeof(value));
+                                    return value;
+                                };
                                 size_t cursor=0, count=size_t(full->numTopologyIndices);
                                 while(cursor<count) {
                                     if(count-cursor<60)throw std::runtime_error("truncated SubD patch topology");
-                                    size_t ring=0;for(int corner=0;corner<4;++corner)ring+=topology[cursor+corner];
+                                    size_t ring=0;for(int corner=0;corner<4;++corner)ring+=readTopology(cursor+corner);
                                     if(ring>count-cursor-60)throw std::runtime_error("truncated SubD one-ring");
                                     for(size_t uv=44;uv<60;++uv) {
-                                        int old=topology[cursor+uv];
+                                        int old=readTopology(cursor+uv);
                                         if(old>=pools[poolStart+k].numVertexes)throw std::runtime_error("invalid SubD UV vertex reference");
                                         int mapped=pools[poolStart+k].vertexMap[old];
-                                        topology[cursor+uv]=uint16_t(vertexList[mapped].finalMeshVertID);
+                                        const auto vertexID=uint16_t(vertexList[mapped].finalMeshVertID);
+                                        std::memcpy(topology+(cursor+uv)*sizeof(vertexID), &vertexID, sizeof(vertexID));
                                     }
                                     cursor+=60+ring;
                                 }
@@ -3161,8 +3170,16 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
     // checksum over the whole buffer, BEFORE AssignMeshIDs and the fixup pass
     phdr->checksum = 0;
     for (size_t i = 0; i < total; i += 4) {
-        phdr->checksum = (phdr->checksum << 1) + ((phdr->checksum & 0x8000000) ? 1 : 0) +
-                         *reinterpret_cast<int32_t*>(buf.start() + i);
+        // This format uses wrapping 32-bit arithmetic, including bit 27's
+        // feedback. Signed shifts/addition are undefined once the high bit is
+        // set. Keep updating the header each iteration: its checksum word is
+        // itself part of the buffer visited by this historical algorithm.
+        const uint32_t previous = static_cast<uint32_t>(phdr->checksum);
+        uint32_t word;
+        std::memcpy(&word, buf.start() + i, sizeof(word));
+        const uint32_t checksum = (previous << 1) +
+                                  ((previous & 0x08000000u) ? 1u : 0u) + word;
+        std::memcpy(&phdr->checksum, &checksum, sizeof(checksum));
     }
 
     AssignMeshIDs(buf, phdr);
@@ -3245,15 +3262,26 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
     }
     std::string vertexAnimation;
     std::map<std::string,std::vector<float>> bakedClips;
+    std::map<std::string,std::vector<const source::Source*>> bakedSources;
     for(const auto& model:m.models)if(model.source&&!model.source->bakedTimes.empty()) {
         auto added=bakedClips.emplace(model.source->bakedController,model.source->bakedTimes);
         if(!added.second&&added.first->second!=model.source->bakedTimes){if(err)*err="baked animations sharing a controller must have identical sample times";return false;}
+        auto& sources=bakedSources[model.source->bakedController];
+        if(std::find(sources.begin(),sources.end(),model.source)==sources.end())sources.push_back(model.source);
     }
     if(!bakedClips.empty()) {
         vertexAnimation="{\"schema\":1,\"clips\":[";bool first=true;
         for(const auto& clip:bakedClips){if(!first)vertexAnimation+=",";first=false;
             vertexAnimation+="{\"controller\":\""+clip.first+"\",\"position_controller\":\"multi_"+clip.first+"\",\"times\":[";
             for(size_t i=0;i<clip.second.size();++i){if(i)vertexAnimation+=",";vertexAnimation+=std::to_string(clip.second[i]);}
+            vertexAnimation+="],\"sample_checks\":[";bool firstSource=true;
+            for(const auto* src:bakedSources.at(clip.first)) {
+                if(!firstSource)vertexAnimation+=",";firstSource=false;
+                vertexAnimation+="{\"scope\":\"sampled_reference\",\"reference_sample_rate\":"+std::to_string(src->sceneOptions.sampleRate)+
+                    ",\"source_frames\":"+std::to_string(src->bakedReferenceFrames)+",\"retained_frames\":"+std::to_string(src->bakedTimes.size())+
+                    ",\"reduction_applied\":"+(src->bakedReductionApplied?std::string("true"):std::string("false"))+
+                    ",\"max_position_error\":"+std::to_string(src->bakedPositionError)+",\"max_normal_error_degrees\":"+std::to_string(src->bakedNormalError)+"}";
+            }
             vertexAnimation+="]}";
         }vertexAnimation+="]}\n";
     }

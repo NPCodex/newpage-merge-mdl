@@ -114,6 +114,27 @@ assert(VRM.StepSprings(e,s,1/60))
 nearv(s.tails.root.now,Vector(-1,1/3,0):GetNormalized())
 ''')
 
+    def test_fixed_spring_clock_matches_30_60_120_240_fps_and_resets_after_pause(self):
+        self.lua.execute('''
+local reference
+for _,fps in ipairs({30,60,120,240}) do
+ local e=Entity();local data=Data({Joint('root',2,{1,0,0}),Joint('child',1,{0,0,1})})
+ for _,j in ipairs(data.springs[1].joints) do j.stiffness=1;j.drag=.3 end
+ local state=assert(VRM.NewSpringState(e,data))
+ for i=1,fps/10 do e:Reset();assert(VRM.StepSprings(e,state,1/fps)) end
+ if reference then
+  nearv(state.tails.root.now,reference.root.now);nearv(state.tails.child.now,reference.child.now)
+  nearv(state.tails.root.previous,reference.root.previous)
+ else reference=state.tails end
+ local before=state.tails.root.now*1
+ e:Reset();assert(VRM.StepSprings(e,state,0));nearv(state.tails.root.now,before)
+ e:Reset();assert(VRM.StepSprings(e,state,.5));nearv(state.tails.root.now,Vector(0,1,0));near(state.accumulator,0)
+ e:Reset();assert(VRM.StepSprings(e,state,1/240));nearv(state.tails.root.now,Vector(0,1,0))
+ for i=1,3 do e:Reset();assert(VRM.StepSprings(e,state,1/240)) end
+ assert(state.tails.root.now.x>0);near(state.accumulator,0)
+end
+''')
+
     def test_center_translation_and_zero_step_are_stable(self):
         self.lua.execute('''
 local e=Entity();e.parents[2]=-1;e.matrices[2]:SetTranslation(Vector(10,0,0))

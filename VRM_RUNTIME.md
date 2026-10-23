@@ -9,14 +9,20 @@ Games do not automatically run a `.vrm.json` file.
 python tools/vrm_runtime.py avatar.vrm --out generated/avatar --modelname avatars/example --compiler NewPageMergeMDL.exe --game GAME_DIRECTORY
 ```
 
-The tool accepts GLB/VRM and JSON glTF containing VRM metadata. It writes an
+The tool accepts GLB/VRM and JSON glTF containing VRM metadata. Local external
+buffers and images are read relative to the input, with URI escaping decoded
+once, and embedded before staging so relocation does not break their paths.
+It writes an
 editable `avatar.gltf`, `avatar.qc`, and `models/avatars/example.vrm.json`.
 Input/output aliases are rejected before writing, including an input named
 `avatar.gltf` inside `--out`; choose a separate output directory. Generation,
 optional compilation and runtime JSON are staged together. Ordinary publication
 failures restore the previous output set, and concurrent helper writers are
-rejected. This Python transaction does not guarantee forced-termination or
-power-loss recovery.
+rejected. Persistent journals recover an interrupted group on the next run;
+external-edit conflicts preserve the backups and stop recovery. Keep the
+`.newpage-helper-*` and `*.newpage-helper-journal` files until resolved; see
+[recovery instructions](AUTHORING_WORKFLOWS.md#interrupted-helper-publication).
+This does not guarantee arbitrary hardware or power-loss recovery.
 `--scale` defaults to 39.3700787402 (metres to Source inches). The generated QC
 cancels the compiler's default 90-degree yaw and converts glTF Y-up to Source
 Z-up. Keep these transforms if using the associated physics metadata.
@@ -100,8 +106,12 @@ pairs, including skipped scene nodes. The final entry only defines a tail and
 is not simulated; a single-entry chain has no segment. The default VRM 1 drag
 is 0.5. Non-descendant chains and overlaps through skipped nodes are rejected.
 
-Physics is a bounded Verlet/projection adapter with steps no larger than 1/60 s,
-two collision projection passes and a reset after gaps over 0.25 s. Dense or
+Physics is a bounded Verlet/projection adapter with a fixed 1/60 s accumulator,
+two collision projection passes and a reset after gaps over 0.25 s. The first
+call establishes its initial pose/time, and repeated calls in one render frame
+do not advance simulation twice. Numerical tests compare 30/60/120/240 FPS and
+pause recovery; those results are separate from the historical game runs.
+Dense or
 contradictory collider arrangements can retain penetration. It is not guaranteed
 to match another VRM runtime frame for frame. Bake nonuniform/sheared/reflected spring or
 collider transforms before preparing the model; non-unit runtime entity scale is

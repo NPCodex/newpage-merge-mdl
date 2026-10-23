@@ -88,3 +88,4 @@ AGENTS.md
 
 # Local compiled tools and user-model verification outputs
 local-build/
+.diagnostics/

@@ -1423,6 +1423,13 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
 
     // MapGlobalBonesToHardwareBoneIDsAndSortBones
     {
+        // VTX strip/strip-group records are byte-packed (notably fields at
+        // +19 and +23). Read their shared fields without an aligned int pointer.
+        const auto readPackedInt32 = [](const uint8_t* bytes) {
+            int32_t value;
+            std::memcpy(&value, bytes, sizeof(value));
+            return value;
+        };
         std::vector<int> globalToHardware(b.numBones, -1);
         fmt::vtx::FileHeader_t* header = reinterpret_cast<fmt::vtx::FileHeader_t*>(out.data());
         for (int bodyPartID = 0; bodyPartID < header->numBodyParts; bodyPartID++) {
@@ -1442,10 +1449,10 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
                         for (int sgID = 0; sgID < meshHdr->numStripGroups; sgID++) {
                             uint8_t* sgRaw = reinterpret_cast<uint8_t*>(meshHdr) +
                                              meshHdr->stripGroupHeaderOffset + sgID * stripGroupSize;
-                            int32_t sgNumVerts = *reinterpret_cast<int32_t*>(sgRaw);
-                            int32_t sgVertOffset = *reinterpret_cast<int32_t*>(sgRaw + 4);
-                            int32_t sgNumStrips = *reinterpret_cast<int32_t*>(sgRaw + 16);
-                            int32_t sgStripOffset = *reinterpret_cast<int32_t*>(sgRaw + 20);
+                            int32_t sgNumVerts = readPackedInt32(sgRaw);
+                            int32_t sgVertOffset = readPackedInt32(sgRaw + 4);
+                            int32_t sgNumStrips = readPackedInt32(sgRaw + 16);
+                            int32_t sgStripOffset = readPackedInt32(sgRaw + 20);
                             // flags sits at +24 in both layouts (the six shared
                             // int32s); same for the strip field offsets below
                             uint8_t sgFlags = *(sgRaw + 24);
@@ -1453,10 +1460,10 @@ std::vector<uint8_t> BuildVtx(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf
                                 continue;
                             for (int stripID = 0; stripID < sgNumStrips; stripID++) {
                                 uint8_t* stRaw = sgRaw + sgStripOffset + stripID * stripSize;
-                                int32_t stNumVerts = *reinterpret_cast<int32_t*>(stRaw + 8);
-                                int32_t stVertOffset = *reinterpret_cast<int32_t*>(stRaw + 12);
-                                int32_t stNumBSC = *reinterpret_cast<int32_t*>(stRaw + 19);
-                                int32_t stBSCOffset = *reinterpret_cast<int32_t*>(stRaw + 23);
+                                int32_t stNumVerts = readPackedInt32(stRaw + 8);
+                                int32_t stVertOffset = readPackedInt32(stRaw + 12);
+                                int32_t stNumBSC = readPackedInt32(stRaw + 19);
+                                int32_t stBSCOffset = readPackedInt32(stRaw + 23);
                                 auto* bsc = reinterpret_cast<fmt::vtx::BoneStateChangeHeader_t*>(
                                     stRaw + stBSCOffset);
                                 for (int c = 0; c < stNumBSC; c++)

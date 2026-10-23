@@ -406,7 +406,7 @@ bool HasStockLengths(const std::vector<Bone>& rig, const std::vector<const std::
 }
 
 SkeletonBuild BuildSkeleton(const std::vector<Bone>& rig, const std::vector<Bone>& stock,
-                            const std::vector<Bone>& nodes) {
+                            const std::vector<Bone>& nodes, bool firstPerson) {
     std::map<std::string, int, NoCase> inRig, isStock, placed;
     for (size_t i = 0; i < rig.size(); ++i)
         if (!inRig.emplace(rig[i].name, static_cast<int>(i)).second)
@@ -414,7 +414,9 @@ SkeletonBuild BuildSkeleton(const std::vector<Bone>& rig, const std::vector<Bone
     for (size_t i = 0; i < stock.size(); ++i)
         isStock.emplace(stock[i].name, static_cast<int>(i));
     for (const char* core : kCoreBones)
-        if (std::string(core) != "root_motion" && !inRig.count(core))
+        if (std::string(core) != "root_motion" &&
+            (!firstPerson || std::string(core).rfind("arm_",0)==0 || std::string(core).rfind("hand_",0)==0) &&
+            !inRig.count(core))
             throw runtime_error(std::string("the rig lacks CS2 core bone ") + core);
 
     const std::vector<pm::matrix3x4> rigWorld = WorldTransforms(rig);
@@ -502,6 +504,37 @@ std::vector<Bone> TargetPose(const std::vector<Bone>& skeleton, const std::vecto
         target[i].position = mine.position;
     }
     return target;
+}
+
+std::vector<Bone> TargetViewPose(const std::vector<Bone>& rig, const std::vector<Bone>& stock,
+                                std::vector<std::string>& warnings) {
+    auto adjusted = BuildSkeleton(rig, stock, {}, true).bones;
+    const auto world = WorldTransforms(rig);
+    std::map<std::string,size_t,NoCase> source;
+    for (size_t i=0;i<rig.size();++i) source.emplace(rig[i].name,i);
+    // The view graph reverses the visible upper-arm branch through its
+    // shoulder/straighten helpers. An authored arm's shoulder is elsewhere in
+    // model space, so reparenting its elbow to the graph's fixed shoulder is not
+    // a limb-length measurement. Both graph branches represent the same upper
+    // arm length, in their own stock axes.
+    for (const char* side : {"L", "R"}) {
+        const std::string upper=std::string("arm_upper_")+side, lower=std::string("arm_lower_")+side;
+        const auto& a=world.at(source.at(upper)); const auto& b=world.at(source.at(lower));
+        const double dx=a.m[0][3]-b.m[0][3],dy=a.m[1][3]-b.m[1][3],dz=a.m[2][3]-b.m[2][3];
+        const double length=std::sqrt(dx*dx+dy*dy+dz*dz);
+        if (!std::isfinite(length) || length<1e-5) throw runtime_error("invalid first-person upper arm length on "+upper);
+        for (const std::string& name : {upper,lower}) {
+            const auto reference=std::find_if(stock.begin(),stock.end(),[&](const Bone& v){return v.name==name;});
+            const auto target=std::find_if(adjusted.begin(),adjusted.end(),[&](const Bone& v){return v.name==name;});
+            if (reference==stock.end() || target==adjusted.end()) throw runtime_error("viewmodel skeleton lacks "+name);
+            const auto& p=reference->position;
+            const double referenceLength=std::sqrt(double(p.x)*p.x+double(p.y)*p.y+double(p.z)*p.z);
+            if (referenceLength<1e-5) throw runtime_error("invalid viewmodel upper arm length on "+name);
+            const float ratio=static_cast<float>(length/referenceLength);
+            target->position={p.x*ratio,p.y*ratio,p.z*ratio};
+        }
+    }
+    return TargetPose(adjusted,stock,warnings);
 }
 
 void WriteSkeleton(const fs::path& path, const std::vector<Bone>& bones) {

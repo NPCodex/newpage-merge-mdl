@@ -38,6 +38,19 @@ USAGE = {
 }
 
 
+def check_symbol_versions(name, text, limits):
+    observed = {}
+    for family, ceiling in limits.items():
+        versions = re.findall(r'\b' + re.escape(family) + r'_(\d+(?:\.\d+)+)\b', text)
+        maximum = max((tuple(map(int, v.split('.'))) for v in versions), default=())
+        if maximum > tuple(map(int, ceiling.split('.'))):
+            raise ValueError(f'{name} requires {family}_{".".join(map(str, maximum))}, above supported {ceiling}')
+        observed[family] = '.'.join(map(str, maximum)) or None
+    if 'GLIBC_PRIVATE' in text:
+        raise ValueError(f'{name} depends on private glibc symbols')
+    return observed
+
+
 def check_elf(name, data):
     if len(data) < 20 or data[:4] != b"\x7fELF":
         raise ValueError(f"{name} is not an ELF executable")
@@ -49,9 +62,22 @@ def check_elf(name, data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archive", type=Path)
+    parser.add_argument('--require-baseline', action='store_true',
+                        help='CI gate: require actual execution on the minimum supported distribution')
     args = parser.parse_args()
+    contract = json.loads((Path(__file__).resolve().parents[1] / 'automation/linux-runtime.json').read_text())
     if os.name != "posix":
         raise ValueError("Linux smoke checks must execute on a Linux host")
+    host = {}
+    for line in Path('/etc/os-release').read_text().splitlines():
+        if '=' in line:
+            key, value = line.split('=', 1)
+            host[key] = value.strip('"\'')
+    baseline = all(host.get(key) == value for key, value in contract['baseline_os_release'].items())
+    if args.require_baseline and not baseline:
+        raise ValueError('Minimum-runtime validation must run on ' + contract['minimum_distribution'])
+    print(json.dumps({'runtime_host': {key: host.get(key) for key in ('ID', 'VERSION_ID')},
+                      'on_minimum_distribution': baseline, 'contract': contract}, sort_keys=True))
     expected = {ROOT + name for name in TOOLS}
     with zipfile.ZipFile(args.archive) as archive:
         infos = {info.filename: info for info in archive.infolist()}
@@ -80,12 +106,15 @@ def main():
                 dynamic = subprocess.run(["readelf", "-d", str(binary)], capture_output=True,
                                          text=True, timeout=20, check=True).stdout
                 needed = re.findall(r"\(NEEDED\).*\[([^\]]+)\]", dynamic)
+                versions = subprocess.run(["readelf", "--version-info", str(binary)], capture_output=True,
+                                          text=True, timeout=20, check=True).stdout
+                symbols = check_symbol_versions(name, versions, contract['maximum_required_symbols'])
                 if needed:
                     deps = subprocess.run(["ldd", str(binary)], capture_output=True,
                                           text=True, timeout=20)
                     if deps.returncode or "not found" in deps.stdout + deps.stderr:
                         raise ValueError(f"{name} has unresolved dependencies: {deps.stdout}{deps.stderr}")
-                print(f"{name}: loader={loader[1] if loader else 'static'}, needed={needed}")
+                print(f"{name}: loader={loader[1] if loader else 'static'}, needed={needed}, symbols={symbols}")
                 result = subprocess.run([str(binary)], cwd=folder, capture_output=True,
                                         text=True, errors="replace", timeout=20)
                 status, marker = USAGE[name]

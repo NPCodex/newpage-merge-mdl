@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "dmxwrite.h"
+#include "selection.h"
 #include "math/compressed.h"
 #include "pulselimits.h"
 
@@ -756,10 +757,10 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
     }
 
     auto emit = [&](const std::string& name, const std::vector<std::vector<Pose>>& frames,
-                    float fps) {
+                    float fps, const std::vector<size_t>* keep = nullptr) {
         const std::string path = animDir + "/" + name + AnimExt();
         if (!g_smd) {
-            if (!WriteAnimationDmx(m, path, name, fps, frames)) {
+            if (!WriteAnimationDmx(m, path, name, fps, frames, nullptr, keep)) {
                 ExtractionError("cannot write \"" + path + "\"");
                 return false;
             }
@@ -800,6 +801,7 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
             ++written;
     }
     for (int i = 0; i < h.numlocalanim; ++i) {
+        if (!AnimationSelected(i)) continue;
         const fm::mstudioanimdesc_t& a = descs[i];
         if (a.flags & fm::STUDIO_OVERRIDE)
             continue; // $declareanimation - the data lives in the $includemodel
@@ -820,7 +822,37 @@ void WriteAnimationFiles(const Mdl& m, const std::string& mdlPath, const std::st
             ++skipped;
             continue;
         }
-        if (emit(refs[i].name, frames, fps))
+        std::set<size_t> boundaries;
+        const auto keepFrame = [&](float frame) {
+            if (!std::isfinite(frame)) return;
+            for (int offset = -1; offset <= 1; ++offset) {
+                const auto value = static_cast<int64_t>(std::floor(frame)) + offset;
+                if (value >= 0 && value < static_cast<int64_t>(frames.size())) boundaries.insert(static_cast<size_t>(value));
+            }
+            if (frame >= 0 && frame < frames.size()) boundaries.insert(static_cast<size_t>(std::ceil(frame)));
+        };
+        const auto* seqs = m.At<fm::mstudioseqdesc_t>(m.buf.data(), h.localseqindex, h.numlocalseq);
+        for (int si = 0; seqs && si < h.numlocalseq; ++si) {
+            const auto& seq = seqs[si];
+            const int64_t cells = static_cast<int64_t>(seq.groupsize[0]) * seq.groupsize[1];
+            const auto* grid = cells > 0 && cells <= 4096 ? m.At<int16_t>(&seq, seq.animindexindex, static_cast<size_t>(cells)) : nullptr;
+            if (!grid || std::find(grid, grid + cells, i) == grid + cells) continue;
+            const float last = static_cast<float>(frames.size() - 1);
+            const auto* events = m.At<fm::mstudioevent_t>(&seq, seq.eventindex, seq.numevents);
+            for (int j = 0; events && j < seq.numevents; ++j) keepFrame(events[j].cycle * last);
+            const auto* layers = m.At<fm::mstudioautolayer_t>(&seq, seq.autolayerindex, seq.numautolayers);
+            for (int j = 0; layers && j < seq.numautolayers; ++j)
+                if (!(layers[j].flags & fm::STUDIO_AL_POSE))
+                    for (float phase : {layers[j].start,layers[j].peak,layers[j].tail,layers[j].end}) keepFrame(phase * last);
+        }
+        const auto* rules = a.animblock ? m.BlockIkRules(a) : m.At<fm::mstudioikrule_t>(&a, a.ikruleindex, a.numikrules);
+        for (int j = 0; rules && j < a.numikrules; ++j)
+            for (float phase : {rules[j].start,rules[j].peak,rules[j].tail,rules[j].end,rules[j].contact})
+                keepFrame(phase * (frames.size()-1));
+        const auto* movement = m.At<fm::mstudiomovement_t>(&a, a.movementindex, a.nummovements);
+        for (int j = 0; movement && j < a.nummovements; ++j) keepFrame(static_cast<float>(movement[j].endframe));
+        const std::vector<size_t> keep(boundaries.begin(),boundaries.end());
+        if (emit(refs[i].name, frames, fps, &keep))
             ++written;
         else
             ++skipped;

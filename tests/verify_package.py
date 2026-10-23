@@ -48,12 +48,17 @@ def verify(archive, expected, destination):
             path = PurePosixPath(name.replace('\\', '/'))
             if path.is_absolute() or '..' in path.parts or ':' in name or not path.parts or path.parts[0] != 'NewPageMergeMDL':
                 raise ValueError('Unsafe archive member: ' + name)
+        files = {info.filename.rstrip('/') for info in package.infolist() if not info.is_dir()}
+        for name in names:
+            if any(str(parent) in files for parent in PurePosixPath(name).parents):
+                raise ValueError('Archive file/directory conflict: ' + name)
         manifest = json.loads(package.read('NewPageMergeMDL/upstream-manifest.json'))
         if manifest != expected:
             raise ValueError('Packaged source provenance does not match preparation manifest')
         for name in (
             'README.md', 'README.en.md', 'INSTALL.md', 'VALIDATION.md', 'IMPROVEMENTS.md',
             'FIVE_COMPILER_COMPLETION.md', 'O5_FORMAT_IMPORTS.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md',
+            'AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md',
             'tests/reports/toolkit-fixes-20261020.md', 'tests/reports/2026-10-18-rea-second-pass.md',
             'tests/reports/ag2-gameplay-20261020.md',
             'tests/reports/v1.2.34-replacement-validation.md', 'tests/reports/v1.2.36-replacement-validation.md',
@@ -61,6 +66,7 @@ def verify(archive, expected, destination):
             'integration/gmod/newpage_vrm.lua', 'integration/gmod/newpage_vrm_materials.lua',
             'tools/mesh_states.py', 'tools/vrm_runtime.py', 'tools/vrml_import.py', 'tools/output_transaction.py',
             'subtools/meshtool-protocol.md',
+            'subtools/ag2proportions.md', 'subtools/vmd2valvebiped.md', 'subtools/l4d_animswap-retarget.md',
             'tools/vrml_converter/CMakeLists.txt', 'tools/vrml_converter/main.cpp',
             'tools/vrml_converter/meshlab/Parser.cpp', 'tools/vrml_converter/meshlab/Parser.h',
             'tools/vrml_converter/meshlab/Scanner.cpp', 'tools/vrml_converter/meshlab/Scanner.h',
@@ -188,6 +194,9 @@ def main():
             ('l4d_retarget_names_test.py', [str(compiler), str(compiler.parent/'subtools'/('l4d_animswap'+compiler.suffix))]),
             ('vmd_motion_features_test.py', [str(compiler.parent/'subtools'/('vmd2valvebiped'+compiler.suffix))]),
             ('helpers_publication_test.py', ['--bin-dir', str(compiler.parent)]),
+            ('perfjson_output_test.py', [str(compiler)]),
+            ('authoring_workflows_test.py', ['--bin-dir', str(compiler.parent), '--tools-dir', str(compiler.parent/'tools')]),
+            ('incremental_build_test.py', ['--compiler', str(compiler), '--tools-dir', str(compiler.parent/'tools')]),
         ):
             subprocess.run([sys.executable, str(Path(__file__).with_name(script)), *arguments], check=True)
         subprocess.run([sys.executable, str(Path(__file__).with_name('compatibility.py')), str(compiler)], check=True)

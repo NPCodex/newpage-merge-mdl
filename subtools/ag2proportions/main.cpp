@@ -34,15 +34,18 @@ const char* const kUsage =
     "  vmdl           Model to process (required).\n"
     "  model_dmx      Rig DMX.\n"
     "                 Default: the VMDL's body RenderMeshFile import.\n"
+    "  first_person   Generate a separate experimental hudmodel wrapper (default: false).\n"
+    "                 Requires explicit arms model_dmx. Keeps body/UI graphs and skeleton.\n"
     "  proportions    Held-pose DMX.\n"
     "                 Default: the rig's bind pose.\n"
-    "  vnmskel        Compiled worldmodel.vnmskel_c.\n"
+    "  vnmskel        Matching compiled worldmodel.vnmskel_c (or viewmodel in first_person).\n"
     "                 Default: read from the installed CS2 VPK.\n"
     "  write_model    Edit the VMDL in place when true (default: false).\n"
     "                 The original is kept as <model>.vmdl.bak.\n\n"
     "Model input and output:\n"
     "  A VMDL passed directly is edited in place (write_model = true).\n"
-    "  Output goes beside the VMDL, in a folder named after the model.\n\n";
+    "  Output goes beside the VMDL, in a folder named after the model.\n"
+    "  first_person uses a separate <model>_viewmodel folder.\n\n";
 
 bool HasExtension(const path& file, const char* ext) {
     return _stricmp(file.extension().u8string().c_str(), ext) == 0;
@@ -77,6 +80,7 @@ ag2::Job LoadJob(const path& file) {
         else if (key == "proportions") job.proportions = at();
         else if (key == "vnmskel") job.vnmskel = at();
         else if (key == "write_model") job.writeModel = value.Boolean();
+        else if (key == "first_person") job.firstPerson = value.Boolean();
         else throw std::runtime_error("unknown job key \"" + key + "\"");
     }
     if (job.vmdl.empty())

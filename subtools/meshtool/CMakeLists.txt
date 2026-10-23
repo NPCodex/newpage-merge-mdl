@@ -33,3 +33,7 @@ if(WIN32)
     endif()
 endif()
 target_link_libraries(meshtool PRIVATE pulse_libs pulse_meshopt pulse_vhacd)
+
+if(COMMAND newpage_separate_symbols)
+    newpage_separate_symbols(meshtool)
+endif()

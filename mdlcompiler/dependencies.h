@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <map>
+#include <set>
 #include <string>
 
 namespace pulse::dependencies {
@@ -23,6 +24,13 @@ struct Entry {
 };
 
 inline bool g_enabled = false;
+
+// Also retain paths when hashes are disabled: auxiliary reports must never
+// replace inputs, including launch defaults read before argument processing.
+inline std::set<std::string>& Paths() {
+    static std::set<std::string> paths;
+    return paths;
+}
 
 inline std::map<std::string, Entry>& Files() {
     static std::map<std::string, Entry> files;
@@ -52,11 +60,14 @@ inline uint64_t HashFile(const std::string& path) {
 // `text` stands in for the file's content (a -stdin script).
 inline void Note(const std::string& path, Kind kind = Kind::Source,
                  const std::string* text = nullptr) {
-    if (!g_enabled || path.empty())
+    if (path.empty())
         return;
     std::error_code ec;
     const auto full = std::filesystem::absolute(path, ec);
     const std::string key = ec ? path : full.lexically_normal().string();
+    Paths().insert(key);
+    if (!g_enabled)
+        return;
     if (Files().count(key))
         return;
     const uint64_t hash = text ? Hash(reinterpret_cast<const unsigned char*>(text->data()), text->size())

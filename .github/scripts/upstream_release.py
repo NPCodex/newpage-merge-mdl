@@ -6,6 +6,7 @@ All URLs come from configured official GitHub repositories, not release-body tex
 """
 import argparse
 import datetime
+import time
 import hashlib
 import io
 import json
@@ -21,6 +22,12 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def build_record_time():
+    epoch = os.environ.get('SOURCE_DATE_EPOCH')
+    return (datetime.datetime.fromtimestamp(int(epoch), datetime.timezone.utc) if epoch is not None
+            else datetime.datetime.now(datetime.timezone.utc)).isoformat()
 
 
 def sha256(path):
@@ -45,6 +52,73 @@ def checked_source_text_hash(data, declared, label):
     return source_text_sha256(data)
 
 
+RELEASE_INPUT_ROOTS = ('libs', 'mdlcompiler', 'mdldecompiler', 'subtools', 'cmake',
+                       'tools', 'integration', 'assets/branding', '.github/images')
+RELEASE_INPUT_FILES = ('CMakeLists.txt', 'CMakePresets.json', 'utf8.manifest', 'LICENSE',
+                       'automation/upstreams.json', 'automation/windows-extras.json',
+                       'automation/linux-runtime.json')
+RELEASE_TEXT_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx', '.inc', '.inl', '.ipp',
+                         '.cmake', '.txt', '.json', '.py', '.lua', '.rc', '.manifest', '.xml', '.def',
+                         '.in', '.m', '.mm', '.natvis', '.props', '.targets', '.sln', '.vcxproj',
+                         '.sh', '.bat', '.ps1', '.md', '.rst', '.license', '.cs', '.csproj', '.build', '.s', '.kv3'}
+
+
+def is_release_input(name):
+    path = PurePosixPath(name)
+    if any(part in {'.git', '__pycache__', 'build', 'out', 'dist'} for part in path.parts):
+        return False
+    if path.suffix.lower() in {'.pyc', '.pyo'}:
+        return False
+    if name not in RELEASE_INPUT_FILES and not any(name.startswith(root + '/') for root in RELEASE_INPUT_ROOTS):
+        return False
+    # Documentation and acceptance evidence can follow a release without
+    # changing its tools. License notices remain distribution inputs.
+    notice = any(word in path.name.lower() for word in ('license', 'copying', 'notice'))
+    if not notice and (path.suffix.lower() in {'.md', '.rst'} or path.name.lower().startswith('readme')
+                       or any(part in {'test', 'tests'} for part in path.parts)):
+        return False
+    return True
+
+
+def release_inputs_fingerprint(files, pulsemodel):
+    identity = []
+    for name, data in files:
+        if is_release_input(name):
+            # Normalize known source text across checkouts. Unknown/binary
+            # resources retain exact bytes even when they contain no NUL.
+            path = PurePosixPath(name)
+            text = (path.suffix.lower() in RELEASE_TEXT_SUFFIXES or
+                    path.name.lower() in {'makefile', 'license', 'copying', 'notice'})
+            canonical = data.replace(b'\r\n', b'\n') if text and b'\0' not in data[:8000] else data
+            identity.append((name, hashlib.sha256(canonical).hexdigest()))
+    return fingerprint({'schema': 1, 'pulsemodel': pulsemodel, 'files': sorted(identity)})
+
+
+def checkout_release_inputs(source, pulsemodel):
+    source = Path(source)
+    if (source / '.git').exists():
+        # Maintained packages use git archive; ignored SDK/build leftovers are
+        # not inputs to those packages. Still read working bytes for tracked edits.
+        tracked = subprocess.check_output(['git', 'ls-files', '-z', '--',
+                                          *RELEASE_INPUT_ROOTS, *RELEASE_INPUT_FILES], cwd=source)
+        paths = set(tracked.decode('utf-8').rstrip('\0').split('\0')) - {''}
+    else:
+        paths = set(RELEASE_INPUT_FILES)
+        for root in RELEASE_INPUT_ROOTS:
+            paths.update(path.relative_to(source).as_posix() for path in (source / root).rglob('*') if path.is_file())
+    return release_inputs_fingerprint(((name, (source / name).read_bytes()) for name in sorted(paths)
+                                       if is_release_input(name) and (source / name).is_file()), pulsemodel)
+
+
+def same_release_inputs(previous, provenance_fingerprint, release_inputs_sha256=None):
+    if not previous:
+        return False
+    if release_inputs_sha256 is not None and previous.get('release_inputs_sha256') is not None:
+        return previous['release_inputs_sha256'] == release_inputs_sha256
+    # Unverifiable legacy snapshots retain the old conservative comparison.
+    return previous.get('fingerprint') == provenance_fingerprint
+
+
 def verified_package_manifest(package, manifest):
     """Migrate historical text hashes only when the embedded source proves it.
 
@@ -55,7 +129,9 @@ def verified_package_manifest(package, manifest):
     """
     source_name = 'NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'
     if source_name not in package.namelist():
-        return dict(manifest)  # Legacy packages retain strict manifest equality.
+        legacy = dict(manifest)
+        legacy.pop('release_inputs_sha256', None)
+        return legacy  # Legacy packages retain strict manifest equality.
     result = dict(manifest)
     controller = manifest.get('controller_sha', '')
     if not isinstance(controller, str) or not re.fullmatch(r'[0-9a-f]{40}', controller):
@@ -104,6 +180,17 @@ def verified_package_manifest(package, manifest):
                     config.get('project_version', '1.2.0') != payload['project_version']):
                 raise ValueError('Source snapshot configuration does not match maintained manifest')
             result['fingerprint'] = fingerprint(payload)
+            content = release_inputs_fingerprint(files.items(), result['pulsemodel'])
+            if manifest.get('release_inputs_sha256', content) != content:
+                raise ValueError('Source snapshot does not match declared release inputs')
+            result['release_inputs_sha256'] = content
+        elif 'release_inputs_sha256' in manifest:
+            # Automatic packages retain their original controller input hash.
+            # Their merged snapshot already has newer upstream code and stamped
+            # versions; recomputing from it would cause perpetual new releases.
+            content = manifest['release_inputs_sha256']
+            if not isinstance(content, str) or not re.fullmatch(r'[0-9a-f]{64}', content):
+                raise ValueError('Invalid controller release input hash')
         if manifest.get('build_overlay_sha256') is not None:
             result['build_overlay_sha256'] = checked_source_text_hash(
                 files['automation/compatibility.patch'], manifest['build_overlay_sha256'], 'build_overlay_sha256')
@@ -113,7 +200,7 @@ def verified_package_manifest(package, manifest):
 def package_source_identity(manifest):
     fields = ('controller_sha', 'fingerprint', 'project_version', 'pulsemodel',
               'overlay_sha256', 'configuration_sha256', 'build_overlay_sha256', 'source_kind',
-              '_verified_source_tree_sha256')
+              '_verified_source_tree_sha256', 'release_inputs_sha256')
     return json.dumps({key: manifest.get(key) for key in fields}, sort_keys=True)
 
 
@@ -199,7 +286,8 @@ def published_manifest(repo):
                     continue
                 manifest = json.loads(archive.read('NewPageMergeMDL/upstream-manifest.json'))
                 manifest = verified_package_manifest(archive, manifest)
-                manifest.setdefault('release_tag', release['tag_name'])
+                manifest['build_tag'] = manifest.get('release_tag')
+                manifest['release_tag'] = release['tag_name']
                 manifests.append(manifest)
         if manifests:
             identities = {package_source_identity(m) for m in manifests}
@@ -210,7 +298,9 @@ def published_manifest(repo):
             if asset['name'] == 'upstream-manifest.json':
                 # Legacy releases without embedded provenance remain readable.
                 manifest = json.loads(fetch(asset['url'], accept='application/octet-stream'))
-                manifest.setdefault('release_tag', release['tag_name'])
+                manifest.pop('release_inputs_sha256', None)
+                manifest['build_tag'] = manifest.get('release_tag')
+                manifest['release_tag'] = release['tag_name']
                 return manifest
     return None
 
@@ -248,14 +338,14 @@ def create_source(root, pulse_repo, revision, base, patch):
         ':(exclude)libs/cgltf/cgltf.h', cwd=root)
 
 
-def release_version(base, previous, content_fingerprint):
+def release_version(base, previous, content_fingerprint, release_inputs_sha256=None):
     """Allocate a patch release, preserving the identity of forced retries."""
     def parts(value):
         if not re.fullmatch(r'\d+\.\d+(?:\.\d+)?', value):
             raise ValueError('Invalid project version: ' + value)
         return tuple(map(int, (value + '.0' if value.count('.') == 1 else value).split('.')))
     floor = parts(base)
-    if previous and previous.get('fingerprint') == content_fingerprint:
+    if same_release_inputs(previous, content_fingerprint, release_inputs_sha256):
         version = previous.get('project_version', base)
         parts(version)
         return version, previous.get('release_tag', 'v' + version)
@@ -399,6 +489,7 @@ def source_state(config, controller, pulse_revision, source):
         }
     }
     state['fingerprint'] = fingerprint(state)
+    state['release_inputs_sha256'] = checkout_release_inputs(source, state['pulsemodel'])
     return state
 
 
@@ -412,7 +503,7 @@ def maintained_manifest(args):
     state = source_state(config, controller, config['pulse_base'], source)
     state.update(version_base=state['project_version'], project_version=version,
                  release_tag=args.tag, source_kind='maintained checkout',
-                 generated_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
+                 generated_utc=build_record_time())
     Path(args.output).write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
 
 
@@ -424,10 +515,11 @@ def prepare(args):
     state = source_state(config, controller, latest_commit(config['pulsemodel']), ROOT)
     previous = published_manifest(os.environ.get('GITHUB_REPOSITORY'))
     base_version = state['project_version']
-    state['project_version'], tag = release_version(base_version, previous, state['fingerprint'])
+    state['project_version'], tag = release_version(base_version, previous, state['fingerprint'],
+                                                  state['release_inputs_sha256'])
     state['version_base'] = base_version
     state['release_tag'] = tag
-    if previous and previous.get('fingerprint') == state['fingerprint'] and not args.force:
+    if same_release_inputs(previous, state['fingerprint'], state['release_inputs_sha256']) and not args.force:
         emit(changed=False, tag=tag)
         return
     # Closed-source versions are provenance only. They cannot independently
@@ -468,12 +560,13 @@ def prepare(args):
         shutil.copy2(ROOT / name, candidate / name)
     stamp_version(candidate, base_version, state['project_version'])
     for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md',
-                 'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
+                 'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md',
+                 'AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md'):
         if (ROOT / name).is_file():
             shutil.copy2(ROOT / name, candidate / name)
     run(sys.executable, candidate / '.github/scripts/refresh_overlay.py', '--base-repository', candidate)
     state['build_overlay_sha256'] = source_text_sha256((candidate / 'automation/compatibility.patch').read_bytes())
-    state['generated_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    state['generated_utc'] = build_record_time()
     state['release_changes'] = release_changes(state, previous, os.environ.get('GITHUB_REPOSITORY'))
     (work / 'upstream-manifest.json').write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
     notes = concise_release_notes(state['release_changes'])
@@ -481,9 +574,27 @@ def prepare(args):
     emit(changed=True, tag=tag)
 
 
+class ReproducibleZipFile(zipfile.ZipFile):
+    """Stable entry metadata; exact file bytes and explicit ELF modes are retained."""
+    def writestr(self, zinfo_or_arcname, data, compress_type=None, compresslevel=None):
+        info = zinfo_or_arcname if isinstance(zinfo_or_arcname, zipfile.ZipInfo) else zipfile.ZipInfo(zinfo_or_arcname)
+        epoch = max(315532800, int(os.environ.get('SOURCE_DATE_EPOCH', '315532800')))
+        info.date_time = time.gmtime(epoch)[:6]
+        info.create_system = 3
+        info.external_attr = (0o40755 if info.is_dir() else 0o100644) << 16
+        info.compress_type = self.compression if compress_type is None else compress_type
+        level = getattr(self, 'compresslevel', getattr(self, '_compresslevel', 9))
+        return super().writestr(info, data, compress_type, level if compresslevel is None else compresslevel)
+
+    def write(self, filename, arcname=None, compress_type=None, compresslevel=None):
+        path = Path(filename)
+        name = str(arcname if arcname is not None else filename).replace('\\', '/')
+        self.writestr(name, path.read_bytes(), compress_type, compresslevel)
+
+
 def source_archive(args):
     source, destination = Path(args.source), Path(args.output)
-    with zipfile.ZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with ReproducibleZipFile(destination, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(source.rglob('*')):
             relative = path.relative_to(source)
             if path.is_file() and not any(p in {'.git', '__pycache__', 'build', 'out', 'dist'} for p in relative.parts):
@@ -509,6 +620,9 @@ def record_build(args):
         'compiler_id': cache.get('NEWPAGE_BUILD_CXX_COMPILER_ID'),
         'compiler_version': cache.get('NEWPAGE_BUILD_CXX_COMPILER_VERSION'),
         'interprocedural_optimization': cache['CMAKE_INTERPROCEDURAL_OPTIMIZATION'].upper() in ('ON', 'TRUE', '1', 'YES'),
+        'reproducible': cache.get('NEWPAGE_REPRODUCIBLE', 'OFF').upper() in ('ON', 'TRUE', '1', 'YES'),
+        'separate_symbols': cache.get('NEWPAGE_SEPARATE_SYMBOLS', 'OFF').upper() in ('ON', 'TRUE', '1', 'YES'),
+        'source_date_epoch': os.environ.get('SOURCE_DATE_EPOCH'),
     }
     manifest.write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
 
@@ -532,6 +646,28 @@ def write_inventory(archive):
 
 def package(args):
     dist, output = Path(args.dist), Path(args.output)
+    # Linux subtools are extensionless files, so their source directories cannot
+    # also exist in the runtime package. Keep guides beside those executables.
+    guide_paths = {
+        'subtools/ag2proportions/README.md': 'subtools/ag2proportions.md',
+        'subtools/vmd2valvebiped/README.md': 'subtools/vmd2valvebiped.md',
+        'subtools/l4d_animswap/RETARGET.md': 'subtools/l4d_animswap-retarget.md',
+    }
+
+    def write_source(archive, relative):
+        relative = Path(relative).as_posix()
+        path = Path(args.source) / relative
+        target = guide_paths.get(relative, relative)
+        if path.suffix == '.md':
+            content = path.read_text(encoding='utf-8')
+            for original, packaged in guide_paths.items():
+                content = content.replace(original, packaged)
+            if target != relative:
+                content = content.replace('](../../', '](../')
+            archive.writestr('NewPageMergeMDL/' + target, content)
+        else:
+            archive.write(path, 'NewPageMergeMDL/' + target)
+
     extension = '.exe' if args.platform == 'win64' else ''
     required = ['NewPageMergeMDL', 'NewPageMergeMDL-Decompiler', 'NewPageVRMLtoX3D']
     if args.platform == 'win64':
@@ -544,9 +680,9 @@ def package(args):
         notice = dist / name
         if not notice.is_file() or notice.stat().st_size == 0:
             raise ValueError('Missing or empty required ag2proportions license: ' + name)
-    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with ReproducibleZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path in sorted(dist.rglob('*')):
-            if path.is_file():
+            if path.is_file() and path.suffix.lower() not in ('.pdb', '.debug', '.ilk'):
                 name = (Path('NewPageMergeMDL') / path.relative_to(dist)).as_posix()
                 archive.write(path, name)
                 if args.platform == 'linux64':
@@ -559,9 +695,14 @@ def package(args):
                         info.create_system = 3
                         info.external_attr = 0o100755 << 16
         for name in ('LICENSE', 'README.md', 'README.en.md', 'INSTALL.md', 'COMPATIBILITY.md', 'BINARY_ANALYSIS.md', 'AUTOMATION.md', 'RESEARCH.md', 'VALIDATION.md', 'IMPROVEMENTS.md', 'FEATURE_MATRIX.md'):
-            archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
+            write_source(archive, name)
         archive.write(Path(args.source) / 'subtools/meshtool/PROTOCOL.md',
                       'NewPageMergeMDL/subtools/meshtool-protocol.md')
+        for name in ('subtools/ag2proportions/README.md', 'subtools/vmd2valvebiped/README.md',
+                     'subtools/l4d_animswap/RETARGET.md'):
+            path = Path(args.source) / name
+            if path.is_file():
+                write_source(archive, name)
         archive.write(args.manifest, 'NewPageMergeMDL/upstream-manifest.json')
         # Keep README previews usable after extraction and retain the editable
         # brand source. Do not bundle workflow files with the runtime tools.
@@ -574,12 +715,13 @@ def package(args):
         if getattr(args, 'source_archive', None):
             archive.write(args.source_archive, 'NewPageMergeMDL/sources/NewPageMergeMDL-source.zip')
         for name in ('CSGO_PORTING_SCOPE.md', 'CSGO_CLOTH_AUTHORING.md', 'CSGO_DMX_INPUTS.md',
-                     'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md'):
+                     'FIVE_COMPILER_COMPLETION.md', 'MESH_STATE_WORKFLOW.md', 'VRM_RUNTIME.md', 'O5_FORMAT_IMPORTS.md',
+                     'AUTHORING_WORKFLOWS.md', 'DECOMPILER_EXPORTS.md', 'SCENE_IMPORT.md', 'GAME_PLATFORM_MATRIX.md'):
             if (Path(args.source) / name).is_file():
-                archive.write(Path(args.source) / name, 'NewPageMergeMDL/' + name)
+                write_source(archive, name)
         for path in sorted((Path(args.source) / 'tests/reports').glob('*')):
             if path.is_file() and path.suffix in ('.json', '.md'):
-                archive.write(path, 'NewPageMergeMDL/tests/reports/' + path.name)
+                write_source(archive, 'tests/reports/' + path.name)
         for path in sorted((Path(args.source) / 'integration').rglob('*')):
             if path.is_file():
                 archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())
@@ -604,7 +746,7 @@ def package(args):
                 archive.write(path, (Path('NewPageMergeMDL') / path.relative_to(args.source)).as_posix())
     # Reopen after writing: Windows ZipInfo.from_file retains a backslash
     # orig_filename until the central directory is read back from disk.
-    with zipfile.ZipFile(output, 'a', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    with ReproducibleZipFile(output, 'a', zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         write_inventory(archive)
 
 

@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "compiler_sha256": "4ebda19076e4180c12c0d02d98ad13ceb8c51106dd317cfe5be22123241d720e",
+  "blender": "5.4.0 Alpha",
+  "blender_build_hash": "45e7704f386b",
+  "openusd_version": [
+    0,
+    26,
+    8
+  ],
+  "cases": [
+    {
+      "file": "expanded.usda",
+      "source": "Blender native USD exporter",
+      "exit_code": 0,
+      "input_sha256": "5de7b780f104c8b31952a1070c98f16f6901414038c2e396fcfe684dda1ab925",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 1.46736721169516e-06,
+      "max_reference_to_actual": 1.46736721169516e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    },
+    {
+      "file": "expanded.usdc",
+      "source": "Blender native USD exporter",
+      "exit_code": 0,
+      "input_sha256": "0ab3e1ce4f668c16926a381377d5324a46d8fb0ac873d2fee4597c74cba50542",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 1.46736721169516e-06,
+      "max_reference_to_actual": 1.46736721169516e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    },
+    {
+      "file": "instances.usda",
+      "source": "Blender native USD exporter",
+      "exit_code": 0,
+      "input_sha256": "48e31ca0a1e935643c3a34e85430ea31f9516dd595c026e72d468a572e7ff3cd",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 1.46736721169516e-06,
+      "max_reference_to_actual": 1.46736721169516e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    },
+    {
+      "file": "instances.usdc",
+      "source": "Blender native USD exporter",
+      "exit_code": 0,
+      "input_sha256": "8b7dae869a56050ab3d4ac350afd32ac8949473ff2a616be3c2995e78b469f69",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 1.46736721169516e-06,
+      "max_reference_to_actual": 1.46736721169516e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    },
+    {
+      "file": "selected-variant.usda",
+      "source": "OpenUSD selected variant referencing native Blender layer",
+      "exit_code": 0,
+      "input_sha256": "2992a243cb912460c67de25b77c2b482069e97caac765091fdf5e46427de6949",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 2.016232284973007e-06,
+      "max_reference_to_actual": 2.016232284973007e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    },
+    {
+      "file": "expanded-usda-flattened.usdc",
+      "source": "OpenUSD Flatten of expanded.usda",
+      "exit_code": 0,
+      "input_sha256": "7f4dcb475695a30687d0c210d194d15ddb1ecd21aa1ed80579c73ea3308de365",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 1.46736721169516e-06,
+      "max_reference_to_actual": 1.46736721169516e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    },
+    {
+      "file": "expanded-usdc-flattened.usdc",
+      "source": "OpenUSD Flatten of expanded.usdc",
+      "exit_code": 0,
+      "input_sha256": "62293fbf0fd613fbb8ce84c5f6fd3a4a23819b6910a772c0ff25b6130ba89d13",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 1.46736721169516e-06,
+      "max_reference_to_actual": 1.46736721169516e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    },
+    {
+      "file": "instances-usda-flattened.usdc",
+      "source": "OpenUSD Flatten of instances.usda",
+      "exit_code": 0,
+      "input_sha256": "64dd91df0268e13960149e0a47d213e58d2a38bb6384bef893fd59eeffece266",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 1.46736721169516e-06,
+      "max_reference_to_actual": 1.46736721169516e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    },
+    {
+      "file": "instances-usdc-flattened.usdc",
+      "source": "OpenUSD Flatten of instances.usdc",
+      "exit_code": 0,
+      "input_sha256": "82d50b294e8cfb21222208722b526129ffc624775d5d66d29b2e1ebecde1b464",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 1.46736721169516e-06,
+      "max_reference_to_actual": 1.46736721169516e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    },
+    {
+      "file": "selected-variant-usda-flattened.usdc",
+      "source": "OpenUSD Flatten of selected-variant.usda",
+      "exit_code": 0,
+      "input_sha256": "5f19704286e6890d8495440c0568fdddfa3bc300dd112dd8c966919b949de0b2",
+      "actual_vertices": 232,
+      "reference_vertices": 72,
+      "max_actual_to_reference": 2.016232284973007e-06,
+      "max_reference_to_actual": 2.016232284973007e-06,
+      "tolerance": 0.0001,
+      "passed": true
+    }
+  ],
+  "scope": "World-position coverage, not topology, shading, animation or game-runtime parity",
+  "passed": true
+}

@@ -58,9 +58,36 @@ bool WriteMaterialFixture(const char* output) {
     BaseDocument::Free(doc);return ok;
 }
 
+bool WriteRejectedFixture(const char* output, const char* mode) {
+    BaseDocument* doc=BaseDocument::Alloc();if(!doc)return false;
+    if(std::strcmp(mode,"missing-cache")==0) {
+        BaseObject* cube=BaseObject::Alloc(Ocube);cube->SetName("UncachedGenerator");doc->InsertObject(cube,nullptr);
+    } else {
+        auto* mesh=PolygonObject::Alloc(4,1);mesh->SetName("RejectedQuad");doc->InsertObject(mesh,nullptr);
+        auto* points=mesh->GetPointW();points[0]=Vector(0,0,0);points[1]=Vector(100,0,0);
+        points[2]=Vector(100,100,0);points[3]=Vector(0,100,0);mesh->GetPolygonW()[0]=CPolygon(0,1,2,3);
+        if(std::strcmp(mode,"invalid-index")==0)mesh->GetPolygonW()[0].d=4;
+        else if(std::strcmp(mode,"short-uv")==0)static_cast<UVWTag*>(mesh->MakeTag(Tuvw))->Resize(0);
+        else if(std::strcmp(mode,"skin")==0)mesh->MakeTag(Tweights);
+        else if(std::strcmp(mode,"animated")==0) {
+            auto* track=CTrack::Alloc(mesh,DescID(DescLevel(ID_BASEOBJECT_REL_POSITION,DTYPE_VECTOR,0),
+                DescLevel(VECTOR_X,DTYPE_REAL,0)),"FixturePosition");
+            mesh->InsertTrackSorted(track);auto* curve=track->GetCurve();
+            curve->AddKey(BaseTime(0))->SetValue(curve,0);
+            curve->AddKey(BaseTime(1))->SetValue(curve,100);
+        } else {BaseDocument::Free(doc);return false;}
+    }
+    const bool ok=SaveDocument(doc,Filename(output),SAVEDOCUMENTFLAGS_0);
+    BaseDocument::Free(doc);return ok;
+}
+
 int main(int argc,char** argv) {
     if(argc==3 && std::strcmp(argv[2],"materials")==0) {
         const bool ok=WriteMaterialFixture(argv[1]);std::printf("material fixture %s\n",ok?"written":"failed");return ok?0:1;
+    }
+    if(argc==3) {
+        const bool ok=WriteRejectedFixture(argv[1],argv[2]);
+        std::printf("rejection fixture %s\n",ok?"written":"failed");return ok?0:1;
     }
     if(argc!=2)return 2;
     BaseDocument* doc=BaseDocument::Alloc();if(!doc)return 1;

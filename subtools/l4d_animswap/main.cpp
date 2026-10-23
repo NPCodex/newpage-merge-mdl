@@ -596,6 +596,7 @@ struct Retargeter {
     // The pose a delta clip subtracts, retargeted and declared once as an $animation
     // in `pre`. Same base DecodeClip added back, so base^-1 * pose is the original delta.
     std::set<std::string> bases;
+    std::map<std::string, std::string> poseDeclarations;
     std::string Base(const dc::Mdl& m, int anim, std::vector<std::string>& pre) {
         const std::vector<dc::AnimRef> refs = dc::AnimRefs(m);
         const int base = dc::SubtractBase(m, refs);
@@ -632,39 +633,26 @@ struct Retargeter {
                                    const std::string& name, const std::string& tag = {},
                                    bool deltas = false) {
         const fm::studiohdr_t& h = *m.hdr;
-        const int16_t* grid = m.At<int16_t>(&s, s.animindexindex, 1);
-        const auto* anims =
-            m.At<fm::mstudioanimdesc_t>(m.buf.data(), h.localanimindex, h.numlocalanim);
-        if (s.groupsize[0] * s.groupsize[1] != 1 || !grid || !anims || grid[0] < 0 ||
-            grid[0] >= h.numlocalanim) {
-            std::fprintf(stderr, "  -retarget: \"%s\" is a blend, kept as a declare\n", name.c_str());
-            return {};
-        }
-        const fm::mstudioanimdesc_t& a = anims[grid[0]];
-        std::vector<std::vector<dc::AnimPose>> frames;
-        // A delta layers on whatever plays under it, so it never stretches.
-        const bool delta = (a.flags & fm::STUDIO_DELTA) != 0;
-        if (delta && !deltas)
-            return {};
-        if (!dc::DecodeClip(m, grid[0], frames)) {
+        const int gx = s.groupsize[0], gy = s.groupsize[1];
+        const int64_t count = static_cast<int64_t>(gx) * gy;
+        const int16_t* grid = count > 0 && count <= 4096 ? m.At<int16_t>(&s, s.animindexindex, static_cast<size_t>(count)) : nullptr;
+        const auto* anims = m.At<fm::mstudioanimdesc_t>(m.buf.data(), h.localanimindex, h.numlocalanim);
+        if (gx <= 0 || gy <= 0 || !grid || !anims) {
             failed = true;
-            std::fprintf(stderr, "  -retarget: \"%s\" could not be decoded\n",
-                         name.c_str());
+            std::fprintf(stderr, "  -retarget: invalid blend grid in %s\n", name.c_str());
             return {};
         }
-        std::vector<std::string> pre;
-        const std::string subtract = delta ? Base(m, grid[0], pre) : std::string();
-        if (delta && subtract.empty())
-            return {};
-        const std::string clip = OutputClip(name + tag);
-        // Keep the source rate intact. DMX stores frameRate as a float for
-        // fractional clips, while the QC below already emits a.fps. Rounding
-        // here made the generated DMX duration disagree with the sequence's
-        // declared rate (for example 23.976 became 24).
-        const float fps = a.fps > 0.0f ? a.fps : 30.0f;
-        if (!WriteClip(clip, fps, Remap(m, frames)))
-            return {};
-
+        for (int k = 0; k < count; ++k) {
+            if (grid[k] < 0 || grid[k] >= h.numlocalanim) {
+                failed = true;
+                std::fprintf(stderr, "  -retarget: invalid blend animation in %s\n", name.c_str());
+                return {};
+            }
+            if ((anims[grid[k]].flags & fm::STUDIO_DELTA) && !deltas) return {};
+        }
+        const auto& firstAnim = anims[grid[0]];
+        int32_t animFlags = 0;
+        std::vector<std::string> pre, cellNames;
         const auto pick = [](const std::vector<std::string>& v, int i) {
             return i >= 0 && static_cast<size_t>(i) < v.size() ? v[i] : std::string();
         };
@@ -674,74 +662,138 @@ struct Retargeter {
             labels.push_back(m.Str(&seqs[i], seqs[i].szlabelindex));
         const std::vector<std::string> chains = dc::IkChainNames(m);
 
-        std::vector<std::string> out = pre;
-        out.push_back("$sequence " + Quote(name) + " {");
-        const auto opt = [&](const std::string& l) { out.push_back("    " + l); };
-        opt(Quote("anims/" + clip + ".dmx") + "  // " + std::to_string(a.numframes) + " frames");
-        std::string first = "fps " + dc::F(fps);
-        if (a.flags & fm::STUDIO_LOOPING) first += " loop";
-        if (a.flags & fm::STUDIO_NOFORCELOOP) first += " noforceloop";
-        if (a.flags & fm::STUDIO_SNAP) first += " snap";
-        if (a.flags & fm::STUDIO_POST) first += " post";
-        opt(first);
-        if (delta)
-            opt("subtract " + Quote(subtract) + " 0");
-        // Built at the rig's proportions and placement, so like the included vanilla
-        // clips it must not see the model's $scale, $origin or $transformbone edits.
-        opt("ignorescale");
-        opt("origin 0 0 0");
-        opt("ignoretransformbone angles");
-        opt("ignoretransformbone position");
-        const auto* mv = m.At<fm::mstudiomovement_t>(&a, a.movementindex, a.nummovements);
-        for (int k = 0; mv && k < a.nummovements; ++k) {
-            std::string ctrl;
-            for (const auto& c : dc::kMotionControls)
-                if (mv[k].motionflags & c.bit) ctrl += " " + std::string(c.name);
-            if (!ctrl.empty()) opt("walkframe " + std::to_string(mv[k].endframe) + ctrl);
-        }
-        // A touch on a bone the rig lacks (Nick's weapon_bolt on Zoey) fails the compile.
-        std::set<std::string> rigBones;
-        for (const std::string& b : dc::BoneNames(rigMdl)) rigBones.insert(Lower(b));
-        // A dropped rule is written commented out, so the modder can restore it per clip.
-        for (const std::string& r : dc::IkRules(m, a)) {
-            const size_t at = r.find(" touch \"");
-            // A delta's touch error is baked against the model's first animation, which
-            // on the modder's model (a T-pose a_reference) drags the hands out.
-            if (delta && at != std::string::npos) {
-                opt("// " + r);
-                continue;
+        std::vector<std::string> out;
+        for (int cell = 0; cell < count; ++cell) {
+            const auto& a = anims[grid[cell]];
+            animFlags |= a.flags;
+            const bool delta = (a.flags & fm::STUDIO_DELTA) != 0;
+            std::vector<std::vector<dc::AnimPose>> frames;
+            if (!dc::DecodeClip(m, grid[cell], frames)) {
+                failed = true;
+                std::fprintf(stderr, "  -retarget: %s blend %d could not be decoded\n", name.c_str(), cell);
+                return {};
             }
-            if (at != std::string::npos) {
-                const size_t b = at + 8, e = r.find('"', b);
-                const std::string bone = r.substr(b, e - b);
+            const std::string subtract = delta ? Base(m, grid[cell], pre) : std::string();
+            if (delta && subtract.empty()) return {};
+            const std::string clip = OutputClip(name + tag + (count > 1 ? "_blend" + std::to_string(cell) : ""));
+            const float fps = a.fps > 0.0f ? a.fps : 30.0f;
+            if (!std::isfinite(fps) || !WriteClip(clip, fps, Remap(m, frames))) { failed = true; return {}; }
+            cellNames.push_back("__" + clip);
+            out.push_back("$animation " + Quote(cellNames.back()) + " " + Quote("anims/" + clip + ".dmx") + " {");
+            const auto opt = [&](const std::string& line) { out.push_back("    " + line); };
+            std::string first = "fps " + dc::F(fps);
+            if (a.flags & fm::STUDIO_LOOPING) first += " loop";
+            if (a.flags & fm::STUDIO_NOFORCELOOP) first += " noforceloop";
+            if (a.flags & fm::STUDIO_SNAP) first += " snap";
+            if (a.flags & fm::STUDIO_POST) first += " post";
+            opt(first);
+            if (delta)
+                opt("subtract " + Quote(subtract) + " 0");
+            // Built at the rig's proportions and placement, so like the included vanilla
+            // clips it must not see the model's $scale, $origin or $transformbone edits.
+            opt("ignorescale");
+            opt("origin 0 0 0");
+            opt("ignoretransformbone angles");
+            opt("ignoretransformbone position");
+            const auto* mv = m.At<fm::mstudiomovement_t>(&a, a.movementindex, a.nummovements);
+            for (int k = 0; mv && k < a.nummovements; ++k) {
+                std::string ctrl;
+                for (const auto& c : dc::kMotionControls)
+                    if (mv[k].motionflags & c.bit) ctrl += " " + std::string(c.name);
+                if (!ctrl.empty()) opt("walkframe " + std::to_string(mv[k].endframe) + ctrl);
+            }
+            // A touch on a bone the rig lacks (Nick's weapon_bolt on Zoey) fails the compile.
+            std::set<std::string> rigBones;
+            for (const std::string& b : dc::BoneNames(rigMdl)) rigBones.insert(Lower(b));
+            // A dropped rule is written commented out, so the modder can restore it per clip.
+            for (const std::string& r : dc::IkRules(m, a)) {
+                const size_t at = r.find(" touch \"");
+                // A delta's touch error is baked against the model's first animation, which
+                // on the modder's model (a T-pose a_reference) drags the hands out.
+                if (delta && at != std::string::npos) {
+                    opt("// " + r);
+                    continue;
+                }
+                if (at != std::string::npos) {
+                    const size_t b = at + 8, e = r.find('"', b);
+                    const std::string bone = r.substr(b, e - b);
 #if 0
-                // HACK: a bone-less touch pins the hand to a fixed model-space spot that a
-                // proportions layer lifting the pelvis leaves behind; pin to the pelvis.
-                if (bone.empty() && rigBones.count("valvebiped.bip01_pelvis")) {
-                    opt(r.substr(0, b) + "ValveBiped.Bip01_Pelvis" + r.substr(e));
-                    continue;
-                }
+                    // HACK: a bone-less touch pins the hand to a fixed model-space spot that a
+                    // proportions layer lifting the pelvis leaves behind; pin to the pelvis.
+                    if (bone.empty() && rigBones.count("valvebiped.bip01_pelvis")) {
+                        opt(r.substr(0, b) + "ValveBiped.Bip01_Pelvis" + r.substr(e));
+                        continue;
+                    }
 #endif
-                // A bone-less touch pins the hand to a fixed model-space spot that a
-                // proportions layer lifting the pelvis leaves behind.
-                if (bone.empty()) {
-                    opt("// " + r);
-                    continue;
+                    // A bone-less touch pins the hand to a fixed model-space spot that a
+                    // proportions layer lifting the pelvis leaves behind.
+                    if (bone.empty()) {
+                        opt("// " + r);
+                        continue;
+                    }
+                    if (!rigBones.count(Lower(bone))) {
+                        std::fprintf(stderr, "  -retarget: \"%s\" drops an ikrule touching \"%s\", "
+                                             "%s has no such bone\n",
+                                     name.c_str(), bone.c_str(), rig->survivor);
+                        opt("// " + r);
+                        continue;
+                    }
                 }
-                if (!rigBones.count(Lower(bone))) {
-                    std::fprintf(stderr, "  -retarget: \"%s\" drops an ikrule touching \"%s\", "
-                                         "%s has no such bone\n",
-                                 name.c_str(), bone.c_str(), rig->survivor);
-                    opt("// " + r);
-                    continue;
-                }
+                opt(r);
             }
-            opt(r);
-        }
 
+            out.push_back("}");
+        }
+        out.insert(out.begin(), pre.begin(), pre.end());
+        const auto* pp = m.At<fm::mstudioposeparamdesc_t>(m.buf.data(), h.localposeparamindex, h.numlocalposeparameters);
+        std::vector<std::string> poses;
+        for (int i = 0; pp && i < h.numlocalposeparameters; ++i) {
+            const std::string pose = m.Str(&pp[i], pp[i].sznameindex);
+            poses.push_back(pose);
+            std::string declaration = "$poseparameter " + Quote(pose) + " " + dc::F(pp[i].start) + " " + dc::F(pp[i].end);
+            if (pp[i].loop != 0) declaration += " loop " + dc::F(pp[i].loop);
+            const auto found = poseDeclarations.find(Lower(pose));
+            if (found != poseDeclarations.end() && found->second != declaration) {
+                failed = true;
+                std::fprintf(stderr, "  -retarget: incompatible pose parameter %s\n", pose.c_str());
+                return {};
+            }
+            if (poseDeclarations.emplace(Lower(pose), declaration).second) out.push_back(declaration);
+        }
+        std::string weightName;
+        const auto* weights = m.At<float>(&s, s.weightlistindex, h.numbones);
+        if (weights && std::any_of(weights, weights + h.numbones, [](float value) { return value != 1.0f; })) {
+            const auto sourceNames = dc::BoneNames(m);
+            std::map<std::string, float> namedWeights;
+            for (int i = 0; i < h.numbones; ++i) {
+                if (!std::isfinite(weights[i])) { failed = true; return {}; }
+                namedWeights.emplace(Lower(sourceNames[i]), weights[i]);
+            }
+            weightName = "__weights_" + OutputClip(name + tag);
+            out.push_back("$weightlist " + Quote(weightName) + " {");
+            for (const auto& bone : dc::BoneNames(rigMdl)) {
+                const auto value = namedWeights.find(Lower(bone));
+                out.push_back("    " + Quote(bone) + " " + dc::F(value == namedWeights.end() ? 0.0f : value->second));
+            }
+            out.push_back("}");
+        }
+        out.push_back("$sequence " + Quote(name) + " {");
+        const auto opt = [&](const std::string& line) { out.push_back("    " + line); };
+        for (const auto& cell : cellNames) opt(Quote(cell));
+        if (count > 1) opt("blendwidth " + std::to_string(gx));
+        if (!weightName.empty()) opt("weightlist " + Quote(weightName));
+        if (s.flags & fm::STUDIO_CYCLEPOSE) {
+            if (s.cycleposeindex < 0 || static_cast<size_t>(s.cycleposeindex) >= poses.size()) { failed = true; return {}; }
+            opt("posecycle " + Quote(poses[s.cycleposeindex]));
+        }
+        for (int axis = 0; axis < 2; ++axis)
+            if (s.paramindex[axis] >= 0) {
+                if (static_cast<size_t>(s.paramindex[axis]) >= poses.size()) { failed = true; return {}; }
+                opt("blend " + Quote(poses[s.paramindex[axis]]) + " " + dc::F(s.paramstart[axis]) + " " + dc::F(s.paramend[axis]));
+            }
         if (const char* act = m.Str(&s, s.szactivitynameindex); *act)
             opt("activity " + Quote(act) + " " + std::to_string(s.actweight));
-        const int32_t f = s.flags & ~a.flags;
+        const int32_t f = s.flags & ~animFlags;
         if (f & fm::STUDIO_AUTOPLAY) opt("autoplay");
         if (f & fm::STUDIO_HIDDEN) opt("hidden");
         if (f & fm::STUDIO_REALTIME) opt("realtime");
@@ -757,9 +809,10 @@ struct Retargeter {
         if (s.fadeintime != 0.2f) opt("fadein " + dc::F(s.fadeintime));
         if (s.fadeouttime != 0.2f) opt("fadeout " + dc::F(s.fadeouttime));
 
-        const float lastframe = static_cast<float>(a.numframes - 1);
+        const float lastframe = static_cast<float>(firstAnim.numframes - 1);
         const auto* al = m.At<fm::mstudioautolayer_t>(&s, s.autolayerindex, s.numautolayers);
         for (int k = 0; al && k < s.numautolayers; ++k) {
+            if (al[k].iSequence < 0 || static_cast<size_t>(al[k].iSequence) >= labels.size()) { failed = true; return {}; }
             std::string tail;
             if (al[k].flags & fm::STUDIO_AL_LOCAL) tail += " local";
             if (al[k].flags & fm::STUDIO_AL_XFADE) tail += " xfade";
@@ -768,16 +821,17 @@ struct Retargeter {
             const std::string target = Quote(pick(labels, al[k].iSequence));
             const bool ramp = al[k].start || al[k].peak || al[k].tail || al[k].end;
             if (al[k].flags & fm::STUDIO_AL_POSE) {
-                std::fprintf(stderr, "  -retarget: \"%s\" drops a pose-driven layer\n", name.c_str());
-                continue;
+                if (al[k].iPose < 0 || static_cast<size_t>(al[k].iPose) >= poses.size()) { failed = true; return {}; }
+                tail += " poseparameter " + Quote(poses[al[k].iPose]);
             }
             if (!ramp && (al[k].flags & ~fm::STUDIO_AL_LOCAL) == 0) {
                 opt("addlayer " + target + tail);
                 continue;
             }
-            opt("blendlayer " + target + " " + dc::F(al[k].start * lastframe) + " " +
-                dc::F(al[k].peak * lastframe) + " " + dc::F(al[k].tail * lastframe) + " " +
-                dc::F(al[k].end * lastframe) + tail);
+            const float layerScale = (al[k].flags & fm::STUDIO_AL_POSE) ? 1.0f : lastframe;
+            opt("blendlayer " + target + " " + dc::F(al[k].start * layerScale) + " " +
+                dc::F(al[k].peak * layerScale) + " " + dc::F(al[k].tail * layerScale) + " " +
+                dc::F(al[k].end * layerScale) + tail);
         }
         const auto* locks = m.At<fm::mstudioiklock_t>(&s, s.iklockindex, s.numiklocks);
         for (int k = 0; locks && k < s.numiklocks; ++k)
@@ -1117,6 +1171,7 @@ bool Write(const std::string& path, const Survivor& rig, const Survivor& tgt,
 // $includemodel, so its whole list is rebuilt on the rig, deltas included.
 bool WriteLight(const std::string& path, const Survivor& rig, const Survivor& tgt, Retargeter& rt,
                 subtool::OutputTransaction& outputs) {
+    rt.poseDeclarations.clear(); // this is a separate QCI with its own declarations
     const std::string leaf = "survivor_" + std::string(tgt.code) + "_light.mdl";
     // The optional map-placed model is absent in some extracted input sets.
     // If supplied, a failure reading it is an error rather than an omission.

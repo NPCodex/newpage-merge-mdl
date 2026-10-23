@@ -1,0 +1,652 @@
+{
+  "source_commit": "ddea46e39246bf9dd6047016ddb4ac2df10b493f",
+  "dev_run": 39763614054,
+  "release_published": false,
+  "scope": "Final downloaded Windows/Linux CI candidate identities, complete package checks, matching symbols, embedded source and source-line evidence; no Release publication.",
+  "packages": [
+    {
+      "platform": "win64",
+      "runtime": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\release-v1238-candidate\\downloaded\\39763614054\\development-package-win64\\newpage-merge-mdl-dev-win64.zip",
+      "symbols": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\release-v1238-candidate\\downloaded\\39763614054\\development-package-win64\\newpage-merge-mdl-dev-win64-symbols.zip",
+      "runtime_sha256": "ad017614c738910bf99df43d2d65c6bc89f8d2f840370ce7b159f36eb10e35da",
+      "symbols_sha256": "b440e9d4ecdceeb0c40b061f4746932caf5157fd2accb57da695fbc47854efb2",
+      "runtime_size": 31127574,
+      "symbols_size": 54171817,
+      "source_archive_sha256": "7bcdf6d8b9c08e75df30295a76f43b4120dcc7c0a2f25bd37ab68baec5d9295f",
+      "source_file_count": 2958,
+      "package_file_count": 167,
+      "build": {
+        "configuration": "Release",
+        "c_compiler": "C:/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe",
+        "cxx_compiler": "C:/Program Files/Microsoft Visual Studio/18/Enterprise/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe",
+        "compiler_id": "MSVC",
+        "compiler_version": "19.51.36260.0",
+        "interprocedural_optimization": false,
+        "reproducible": true,
+        "separate_symbols": true,
+        "source_date_epoch": "1792665005"
+      },
+      "native_hashes": {
+        "NewPageMergeMDL.exe": "1aefb59538c29620af8f3b88a25f26e3ef93df6a6c87868cb26d902164fb6e8e",
+        "NewPageMergeMDL-Decompiler.exe": "367f784c537cc81339048230800a63b9c0536950610759c8a658ac1f3fee881c",
+        "NewPageVRMLtoX3D.exe": "73720ea67e2415dd8c0a40ab6d8b1fcdb3d2eb7ec9b37758f61cd8b6b7d03bcf",
+        "subtools/ag2proportions.exe": "130f8063f5a19b8e85e1a6edf9a02b0463432c43148bff49120c6c8c70d22aab",
+        "subtools/l4d_animswap.exe": "a44bb764275f22d1c42cf92c2e5ce191514815be2afd52c7ca2b14c2b36c2016",
+        "subtools/meshtool.exe": "8fac0545189dc5434e528b29d0af7430ac4d1c31e11de3fbf61d925e42079bdd",
+        "subtools/vmd2valvebiped.exe": "eb74f7bfcc14ad2b13146a18aae3bdbdb4ac90dac0698982dc509bc0ad27240c",
+        "NewPageMergeMDL-C4D.exe": "a635e8038bdb65d5474a26151cda8e9eae6369d53527d69af81a8175cab4ea37"
+      },
+      "c4d_helper_sha256": "a635e8038bdb65d5474a26151cda8e9eae6369d53527d69af81a8175cab4ea37",
+      "matched_native_symbol_count": 7,
+      "verified": true,
+      "candidate_runtime": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\release-v1238-candidate\\NewPageMergeMDL-v1.2.38-win64.zip",
+      "candidate_symbols": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\release-v1238-candidate\\NewPageMergeMDL-v1.2.38-win64-symbols.zip"
+    },
+    {
+      "platform": "linux64",
+      "runtime": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\release-v1238-candidate\\downloaded\\39763614054\\development-package-linux64\\newpage-merge-mdl-dev-linux64.zip",
+      "symbols": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\release-v1238-candidate\\downloaded\\39763614054\\development-package-linux64\\newpage-merge-mdl-dev-linux64-symbols.zip",
+      "runtime_sha256": "56c5b8decdcb6f73b5b971d1cbf667817470ca3305cf6a167fcd0d2da853706f",
+      "symbols_sha256": "49b5022785cdf1bbaad374c795b743e7cecea42fc0f090ceda001b9d20da2e19",
+      "runtime_size": 31379189,
+      "symbols_size": 30487590,
+      "source_archive_sha256": "7bcdf6d8b9c08e75df30295a76f43b4120dcc7c0a2f25bd37ab68baec5d9295f",
+      "source_file_count": 2958,
+      "package_file_count": 165,
+      "build": {
+        "configuration": "Release",
+        "c_compiler": "/usr/bin/gcc-13",
+        "cxx_compiler": "/usr/bin/g++-13",
+        "compiler_id": "GNU",
+        "compiler_version": "13.3.0",
+        "interprocedural_optimization": false,
+        "reproducible": true,
+        "separate_symbols": true,
+        "source_date_epoch": "1792665005"
+      },
+      "native_hashes": {
+        "NewPageMergeMDL": "b263fbd13cd5912989de40d5ec8eb41d56b89672053fd2f24cf5989b4870932c",
+        "NewPageMergeMDL-Decompiler": "4e7a0876b9d712b38c424a4604c35f7fdd3d41e0a9476556e7c8d48d9a49fa58",
+        "NewPageVRMLtoX3D": "3c63744ba4898f1703bb41f373f2b451ce9ff9dc145ee17362b1f1daf2963cbc",
+        "subtools/ag2proportions": "744c1ec71d78fe8298818c27177c1d8445e657c2c48705adfd62b8762ae2c8bf",
+        "subtools/l4d_animswap": "467973d6883b5023f0660d10ab22bf02f98ce54ae2edc7b580dfc9fe0429294f",
+        "subtools/meshtool": "01cb3ad2eba17fd0eee3ee58a267448e73a0759b72aa377fc2d34d6e95b629a5",
+        "subtools/vmd2valvebiped": "d7262e0ff2ca4621e45a048c44c4668434650d4080196ba58bfb1507b41e70dc"
+      },
+      "matched_native_symbol_count": 7,
+      "verified": true,
+      "candidate_runtime": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\release-v1238-candidate\\NewPageMergeMDL-v1.2.38-linux64.zip",
+      "candidate_symbols": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\release-v1238-candidate\\NewPageMergeMDL-v1.2.38-linux64-symbols.zip"
+    }
+  ],
+  "passed": true,
+  "ci": {
+    "conclusion": "success",
+    "headSha": "ddea46e39246bf9dd6047016ddb4ac2df10b493f",
+    "jobs": [
+      {
+        "completedAt": "2026-10-22T10:30:45Z",
+        "conclusion": "success",
+        "databaseId": 119773555766,
+        "name": "windows-extras / stage",
+        "startedAt": "2026-10-22T10:30:33Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-22T10:30:36Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-22T10:30:34Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:39Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-22T10:30:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:40Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-python@v6",
+            "number": 3,
+            "startedAt": "2026-10-22T10:30:39Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:40Z",
+            "conclusion": "skipped",
+            "name": "Run actions/download-artifact@v8",
+            "number": 4,
+            "startedAt": "2026-10-22T10:30:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:40Z",
+            "conclusion": "success",
+            "name": "Select exact helper pin",
+            "number": 5,
+            "startedAt": "2026-10-22T10:30:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:40Z",
+            "conclusion": "success",
+            "name": "Download and verify pinned helper",
+            "number": 6,
+            "startedAt": "2026-10-22T10:30:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:42Z",
+            "conclusion": "success",
+            "name": "Run actions/upload-artifact@v7",
+            "number": 7,
+            "startedAt": "2026-10-22T10:30:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:42Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-python@v6",
+            "number": 13,
+            "startedAt": "2026-10-22T10:30:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:42Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 14,
+            "startedAt": "2026-10-22T10:30:42Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:42Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 15,
+            "startedAt": "2026-10-22T10:30:42Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39763614054/job/119773555766"
+      },
+      {
+        "completedAt": "2026-10-22T10:42:25Z",
+        "conclusion": "success",
+        "databaseId": 119773659863,
+        "name": "build (ubuntu-24.04, linux64)",
+        "startedAt": "2026-10-22T10:30:48Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-22T10:30:50Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-22T10:30:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:54Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-22T10:30:50Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:54Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-python@v6",
+            "number": 3,
+            "startedAt": "2026-10-22T10:30:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:55Z",
+            "conclusion": "success",
+            "name": "Lua validation dependency",
+            "number": 4,
+            "startedAt": "2026-10-22T10:30:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:55Z",
+            "conclusion": "success",
+            "name": "Set reproducible source timestamp",
+            "number": 5,
+            "startedAt": "2026-10-22T10:30:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:55Z",
+            "conclusion": "success",
+            "name": "Select Ubuntu 24.04 GCC 13",
+            "number": 6,
+            "startedAt": "2026-10-22T10:30:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:59Z",
+            "conclusion": "success",
+            "name": "Configure",
+            "number": 7,
+            "startedAt": "2026-10-22T10:30:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:41:03Z",
+            "conclusion": "success",
+            "name": "Build",
+            "number": 8,
+            "startedAt": "2026-10-22T10:30:59Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:41:04Z",
+            "conclusion": "success",
+            "name": "Verify native symbols and source line lookup",
+            "number": 9,
+            "startedAt": "2026-10-22T10:41:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:41:04Z",
+            "conclusion": "skipped",
+            "name": "Stage verified Windows C4D helper",
+            "number": 10,
+            "startedAt": "2026-10-22T10:41:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:41:17Z",
+            "conclusion": "success",
+            "name": "Build recovery probe",
+            "number": 11,
+            "startedAt": "2026-10-22T10:41:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:42:18Z",
+            "conclusion": "success",
+            "name": "Package and verify development build",
+            "number": 12,
+            "startedAt": "2026-10-22T10:41:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:42:22Z",
+            "conclusion": "success",
+            "name": "Run actions/upload-artifact@v7",
+            "number": 13,
+            "startedAt": "2026-10-22T10:42:18Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:42:22Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-python@v6",
+            "number": 25,
+            "startedAt": "2026-10-22T10:42:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:42:22Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 26,
+            "startedAt": "2026-10-22T10:42:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:42:22Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 27,
+            "startedAt": "2026-10-22T10:42:22Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39763614054/job/119773659863"
+      },
+      {
+        "completedAt": "2026-10-22T10:55:13Z",
+        "conclusion": "success",
+        "databaseId": 119773659923,
+        "name": "build (windows-2025, win64, .exe)",
+        "startedAt": "2026-10-22T10:30:48Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-22T10:30:50Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-22T10:30:49Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:59Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@v7",
+            "number": 2,
+            "startedAt": "2026-10-22T10:30:50Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:30:59Z",
+            "conclusion": "success",
+            "name": "Run actions/setup-python@v6",
+            "number": 3,
+            "startedAt": "2026-10-22T10:30:59Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:31:06Z",
+            "conclusion": "success",
+            "name": "Lua validation dependency",
+            "number": 4,
+            "startedAt": "2026-10-22T10:30:59Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:31:06Z",
+            "conclusion": "success",
+            "name": "Set reproducible source timestamp",
+            "number": 5,
+            "startedAt": "2026-10-22T10:31:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:31:06Z",
+            "conclusion": "skipped",
+            "name": "Select Ubuntu 24.04 GCC 13",
+            "number": 6,
+            "startedAt": "2026-10-22T10:31:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:31:32Z",
+            "conclusion": "success",
+            "name": "Configure",
+            "number": 7,
+            "startedAt": "2026-10-22T10:31:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:47:11Z",
+            "conclusion": "success",
+            "name": "Build",
+            "number": 8,
+            "startedAt": "2026-10-22T10:31:32Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:47:18Z",
+            "conclusion": "success",
+            "name": "Verify native symbols and source line lookup",
+            "number": 9,
+            "startedAt": "2026-10-22T10:47:11Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:47:19Z",
+            "conclusion": "success",
+            "name": "Stage verified Windows C4D helper",
+            "number": 10,
+            "startedAt": "2026-10-22T10:47:18Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:48:59Z",
+            "conclusion": "success",
+            "name": "Build recovery probe",
+            "number": 11,
+            "startedAt": "2026-10-22T10:47:19Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:55:04Z",
+            "conclusion": "success",
+            "name": "Package and verify development build",
+            "number": 12,
+            "startedAt": "2026-10-22T10:48:59Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:55:08Z",
+            "conclusion": "success",
+            "name": "Run actions/upload-artifact@v7",
+            "number": 13,
+            "startedAt": "2026-10-22T10:55:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:55:09Z",
+            "conclusion": "success",
+            "name": "Post Run actions/setup-python@v6",
+            "number": 25,
+            "startedAt": "2026-10-22T10:55:08Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:55:11Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@v7",
+            "number": 26,
+            "startedAt": "2026-10-22T10:55:09Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-22T10:55:12Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 27,
+            "startedAt": "2026-10-22T10:55:11Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39763614054/job/119773659923"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39763614054"
+  },
+  "source_lines": {
+    "linux64": {
+      "platform": "linux64",
+      "executables": [
+        {
+          "binary": "NewPageMergeMDL",
+          "symbol": "main",
+          "source": "build/mdlcompiler/src/mdlcompiler/main.cpp",
+          "line": 702,
+          "native_identity": {
+            "format": "elf",
+            "build_id": "e01be5db892cd4f1dafa7d46e64f355ad28b4545",
+            "debuglink_crc32": "9e027307"
+          }
+        },
+        {
+          "binary": "NewPageMergeMDL-Decompiler",
+          "symbol": "main",
+          "source": "build/mdldecompiler/src/mdldecompiler/main.cpp",
+          "line": 3547,
+          "native_identity": {
+            "format": "elf",
+            "build_id": "e453c1d8d53cb1daa66b8cba1e339946388954e7",
+            "debuglink_crc32": "560c5d88"
+          }
+        },
+        {
+          "binary": "NewPageVRMLtoX3D",
+          "symbol": "main",
+          "source": "build/vrml_converter/src/tools/vrml_converter/main.cpp",
+          "line": 95,
+          "native_identity": {
+            "format": "elf",
+            "build_id": "8d1e6691138e9ef739daa18ad2bd1e8c71c171e4",
+            "debuglink_crc32": "26f1c901"
+          }
+        },
+        {
+          "binary": "subtools/ag2proportions",
+          "symbol": "main",
+          "source": "build/subtools/ag2proportions/src/subtools/ag2proportions/main.cpp",
+          "line": 165,
+          "native_identity": {
+            "format": "elf",
+            "build_id": "8cf8779f384e254ba00c212fbfc6b81ce5e22c9d",
+            "debuglink_crc32": "f0cfe459"
+          }
+        },
+        {
+          "binary": "subtools/l4d_animswap",
+          "symbol": "main",
+          "source": "build/subtools/l4d_animswap/src/subtools/l4d_animswap/main.cpp",
+          "line": 1372,
+          "native_identity": {
+            "format": "elf",
+            "build_id": "ffab18634fbebe29d345456f3247d885e982e426",
+            "debuglink_crc32": "2999a312"
+          }
+        },
+        {
+          "binary": "subtools/meshtool",
+          "symbol": "main",
+          "source": "build/subtools/meshtool/src/subtools/meshtool/main.cpp",
+          "line": 44,
+          "native_identity": {
+            "format": "elf",
+            "build_id": "2dba3b0648a46e321ea18fd1db61c37db0eaa254",
+            "debuglink_crc32": "69f50cc1"
+          }
+        },
+        {
+          "binary": "subtools/vmd2valvebiped",
+          "symbol": "main",
+          "source": "build/subtools/vmd2valvebiped/src/subtools/vmd2valvebiped/main.cpp",
+          "line": 1502,
+          "native_identity": {
+            "format": "elf",
+            "build_id": "86f48a606ae4c42409033e4cf354e8a50c0841c5",
+            "debuglink_crc32": "35e265a9"
+          }
+        }
+      ],
+      "scope": "Actual native executable entry points; not a claim that every optimized stack frame is recoverable."
+    },
+    "win64": {
+      "platform": "win64",
+      "executables": [
+        {
+          "binary": "NewPageMergeMDL.exe",
+          "symbol": "main",
+          "source": "src\\mdlcompiler\\main.cpp",
+          "line": 702,
+          "native_identity": {
+            "format": "pdb",
+            "guid": "8fc6015810d0863a0032aa76cce6340a",
+            "age": 1,
+            "pdb_name": "NewPageMergeMDL.pdb"
+          }
+        },
+        {
+          "binary": "NewPageMergeMDL-Decompiler.exe",
+          "symbol": "main",
+          "source": "src\\mdldecompiler\\main.cpp",
+          "line": 3547,
+          "native_identity": {
+            "format": "pdb",
+            "guid": "5bb1f201608f2ce5cf84c291af351cb8",
+            "age": 1,
+            "pdb_name": "NewPageMergeMDL-Decompiler.pdb"
+          }
+        },
+        {
+          "binary": "NewPageVRMLtoX3D.exe",
+          "symbol": "wmain",
+          "source": "src\\tools\\vrml_converter\\main.cpp",
+          "line": 90,
+          "native_identity": {
+            "format": "pdb",
+            "guid": "3224e8229ede4c0a16b27c4477d47169",
+            "age": 1,
+            "pdb_name": "NewPageVRMLtoX3D.pdb"
+          }
+        },
+        {
+          "binary": "subtools/ag2proportions.exe",
+          "symbol": "wmain",
+          "source": "src\\subtools\\ag2proportions\\main.cpp",
+          "line": 151,
+          "native_identity": {
+            "format": "pdb",
+            "guid": "31b2ee8aa5f62f178e0aa47d7dc794c0",
+            "age": 1,
+            "pdb_name": "ag2proportions.pdb"
+          }
+        },
+        {
+          "binary": "subtools/l4d_animswap.exe",
+          "symbol": "main",
+          "source": "src\\subtools\\l4d_animswap\\main.cpp",
+          "line": 1372,
+          "native_identity": {
+            "format": "pdb",
+            "guid": "142b98734c0edccf19a1c4bbbe46bda4",
+            "age": 1,
+            "pdb_name": "l4d_animswap.pdb"
+          }
+        },
+        {
+          "binary": "subtools/meshtool.exe",
+          "symbol": "main",
+          "source": "src\\subtools\\meshtool\\main.cpp",
+          "line": 44,
+          "native_identity": {
+            "format": "pdb",
+            "guid": "d48ce859acc216f5d59d46c57bb587d4",
+            "age": 1,
+            "pdb_name": "meshtool.pdb"
+          }
+        },
+        {
+          "binary": "subtools/vmd2valvebiped.exe",
+          "symbol": "main",
+          "source": "src\\subtools\\vmd2valvebiped\\main.cpp",
+          "line": 1502,
+          "native_identity": {
+            "format": "pdb",
+            "guid": "15d7dad93eab1f112442f9ebf13b86f4",
+            "age": 1,
+            "pdb_name": "vmd2valvebiped.pdb"
+          }
+        }
+      ],
+      "scope": "Actual native executable entry points; not a claim that every optimized stack frame is recoverable."
+    }
+  },
+  "quality_checkpoint": {
+    "source_commit": "2317571e536cee11937713226a17bd469a46491d",
+    "run": 39759274649,
+    "scope": "Earlier complete GCC/Clang, bounded ASan/UBSan/LSan and two-clean-build validation. Not rerun on the final reporting-only native change."
+  },
+  "native_delta_since_quality_checkpoint": {
+    "files": [
+      "mdldecompiler/main.cpp"
+    ],
+    "change": "Register existing successful AxisInterp writes and use full paths when registering existing VRD/declaration-QCI writes; no compiler or binary-format changes."
+  },
+  "known_limits": [
+    "C4D skeletal animation remains unsupported; saved static caches and a separate skin feasibility assessment were validated.",
+    "Two optional perfjson process-time samples remain above the 20% threshold; ordinary compilation passes the comparison.",
+    "Windows PDB bytes are not reproducible; native identity matching is required and passed.",
+    "Game evidence is bounded to documented scenarios; Linux games and untested game scenarios remain unknown."
+  ]
+}

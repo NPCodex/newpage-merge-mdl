@@ -246,7 +246,7 @@ Toolchain FindToolchain(const fs::path& cs2, bool windowsBinaries) {
 void BuildWorkspace(const fs::path& ws, const Toolchain& t, const fs::path& cs2, const Paths& paths,
                     const std::vector<uint8_t>& skeleton, const std::vector<uint8_t>& graph,
                     const std::vector<uint8_t>& uiGraph,
-                    const kv::Value& descriptor) {
+                    const kv::Value& descriptor, bool firstPerson) {
     const fs::path game = ws / "game/ag2", content = ws / "content/ag2";
     fs::create_directories(ws / "game/bin" / t.platform);
     fs::create_directories(game / "bin" / t.platform);
@@ -271,23 +271,26 @@ void BuildWorkspace(const fs::path& ws, const Toolchain& t, const fs::path& cs2,
                   "\"GameInfo\" { game \"AG2 Proportions\" FileSystem { SteamAppId 730 SearchPaths { Game ag2 Game " +
                       kv::Quote((cs2 / "game/csgo").generic_u8string()) + " Game " +
                       kv::Quote((cs2 / "game/core").generic_u8string()) + " Mod ag2 } } }\n");
-    kv::WriteFile((game / (std::string(kStockSkeleton) + "_c")).u8string(), skeleton);
-    kv::WriteFile((game / (std::string(kStockGraph) + "_c")).u8string(), graph);
-    kv::WriteFile((game / (std::string(kStockUiGraph) + "_c")).u8string(), uiGraph);
+    const char* skeletonPath = firstPerson ? kStockViewSkeleton : kStockSkeleton;
+    kv::WriteFile((game / (std::string(skeletonPath) + "_c")).u8string(), skeleton);
+    kv::WriteFile((game / (std::string(firstPerson ? kStockViewGraph : kStockGraph) + "_c")).u8string(), graph);
+    if (!firstPerson) kv::WriteFile((game / (std::string(kStockUiGraph) + "_c")).u8string(), uiGraph);
 
     // the clip compile needs the skeleton's source form at its canonical path
-    kv::WriteFile((content / kStockSkeleton).u8string(), kv::WriteText(descriptor));
+    kv::WriteFile((content / skeletonPath).u8string(), kv::WriteText(descriptor));
     const fs::path sources = content / fs::u8path(paths.relative);
     fs::create_directories(sources / "graphs");
     fs::create_directories(sources / "anims");
-    for (const char* name : {kReferenceFile, kProportionsFile, kClipFile, kWorldGraphFile, kUiGraphFile})
+    for (const char* name : {kReferenceFile, kProportionsFile})
+        fs::copy_file(paths.output / name, sources / name);
+    for (const char* name : RuntimeAssets(firstPerson))
         fs::copy_file(paths.output / name, sources / name);
 }
 
 // The clip must be additive on the stock skeleton with every track a static
 // translation and an identity delta rotation.
-void ValidateClip(const kv::Value& clip, size_t boneCount) {
-    if (!clip.At("m_bIsAdditive").Boolean() || clip.At("m_skeleton").String() != kStockSkeleton ||
+void ValidateClip(const kv::Value& clip, size_t boneCount, bool firstPerson) {
+    if (!clip.At("m_bIsAdditive").Boolean() || clip.At("m_skeleton").String() != (firstPerson ? kStockViewSkeleton : kStockSkeleton) ||
         clip.At("m_nNumFrames").Integer() < 1)
         throw runtime_error("the compiled clip is not an additive clip on the stock skeleton");
     const auto& tracks = clip.At("m_trackCompressionSettings").Items();
@@ -304,7 +307,7 @@ void ValidateClip(const kv::Value& clip, size_t boneCount) {
     std::cout << "Validated clip: " << tracks.size() << " static tracks with identity rotations\n";
 }
 
-void ValidateGraph(const kv::Value& graph) {
+void ValidateGraph(const kv::Value& graph, bool firstPerson) {
     bool snap = false, layer = false, reference = false;
     for (const auto& node : graph.At("m_nodes").Items()) {
         const std::string cls = node.At("_class").String();
@@ -312,8 +315,13 @@ void ValidateGraph(const kv::Value& graph) {
         layer |= cls == "CNmLayerBlendNode::CDefinition";
         reference |= cls == "CNmReferencedGraphNode::CDefinition";
     }
-    if (!snap || !layer || !reference)
-        throw runtime_error("the compiled graph lacks its referenced graph, additive layer or SnapWeapon node");
+    if (!layer || !reference)
+        throw runtime_error("the compiled graph lacks its referenced graph or additive layer");
+    if (snap == firstPerson)
+        throw runtime_error(firstPerson ? "the first-person graph unexpectedly contains a SnapWeapon node"
+                                       : "the worldmodel graph lacks its SnapWeapon node");
+    if (graph.At("m_skeleton").String() != (firstPerson ? kStockViewSkeleton : kStockSkeleton))
+        throw runtime_error("the compiled wrapper uses a different skeleton");
 }
 
 } // namespace
@@ -329,7 +337,7 @@ void PreflightCompiler(const Options& options, const Paths& paths) {
 
 void Compile(const Options& options, const Paths& paths, const std::vector<uint8_t>& skeleton,
              const std::vector<uint8_t>& graph, const std::vector<uint8_t>& uiGraph, const kv::Value& descriptor,
-             const fs::path& stagedCompiled) {
+             const fs::path& stagedCompiled, bool firstPerson) {
 #ifdef _WIN32
     (void)options;
     const bool windowsBinaries = true;
@@ -342,11 +350,11 @@ void Compile(const Options& options, const Paths& paths, const std::vector<uint8
                         ("pulse-ag2-" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) +
                          "-" + std::to_string(random()));
     try {
-        BuildWorkspace(ws, tools, paths.cs2, paths, skeleton, graph, uiGraph, descriptor);
+        BuildWorkspace(ws, tools, paths.cs2, paths, skeleton, graph, uiGraph, descriptor, firstPerson);
         const fs::path game = ws / "game/ag2", content = ws / "content/ag2";
         const kv::Value expected = kv::ReadResource(skeleton);
 
-        for (const char* name : {kClipFile, kWorldGraphFile, kUiGraphFile}) {
+        for (const char* name : RuntimeAssets(firstPerson)) {
             const std::string asset = paths.relative + "/" + name;
             fs::path exe = ws / "game/bin" / tools.platform / tools.files[0];
             std::vector<std::string> args{"-game", game.u8string(), "-i", (content / fs::u8path(asset)).u8string(),
@@ -373,18 +381,18 @@ void Compile(const Options& options, const Paths& paths, const std::vector<uint8
             if (fs::path(name).extension() == ".vnmclip") {
                 // the clip compile also rebuilt the skeleton from its descriptor
                 const kv::Value rebuilt =
-                    kv::ReadResource(kv::ReadFile((game / (std::string(kStockSkeleton) + "_c")).u8string()));
+                    kv::ReadResource(kv::ReadFile((game / (std::string(firstPerson ? kStockViewSkeleton : kStockSkeleton) + "_c")).u8string()));
                 if (kv::TextBody(expected.At("m_boneIDs")) != kv::TextBody(rebuilt.At("m_boneIDs")) ||
                     kv::TextBody(expected.At("m_parentIndices")) != kv::TextBody(rebuilt.At("m_parentIndices")))
                     throw runtime_error("the workspace skeleton's bone order differs from stock");
-                ValidateClip(data, expected.At("m_boneIDs").Items().size());
+                ValidateClip(data, expected.At("m_boneIDs").Items().size(), firstPerson);
             } else {
-                ValidateGraph(data);
+                ValidateGraph(data, firstPerson);
             }
         }
 
         const fs::path published = paths.cs2 / "game/csgo_addons" / paths.addon.filename() / fs::u8path(paths.relative);
-        for (const char* source : {kClipFile, kWorldGraphFile, kUiGraphFile}) {
+        for (const char* source : RuntimeAssets(firstPerson)) {
             const fs::path name = fs::u8path(std::string(source) + "_c");
             fs::create_directories((stagedCompiled / name).parent_path());
             fs::copy_file(game / fs::u8path(paths.relative) / name, stagedCompiled / name);
