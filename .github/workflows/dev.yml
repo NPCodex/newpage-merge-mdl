@@ -35,6 +35,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Verify checkout matches packaged source
+        run: python .github/scripts/upstream_release.py verify-checkout-source --source .
       - name: Lua validation dependency
         run: python -m pip install lupa==2.6
 

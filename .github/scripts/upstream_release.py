@@ -16,6 +16,7 @@ import sys
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -60,7 +61,17 @@ RELEASE_INPUT_FILES = ('CMakeLists.txt', 'CMakePresets.json', 'utf8.manifest', '
 RELEASE_TEXT_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx', '.inc', '.inl', '.ipp',
                          '.cmake', '.txt', '.json', '.py', '.lua', '.rc', '.manifest', '.xml', '.def',
                          '.in', '.m', '.mm', '.natvis', '.props', '.targets', '.sln', '.vcxproj',
-                         '.sh', '.bat', '.ps1', '.md', '.rst', '.license', '.cs', '.csproj', '.build', '.s', '.kv3'}
+                         '.sh', '.bat', '.ps1', '.md', '.rst', '.license', '.cs', '.csproj', '.build', '.s', '.kv3',
+                         '.ac', '.am', '.adb', '.ads', '.asm', '.bazel', '.bzl', '.cl', '.cmakein', '.cu',
+                         '.glsl', '.gpr', '.hlsl', '.html', '.idl', '.included', '.js', '.mak', '.metal', '.mk',
+                         '.modulemap', '.pas', '.patch', '.readme', '.scss', '.template', '.toml', '.yaml', '.yml'}
+RELEASE_TEXT_NAMES = {'makefile', 'authors', 'contributors', 'credits', 'changelog', 'todo',
+                      'workspace', '.clang-format', '.editorconfig'}
+# These filenames are text, but their suffixes can also name binary resources.
+RELEASE_TEXT_PATHS = {'libs/assimp/contrib/zip/cmake/asan-wrapper',
+                      'libs/assimp/contrib/zlib/contrib/minizip/make_vms.com',
+                      'libs/assimp/contrib/zlib/contrib/minizip/miniunzip.1',
+                      'libs/assimp/contrib/zlib/contrib/minizip/minizip.1'}
 
 
 def is_release_input(name):
@@ -88,7 +99,9 @@ def release_inputs_fingerprint(files, pulsemodel):
             # resources retain exact bytes even when they contain no NUL.
             path = PurePosixPath(name)
             text = (path.suffix.lower() in RELEASE_TEXT_SUFFIXES or
-                    path.name.lower() in {'makefile', 'license', 'copying', 'notice'})
+                    path.name.lower() in RELEASE_TEXT_NAMES or path.name.lower().startswith('makefile.') or
+                    name in RELEASE_TEXT_PATHS or
+                    re.search(r'(^|\.)(?:unlicense|license|copying|notice)(?:$|[._-])', path.name.lower()))
             canonical = data.replace(b'\r\n', b'\n') if text and b'\0' not in data[:8000] else data
             identity.append((name, hashlib.sha256(canonical).hexdigest()))
     return fingerprint({'schema': 1, 'pulsemodel': pulsemodel, 'files': sorted(identity)})
@@ -507,6 +520,22 @@ def maintained_manifest(args):
     Path(args.output).write_text(json.dumps(state, indent=2) + '\n', encoding='utf-8')
 
 
+def verify_checkout_source(args):
+    """Check the actual checkout against the exact LF source used for packaging."""
+    source = Path(args.source).resolve()
+    with tempfile.TemporaryDirectory(prefix='newpage-source-identity-') as folder:
+        folder = Path(folder)
+        archive, manifest = folder / 'source.zip', folder / 'manifest.json'
+        run('git', '-C', source, '-c', 'core.autocrlf=false', '-c', 'core.eol=lf',
+            'archive', '--format=zip', '--prefix=NewPageMergeMDL/', '--output=' + str(archive), 'HEAD')
+        maintained_manifest(argparse.Namespace(source=source, output=manifest, tag='source-validation'))
+        with zipfile.ZipFile(folder / 'probe.zip', 'w') as package:
+            package.write(archive, 'NewPageMergeMDL/sources/NewPageMergeMDL-source.zip')
+        with zipfile.ZipFile(folder / 'probe.zip') as package:
+            verified_package_manifest(package, json.loads(manifest.read_text(encoding='utf-8')))
+    print('Checkout release inputs match the exact packaged source.')
+
+
 def prepare(args):
     config = json.loads((ROOT / 'automation/upstreams.json').read_text())
     overlay = ROOT / 'automation/compatibility.patch'
@@ -764,6 +793,8 @@ if __name__ == '__main__':
     p = commands.add_parser('maintained-manifest')
     p.add_argument('--source', default='.'); p.add_argument('--output', required=True)
     p.add_argument('--tag', required=True)
+    p = commands.add_parser('verify-checkout-source')
+    p.add_argument('--source', default='.')
     p = commands.add_parser('record-build')
     p.add_argument('--manifest', required=True); p.add_argument('--cache', required=True)
     p.add_argument('--configuration', required=True)
@@ -773,5 +804,6 @@ if __name__ == '__main__':
     p.add_argument('--source-archive', help='Exact merged build input for automatic upstream releases')
     p = commands.add_parser('checksums'); p.add_argument('--folder', required=True)
     args = parser.parse_args()
-    {'prepare': prepare, 'source-archive': source_archive, 'maintained-manifest': maintained_manifest, 'record-build': record_build,
+    {'prepare': prepare, 'source-archive': source_archive, 'maintained-manifest': maintained_manifest,
+     'verify-checkout-source': verify_checkout_source, 'record-build': record_build,
      'package': package, 'checksums': checksums}[args.command](args)

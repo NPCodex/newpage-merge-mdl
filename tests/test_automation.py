@@ -793,17 +793,78 @@ class ReleaseContentDeduplicationTests(unittest.TestCase):
             current = sync.source_state(config, 'c' * 40, self.pulse, root)['release_inputs_sha256']
             self.assertEqual(baseline, current)
 
-    def test_binary_resource_newline_bytes_trigger_release_even_without_nul(self):
+    def test_windows_checkout_manifest_verifies_against_lf_source_archive(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / 'source'
-            config = self.make_source(root)
-            resource = root / 'libs/example/table.bin'
-            resource.write_bytes(b'\x80Binary resource\r\nwith no NUL bytes\r\n')
-            previous = self.published(self.package_bytes(root, self.legacy_manifest(root, config)))
-            resource.write_bytes(resource.read_bytes().replace(b'\r\n', b'\n'))
-            allocations, build, _, _ = self.prepare_until_build(root, previous)
-            self.assertEqual(allocations, [('1.2.39', 'v1.2.39')])
-            build.assert_called_once()
+            self.make_source(root)
+            text_files = {
+                'libs/tinyusdz/src/osd/opensubdiv/osd/glslPatchCommon.glsl': b'void main() {\n}\n',
+                'libs/assimp/contrib/zlib/zconf.h.cmakein': b'#cmakedefine Z_PREFIX\n',
+                'libs/assimp/contrib/zlib/zconf.h.included': b'#define ZLIB_CONST\n',
+                'libs/tinyusdz/src/external/fast_float/LICENSE-MIT': b'Copyright fixture author\nPermission notice\n',
+                'libs/tinyusdz/src/external/linalg.UNLICENSE': b'Public domain dedication\n',
+                'libs/assimp/contrib/draco/AUTHORS': b'Fixture author\n',
+                'libs/assimp/contrib/zlib/contrib/minizip/make_vms.com': b'$ cc miniunzip.c\n$ exit\n',
+            }
+            for name, data in text_files.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            (root / '.gitattributes').write_bytes(b'* text=auto\n')
+
+            def git(source, *args):
+                return sync.subprocess.check_output(
+                    ['git', '-C', str(source), *args], stderr=sync.subprocess.STDOUT)
+
+            git(root, 'init', '--quiet')
+            git(root, '-c', 'core.autocrlf=false', 'add', '.')
+            git(root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'Release input fixture')
+            checkout = Path(directory) / 'windows-checkout'
+            git(root, 'clone', '--quiet', '--no-hardlinks', '--no-checkout', str(root), str(checkout))
+            git(checkout, 'config', 'core.autocrlf', 'true')
+            git(checkout, 'checkout', '--quiet', '--detach', 'HEAD')
+            for name, data in text_files.items():
+                self.assertEqual((checkout / name).read_bytes(), data.replace(b'\n', b'\r\n'), name)
+
+            controller = git(checkout, 'rev-parse', 'HEAD').decode().strip()
+            manifest_path = Path(directory) / 'upstream-manifest.json'
+            with patch.dict(os.environ, GITHUB_SHA=controller):
+                sync.maintained_manifest(argparse.Namespace(
+                    source=checkout, output=manifest_path, tag='dev-' + controller))
+            manifest = json.loads(manifest_path.read_text())
+            # Match package_maintained.py, including Git's explicit LF archive
+            # configuration: a default Windows git archive also emits CRLF.
+            source_bytes = git(checkout, '-c', 'core.autocrlf=false', '-c', 'core.eol=lf',
+                               'archive', '--format=zip', '--prefix=NewPageMergeMDL/', 'HEAD')
+            with zipfile.ZipFile(io.BytesIO(source_bytes)) as source:
+                for name, data in text_files.items():
+                    self.assertEqual(source.read('NewPageMergeMDL/' + name), data, name)
+            runtime_bytes = io.BytesIO()
+            with zipfile.ZipFile(runtime_bytes, 'w') as runtime:
+                runtime.writestr('NewPageMergeMDL/sources/NewPageMergeMDL-source.zip', source_bytes)
+                runtime.writestr('NewPageMergeMDL/upstream-manifest.json', json.dumps(manifest))
+            with zipfile.ZipFile(io.BytesIO(runtime_bytes.getvalue())) as runtime:
+                verified = sync.verified_package_manifest(runtime, manifest)
+            self.assertEqual(verified['release_inputs_sha256'], manifest['release_inputs_sha256'])
+            with patch.dict(os.environ, GITHUB_SHA=controller):
+                sync.verify_checkout_source(argparse.Namespace(source=checkout))
+                (checkout / 'mdlcompiler/main.cpp').write_bytes(b'int main() { return 1; }\r\n')
+                with self.assertRaisesRegex(ValueError, 'does not match declared release inputs'):
+                    sync.verify_checkout_source(argparse.Namespace(source=checkout))
+
+    def test_binary_resource_newline_bytes_trigger_release_even_without_nul(self):
+        for suffix in ('.bin', '.com', '.1'):
+            with self.subTest(suffix=suffix), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / 'source'
+                config = self.make_source(root)
+                resource = root / ('libs/example/table' + suffix)
+                resource.write_bytes(b'\x80Binary resource\r\nwith no NUL bytes\r\n')
+                previous = self.published(self.package_bytes(root, self.legacy_manifest(root, config)))
+                resource.write_bytes(resource.read_bytes().replace(b'\r\n', b'\n'))
+                allocations, build, _, _ = self.prepare_until_build(root, previous)
+                self.assertEqual(allocations, [('1.2.39', 'v1.2.39')])
+                build.assert_called_once()
 
     def test_vendored_test_changes_skip_but_their_licenses_remain_release_inputs(self):
         for folder in ('test', 'tests'):

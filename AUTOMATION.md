@@ -30,6 +30,11 @@ GitHub 的调度可能延迟，长时间无活动的公开仓库可能被自动�
 GitHub Release 的公开标签决定重建目标，包内历史 `dev-<SHA>` 只作为构建来源保留。
 仅修改文档或发布流程后若确需重建附件，应明确手动使用 `force`；它不会自动改成新版本。
 
+内容指纹对已识别的源码、着色器、构建模板和许可文本统一 CRLF/LF 换行；二进制及未知类型
+保留原始字节。可能与二进制扩展名重合的历史脚本和手册按精确路径识别。Dev 与手动发布
+在编译前运行 `verify-checkout-source`，将实际工作区输入与 Git HEAD 的 LF 源码归档核对，
+提前发现文本类型遗漏或未提交的构建输入；打包时仍再次校验包内源码身份。
+
 手动维护构建和 Dev 构建共用 `.github/scripts/package_maintained.py` 的完整清单与整包验证；Dev 附件明确命名为开发产物，不自动发布 Release。Linux 失败会阻止成功状态，四个 subtools 均必需。Windows runner 固定 `windows-2025`，Linux 固定 `ubuntu-24.04`，所需 ELF 符号门槛见 `automation/linux-runtime.json`；本轮真实执行结果见 [平台矩阵](GAME_PLATFORM_MATRIX.md)。
 
 手动发布修订号同时考虑 tag 和 API 中的草稿，只有完整来源 SHA 匹配的草稿才可复用；上传前再次检查草稿/来源，两个平台附件上传并核对服务端 digest 后才更新说明。已发布版本或不同来源的占位不能被当作同一次重试。离线流程回归不等同已执行远端并发冲突试验。
