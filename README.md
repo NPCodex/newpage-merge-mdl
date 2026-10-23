@@ -129,7 +129,7 @@ Job 中的路径相对 job 文件；可选 `model_dmx` 指定骨架、`proportio
 | 场景、导出与作者工具 | [缓存/烘焙/USD](SCENE_IMPORT.md) · [选择性反编译/质量报告](DECOMPILER_EXPORTS.md) · [网格/材质/增量构建](AUTHORING_WORKFLOWS.md) |
 | CSGO 专项 | [DMX 输入与 rig](CSGO_DMX_INPUTS.md) · [布料](CSGO_CLOTH_AUTHORING.md) |
 | 额外格式与运行模块 | [M3D/USD/VRML/C4D](O5_FORMAT_IMPORTS.md) · [网格状态](MESH_STATE_WORKFLOW.md) · [VRM](VRM_RUNTIME.md) |
-| 构建与发布维护 | [自动发布配置](AUTOMATION.md) · [候选包验收](tests/reports/v1.2.38-candidate.md) |
+| 构建与发布维护 | [自动发布配置](AUTOMATION.md) · [发布前验收](tests/reports/v1.2.38-candidate.md) |
 
 ## 编译源码
 

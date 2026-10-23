@@ -216,7 +216,7 @@ Use `--help` for further options, including the Linux compiler runner.
 | CSGO cloth and DMX inputs | [Cloth authoring](CSGO_CLOTH_AUTHORING.md), [DMX inputs](CSGO_DMX_INPUTS.md) |
 | M3D/USD/VRML/C4D import requirements | [O5_FORMAT_IMPORTS.md](O5_FORMAT_IMPORTS.md) |
 | VRM and finite mesh-state playback | [VRM runtime](VRM_RUNTIME.md), [mesh states](MESH_STATE_WORKFLOW.md) |
-| Upstream integration and release automation | [AUTOMATION.md](AUTOMATION.md) · [Candidate package validation](tests/reports/v1.2.38-candidate.md) |
+| Upstream integration and release automation | [AUTOMATION.md](AUTOMATION.md) · [Pre-release validation](tests/reports/v1.2.38-candidate.md) |
 
 ## Build from source
 

@@ -21,7 +21,14 @@ GitHub 的调度可能延迟，长时间无活动的公开仓库可能被自动�
    实际糅合源码 `sources/NewPageMergeMDL-source.zip`、根目录的 `upstream-manifest.json`
    与 `SHA256SUMS.txt`、`tests/reports/` 中的验证报告均放入平台包内，
    不再作为独立附件；发布说明列出平台包及其 SHA256。上传和校验完成前保持草稿。
-7. PulseModel 与本仓库版本未变时不重复构建、发布；失败不更新已发布状态，后续可重试。
+7. 按 PulseModel 提交及实际发布输入判断变化：原生源码、构建配置、运行脚本、资源、许可、版本和依赖固定信息。合并提交编号、文档、测试及 CI/发布控制脚本的变更本身不触发新版；失败不更新已发布状态，后续可重试。
+
+精确构建来源仍由 `controller_sha` 与原有 `fingerprint` 记录，去重使用独立的
+`release_inputs_sha256`。已发布的维护包可从通过校验的包内源码补算；缺少源码的旧包
+保留严格来源比较。自动合并包保存原始控制器输入指纹，避免其已合并上游、已调整版本号的
+源码在下次检查时造成重复发布。Windows/Linux 的完整源码与来源仍须一致。
+GitHub Release 的公开标签决定重建目标，包内历史 `dev-<SHA>` 只作为构建来源保留。
+仅修改文档或发布流程后若确需重建附件，应明确手动使用 `force`；它不会自动改成新版本。
 
 手动维护构建和 Dev 构建共用 `.github/scripts/package_maintained.py` 的完整清单与整包验证；Dev 附件明确命名为开发产物，不自动发布 Release。Linux 失败会阻止成功状态，四个 subtools 均必需。Windows runner 固定 `windows-2025`，Linux 固定 `ubuntu-24.04`，所需 ELF 符号门槛见 `automation/linux-runtime.json`；本轮真实执行结果见 [平台矩阵](GAME_PLATFORM_MATRIX.md)。
 
@@ -92,9 +99,9 @@ v1.2.20 将 FE settings/吸引/弯曲/地面参数、零重力回退修复、默
 
 ## 项目版本与双语文档
 
-当前项目版本为 **v1.2.34**，程序和 Windows 文件版本统一采用该版本（含 `ag2proportions`），独立于 PulseModel 上游版本号。当前替换版加入了 subtools 输入校验、L4D 小数帧率、meshtool 原子响应和发布覆盖校验；各平台的构建及验证记录见 [VALIDATION.md](VALIDATION.md)。
+当前项目版本为 **v1.2.38**，程序和 Windows 文件版本统一采用该版本（含 `ag2proportions`），独立于 PulseModel 上游版本号。正式发布及本次验收范围见 [Release](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.38) 与 [发布前验收记录](tests/reports/v1.2.38-candidate.md)。
 `CMakeLists.txt` 的项目版本与 `automation/upstreams.json` 的 `project_version` 应同步维护。
-自动发布标签采用 `v1.2.0`、`v1.2.1` 等语义版本。每次检测到新的上游或项目改动，补丁号递增；配置版本作为最低版本，可手动提高主/次版本。上游没有变化则跳过发布，强制重建同一内容沿用已发布的版本和标签。合并源码内的 CMake、发布配置和 README 会同步写入实际发布版本，并重新生成对应补丁。
+自动发布标签采用 `v1.2.0`、`v1.2.1` 等语义版本。检测到新的上游或发布输入内容时，补丁号递增；配置版本作为最低版本，可手动提高主/次版本。输入内容没有变化则跳过发布，强制重建同一内容沿用已发布的版本和公开标签。合并源码内的 CMake、发布配置和 README 会同步写入实际发布版本，并重新生成对应补丁。
 中文 `README.md` 与英文 `README.en.md` 都会包含在合并源码和二进制发布包中。
 
 ## 发布包验证

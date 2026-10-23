@@ -52,6 +52,73 @@ def checked_source_text_hash(data, declared, label):
     return source_text_sha256(data)
 
 
+RELEASE_INPUT_ROOTS = ('libs', 'mdlcompiler', 'mdldecompiler', 'subtools', 'cmake',
+                       'tools', 'integration', 'assets/branding', '.github/images')
+RELEASE_INPUT_FILES = ('CMakeLists.txt', 'CMakePresets.json', 'utf8.manifest', 'LICENSE',
+                       'automation/upstreams.json', 'automation/windows-extras.json',
+                       'automation/linux-runtime.json')
+RELEASE_TEXT_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx', '.inc', '.inl', '.ipp',
+                         '.cmake', '.txt', '.json', '.py', '.lua', '.rc', '.manifest', '.xml', '.def',
+                         '.in', '.m', '.mm', '.natvis', '.props', '.targets', '.sln', '.vcxproj',
+                         '.sh', '.bat', '.ps1', '.md', '.rst', '.license', '.cs', '.csproj', '.build', '.s', '.kv3'}
+
+
+def is_release_input(name):
+    path = PurePosixPath(name)
+    if any(part in {'.git', '__pycache__', 'build', 'out', 'dist'} for part in path.parts):
+        return False
+    if path.suffix.lower() in {'.pyc', '.pyo'}:
+        return False
+    if name not in RELEASE_INPUT_FILES and not any(name.startswith(root + '/') for root in RELEASE_INPUT_ROOTS):
+        return False
+    # Documentation and acceptance evidence can follow a release without
+    # changing its tools. License notices remain distribution inputs.
+    notice = any(word in path.name.lower() for word in ('license', 'copying', 'notice'))
+    if not notice and (path.suffix.lower() in {'.md', '.rst'} or path.name.lower().startswith('readme')
+                       or any(part in {'test', 'tests'} for part in path.parts)):
+        return False
+    return True
+
+
+def release_inputs_fingerprint(files, pulsemodel):
+    identity = []
+    for name, data in files:
+        if is_release_input(name):
+            # Normalize known source text across checkouts. Unknown/binary
+            # resources retain exact bytes even when they contain no NUL.
+            path = PurePosixPath(name)
+            text = (path.suffix.lower() in RELEASE_TEXT_SUFFIXES or
+                    path.name.lower() in {'makefile', 'license', 'copying', 'notice'})
+            canonical = data.replace(b'\r\n', b'\n') if text and b'\0' not in data[:8000] else data
+            identity.append((name, hashlib.sha256(canonical).hexdigest()))
+    return fingerprint({'schema': 1, 'pulsemodel': pulsemodel, 'files': sorted(identity)})
+
+
+def checkout_release_inputs(source, pulsemodel):
+    source = Path(source)
+    if (source / '.git').exists():
+        # Maintained packages use git archive; ignored SDK/build leftovers are
+        # not inputs to those packages. Still read working bytes for tracked edits.
+        tracked = subprocess.check_output(['git', 'ls-files', '-z', '--',
+                                          *RELEASE_INPUT_ROOTS, *RELEASE_INPUT_FILES], cwd=source)
+        paths = set(tracked.decode('utf-8').rstrip('\0').split('\0')) - {''}
+    else:
+        paths = set(RELEASE_INPUT_FILES)
+        for root in RELEASE_INPUT_ROOTS:
+            paths.update(path.relative_to(source).as_posix() for path in (source / root).rglob('*') if path.is_file())
+    return release_inputs_fingerprint(((name, (source / name).read_bytes()) for name in sorted(paths)
+                                       if is_release_input(name) and (source / name).is_file()), pulsemodel)
+
+
+def same_release_inputs(previous, provenance_fingerprint, release_inputs_sha256=None):
+    if not previous:
+        return False
+    if release_inputs_sha256 is not None and previous.get('release_inputs_sha256') is not None:
+        return previous['release_inputs_sha256'] == release_inputs_sha256
+    # Unverifiable legacy snapshots retain the old conservative comparison.
+    return previous.get('fingerprint') == provenance_fingerprint
+
+
 def verified_package_manifest(package, manifest):
     """Migrate historical text hashes only when the embedded source proves it.
 
@@ -62,7 +129,9 @@ def verified_package_manifest(package, manifest):
     """
     source_name = 'NewPageMergeMDL/sources/NewPageMergeMDL-source.zip'
     if source_name not in package.namelist():
-        return dict(manifest)  # Legacy packages retain strict manifest equality.
+        legacy = dict(manifest)
+        legacy.pop('release_inputs_sha256', None)
+        return legacy  # Legacy packages retain strict manifest equality.
     result = dict(manifest)
     controller = manifest.get('controller_sha', '')
     if not isinstance(controller, str) or not re.fullmatch(r'[0-9a-f]{40}', controller):
@@ -111,6 +180,17 @@ def verified_package_manifest(package, manifest):
                     config.get('project_version', '1.2.0') != payload['project_version']):
                 raise ValueError('Source snapshot configuration does not match maintained manifest')
             result['fingerprint'] = fingerprint(payload)
+            content = release_inputs_fingerprint(files.items(), result['pulsemodel'])
+            if manifest.get('release_inputs_sha256', content) != content:
+                raise ValueError('Source snapshot does not match declared release inputs')
+            result['release_inputs_sha256'] = content
+        elif 'release_inputs_sha256' in manifest:
+            # Automatic packages retain their original controller input hash.
+            # Their merged snapshot already has newer upstream code and stamped
+            # versions; recomputing from it would cause perpetual new releases.
+            content = manifest['release_inputs_sha256']
+            if not isinstance(content, str) or not re.fullmatch(r'[0-9a-f]{64}', content):
+                raise ValueError('Invalid controller release input hash')
         if manifest.get('build_overlay_sha256') is not None:
             result['build_overlay_sha256'] = checked_source_text_hash(
                 files['automation/compatibility.patch'], manifest['build_overlay_sha256'], 'build_overlay_sha256')
@@ -120,7 +200,7 @@ def verified_package_manifest(package, manifest):
 def package_source_identity(manifest):
     fields = ('controller_sha', 'fingerprint', 'project_version', 'pulsemodel',
               'overlay_sha256', 'configuration_sha256', 'build_overlay_sha256', 'source_kind',
-              '_verified_source_tree_sha256')
+              '_verified_source_tree_sha256', 'release_inputs_sha256')
     return json.dumps({key: manifest.get(key) for key in fields}, sort_keys=True)
 
 
@@ -206,7 +286,8 @@ def published_manifest(repo):
                     continue
                 manifest = json.loads(archive.read('NewPageMergeMDL/upstream-manifest.json'))
                 manifest = verified_package_manifest(archive, manifest)
-                manifest.setdefault('release_tag', release['tag_name'])
+                manifest['build_tag'] = manifest.get('release_tag')
+                manifest['release_tag'] = release['tag_name']
                 manifests.append(manifest)
         if manifests:
             identities = {package_source_identity(m) for m in manifests}
@@ -217,7 +298,9 @@ def published_manifest(repo):
             if asset['name'] == 'upstream-manifest.json':
                 # Legacy releases without embedded provenance remain readable.
                 manifest = json.loads(fetch(asset['url'], accept='application/octet-stream'))
-                manifest.setdefault('release_tag', release['tag_name'])
+                manifest.pop('release_inputs_sha256', None)
+                manifest['build_tag'] = manifest.get('release_tag')
+                manifest['release_tag'] = release['tag_name']
                 return manifest
     return None
 
@@ -255,14 +338,14 @@ def create_source(root, pulse_repo, revision, base, patch):
         ':(exclude)libs/cgltf/cgltf.h', cwd=root)
 
 
-def release_version(base, previous, content_fingerprint):
+def release_version(base, previous, content_fingerprint, release_inputs_sha256=None):
     """Allocate a patch release, preserving the identity of forced retries."""
     def parts(value):
         if not re.fullmatch(r'\d+\.\d+(?:\.\d+)?', value):
             raise ValueError('Invalid project version: ' + value)
         return tuple(map(int, (value + '.0' if value.count('.') == 1 else value).split('.')))
     floor = parts(base)
-    if previous and previous.get('fingerprint') == content_fingerprint:
+    if same_release_inputs(previous, content_fingerprint, release_inputs_sha256):
         version = previous.get('project_version', base)
         parts(version)
         return version, previous.get('release_tag', 'v' + version)
@@ -406,6 +489,7 @@ def source_state(config, controller, pulse_revision, source):
         }
     }
     state['fingerprint'] = fingerprint(state)
+    state['release_inputs_sha256'] = checkout_release_inputs(source, state['pulsemodel'])
     return state
 
 
@@ -431,10 +515,11 @@ def prepare(args):
     state = source_state(config, controller, latest_commit(config['pulsemodel']), ROOT)
     previous = published_manifest(os.environ.get('GITHUB_REPOSITORY'))
     base_version = state['project_version']
-    state['project_version'], tag = release_version(base_version, previous, state['fingerprint'])
+    state['project_version'], tag = release_version(base_version, previous, state['fingerprint'],
+                                                  state['release_inputs_sha256'])
     state['version_base'] = base_version
     state['release_tag'] = tag
-    if previous and previous.get('fingerprint') == state['fingerprint'] and not args.force:
+    if same_release_inputs(previous, state['fingerprint'], state['release_inputs_sha256']) and not args.force:
         emit(changed=False, tag=tag)
         return
     # Closed-source versions are provenance only. They cannot independently

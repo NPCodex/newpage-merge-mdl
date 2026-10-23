@@ -74,6 +74,8 @@ jobs:
       - name: Set reproducible source timestamp
         shell: bash
         run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+      - name: Test release update detection
+        run: python3 -m unittest discover -s tests -p test_automation.py
       - name: Verify maintained source matches the overlay
         run: python3 .github/scripts/refresh_overlay.py --check
       - name: Discover versions, download references and apply compatibility patch
