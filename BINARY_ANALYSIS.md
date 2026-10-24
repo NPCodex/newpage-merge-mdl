@@ -122,6 +122,14 @@ upper descriptor/targets. The regression fixture checks both rule preservation
 and the disabled eye binding.
 # NekoMDL reference notes (2026-10-06)
 
+These historical observations concern the 2.3.0 reference below. The separately
+supplied 2.4.0 executable was compared on 2026-10-24; see the
+[new reference report](tests/reports/2026-10-24-nekomdl-2.4-reference.md).
+The subsequent independent v1.2.39 source-cache, material-group, BodyGroup
+policy and reload-protocol implementation is tracked in the
+[implementation validation](tests/reports/v1.2.39-neko24.md), separately from
+that historical reference-only investigation.
+
 Source of requirements: supplied Chinese `nekomdl/ChangeLog.txt` v2.3.0 and
 `example_qc/NewCommands.qci`; the English changelog was not used as authoritative.
 Reference executable SHA-256:

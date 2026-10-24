@@ -1217,6 +1217,10 @@ struct CompileInput {
     // Reference DMX policies differ; native preserves existing project behavior.
     enum class DmxCompatibility { Native, Ce, Neko };
     DmxCompatibility dmxCompatibility = DmxCompatibility::Native;
+    // The last $qccompatibility selects final output policy. Conditional
+    // expressions still use the mode active when each expression is parsed.
+    enum class QcCompatibility { Native, Neko };
+    QcCompatibility qcCompatibility = QcCompatibility::Native;
     // CE switches are opt-in, preserving existing PulseModel defaults.
     struct CeOptions {
         bool overrideControllers=false, duplicateControllers=false, inverseFlexes=false;
@@ -1448,6 +1452,7 @@ struct CompileInput {
     // gamedatalist - model-level game data
     std::string surfaceprop;
     std::string keyvalues; // $keyvalues, copied to the studiohdr verbatim
+    bool hasNekoMaterialGroupKeyValue = false; // authored model-level root key
     // $contents, resolved to the flag word by the loader. Starts at
     // CONTENTS_SOLID (0x1) like the reference's s_nDefaultContents.
     int contents = 1;
@@ -1473,6 +1478,13 @@ struct CompileInput {
         std::string to;   // its replacement in this family
     };
     std::vector<std::vector<SkinReplace>> skinFamilies;
+    struct TextureGroup {
+        std::string name;
+        std::string location;
+        size_t firstFamily = 0; // zero-based index in skinFamilies, excluding identity row
+        size_t familyCount = 0;
+    };
+    std::vector<TextureGroup> textureGroups; // named block boundaries, in QC order
 
     std::vector<std::unique_ptr<source::Source>> sources; // all loaded DMX
     source::MaterialTable mats;

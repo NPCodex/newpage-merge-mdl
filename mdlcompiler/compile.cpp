@@ -11452,6 +11452,69 @@ bool ConvertIkRule(const CompileInput& input, const CompileInput::InIkRule& ir,
     return true;
 }
 
+namespace {
+
+bool AppendNekoMaterialGroups(const CompileInput& input, std::string& keyvalues,
+                             std::string* err) {
+    if (input.qcCompatibility != CompileInput::QcCompatibility::Neko ||
+        input.textureGroups.size() <= 1)
+        return true;
+    if (input.hasNekoMaterialGroupKeyValue) {
+        if (err) *err = "$qccompatibility neko: generated neko_material_group conflicts with an authored model keyvalue";
+        return false;
+    }
+
+    // These names become quoted KeyValues keys. Escape interpretation differs
+    // between consumers, so reject ambiguous bytes instead of silently renaming
+    // groups or adding escapes the receiving extension might not understand.
+    std::set<std::string> names;
+    std::string generated = "\nneko_material_group {";
+    size_t nextFamily = 0;
+    for (const auto& group : input.textureGroups) {
+        const bool unsafe = std::any_of(group.name.begin(), group.name.end(), [](unsigned char ch) {
+            return ch < 0x20 || ch == 0x7f || ch == '\"' || ch == '\\';
+        });
+        if (group.name.empty() || unsafe) {
+            if (err) *err = group.location + "$texturegroup: Neko material-group metadata requires a nonempty name without quotes, backslashes or control characters";
+            return false;
+        }
+        std::string name = group.name;
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        if (!names.insert(name).second) {
+            if (err) *err = group.location + "$texturegroup: duplicate Neko material-group name \"" + group.name + "\"";
+            return false;
+        }
+        if (group.firstFamily != nextFamily || group.firstFamily > input.skinFamilies.size() ||
+            group.familyCount > input.skinFamilies.size() - group.firstFamily) {
+            if (err) *err = group.location + "$texturegroup: invalid Neko material-group skin range";
+            return false;
+        }
+        nextFamily += group.familyCount;
+        generated += " \"" + group.name + "\" { i " + std::to_string(group.firstFamily + 1) +
+                     " c " + std::to_string(group.familyCount) + " }";
+        if (generated.size() > static_cast<size_t>(lim::kMaxKeyValuesBytes)) {
+            if (err) *err = group.location + "$texturegroup: generated neko_material_group exceeds keyvalue capacity";
+            return false;
+        }
+    }
+    if (nextFamily != input.skinFamilies.size()) {
+        if (err) *err = "$texturegroup: incomplete Neko material-group skin ranges";
+        return false;
+    }
+    generated += " }\n";
+    const size_t limit = static_cast<size_t>(lim::kMaxKeyValuesBytes);
+    if (generated.size() > limit || keyvalues.size() > limit - generated.size()) {
+        if (err) *err = "generated neko_material_group and authored keyvalues exceed keyvalue capacity";
+        return false;
+    }
+    keyvalues += generated;
+    return true;
+}
+
+} // namespace
+
 bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
     const bool hasAdvanced=cloth::HasAdvanced(input.clothSettings.advanced);
     const bool hasCloth=!input.clothProxies.empty()||hasAdvanced;
@@ -11642,6 +11705,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         out.surfaceprop = input.surfaceprop;
     out.contents = input.contents;
     out.keyvalues = input.keyvalues;
+    if (!AppendNekoMaterialGroups(input, out.keyvalues, err))
+        return false;
     out.includeModels = input.includeModels;
     // $animblocksize. `nostall` is folded into the per-animation flag here so
     // the writer only ever reads Anim::isFirstSectionLocal.
@@ -11742,6 +11807,12 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
             return false;
         }
         const size_t choices = std::max<size_t>(1, bp.models.size());
+        if (input.qcCompatibility == CompileInput::QcCompatibility::Neko &&
+            static_cast<uint64_t>(choices) > static_cast<uint64_t>(INT32_MAX) /
+                                             static_cast<uint64_t>(bodypartBase)) {
+            if (err) *err = bp.location + "$qccompatibility neko: bodygroup state count must be below 2^31 at '" + bp.name + "'";
+            return false;
+        }
         if (choices > 1 && bodypartBase > INT32_MAX) {
             if (err) *err = bp.location + "bodygroup combination count exceeds signed 32-bit capacity at '" + bp.name + "'";
             return false;
@@ -13011,7 +13082,11 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         return false;
     }
     out.numskinref = nummaterials;
-    const uint64_t rows = 1ULL + families.size();
+    const bool nekoMaterialGroups = input.qcCompatibility == CompileInput::QcCompatibility::Neko &&
+                                    input.textureGroups.size() > 1;
+    // Neko 2.4 keeps group alternatives independent and appends one identity
+    // family after all groups. This row must participate in every skin budget.
+    const uint64_t rows = 1ULL + families.size() + (nekoMaterialGroups ? 1ULL : 0ULL);
     const uint64_t bytes = rows * static_cast<uint64_t>(nummaterials) * sizeof(int16_t);
     size_t skinLimit = INT32_MAX;
     if (input.ce.mdlLimit) skinLimit = std::min(skinLimit, input.ce.mdlLimit);
@@ -13020,7 +13095,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         if (err) *err = "skin table exceeds output capacity (" + std::to_string(bytes) + " bytes)";
         return false;
     }
-    out.numskinfamilies = 1 + static_cast<int>(families.size());
+    out.numskinfamilies = static_cast<int>(rows);
     out.skinref.assign(out.numskinfamilies, std::vector<int16_t>(nummaterials));
     for (auto& row : out.skinref)
         for (int j = 0; j < nummaterials; j++)

@@ -189,7 +189,7 @@ Release/MinSizeRel builds use function/data sections and linker garbage collecti
 
 The fixed R1–R6 / E1–E3 / V1–V7 / S1–S6 / O1–O5 scope and explicit H exclusions are tracked in [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md). Older restrictions below are historical where superseded.
 
-`$qccompatibility neko` allows bare RHS strings, makes an undefined LHS comparison false (including `!=`), and skips later `elif` evaluation after a winner. Scientific notation is not newly promoted to decimal comparison. Native strict conditions remain the default. `$boneweightpolicy ce` culls normalized imported weights below .001 and renormalizes; native/neko keep .0001. Policies capture their source context and participate in cache identity.
+`$qccompatibility neko` allows bare RHS strings, makes an undefined LHS comparison false (including `!=`), and skips later `elif` evaluation after a winner. Scientific notation is not newly promoted to decimal comparison. Native strict conditions remain the default. Since v1.2.39 its final setting also selects Neko material-group output and BodyGroup state limits, described below; conditional evaluation still uses the mode active at that point in the script. `$boneweightpolicy ce` culls normalized imported weights below .001 and renormalizes; native/neko keep .0001. Source import policies capture their context and participate in cache identity.
 
 `$fbxcompatibility neko` selects Assimp, a default 30 Hz sample rate, and its UpAxis setting; native uses ufbx/file FPS. True FBX cluster bind matrices are independent of sampled rest/animation transforms. Assimp pre/post behaviors and authored key interpolation are consumed; Collada STEP/LINEAR/BEZIER is evaluated before Assimp can discard the curve. Unsupported tangent representations require explicit author-side baking.
 
@@ -415,7 +415,7 @@ is a behavioral reference, not bundled or called by this compiler.
 | Line `$if/$ifdef/$elif/$eldef/$else/$endif` | Normalizes line blocks to the existing conditional evaluator; nesting and skipped invalid branches are supported. Existing braced syntax remains available. |
 | `$Include file iffileexists`, `$QCAssert ...` | Optional include alias; a QCAssert without explicit true/false defaults to true. |
 | `-checksequenceorder` | Enables existing-model ordering; already the project's default. `-noremap` selects QC order. |
-| `-playbeep`, `-reloadhlmv` | Completion/error tone; Windows HLMV notification using mx_class / WM_COMMAND 1017, sent only after successful file output. |
+| `-playbeep`, `-reloadhlmv` | Completion/error tone; Windows HLMV notification using mx_class / WM_COMMAND 1017, sent only after successful file output. v1.2.39 also sends the bounded L4N extension request described below. |
 
 Static node scale is baked into geometry. Animated scene scale is supported via opt-in sampled vertex-cache baking; see VALIDATION.md. Native MDL bone-scale tracks are not emitted.
 
@@ -428,6 +428,53 @@ are not promised. The fixed policies and reference evidence are closed in
 [FIVE_COMPILER_COMPLETION.md](FIVE_COMPILER_COMPLETION.md). PulseModel updates
 retain these maintained changes through the overlay; Neko reference updates are
 reviewed manually.
+
+## NekoMDL 2.4.0 compatibility
+
+The new user-supplied executable identifies itself as 2.4.0 at runtime,
+although its Windows version resources still say 2.3.0. Reference validation
+was followed by the independent v1.2.39 implementation below.
+The author's public Steam changelog still ends at 2.3.0; a complete official
+2.4.0 change list, release date and stability designation remain unconfirmed.
+
+| Verified reference change | Maintained compiler status |
+| --- | --- |
+| No-argument, case-insensitive `$DisableCache` bypasses subsequent loaded-source reuse. A repeated SMD after `$scale` demonstrates new geometry instead of the old cached scale. | Implemented for subsequent source lookup/insertion. Earlier sources retain their geometry and ownership; parsed DMX/scene caches remain separate. `$SceneCacheMiB 0` is not equivalent. |
+| Multiple named `$texturegroup` blocks emit per-group alternative rows and `neko_material_group` keyvalues. | With final `$qccompatibility neko`, more than one group adds named `i`/`c` ranges and a final identity skin row. Single groups/native mode retain existing output. This is not a Cartesian product or verified support in a game. |
+| Rejects a BodyGroup base × choices product at or above 2^31. | Final `$qccompatibility neko` selects the strict bound with checked arithmetic. Native mode retains the existing checked base/preset policy, including 31 binary groups. |
+| `-reloadhlmv` also attempts a `WM_COPYDATA` / `l4n_reload_model` message to a `Valve001` window. | Implemented after successful output on Windows, with a one-second send timeout followed by the existing HLMV notification. `-verify` and failed compiles do not notify. Delivery does not prove a real game reload. |
+
+Use `$DisableCache` before the source that must be freshly loaded. It takes no
+`0`/`1` argument and remains active for the rest of that QC. It is available in
+both QC modes and does not promise that all internal importer caches are cleared.
+This may increase work and memory use when repeatedly loading large files.
+
+For Neko group output, place `$qccompatibility neko` near the beginning of the
+QC. The last mode directive selects final material and body-state policy; a
+later `$qccompatibility native` restores the native output policy. Standard
+rows and `$set` alternatives remain in declaration order. Metadata `i` is the
+first alternative skin row (row zero is the common default), and `c` is the
+number of alternatives. Empty/default-only groups have `c 0`. The metadata
+is appended to existing model keyvalues and participates in their size limit;
+the trailing identity row participates in the skin-table budget.
+
+Multiple Neko groups must have nonempty, case-insensitively unique names with
+no quotes, backslashes or control characters. An authored root
+`neko_material_group` key conflicts with generated metadata and is rejected;
+nested keys and ordinary scalar values with this text are allowed. These
+explicit ambiguity checks are implementation safeguards, not claims about
+unmeasured reference rejection behavior.
+
+The reload request is `l4n_reload_model models\<model path>.mdl` plus LF and
+NUL, with `WM_COPYDATA` data ID and sender set to zero. Model paths containing
+console control characters, quotes or semicolons skip the game request.
+Failure/timeout only reports a notification problem after files were written.
+An extension that handles this protocol is required; ordinary L4D2 support
+and real game behavior remain unverified.
+
+See the [reference report](tests/reports/2026-10-24-nekomdl-2.4-reference.md)
+for hashes, isolated compiler outputs and evidence IDs, and the
+[v1.2.39 validation record](tests/reports/v1.2.39-neko24.md) for implementation checks.
 
 ## CS:GO reference investigation
 

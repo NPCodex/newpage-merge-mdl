@@ -104,7 +104,7 @@ v1.2.20 将 FE settings/吸引/弯曲/地面参数、零重力回退修复、默
 
 ## 项目版本与双语文档
 
-当前项目版本为 **v1.2.38**，程序和 Windows 文件版本统一采用该版本（含 `ag2proportions`），独立于 PulseModel 上游版本号。正式发布及本次验收范围见 [Release](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.38) 与 [发布前验收记录](tests/reports/v1.2.38-candidate.md)。
+当前源码项目版本为 **v1.2.39**，程序和 Windows 文件版本统一采用该版本（含 `ag2proportions`），独立于 PulseModel 上游版本号。发布状态及本次验收范围见 [Release](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.39) 与 [Neko 2.4 移植验证记录](tests/reports/v1.2.39-neko24.md)。
 `CMakeLists.txt` 的项目版本与 `automation/upstreams.json` 的 `project_version` 应同步维护。
 自动发布标签采用 `v1.2.0`、`v1.2.1` 等语义版本。检测到新的上游或发布输入内容时，补丁号递增；配置版本作为最低版本，可手动提高主/次版本。输入内容没有变化则跳过发布，强制重建同一内容沿用已发布的版本和公开标签。合并源码内的 CMake、发布配置和 README 会同步写入实际发布版本，并重新生成对应补丁。
 中文 `README.md` 与英文 `README.en.md` 都会包含在合并源码和二进制发布包中。

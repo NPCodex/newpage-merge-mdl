@@ -181,6 +181,9 @@ def main():
             subprocess.run([sys.executable,str(Path(__file__).with_name('c4d_bridge_test.py')),str(compiler)],check=True)
         else:
             print('Linux package uses C4D-to-GLB conversion on Windows; native C4D checks do not apply.',flush=True)
+        if os.name == 'nt':
+            subprocess.run([sys.executable, str(Path(__file__).with_name('neko24_reload.py')),
+                            str(compiler), '--require-all'], check=True)
         for script, arguments in (
             ('ce_morph_normals.py', [str(compiler)]),
             ('cli_framerate_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix))]),

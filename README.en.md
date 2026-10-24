@@ -53,6 +53,9 @@ offline SubD and DMX rig baking have specific authoring requirements. Run
 - CE/Neko behavior uses explicit compatibility options. Launch argument priority
   is gameinfo, `cfg/commandline.cfg`, then explicit CLI; `-nodefaultargs` disables
   configuration defaults. See [compatibility](COMPATIBILITY.md).
+- `$DisableCache` reloads subsequent model sources. `$qccompatibility neko`
+  selects Neko material-group metadata and BodyGroup limits; see the
+  [scope and usage](COMPATIBILITY.md#nekomdl-240-compatibility).
 - Preserve `.npmdl-*` recovery journals, staging files and backups after an
   interrupted compile. The next compile attempts recovery; investigate reported
   conflicts before changing recovery files. Do not target one output set from

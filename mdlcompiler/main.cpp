@@ -82,7 +82,7 @@ static int Usage() {
     std::printf("  -playbeep    play a completion/error tone\n");
     std::printf("  -DontDestroy CE alias for default error-output preservation (no cleanup)\n");
     std::printf("  -nvtristrip / -usenvtristrip  use the legacy NvTriStrip backend\n");
-    std::printf("  -reloadhlmv  refresh the matching HLMV window after writing (Windows)\n");
+    std::printf("  -reloadhlmv  notify HLMV and an L4N-compatible game after writing (Windows)\n");
     std::printf("                dx80 is only written when the vtx format is 0\n");
     std::printf("  -includesearchdir <dir>\n");
     std::printf("                extra fallback dir for $include, searched after any\n");
@@ -634,6 +634,29 @@ static int RunCompile(int argc, char** argv) {
 #ifdef _WIN32
         std::string title="models\\"+model.outname+".mdl";
         std::replace(title.begin(),title.end(),'/','\\');
+        // Neko 2.4 also sends the extension's console request to the game.
+        // Bound synchronous COPYDATA delivery: a hung receiver must not hold
+        // up a successfully written model. Delivery does not certify reload.
+        HWND game = FindWindowA("Valve001", nullptr);
+        if (game) {
+            const bool unsafe = std::any_of(title.begin(), title.end(), [](unsigned char c) {
+                return c < 0x20 || c == ';' || c == '"';
+            });
+            if (unsafe) {
+                std::printf("Skipped L4N reload request: model path contains console control characters.\n");
+            } else {
+                const std::string request = "l4n_reload_model " + title + "\n";
+                COPYDATASTRUCT data{};
+                data.cbData = static_cast<DWORD>(request.size() + 1);
+                data.lpData = const_cast<char*>(request.c_str());
+                DWORD_PTR receiverResult = 0;
+                if (SendMessageTimeoutA(game, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data),
+                                        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &receiverResult))
+                    std::printf("Sent L4N-compatible model reload request.\n");
+                else
+                    std::printf("L4N reload request timed out or could not be delivered.\n");
+            }
+        }
         HWND viewer=FindWindowExA(nullptr,nullptr,"mx_class",title.c_str());
         if(!viewer) viewer=FindWindowExA(nullptr,nullptr,"mx_class",nullptr);
         if(viewer && PostMessageA(viewer,WM_COMMAND,1017,0)) std::printf("Notified HLMV to reload\n");

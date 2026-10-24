@@ -35,6 +35,7 @@
 
 - `-OutDir` 指定输出根目录，`$modelname` 决定模型路径；它不替代 `-game`。编译支持 `.qc` / `.pulseqc`，资源和 VMT/VTF 材质需自行准备。
 - 参数优先级：`gameinfo < cfg/commandline.cfg < 显式命令行`；`-nodefaultargs` 禁用前两者。CE/Neko 差异通过显式兼容选项选择。
+- `$DisableCache` 使后续模型源重新加载；`$qccompatibility neko` 可选择 Neko 的多材质组元数据和 BodyGroup 状态上限。适用范围见 [兼容说明](COMPATIBILITY.md#nekomdl-240-compatibility)。
 - 先在隔离目录输出并在目标游戏验证，再整套替换匹配的 MDL/VVD/VTX/PHY/ANI。不要混用旧伴随文件；中断后保留 `.npmdl-*` 恢复文件，按诊断处理。
 - 反编译器、AG2 及 VMD/L4D 支持持久恢复和同目标并发保护；中断后保留诊断指出的日志、暂存文件及备份，重跑同一任务恢复。外部修改冲突须先检查；各工具的文件位置见 [安装指南](INSTALL.md)。
 - 最终骨预算、每顶点权重和其他格式/引擎限制仍有效。CSGO/MCV 扩展 VTX 依赖正确 AppID，FE 布料限 CSGO；SubD 建议使用默认离线烘焙，已测 CSGO legacy 原生 SubD 路径会崩溃。

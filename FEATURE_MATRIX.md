@@ -136,6 +136,10 @@ AG2 预检工具链，暂存源、compiled 与可选 VMDL/首次备份。AG2 与
 
 ## NekoMDL：按中文日志核对
 
+下表原有实现以 2.3.0 中文日志为基准。2026-10-24 用户提供的程序运行标识为
+2.4.0，但 Windows 属性仍为 2.3.0；[新版核对报告](tests/reports/2026-10-24-nekomdl-2.4-reference.md)
+记录了实测差异；v1.2.39 的移植范围如下，实机消费能力另行标注。
+
 | 功能组 | 状态 / 当前路径 |
 | --- | --- |
 | glTF/GLB/VRM、FBX 与 Assimp 场景格式 | 已实现导入，含无 UV/形态键法线；尚未逐格式验证所有 Assimp 格式。FBX 使用 ufbx；v1.2.11 保留 Assimp glTF 几何导入并用原始采样器修复 STEP/CUBICSPLINE，glTF/GLB/VRM 双后端数值检查通过。2026-10-18 静态 glTF 双路径对照确认当前逆转置法线与镜像绕序补偿正确，保留与 Neko 参考侧缺陷的差异；未扩张任意蒙皮/动画保证。 |
@@ -149,6 +153,10 @@ AG2 预检工具链，暂存源、compiled 与可选 VMDL/首次备份。AG2 与
 | OBJ 材质名、科学计数、大小写扩展名、中文路径 | 已有导入/数值/路径实现；各平台和格式的完整组合覆盖仍需扩充。 |
 | `$prefer_fbx`、`$forcecapsules`、旧 strip 参数 | **v1.2.8 补齐**：前两者按当前参考接受并警告，不改变导入/生成胶囊；`-usenvtristrip` 映射既有 NvTriStrip。 |
 | 历史 Blender/FBX SDK 切换与 DLL 配置 | 属于历史实现路线，不作为要求恢复的外部依赖；当前导入器直接编译源模型。 |
+| 2.4.0 `$DisableCache` | **v1.2.39 接入**：无参数、忽略大小写，绕过后续源缓存查找和写入；保留先前源及独立的 DMX/场景解析缓存。`$SceneCacheMiB 0` 不等价。 |
+| 2.4.0 多材质组元数据 | **v1.2.39 接入、运行端待验证**：最终 `$qccompatibility neko` 为多组生成 `neko_material_group` 组名、起始行和数量，并追加默认行；原生模式/单组保留原行为。不是完整组合换肤表。 |
+| 2.4.0 BodyGroup 状态上限 | **v1.2.39 显式兼容**：最终 `$qccompatibility neko` 拒绝乘积达到 2³¹；原生模式继续验证实际存储的 base 和 preset，保留有合法 base 的末组。 |
+| 2.4.0 L4N 重载通知 | **v1.2.39 协议接入、实机待验证**：`-reloadhlmv` 成功输出后向 `Valve001` 发送 `l4n_reload_model`，发送限时一秒，继续通知 HLMV；不能宣称普通 L4D2 支持热重载。 |
 
 ## 运行时后续核验 / Runtime follow-up verification
 

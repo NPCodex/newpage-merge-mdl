@@ -233,6 +233,7 @@ struct Ctx {
     std::map<std::string, source::Source*> rendermeshes; // $rendermesh name -> loaded source
     // filename -> shared source. A bodied $rendermesh is excluded: its edits must not leak to other refs.
     std::map<std::string, source::Source*> sourceCache;
+    bool disableSourceCache = false; // $DisableCache: subsequent loaded-source reuse only
     // Pose samplers must not define the model skeleton, even when their QC
     // command precedes $body. Owned until parsing finishes for safe cache reuse.
     std::vector<std::unique_ptr<source::Source>> proceduralPoseSources;
@@ -654,7 +655,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
     for (const auto& rename : c.morphRenames) if (rename.sourceOnly)
         key += "|morph:" + std::to_string(rename.from.size()) + ":" + rename.from +
                ":" + std::to_string(rename.to.size()) + ":" + rename.to;
-    if (!priv) {
+    if (!priv && !c.disableSourceCache) {
         auto it = c.sourceCache.find(key);
         if (it != c.sourceCache.end() && it->second->kind >= kind)
             return it->second;
@@ -848,7 +849,7 @@ source::Source* LoadSource(Ctx& c, const std::string& filename, int line,
     auto& owners = proceduralPoseOnly ? c.proceduralPoseSources : c.in.sources;
     owners.push_back(std::move(src));
     source::Source* loaded = owners.back().get();
-    if (!priv) {
+    if (!priv && !c.disableSourceCache) {
         source::Source*& cached = c.sourceCache[key];
         if (!cached || cached->kind < kind) // raise only - see the cache rule above
             cached = loaded;
@@ -3874,7 +3875,7 @@ bool CmdCalcTransitions(Ctx& c, const Token&) {
 // text and copied into the .mdl unchanged; nesting is preserved and tokens
 // inside a nested block come back out quoted, exactly like the reference.
 bool ParseKeyValues(Ctx& c, const Token& cmd, std::string& out,
-                    bool normalizeModelPaths = false) {
+                    bool normalizeModelPaths = false, bool* hasNekoMaterialGroup = nullptr) {
     const Token* brace = c.Next();
     if (!brace || brace->quoted || brace->text != "{")
         return c.Fail(cmd.line, cmd.text + " expects '{'");
@@ -3917,6 +3918,10 @@ bool ParseKeyValues(Ctx& c, const Token& cmd, std::string& out,
             }
             out += "\"" + value + "\" ";
         } else {
+            if (expectKey[level] && hasNekoMaterialGroup &&
+                Lower(t->text) == "neko_material_group")
+                *hasNekoMaterialGroup = true;
+            expectKey[level] = !expectKey[level];
             out += t->text + " ";
         }
     }
@@ -3974,7 +3979,8 @@ bool CmdBoneFlexDriver(Ctx& c, const Token& cmd) {
 
 // $keyvalues { ... }  (Cmd_KeyValues): the model-level block.
 bool CmdKeyValues(Ctx& c, const Token& cmd) {
-    return ParseKeyValues(c, cmd, c.in.keyvalues);
+    return ParseKeyValues(c, cmd, c.in.keyvalues, false,
+                          &c.in.hasNekoMaterialGroupKeyValue);
 }
 
 bool CmdCollisionText(Ctx& c, const Token& cmd) {
@@ -7289,9 +7295,11 @@ bool CmdRenderMeshCmdList(Ctx& c, const Token& cmd) {
 // Legacy row 0 defines columns; later rows and each $set append skin families.
 // Family 0 uses the model's own materials, shared across all groups.
 bool CmdTextureGroup(Ctx& c, const Token& cmd) {
+    cm::CompileInput::TextureGroup group;
+    group.location = c.file + "(" + std::to_string(cmd.line) + "): ";
+    group.firstFamily = c.in.skinFamilies.size();
     if (!c.AtCommand() && (c.Cur().quoted || c.Cur().text != "{")) {
-        std::string name;
-        if (!c.Want("a group name", cmd, name))
+        if (!c.Want("a group name", cmd, group.name))
             return false;
     }
     if (!WantOpenBrace(c, cmd, cmd.text))
@@ -7349,6 +7357,8 @@ bool CmdTextureGroup(Ctx& c, const Token& cmd) {
     // Include the base family in the limit.
     if (c.in.skinFamilies.size() + 1 > static_cast<size_t>(pulse::limits::kMaxSkinFamilies))
         return c.Fail(cmd.line, "too many $texturegroup skin families");
+    group.familyCount = c.in.skinFamilies.size() - group.firstFamily;
+    c.in.textureGroups.push_back(std::move(group));
     return true;
 }
 
@@ -9802,6 +9812,13 @@ bool CmdCaseOutside(Ctx& c, const Token& cmd) {
 // No capsule build path exists here, so it is accepted and silently ignored.
 bool CmdForceCapsules(Ctx&, const Token&) { return true; }
 
+bool CmdDisableCache(Ctx& c, const Token&) {
+    // Loaded sources stay owned by CompileInput. Parsed DMX/scene imports
+    // remain reusable because each source applies the current import settings.
+    c.disableSourceCache = true;
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 // Command table - the whole supported surface. Add, rename or drop a line and
 // the language changes; nothing else needs touching.
@@ -9831,7 +9848,11 @@ bool CmdCeOption(Ctx& c, const Token& cmd) {
         mode=Lower(mode);
         if(mode!="native" && mode!="neko") return c.Fail(cmd.line,cmd.text+" expects native or neko");
         if(name=="fbxcompatibility") c.sceneOptions.fbxAssimp=mode=="neko";
-        else c.nekoConditions=mode=="neko";
+        else {
+            c.nekoConditions=mode=="neko";
+            c.in.qcCompatibility=c.nekoConditions ? cm::CompileInput::QcCompatibility::Neko
+                                                  : cm::CompileInput::QcCompatibility::Native;
+        }
         return true;
     }
     if(name=="dmxcompatibility") {
@@ -10207,6 +10228,7 @@ bool CmdCloth(Ctx& c, const Token& cmd) {
 }
 
 constexpr Command kCommands[] = {
+    {"$disablecache", CmdDisableCache},
     {"$boneweightpolicy", CmdCeOption},
     {"$fbxcompatibility", CmdCeOption},
     {"$qccompatibility", CmdCeOption},
