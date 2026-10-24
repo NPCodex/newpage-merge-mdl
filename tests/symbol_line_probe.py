@@ -91,15 +91,43 @@ def windows_line(binary, symbol='newpage_symbol_line_probe'):
         dbghelp.SymCleanup(process)
 
 
-def linux_line(debug, symbol='newpage_symbol_line_probe'):
+def linux_line(debug, symbol='newpage_symbol_line_probe', expected_source=None):
     for tool in ('nm', 'addr2line'):
         if not shutil.which(tool):
             raise RuntimeError(tool + ' is required for the native line probe')
-    lines = subprocess.check_output(['nm', '--defined-only', str(debug)], text=True).splitlines()
-    address = next(line.split()[0] for line in lines if line.split()[-1] == symbol)
-    result = subprocess.check_output(['addr2line', '-e', str(debug), address], text=True).strip()
-    source, line = result.rsplit(':', 1)
-    return source, int(line.split()[0])
+    lines = subprocess.check_output(['nm', '-S', '--defined-only', str(debug)], text=True).splitlines()
+    matches = [parts for raw in lines if (parts := raw.split()) and parts[-1] == symbol]
+    if len(matches) != 1 or len(matches[0]) != 4 or matches[0][2] not in ('t', 'T'):
+        raise RuntimeError(f'{debug}: no unique sized text symbol {symbol!r}')
+    address, size = (int(value, 16) for value in matches[0][:2])
+    if size < 1:
+        raise RuntimeError(f'{debug}: text symbol {symbol!r} has no address range')
+    # Optimized/LTO functions can begin with a prologue having no DWARF line.
+    # Search only this symbol's declared range, never the next function. Keep
+    # the first-address fast path and batch subsequent lookups over stdin so
+    # large entry points cannot exceed the command-line argument limit.
+    cursor, end = address, address + size
+    while cursor < end:
+        stop = min(end, cursor + (1 if cursor == address else 4096))
+        result = subprocess.check_output(
+            ['addr2line', '-e', str(debug)],
+            input=''.join(f'0x{value:x}\n' for value in range(cursor, stop)), text=True)
+        locations = result.splitlines()
+        if len(locations) != stop - cursor:
+            raise RuntimeError(f'{debug}: addr2line returned an unexpected number of locations for {symbol!r}')
+        for location in locations:
+            source, separator, line_text = location.rpartition(':')
+            number = line_text.split()[0] if line_text.split() else ''
+            if (not separator or not source.strip() or source in ('?', '??')
+                    or not number.isascii() or not number.isdecimal() or int(number) < 1):
+                continue
+            if expected_source and not source.replace('\\', '/').endswith(expected_source):
+                continue
+            return source, int(number)
+        cursor = stop
+    expected = f' in {expected_source}' if expected_source else ''
+    raise RuntimeError(f'{debug}: {symbol!r} did not resolve to a valid source file and line{expected} '
+                       f'within [0x{address:x}, 0x{end:x})')
 
 
 def llvm_source_line(output):
@@ -182,13 +210,14 @@ def main():
             base = name.removesuffix('.exe')
             symbol = 'wmain' if os.name == 'nt' and base in ('NewPageVRMLtoX3D', 'subtools/ag2proportions') else 'main'
             identity = match_symbols(binary.read_bytes(), debug.read_bytes(), platform, debug.name)
-            source, line = windows_line(binary, symbol) if os.name == 'nt' else linux_line(debug, symbol)
             expected = source_names.get(base, base + '/main.cpp')
+            source, line = (windows_line(binary, symbol) if os.name == 'nt'
+                            else linux_line(debug, symbol, expected))
             if not source.replace('\\', '/').endswith(expected) or line < 1:
                 raise RuntimeError(f'{name}: entry point did not resolve to its source: {source}:{line}')
             entries.append({'binary': name, 'symbol': symbol, 'source': source, 'line': line, 'native_identity': identity})
         report = {'platform': platform, 'executables': entries,
-                  'scope': 'Actual native executable entry points; not a claim that every optimized stack frame is recoverable.'}
+                  'scope': 'Actual native entry-point function ranges; not a claim that every optimized stack frame is recoverable.'}
         if args.output:
             args.output.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))
@@ -220,7 +249,7 @@ newpage_separate_symbols(probe)
             symbolizer = args.symbolizer or shutil.which('llvm-symbolizer')
             source, line = llvm_windows_line(binary, symbolizer) if symbolizer else windows_line(binary)
         else:
-            source, line = linux_line(debug)
+            source, line = linux_line(debug, expected_source='probe.c')
         if Path(source).name != 'probe.c' or line not in (6, 7, 8):
             raise RuntimeError(f'Probe did not resolve to its authored body: {source}:{line}')
         report = {'platform': platform, 'function': 'newpage_symbol_line_probe',

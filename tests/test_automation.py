@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -32,6 +34,40 @@ def asset(name='tools.zip', identifier=1):
 
 
 class AutomationTests(unittest.TestCase):
+    def test_overlay_keeps_required_guide_ignored_by_upstream(self):
+        spec = importlib.util.spec_from_file_location('refresh_overlay', ROOT / '.github/scripts/refresh_overlay.py')
+        refresh = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(refresh)
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            base, controller = folder / 'base', folder / 'controller'
+            base.mkdir()
+
+            def quiet_run(*args, cwd=None, capture=False):
+                return subprocess.run(list(map(str, args)), cwd=cwd, check=True,
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout
+
+            quiet_run('git', 'init', cwd=base)
+            (base / '.gitignore').write_text('subtools/ag2proportions/README.md\n')
+            quiet_run('git', 'add', '.gitignore', cwd=base)
+            quiet_run('git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                      'commit', '-m', 'Upstream fixture', cwd=base)
+            revision = quiet_run('git', 'rev-parse', 'HEAD', cwd=base).decode().strip()
+            guide = controller / 'subtools/ag2proportions/README.md'
+            guide.parent.mkdir(parents=True)
+            guide.write_text('Required maintained AG2 user guide\n')
+            (controller / 'automation').mkdir()
+            (controller / 'automation/upstreams.json').write_text(json.dumps({'pulse_base': revision}))
+            args = ['refresh_overlay.py', '--base-repository', str(base)]
+            with patch.object(refresh, 'ROOT', controller), patch.object(refresh, 'PATHS', ['subtools']), \
+                 patch.object(refresh, 'run', side_effect=quiet_run), patch.object(sys, 'argv', args):
+                refresh.main()
+                patch_text = (controller / 'automation/compatibility.patch').read_text()
+                self.assertIn('+++ b/subtools/ag2proportions/README.md', patch_text)
+                self.assertIn('+Required maintained AG2 user guide', patch_text)
+                with patch.object(sys, 'argv', args + ['--check']):
+                    refresh.main()
+
     def test_source_identity_is_canonical_for_known_text_only(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

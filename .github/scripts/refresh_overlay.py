@@ -42,6 +42,9 @@ def main():
             else:
                 shutil.copy2(source, target)
         run('git', 'add', '--', *PATHS, cwd=repo)
+        # Upstream ignores this path as agent notes, but the maintained project
+        # ships it as the required AG2 user guide in every platform package.
+        run('git', 'add', '-f', '--', 'subtools/ag2proportions/README.md', cwd=repo)
         patch = run('git', 'diff', '--cached', '--binary', '--', *PATHS, cwd=repo, capture=True)
         if not patch:
             raise ValueError('Empty overlay; refusing to overwrite maintained patch')

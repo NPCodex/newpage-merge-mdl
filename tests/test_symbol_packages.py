@@ -7,12 +7,13 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / '.github/scripts'))
 import package_symbols as symbols
 import upstream_release as upstream
-from symbol_line_probe import llvm_source_line
+from symbol_line_probe import linux_line, llvm_source_line
 
 
 def pdb(guid=b'0123456789abcdef', age=1):
@@ -147,6 +148,67 @@ class SymbolizerLocations(unittest.TestCase):
                              ('src/probe.c', True), ('src/probe.c', '6')):
             with self.subTest(source=source, line=line), self.assertRaisesRegex(ValueError, 'valid source file and line'):
                 llvm_source_line(json.dumps({'Symbol': [{'FileName': source, 'Line': line}]}))
+
+
+class LinuxSourceLines(unittest.TestCase):
+    def lookup(self, locations, *, symbols='00001000 00000004 T main\n', expected='mdlcompiler/main.cpp'):
+        queried = []
+
+        def command(args, *, text, input=None):
+            if args[0] == 'nm':
+                return symbols
+            self.assertEqual(args[:3], ['addr2line', '-e', 'compiler.debug'])
+            addresses = [int(value, 16) for value in input.splitlines()]
+            queried.extend(addresses)
+            return ''.join(locations.get(address, '??:?') + '\n' for address in addresses)
+
+        with mock.patch('symbol_line_probe.shutil.which', return_value='/usr/bin/tool'), \
+                mock.patch('symbol_line_probe.subprocess.check_output', side_effect=command):
+            result = linux_line(Path('compiler.debug'), 'main', expected)
+        return result, queried
+
+    def test_entry_address_remains_the_fast_path(self):
+        result, queried = self.lookup({0x1000: 'src/mdlcompiler/main.cpp:123 (discriminator 2)'})
+        self.assertEqual(result, ('src/mdlcompiler/main.cpp', 123))
+        self.assertEqual(queried, [0x1000])
+
+    def test_unknown_optimized_prologue_requires_a_real_line_inside_the_function(self):
+        result, queried = self.lookup({0x1000: '??:?', 0x1001: 'src/mdlcompiler/main.cpp:0',
+                                       0x1002: 'src/mdlcompiler/main.cpp:123'})
+        self.assertEqual(result, ('src/mdlcompiler/main.cpp', 123))
+        self.assertIn(0x1002, queried)
+        self.assertTrue(all(0x1000 <= address < 0x1004 for address in queried))
+
+    def test_inlined_header_line_does_not_replace_expected_entry_point_source(self):
+        result, _ = self.lookup({0x1000: '/usr/include/c++/13/string:45',
+                                 0x1001: 'src/mdlcompiler/main.cpp:123'})
+        self.assertEqual(result, ('src/mdlcompiler/main.cpp', 123))
+        with self.assertRaisesRegex(RuntimeError, 'valid source file and line in mdlcompiler/main.cpp'):
+            self.lookup({0x1000: '/usr/include/c++/13/string:45'})
+
+    def test_unknown_zero_and_adjacent_function_lines_cannot_pass(self):
+        # The valid line is exactly outside main's half-open range and must not
+        # be used as evidence for main, even if it is in the same source file.
+        locations = {0x1000: '??:?', 0x1001: '??:23', 0x1002: 'src/mdlcompiler/main.cpp:0',
+                     0x1003: 'src/mdlcompiler/main.cpp:?', 0x1004: 'src/mdlcompiler/main.cpp:124'}
+        with self.assertRaisesRegex(RuntimeError, r"main.*within \[0x1000, 0x1004\)"):
+            self.lookup(locations, symbols='00001000 00000004 T main\n00001004 00000008 T next\n')
+
+    def test_missing_ambiguous_and_unsized_symbols_cannot_pass(self):
+        for symbols in ('00001000 00000004 T other\n', '00001000 T main\n',
+                        '00001000 00000004 D main\n',
+                        '00001000 00000004 T main\n00002000 00000004 T main\n'):
+            with self.subTest(symbols=symbols), self.assertRaisesRegex(RuntimeError, 'unique sized text symbol'):
+                self.lookup({}, symbols=symbols)
+        with self.assertRaisesRegex(RuntimeError, 'no address range'):
+            self.lookup({}, symbols='00001000 00000000 T main\n')
+
+    def test_empty_addr2line_output_cannot_pass(self):
+        with mock.patch('symbol_line_probe.shutil.which', return_value='/usr/bin/tool'), \
+                mock.patch('symbol_line_probe.subprocess.check_output',
+                           side_effect=['00001000 00000004 T main\n', '']), \
+                self.assertRaisesRegex(RuntimeError, 'unexpected number of locations'):
+            linux_line(Path('compiler.debug'), 'main')
 
 
 class NativeIdentities(unittest.TestCase):
