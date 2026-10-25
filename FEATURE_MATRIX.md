@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。当前源码版本：v1.2.38；[正式版已发布](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.2.38)，具体范围以发布说明为准。
+可用的模型编译功能整合到 NewPageMergeMDL。当前源码版本：v1.3.0；[发布状态](https://github.com/NPCodex/newpage-merge-mdl/releases)及范围以对应发布说明为准。
 
 **每次生产编译都必须将 `-game` 指向目标游戏/模组中包含正确 `gameinfo.txt` 的目录。** `-OutDir` 只设置输出，不替代目标识别或资源挂载；请保留原始输入，并隔离输出进行验证。详细条件见 [编译前必读](README.md#编译前必读)。
 
@@ -37,7 +37,7 @@ v1.2.33 Windows 完整包沿用本机 MinSizeRel + ThinLTO 构建流程，已完
 
 ## 当前辅助工具与反编译契约
 
-当前固定 33 项范围及逐项实施/验收状态见 [本轮台账](tests/reports/v1.2.38-improvements.md)。[游戏/平台矩阵](GAME_PLATFORM_MATRIX.md) 按编译、加载、材质、flex、LOD、IK/程序骨、物理与动画分别记录实测，不以编译成功推导游戏成功。[v1.2.37 修复报告](tests/reports/toolkit-fixes-20261020.md) 保留历史构建的证据。源码版本不代表已经发布。
+当前六项改进及验收状态见 [v1.3.0 台账](tests/reports/v1.3.0-work.md)；[33 项台账](tests/reports/v1.2.38-improvements.md)保留 v1.2.38 历史范围。[游戏/平台矩阵](GAME_PLATFORM_MATRIX.md) 按编译、加载、材质、flex、LOD、IK/程序骨、物理与动画分别记录实测，不以编译成功推导游戏成功。源码版本不代表已经发布。
 
 VMD 按每帧左右腿 IK 开关选择 IK/FK，关闭时保留 Thigh/Calf/Foot 的 FK；PMX、绑定姿态、比例与最终姿态拒绝非有限数值。正交相机尚无支持的输出表示，会在写入前明确失败，非法 perspective 标记也拒绝。AG2 校验完整资源及 preload CRC32。反编译保留各 LOD 独立权重并检查伴随文件 checksum、结构和解码范围；存在但损坏的 PHY 失败，缺 PHY 时明确警告无法证明碰撞完整性。
 
@@ -48,11 +48,12 @@ AG2 独立第一人称模式与自定义 helper 骨保留已有[资源验证](te
 | 当前扩展 | 已实现范围与边界 |
 | --- | --- |
 | 场景输入与缓存 | 同源骨/动画名消歧、DMX 蒙皮数组校验、完整 VPK CRC；预算化 LRU 和生命周期释放，不是进程 RSS 硬上限。见 [SCENE_IMPORT](SCENE_IMPORT.md)。 |
-| 采样与 USD | 可选位置/法线容限减少顶点帧，未知/STEP 插值保留密集帧；USD 有界静态单引用/选定变体/实例，对不支持组合明确失败。不是完整 OpenUSD。 |
-| 动画工具 | VMD 尾轨时长、独立相机/表情、自定义人形映射与可选减帧；[真实 Blender 八骨下肢](tests/reports/v1.2.38-blender-vmd.md)核对非对称比例、绑定、脚固定与数值蒙皮。L4D 支持混合格点/pose 层及遮罩；[官方 Zoey→Rochelle](tests/reports/v1.2.38-l4d-production.md) 17序列离线往返及本轮四个固定位置人物的移动/瞄准混合通过，不扩为完整幸存者玩法、活动切换或游戏 pose-envelope 认证。 |
-| C4D 静态缓存 | 真实 C4D 2027 保存的生成器/变形器缓存经 Cineware 22 读取，与应用求值几何、UV、法线及层级对照通过；骨骼动画仍明确拒绝。见[应用报告](tests/reports/v1.2.38-c4d-application.md)。 |
+| 采样与 USD | 可选位置/法线容限减少顶点帧，未知/STEP 插值保留密集帧；USD 有界静态单引用/选定变体/实例，新增文件型嵌套 subLayers、强度覆盖及相对引用。复杂层栈明确失败，不是完整 OpenUSD。见[分层验证](tests/reports/v1.3.0-usd-layers.md)。 |
+| 动画工具 | VMD 尾轨时长、独立相机/表情、自定义人形映射与可选减帧；[真实 Blender 八骨下肢](tests/reports/v1.2.38-blender-vmd.md)核对非对称比例、绑定、脚固定与数值蒙皮。L4D 支持混合格点/pose 层及遮罩；[官方 Zoey→Rochelle](tests/reports/v1.2.38-l4d-production.md) 17序列离线往返及本轮四个固定位置人物的移动/瞄准混合通过，另有[v1.3.0 玩家动作/重载](tests/reports/v1.3.0-gameplay.md)有界实测；不扩为所有活动或游戏 pose-envelope 认证。 |
+| C4D 缓存与骨骼动画 | 保留静态缓存，新增有界单网格线性蒙皮及关节线性 TRS 动画；材质/UV 拆分保留权重，不支持的复杂 rig 明确失败。真实保存场景与独立应用求值样本对照通过，未进行新的 C4D 实机运行。见[验证报告](tests/reports/v1.3.0-c4d.md)。 |
 | 反编译 | VVD 内容校验、每模型质量 JSON、选择性资产导出及保留目录、可选 DMX 减帧；选择性资产集不保证可独立回编。见 [导出说明](DECOMPILER_EXPORTS.md)。 |
-| 作者脚本 | OBJ/GLB 网格包装、本地 VMT/VTF 依赖收集、声明完整搜索根后的增量编译与批次摘要。[Medusa 六模型](tests/reports/v1.2.38-medusa-materials.md)各 19 VMT/37 VTF 闭包及缺件输出保护通过，并修复 EyeRefract 贴图漏收；不等于游戏着色认证。见 [工作流](AUTHORING_WORKFLOWS.md)。 |
+| 作者脚本 | OBJ/GLB 网格包装、本地 VMT/VTF 依赖收集、完整搜索根声明下的增量编译；独立批次支持并发数与估算内存预算，失败保留各自旧输出。[Medusa 六模型](tests/reports/v1.2.38-medusa-materials.md)保留原材质证据，不等于游戏着色认证。见 [工作流](AUTHORING_WORKFLOWS.md)。 |
+| 碰撞正确性与性能 | 修复位置/法线容差链导致几何丢失，保留首匹配规则；空间候选、并查集和 ragdoll 源复用，密集候选仍可能平方复杂度。见[回归与测量](tests/reports/v1.3.0-collision.md)。 |
 | 维护与验收 | 安全 perf/dependency 报告、结构化诊断、平台基线、符号/变异/可重复构建的实际完成状态逐项列于台账；[候选包验收](tests/reports/v1.2.38-candidate.md)核对双平台完整包、精确源码及符号。内存与复现检查保留各自源码身份。 |
 
 ## v1.2.36 替换构建
@@ -156,7 +157,7 @@ AG2 预检工具链，暂存源、compiled 与可选 VMDL/首次备份。AG2 与
 | 2.4.0 `$DisableCache` | **v1.2.39 接入**：无参数、忽略大小写，绕过后续源缓存查找和写入；保留先前源及独立的 DMX/场景解析缓存。`$SceneCacheMiB 0` 不等价。 |
 | 2.4.0 多材质组元数据 | **v1.2.39 接入、运行端待验证**：最终 `$qccompatibility neko` 为多组生成 `neko_material_group` 组名、起始行和数量，并追加默认行；原生模式/单组保留原行为。不是完整组合换肤表。 |
 | 2.4.0 BodyGroup 状态上限 | **v1.2.39 显式兼容**：最终 `$qccompatibility neko` 拒绝乘积达到 2³¹；原生模式继续验证实际存储的 base 和 preset，保留有合法 base 的末组。 |
-| 2.4.0 L4N 重载通知 | **v1.2.39 协议接入、实机待验证**：`-reloadhlmv` 成功输出后向 `Valve001` 发送 `l4n_reload_model`，发送限时一秒，继续通知 HLMV；不能宣称普通 L4D2 支持热重载。 |
+| 2.4.0 L4N 重载通知 | `-reloadpid PID` 指定进程，多个候选拒绝猜测，发送限时一秒后继续通知 HLMV。14项[隔离协议测试](tests/reports/v1.3.0-reload.md)通过；[L4N 实际游戏](tests/reports/v1.3.0-gameplay.md)用挂点新增/恢复读回验证缓存刷新，不推广到普通 L4D2 或任意插件组合。 |
 
 ## 运行时后续核验 / Runtime follow-up verification
 

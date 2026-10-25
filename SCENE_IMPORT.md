@@ -40,8 +40,10 @@ $body model motion.gltf InNode MeshA BakeSceneAnimation Move SceneSampleRate 60 
 
 引用根的局部变换、负缩放、`active` 覆盖和 `resetXformStack` 会保留；`instanceable` 引用展开为普通网格实例，其直接本地子节点意见按 USD 的实例规则忽略。普通非实例引用保留本地新增子节点。对已有引用子节点进行同名覆盖需要更完整的上下文组合，目前会明确拒绝，不能借此覆盖其激活状态、实例定义或其他意见。OpenUSD 展平生成的未定义原型仅作为引用来源，不额外导出为网格。
 
-重复的 USD 叶节点名使用完整 prim 路径消歧，例如 `InNode /Second/Triangle`。外部引用层经过同一个文件读取接口，加入编译依赖报告。
+普通文件还支持有界静态 `subLayers`：按“根层 > 第一个子层及其嵌套子层 > 后续子层”的顺序组合，同路径根节点/后代的静态属性、几何点、变换与 `active` 意见由较强层覆盖；无默认值的属性声明继续继承较弱层的值。显式 reference 列表可以替换较弱层的 reference。每个外部资源路径仍相对其作者层解析，内部引用则查找组合后的层栈。`defaultPrim`、`upAxis` 等舞台元数据只取当前根层，不从子层继承。
 
-缺文件、缺 prim、缺作者指定的 variant、循环引用均明确失败。当前不支持 subLayers、payload/inherits/specializes/value clips、单 prim 上多个 reference arcs（包括本地与变体分别贡献 reference）、reference 时间偏移、嵌套 variant sets、PointInstancer 或引用骨架的路径重映射；遇到这些内容请先用制作软件/OpenUSD 展开对应部分。组合预算为最多 128 个源层、64 层引用/节点深度、65536 次 prim 展开及单层 512 MiB。USDZ/内存输入中的引用、变体与 subLayers 仍须预先展开。
+重复的 USD 叶节点名使用完整 prim 路径消歧，例如 `InNode /Second/Triangle`。外部引用层和子层经过同一个文件读取接口，加入编译依赖报告。
 
-这不等同完整 OpenUSD 或材质着色系统。固定验证使用自制 USDA、独立 OpenUSD 展开结果及真实 Blender 导出的有界静态场景，核对世界顶点覆盖；复杂制作软件场景、完整材质网络、骨骼组合及游戏内表现仍应单独验收。具体证据见 [导入验证记录](tests/reports/v1.2.38-import-validation.md)。
+缺文件、缺 prim、缺作者指定的 variant、循环引用/子层均明确失败。当前不支持 payload/inherits/specializes/value clips、单 prim 上多个 reference arcs（包括本地与变体分别贡献 reference）、reference 时间偏移、嵌套 variant sets、PointInstancer 或引用骨架的路径重映射。新增子层组合仅覆盖静态值：层栈中的时间采样、variant 意见、骨架、子层时间偏移、叠加的非显式 reference 列表、同名 relationship/connection/属性类型覆盖、双方均提供的 API schema 列表及双方均含属性字典元数据的组合会明确失败；这些复杂内容须先在制作软件/OpenUSD 中展开。组合预算为最多 128 个源层、64 层引用/节点/子层深度、65536 次 prim 展开及单层 512 MiB。USDZ/内存输入中的引用、变体与 subLayers 仍须预先展开。
+
+这不等同完整 OpenUSD 或材质着色系统。固定验证使用自制 USDA、独立 OpenUSD 展开结果及真实 Blender 导出的有界静态场景，核对世界顶点覆盖；复杂制作软件场景、完整材质网络、骨骼组合及游戏内表现仍应单独验收。新增子层证据见 [v1.3.0 USD 验证](tests/reports/v1.3.0-usd-layers.md)，历史 Blender 与组合证据见 [v1.2.38 导入验证](tests/reports/v1.2.38-import-validation.md)。

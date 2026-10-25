@@ -108,6 +108,17 @@ Independent jobs continue after one fails; any failure makes the batch exit 2.
 Each model publishes through the compiler's existing transaction. The complete
 batch is not a single all-model transaction.
 
+Use `--jobs 4` to run up to four independent models concurrently (default 1,
+range 1–64). Parallel plans must declare complete search roots and must not
+read another job's output directory. This is the author's dependency contract,
+not automatic dependency discovery. Parallel plans reject watched symlinks and
+junctions because a link can hide an input dependency on another job's output.
+`--memory-budget-mib 2048 --job-memory-mib 768` further limits this example to
+two workers. The per-job value is a scheduling estimate; it is **not an operating
+system memory cap**, and an individual compiler can exceed it. The report records
+requested/effective workers and this limit. Results remain in plan order;
+one failed worker keeps its previous output while independent workers complete.
+
 Caching is disabled unless `complete_search_roots` is explicitly true and all
 actual native dependencies lie under `watch_roots`. This declaration means the
 author has included every directory that may affect lookup, including game
@@ -122,8 +133,9 @@ the environment (not raw environment values). Add `toolchain_files` for helper
 executables/libraries outside the portable package layout. Changes to actual
 dependency content rebuild only its users. Adding a file to a shared search
 root conservatively invalidates all jobs watching that root, so a newly added
-higher-priority resource cannot silently reuse old output. Watched symlinks or
-junctions disable caching because their recursive coverage is unproven.
+higher-priority resource cannot silently reuse old output. In serial plans,
+watched symlinks or junctions disable caching because recursive coverage is
+unproven; parallel plans reject them before starting workers.
 
 Missing or modified output files rebuild their model. Only the wrapper-owned
 output/cache/report paths are excluded from directory scanning. Source files
@@ -165,6 +177,13 @@ Recognized QC `file(line):` diagnostics retain the exact nested source location;
 unknown locations use a null line. The batch wrapper also records bounded log
 tails and built/skipped/failed totals. A category code is not a claim that every
 legacy log message has a unique structured diagnostic.
+
+When a loader supplies an exact source line, `NP1101` keeps the calling QC/QCI
+location and adds the failing mesh location to `related_locations`. The optional
+`hint` suggests a corrective action for recognized source, mount, report-alias or
+recovery errors. A missing filename or unknown location never receives an invented
+line. Report publication stages serialized text directly after recording durable
+intent; output locking, interrupted recovery and conflict checks remain enabled.
 
 The diagnostic bundle is a local ZIP containing allowlisted build identity and
 only explicitly selected UTF-8 `.txt`/`.log` files up to 2 MiB each. The optional

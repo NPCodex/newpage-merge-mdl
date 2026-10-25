@@ -9,6 +9,8 @@ This verifies the wire protocol and bounded delivery, not an actual game reload.
 from pathlib import Path
 import ctypes
 from ctypes import wintypes
+from contextlib import contextmanager
+import json
 import os
 import subprocess
 import sys
@@ -21,7 +23,7 @@ import uuid
 from validate_outputs import validate
 
 
-COMPILER = Path(sys.argv.pop(1)).resolve() if len(sys.argv) > 1 else None
+COMPILER = Path(sys.argv.pop(1)).resolve() if __name__ == '__main__' and len(sys.argv) > 1 else None
 WINDOWS = sys.platform == 'win32'
 MODEL_NAME = 'reload/nested/model'
 MODEL_TITLE = r'models\reload\nested\model.mdl'
@@ -98,6 +100,8 @@ if WINDOWS:
     prototype(user32, 'DefWindowProcW', LRESULT, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
     prototype(user32, 'GetMessageW', wintypes.BOOL, ctypes.POINTER(wintypes.MSG),
               wintypes.HWND, wintypes.UINT, wintypes.UINT)
+    prototype(user32, 'PeekMessageW', wintypes.BOOL, ctypes.POINTER(wintypes.MSG),
+              wintypes.HWND, wintypes.UINT, wintypes.UINT, wintypes.UINT)
     prototype(user32, 'DispatchMessageW', LRESULT, ctypes.POINTER(wintypes.MSG))
     prototype(user32, 'PostThreadMessageW', wintypes.BOOL, wintypes.DWORD,
               wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
@@ -166,11 +170,58 @@ if WINDOWS:
                 found[int(hwnd)] = name.value
             return True
 
+        ctypes.set_last_error(0)
         ok = (user32.EnumDesktopWindows(desktop, visit, 0) if desktop
               else user32.EnumWindows(visit, 0))
-        if not ok:
+        if not ok and ctypes.get_last_error():
             raise ctypes.WinError(ctypes.get_last_error())
         return found
+
+    def run_extra_game(ready_path, stop_path, result_path, count=1, reply=1):
+        """Second-process receiver, launched only on the parent's private desktop."""
+        if not current_desktop_name().startswith('NewPageReloadTest_'):
+            raise RuntimeError('Extra receiver requires the private test desktop')
+        instance = kernel32.GetModuleHandleW(None)
+        windows, messages = [], []
+
+        @WNDPROC
+        def window_proc(hwnd, message, wparam, lparam):
+            if message == WM_COPYDATA:
+                data = ctypes.cast(lparam, ctypes.POINTER(COPYDATASTRUCT)).contents
+                if data.cbData > 4096:
+                    return 0
+                messages.append({'wparam': int(wparam), 'dwData': int(data.dwData),
+                                 'payload': ctypes.string_at(data.lpData, data.cbData).hex()})
+                return reply
+            return user32.DefWindowProcW(hwnd, message, wparam, lparam)
+
+        definition = WNDCLASS(lpfnWndProc=window_proc, hInstance=instance, lpszClassName='Valve001')
+        if not user32.RegisterClassW(ctypes.byref(definition)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            for i in range(count):
+                hwnd = user32.CreateWindowExW(0, 'Valve001', f'Isolated additional game {i}', 0,
+                                             0, 0, 1, 1, None, None, instance, None)
+                if not hwnd:
+                    raise ctypes.WinError(ctypes.get_last_error())
+                windows.append(hwnd)
+            ready = Path(ready_path)
+            pending = ready.with_suffix('.pending')
+            pending.write_text(json.dumps({'pid': os.getpid(), 'windows': [int(h) for h in windows]}))
+            pending.replace(ready)
+            deadline = time.monotonic() + 45
+            msg = wintypes.MSG()
+            while not Path(stop_path).exists():
+                if time.monotonic() > deadline:
+                    raise RuntimeError('Extra receiver did not receive its stop file')
+                while user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+                    user32.DispatchMessageW(ctypes.byref(msg))
+                time.sleep(.01)
+            Path(result_path).write_text(json.dumps(messages))
+        finally:
+            for hwnd in windows:
+                user32.DestroyWindow(hwnd)
+            user32.UnregisterClassW('Valve001', instance)
 
     class Receivers:
         def __init__(self):
@@ -326,14 +377,14 @@ class ReloadProtocol(unittest.TestCase):
         self.qc = self.root / 'model.qc'
         self.qc.write_text(f'$modelname {MODEL_NAME}\n$body body mesh.smd\n$sequence idle mesh.smd\n')
 
-    def compile(self, *options, success=True, timeout=30):
+    def compile(self, *options, success=True, timeout=30, desktop=None):
         # Recheck before launch; private desktop isolation also closes the race
         # with a real game/viewer launched after this check.
         if matching_windows():
             self.skipTest('Existing Valve001/mx_class window found; no reload messages sent')
         started = time.monotonic()
         completed = run_on_desktop([str(COMPILER), str(self.qc), '-game', str(self.root), *options],
-                                   self.receivers.name, cwd=self.root, timeout=timeout)
+                                   desktop or self.receivers.name, cwd=self.root, timeout=timeout)
         elapsed = time.monotonic() - started
         self.compiler_output = completed.stdout + completed.stderr
         self.assertEqual(completed.returncode == 0, success, self.compiler_output)
@@ -345,6 +396,51 @@ class ReloadProtocol(unittest.TestCase):
     def assert_no_notification(self):
         self.receivers.flush()
         self.assertEqual(self.receivers.messages, [])
+
+    def assert_viewer_only(self):
+        self.receivers.flush()
+        self.assertEqual(self.receivers.messages,
+                         [{'window': 'viewer', 'message': WM_COMMAND, 'wparam': 1017,
+                           'lparam': 0, 'title': MODEL_TITLE}])
+
+    @contextmanager
+    def extra_game(self, count=1, reply=1):
+        ready, stop, result = (self.root / name for name in ('ready.json', 'stop', 'received.json'))
+        outcome = {}
+
+        def run():
+            try:
+                code = ('import sys, neko24_reload as n; '
+                        'n.run_extra_game(*sys.argv[1:4], int(sys.argv[4]), int(sys.argv[5]))')
+                outcome['process'] = run_on_desktop(
+                    [sys.executable, '-c', code, str(ready), str(stop), str(result), str(count), str(reply)],
+                    self.receivers.name, cwd=Path(__file__).parent, timeout=50)
+            except Exception as error:
+                outcome['error'] = error
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        details = {}
+        try:
+            deadline = time.monotonic() + 8
+            while not ready.exists() and thread.is_alive() and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertTrue(ready.exists(), repr(outcome))
+            details.update(json.loads(ready.read_text()))
+            self.assertNotEqual(details['pid'], os.getpid())
+            expected = set(self.receivers.windows) | set(details['windows'])
+            self.assertEqual(set(matching_windows(self.receivers.desktop)), expected)
+            yield details
+        finally:
+            stop.write_text('stop')
+            thread.join(8)
+            self.assertFalse(thread.is_alive(), 'Additional hidden receiver did not stop')
+            if 'error' in outcome:
+                raise outcome['error']
+            completed = outcome.get('process')
+            self.assertIsNotNone(completed, repr(outcome))
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            details['messages'] = json.loads(result.read_text())
 
     def test_success_notifies_game_and_exact_viewer_title(self):
         self.compile('-reloadhlmv')
@@ -361,6 +457,81 @@ class ReloadProtocol(unittest.TestCase):
         viewer = next(message for message in messages if message['window'] == 'viewer')
         self.assertEqual(viewer, {'window': 'viewer', 'message': WM_COMMAND,
                                  'wparam': 1017, 'lparam': 0, 'title': MODEL_TITLE})
+        self.assertIn('game reload is not verified', self.compiler_output)
+
+    def test_ambiguous_games_skip_game_but_notify_viewer(self):
+        with self.extra_game() as extra:
+            self.compile('-reloadhlmv')
+            self.assert_viewer_only()
+            self.assertIn('ambiguous target (2 Valve001 windows', self.compiler_output)
+            self.assertIn('-reloadpid <PID>', self.compiler_output)
+        self.assertEqual(extra['messages'], [])
+
+    def test_pid_selects_only_requested_process_and_implies_reload(self):
+        with self.extra_game() as extra:
+            self.compile('-reloadpid', str(extra['pid']))
+            self.assert_viewer_only()
+            self.assertIn(f'Delivered L4N-compatible model reload request to PID {extra["pid"]}', self.compiler_output)
+        self.assertEqual(extra['messages'], [{'wparam': 0, 'dwData': 0,
+                          'payload': ('l4n_reload_model ' + MODEL_TITLE + '\n\0').encode('ascii').hex()}])
+
+    def test_pid_selects_original_process_with_newer_game_window_present(self):
+        with self.extra_game() as extra:
+            self.compile('-reloadpid', str(os.getpid()))
+            self.receivers.flush()
+            self.assertEqual(sorted(message['window'] for message in self.receivers.messages), ['game', 'viewer'])
+            self.assertIn(f'Delivered L4N-compatible model reload request to PID {os.getpid()}', self.compiler_output)
+        self.assertEqual(extra['messages'], [])
+
+    def test_pid_does_not_choose_between_two_windows_in_one_process(self):
+        with self.extra_game(count=2) as extra:
+            self.compile('-reloadpid', str(extra['pid']))
+            self.assert_viewer_only()
+            self.assertIn('ambiguous target (2 Valve001 windows', self.compiler_output)
+            self.assertIn('selected process must have exactly one game window', self.compiler_output)
+        self.assertEqual(extra['messages'], [])
+
+    def test_wrong_pid_does_not_fall_back_to_another_game(self):
+        self.compile('-reloadpid', '4294967295')
+        self.assert_viewer_only()
+        self.assertIn('no Valve001 window for PID 4294967295', self.compiler_output)
+
+    def test_no_game_window_reports_no_target(self):
+        name = 'NewPageReloadTest_' + uuid.uuid4().hex
+        desktop = user32.CreateDesktopW(name, None, None, 0, 0x10000000, None)
+        if not desktop:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            self.assertEqual(matching_windows(desktop), {})
+            self.compile('-reloadhlmv', desktop=name)
+            self.assert_no_notification()
+            self.assertIn('no Valve001 window on this desktop', self.compiler_output)
+            self.assertIn('HLMV not found', self.compiler_output)
+        finally:
+            if not user32.CloseDesktop(desktop):
+                raise ctypes.WinError(ctypes.get_last_error())
+
+    def test_zero_receiver_result_is_delivery_not_game_confirmation(self):
+        with self.extra_game(reply=0) as extra:
+            self.compile('-reloadpid', str(extra['pid']))
+            self.assert_viewer_only()
+            self.assertIn('receiver result 0', self.compiler_output)
+            self.assertIn('game reload is not verified', self.compiler_output)
+        self.assertEqual(len(extra['messages']), 1)
+
+    def test_invalid_pid_is_rejected_before_writing_or_notifying(self):
+        for value in ('0', '-1', '4294967296', '18446744073709551616', '1x', '+1'):
+            with self.subTest(value=value):
+                self.compile('-reloadpid', value, success=False)
+                self.assertIn('-reloadpid needs', self.compiler_output)
+                self.assert_no_notification()
+                self.assertFalse((self.root / 'models' / (MODEL_NAME + '.mdl')).exists())
+
+    def test_missing_pid_is_rejected_before_writing_or_notifying(self):
+        self.compile('-reloadpid', success=False)
+        self.assertIn('-reloadpid needs 1 argument(s)', self.compiler_output)
+        self.assert_no_notification()
+        self.assertFalse((self.root / 'models' / (MODEL_NAME + '.mdl')).exists())
 
     def test_verify_does_not_notify_or_write_model(self):
         self.compile('-reloadhlmv', '-verify')
@@ -384,6 +555,7 @@ class ReloadProtocol(unittest.TestCase):
             # catch accidental unbounded SendMessage without hanging the suite.
             elapsed = self.compile('-reloadhlmv', timeout=8)
             self.assertLess(elapsed, 6)
+            self.assertIn('timed out', self.compiler_output)
         finally:
             self.receivers.resume.set()
         self.receivers.flush()

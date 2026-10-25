@@ -61,6 +61,10 @@ def main():
                             expected_world_vertices=expected, actual_world_vertices=observed))
 
     cases = [
+        ('test_usd_sublayer_only_root_accepts_empty_crate_tokenvector', 'only.usda', 'onlyusd'),
+        ('test_usd_sublayers_strength_nested_overrides_and_dependencies', 'layered.usda', 'layeredusd'),
+        ('test_usd_sublayer_assets_keep_authoring_directory_and_internal_stack', 'relative-stack.usda', 'relativelayerusd'),
+        ('test_usd_sublayer_explicit_reference_override_and_reset_transform', 'ref-override.usda', 'layerrefusd'),
         ('test_usd_nested_references_keep_instances_local_children_and_dependencies', 'instances.usda', 'usdrefs'),
         ('test_usd_variant_selection_and_internal_reference_transform', 'selected.usda', 'variant'),
         ('test_usd_variant_set_authored_order_controls_strength', 'ordered-variants.usda', 'orderedusd'),

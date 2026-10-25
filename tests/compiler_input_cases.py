@@ -41,6 +41,132 @@ class CompilerInputCases:
     uniform token subdivisionScheme = "none"
 }}\n'''
 
+    def test_usd_sublayers_strength_nested_overrides_and_dependencies(self):
+        self.write('layers/base/geometry.usda', '''#usda 1.0
+def Xform "Root" {
+    double3 xformOp:translate = (30, 0, 0)
+    double3 xformOp:scale = (2, 3, 1)
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+'''+self.usd_triangle(width=7)+'''}
+'''+self.usd_triangle('WeakOnly',10))
+        self.write('layers/first.usda', '''#usda 1.0
+(subLayers = [@base/geometry.usda@])
+over "Root" {
+    double3 xformOp:translate = (4, 0, 0)
+    over "Triangle" {
+        point3f[] points = [(0,0,0), (2,0,0), (0,1,0)]
+    }
+}
+''')
+        self.write('second.usda', '#usda 1.0\nover "Root" {\n double3 xformOp:translate = (80,0,0)\n}\n')
+        self.write('layered.usda', '''#usda 1.0
+(subLayers = [@layers/first.usda@, @second.usda@]
+ upAxis = "Z")
+over "Root" {
+    double3 xformOp:translate = (5, 0, 0)
+    over "Triangle" {
+        point3f[] points
+    }
+}
+over "WeakOnly" (active = false) {}
+'''+self.usd_triangle('LocalOnly',20))
+        self.scene_qc('$modelname layeredusd\n$UpAxis z assimp\n$body m layered.usda\n',
+                      '-dependencyjson', str(self.root/'layer-deps.json'))
+        expected=[(5,0,0),(9,0,0),(5,3,0),(0,0,20),(1,0,20),(0,1,20)]
+        self.assertEqual(sorted(tuple(round(v,5) for v in p) for p in self.scene_positions('layeredusd')), sorted(expected))
+        names={Path(entry['path']).name for entry in json.loads((self.root/'layer-deps.json').read_text())['dependencies']}
+        self.assertTrue({'layered.usda','first.usda','second.usda','geometry.usda'} <= names)
+        # Root opinions > first sublayer > later sublayers, independently of
+        # map/path order. Remove only the root transform to expose the first.
+        self.write('order.usda', '#usda 1.0\n(subLayers=[@layers/first.usda@,@second.usda@])\n')
+        self.scene_qc('$modelname orderusd\n$UpAxis z assimp\n$body m order.usda\n')
+        points=sorted(tuple(round(v,5) for v in p) for p in self.scene_positions('orderusd'))
+        self.assertIn((4,0,0),points);self.assertIn((8,0,0),points)
+
+    def test_usd_sublayer_assets_keep_authoring_directory_and_internal_stack(self):
+        self.write('layers/assets/shape.usda','#usda 1.0\n(defaultPrim="Shape")\ndef Xform "Shape" {\n'+self.usd_triangle(width=3)+'}\n')
+        self.write('layers/references.usda', '''#usda 1.0
+def Xform "External" (references = @assets/shape.usda@) {}
+def Xform "Copy" (references = </External>) {
+    double3 xformOp:translate = (10,0,0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+}
+''')
+        self.write('relative-stack.usda', '''#usda 1.0
+(subLayers = [@layers/references.usda@])
+over "External" {
+    double3 xformOp:translate = (2,0,0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+}
+''')
+        self.scene_qc('$modelname relativelayerusd\n$UpAxis z assimp\n$body m relative-stack.usda\n')
+        expected=[(2,0,0),(5,0,0),(2,1,0),(10,0,0),(13,0,0),(10,1,0)]
+        self.assertEqual(sorted(tuple(round(v,5) for v in p) for p in self.scene_positions('relativelayerusd')),sorted(expected))
+
+    def test_usd_sublayer_explicit_reference_override_and_reset_transform(self):
+        self.write('small.usda','#usda 1.0\n(defaultPrim="Shape")\ndef Xform "Shape" {\n'+self.usd_triangle(width=1)+'}\n')
+        self.write('wide.usda','#usda 1.0\n(defaultPrim="Shape")\ndef Xform "Shape" {\n'+self.usd_triangle(width=4)+'}\n')
+        self.write('ref-base.usda', '''#usda 1.0
+def Xform "Parent" {
+    double3 xformOp:translate = (100,0,0)
+    uniform token[] xformOpOrder = ["xformOp:translate"]
+    def Xform "Asset" (references = @small.usda@) {}
+}
+''')
+        self.write('ref-override.usda', '''#usda 1.0
+(subLayers=[@ref-base.usda@])
+over "Parent" {
+    over "Asset" (references = @wide.usda@) {
+        double3 xformOp:translate = (5,0,0)
+        uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:translate"]
+    }
+}
+''')
+        self.scene_qc('$modelname layerrefusd\n$UpAxis z assimp\n$body m ref-override.usda\n')
+        self.assertEqual(sorted(tuple(round(v,5) for v in p) for p in self.scene_positions('layerrefusd')),[(5,0,0),(5,1,0),(9,0,0)])
+
+    def test_usd_sublayer_incomplete_or_complex_stack_preserves_old_output(self):
+        self.write('good.usda','#usda 1.0\n'+self.usd_triangle())
+        self.scene_qc('$modelname layersafe\n$body m good.usda\n');old=self.mdl('layersafe')
+        self.write('cycle.usda','#usda 1.0\n(subLayers=[@bad.usda@])\n')
+        self.write('refs.usda','#usda 1.0\ndef Xform "Use" (references=@good.usda@</Triangle>) {}\n')
+        self.write('apis.usda','#usda 1.0\ndef Xform "Root" (prepend apiSchemas=["MaterialBindingAPI"]) {}\n')
+        cases=[('#usda 1.0\n(subLayers=[@absent.usda@])\n','referenced asset not found'),
+               ('#usda 1.0\n(subLayers=[@cycle.usda@])\n','cyclic subLayers'),
+               # The bundled USDA parser rejects layer offsets before composition.
+               ('#usda 1.0\n(subLayers=[@good.usda@ (offset=1)])\n','USD layer parse failed'),
+               ('#usda 1.0\n(subLayers=[@good.usda@])\nover "Triangle" { point3f[] points.timeSamples={0:[(0,0,0),(1,0,0),(0,1,0)]} }\n','animated subLayers'),
+               ('#usda 1.0\n(subLayers=[@good.usda@])\nover "Triangle" (variants={string shape="one"}) {}\n','subLayers with variant'),
+               ('#usda 1.0\n(subLayers=[@refs.usda@])\nover "Use" (prepend references=@good.usda@</Triangle>) {}\n','multiple layered reference list opinions'),
+               ('#usda 1.0\n(subLayers=[@apis.usda@])\nover "Root" (prepend apiSchemas=["MaterialBindingAPI"]) {}\n','layered API schema lists'),
+               ('#usda 1.0\n(subLayers=[@good.usda@])\nover "Triangle" (payload=@good.usda@) {}\n','unsupported payload')]
+        for source,diagnostic in cases:
+            with self.subTest(diagnostic=diagnostic):
+                self.write('bad.usda',source)
+                output=self.scene_qc('$modelname layersafe\n$body m bad.usda\n',success=False)
+                self.assertIn(diagnostic,output);self.assertEqual(self.mdl('layersafe'),old)
+        fixture=Path(__file__).parent/'fixtures/usd/sublayer-offset.usdc'
+        (self.root/'offset.usdc').write_bytes(fixture.read_bytes())
+        output=self.scene_qc('$modelname layersafe\n$body m offset.usdc\n',success=False)
+        self.assertIn('subLayer time offsets',output);self.assertEqual(self.mdl('layersafe'),old)
+
+    def test_usd_sublayers_do_not_inherit_defaultprim(self):
+        self.write('default.usda','#usda 1.0\n(defaultPrim="Shape")\ndef Xform "Shape" {\n'+self.usd_triangle()+'}\n')
+        self.write('stack.usda','#usda 1.0\n(subLayers=[@default.usda@])\n')
+        self.write('reference.usda','#usda 1.0\ndef Xform "Use" (references=@stack.usda@) {}\n')
+        output=self.scene_qc('$modelname nometainherit\n$body m reference.usda\n',success=False)
+        self.assertIn('explicit prim path or defaultPrim',output)
+
+    def test_usd_sublayer_only_root_accepts_empty_crate_tokenvector(self):
+        self.write('good.usda','#usda 1.0\n'+self.usd_triangle(width=3))
+        self.write('only.usda','#usda 1.0\n(subLayers=[@good.usda@])\n')
+        self.scene_qc('$modelname onlyusd\n$UpAxis z assimp\n$body m only.usda\n')
+        fixture=Path(__file__).parent/'fixtures/usd/sublayer-only.usdc'
+        (self.root/'only.usdc').write_bytes(fixture.read_bytes())
+        self.scene_qc('$modelname onlycrateusd\n$UpAxis z assimp\n$body m only.usdc\n')
+        for model in ('onlyusd','onlycrateusd'):
+            self.assertEqual(sorted(tuple(round(v,5) for v in p) for p in self.scene_positions(model)),[(0,0,0),(0,1,0),(3,0,0)])
+
     def test_usd_nested_references_keep_instances_local_children_and_dependencies(self):
         self.write('parts/mesh.usda','#usda 1.0\n(defaultPrim = "Template")\ndef Xform "Template" {\n'+self.usd_triangle()+'}\n')
         self.write('parts/middle.usda','#usda 1.0\n(defaultPrim = "Link")\ndef Xform "Link" (prepend references = @mesh.usda@) {}\n')

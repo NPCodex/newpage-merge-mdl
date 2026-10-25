@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "updated_date": "2026-10-22",
-  "source_version": "1.2.38-development",
-  "release_publication": "not established by this matrix",
+  "updated_date": "2026-10-25",
+  "source_version": "1.3.0",
+  "release_publication": "See v1.3.0 Release and packaged source manifest; local evidence below does not certify release binaries.",
   "interpretation": {
     "passed_bounded": "Only the stated asset/action/build was observed. Check evidence period; old runs are not current-candidate retests.",
     "not_tested": "No sufficient recorded evidence; not a declaration of incompatibility.",
@@ -118,7 +118,7 @@
     "ag2_view_1238": {
       "report": "tests/reports/ag2-firstperson-v1238.md",
       "source_version": "1.2.38 development",
-      "period": "current_development",
+      "period": "historical",
       "scope": "Actual ResourceCompiler accepted generated view wrappers and complete SAS/custom-helper models; decoded tracks, graph control parameters and isolated model modifications checked. Generated-graph gameplay is recorded separately in ag2_gameplay_1238.",
       "sections": [
         "样本与结果",
@@ -128,7 +128,7 @@
     "imports_1238": {
       "report": "tests/reports/v1.2.38-import-validation.md",
       "source_version": "1.2.38 development",
-      "period": "current_development",
+      "period": "historical",
       "scope": "Windows name/skin/VPK/cache/bake/USD targeted tests, OpenUSD reference and real Blender export world-position comparisons. No game-runtime evidence.",
       "sections": [
         "已执行的检查"
@@ -137,7 +137,7 @@
     "blender_vmd_1238": {
       "report": "tests/reports/v1.2.38-blender-vmd.json",
       "source_version": "1.2.38 development",
-      "period": "current_development",
+      "period": "historical",
       "scope": "Real Blender-authored asymmetric eight-bone leg mesh: bind/weight/DMX joint and numeric FK skinning comparison; no game/production-rig certification.",
       "json_pointers": [
         "/checks",
@@ -147,39 +147,66 @@
     "gmod_helpers_1238": {
       "report": "tests/reports/v1.2.38-gmod-runtime.md",
       "source_version": "1.2.38-development",
-      "period": "current_development",
+      "period": "historical",
       "scope": "GMod 2026.10.19: 6 client/2 server checks; actual fixed-step spring callbacks at 235.8-237 Hz, materials/flex/LOD/procedural matrices and two-body collision. Four frame-rate values are separate Lua math tests."
     },
     "ag2_gameplay_1238": {
       "report": "tests/reports/ag2-gameplay-v1238.md",
       "source_version": "1.2.38-development",
-      "period": "current_development",
+      "period": "historical",
       "scope": "CS2 1.41.9.1 build10924: generated world/UI/view resources loaded; 1.1 SAS with authored helper, AWP/M4A4/Desert Eagle actions, crouch/stand; repaired diagnostic physics falls after death. Not arbitrary skeleton/all weapon certification."
     },
     "build_quality_1238": {
       "report": "tests/reports/v1.2.38-build-quality.md",
       "source_version": "1.2.38-development",
-      "period": "current_development",
+      "period": "historical",
       "scope": "Candidate ddea46e GCC/Clang each ran 446 compatibility cases (444 passed, two Windows-only skips), 19 roundtrips and actual Ubuntu24.04 package/ELF checks. Sanitizer and reproducibility evidence remains explicitly at checkpoint 2317571."
     },
     "l4d_blends_1238": {
       "report": "tests/reports/v1.2.38-l4d-production.md",
       "source_version": "1.2.38 development",
-      "period": "current_development",
+      "period": "historical",
       "scope": "Official Zoey-to-Rochelle complete mesh and 17 sequences: offline grid/layer/mask/numeric roundtrip; L4D2 build10097 four fixed-position actors, 240 movement/aim updates, 192 finite attachment samples, zero failures. Not complete survivor gameplay, activity transitions, weapon attachment, physics or in-game pose-envelope certification."
     },
     "candidate_1238": {
       "report": "tests/reports/v1.2.38-candidate.md",
       "source_version": "1.2.38-development",
       "source_commit": "ddea46e39246bf9dd6047016ddb4ac2df10b493f",
-      "period": "current_development",
+      "period": "historical",
       "scope": "Complete Windows/Linux CI candidate packages and downloaded inventories, source files and symbols verified; no new game-runtime conclusion."
+    },
+    "work_130": {
+      "report": "tests/reports/v1.3.0-work.md",
+      "source_version": "1.3.0 development",
+      "period": "current_development",
+      "scope": "Six-area local implementation and bounded validation; exact published package checks are recorded in the v1.3.0 Release."
+    },
+    "l4d_player_130": {
+      "report": "tests/reports/v1.3.0-gameplay.md",
+      "source_version": "1.3.0 development",
+      "period": "current_development",
+      "scope": "Actual Zoey player using complete retargeted Rochelle model; movement, crouch, rifle/pistol fire/reload; 204 distinct tick samples and two-way L4N reload attachment readback. Existing Necola bridge temporarily isolated then restored. Fallback attachment-parent warnings remain."
     }
   },
   "tool_platforms": [
     {
       "platform": "windows-x86_64",
       "current_development": {
+        "build": "Local MSVC x64 Release; performance is not release MinSizeRel/IPO",
+        "status": "passed_bounded",
+        "evidence": [
+          "work_130"
+        ],
+        "limits": "Local compatibility, output recovery, Medusa and import suites; final Windows package is independently gated by release CI."
+      },
+      "historical_package": {
+        "source_version": "1.2.37",
+        "status": "passed_bounded",
+        "evidence": [
+          "toolkit_1237"
+        ]
+      },
+      "historical_1238_package": {
         "build": "CI MSVC Release, IPO off; earlier local dynamic-CRT checks retain their own identities",
         "status": "complete_candidate_package_verified",
         "evidence": [
@@ -190,26 +217,17 @@
         ],
         "limits": "Candidate packaging is verified separately from C4D application comparisons and bounded game observations; known feature limits remain in the 33-item ledger.",
         "source_commit": "ddea46e39246bf9dd6047016ddb4ac2df10b493f"
-      },
-      "historical_package": {
-        "source_version": "1.2.37",
-        "status": "passed_bounded",
-        "evidence": [
-          "toolkit_1237"
-        ]
       }
     },
     {
       "platform": "linux-x86_64",
       "current_development": {
         "configured_baseline": "Ubuntu24.04/glibc2.39, GLIBCXX<=3.4.32, CXXABI<=1.3.15",
-        "status": "complete_candidate_package_verified",
+        "status": "release_ci_required",
         "evidence": [
-          "build_quality_1238",
-          "candidate_1238"
+          "work_130"
         ],
-        "limits": "Actual candidate package/ABI checks passed. No Linux game run and no Windows-only C4D helper; sanitizer/reproducibility retain their earlier checkpoint identity.",
-        "source_commit": "ddea46e39246bf9dd6047016ddb4ac2df10b493f"
+        "limits": "No local Linux runtime; release is gated on actual GCC/Clang package/ABI checks, sanitizers and reproducible builds. No Linux game acceptance."
       },
       "historical_package": {
         "source_version": "1.2.37",
@@ -221,6 +239,16 @@
           "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39410334048",
           "https://github.com/NPCodex/newpage-merge-mdl/actions/runs/39411422872"
         ]
+      },
+      "historical_1238_package": {
+        "configured_baseline": "Ubuntu24.04/glibc2.39, GLIBCXX<=3.4.32, CXXABI<=1.3.15",
+        "status": "complete_candidate_package_verified",
+        "evidence": [
+          "build_quality_1238",
+          "candidate_1238"
+        ],
+        "limits": "Actual candidate package/ABI checks passed. No Linux game run and no Windows-only C4D helper; sanitizer/reproducibility retain their earlier checkpoint identity.",
+        "source_commit": "ddea46e39246bf9dd6047016ddb4ac2df10b493f"
       }
     }
   ],
@@ -304,20 +332,20 @@
       "game": "l4d2",
       "name": "Left 4 Dead 2",
       "execution_platform": "windows-x86_64",
-      "engine": "2.2.4.3/build10097 (2026-06-30); existing local Necola/Uplift/Bridge runtime, c1m1_hotel",
+      "engine": "2.2.4.3/build10097; local c8m1_apartment; L4N extension present",
       "capabilities": {
         "compile": {
           "status": "passed_bounded",
-          "scope": "Complete Rochelle mesh, 17 retargeted sequences, independent grid/layer/mask and sampled-pose comparison passed.",
+          "scope": "Full normal Rochelle-for-Zoey retarget model; compiled 948 sequence declarations verified against 2 local +945 generated +1 autoplay suppression slot.",
           "evidence": [
-            "l4d_blends_1238"
+            "l4d_player_130"
           ]
         },
         "load": {
           "status": "passed_bounded",
-          "scope": "Four complete Rochelle prop_dynamic_override actors loaded with engine sequence indices 9/12/3/6 matching compiled metadata.",
+          "scope": "Actual Zoey player loads compiled full Rochelle model; retained stock game data and original model files.",
           "evidence": [
-            "l4d_blends_1238"
+            "l4d_player_130"
           ]
         },
         "materials": {
@@ -351,11 +379,18 @@
         },
         "animation": {
           "status": "passed_bounded",
-          "scope": "Four fixed-origin walk/run/standing-rifle/crouching-pistol actors: 240 movement/aim updates, parameter readback within 0.001, 192 finite attachment samples, zero failures. No activity-transition or in-game pose-envelope acceptance.",
+          "scope": "Actual walk/run/crouch, rifle/pistol fire and reload; 204 distinct-tick finite attachment/weapon-owner samples. Not every activity or pose-envelope, and fallback attachment-parent warnings remain.",
           "evidence": [
-            "l4d_blends_1238"
+            "l4d_player_130"
           ]
         }
+      },
+      "reload": {
+        "status": "passed_bounded",
+        "scope": "Same player attachment absent→present after notification, present while original disk model restored, then absent after reverse notification. Actual L4N cache refresh, not ordinary L4D2 support.",
+        "evidence": [
+          "l4d_player_130"
+        ]
       }
     },
     {

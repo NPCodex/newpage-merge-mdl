@@ -40,20 +40,12 @@ public:
            const std::vector<std::filesystem::path>& outputs) : path_(destination) {
         Validate(path_, outputs);
         transaction_ = std::make_unique<output::Transaction>(path_,
-            std::vector<output::Target>{{path_, false}});
+            std::vector<output::Target>{{path_, false}}, output::Transaction::Workspace::None);
     }
     void Write(const std::string& text) {
-        const auto staged = transaction_->StageRoot() / "report.json";
-        // This is only Commit's copy source, never a recovery target. Commit
-        // copies and flushes the publication stage before its durable ready
-        // marker. Flushing this scratch copy as well doubles data sync work
-        // without strengthening recovery. Still check both writing and close.
-        FILE* file = output::detail::Open(staged, true);
-        if (!file) throw std::runtime_error("cannot write staged report: " + staged.u8string());
-        bool complete = std::fwrite(text.data(), 1, text.size(), file) == text.size();
-        if (std::fclose(file)) complete = false;
-        if (!complete) throw std::runtime_error("cannot finish staged report: " + staged.u8string());
-        transaction_->Replace(staged, path_);
+        // Serialize directly into the journal-owned publication stage. Before
+        // that intent is durable, report contents exist only in memory.
+        transaction_->ReplaceText(text, path_);
         transaction_->Commit();
     }
 private:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Conservative dependency-aware model batches with structured per-job results."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -63,7 +64,8 @@ def directory_identity(roots, excluded):
         for item in sorted(folder.iterdir(), key=lambda p: p.name):
             if skip(item): continue
             info = item.lstat(); relative = item.relative_to(root).as_posix()
-            if item.is_symlink() or (hasattr(item, 'is_junction') and item.is_junction()):
+            if item.is_symlink() or (getattr(info, 'st_file_attributes', 0) &
+                                     getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0)):
                 target = str(item.resolve()); rows.append([str(root), relative, 'link', target])
                 symlinks.append(str(item)); continue
             if stat.S_ISDIR(info.st_mode):
@@ -218,14 +220,34 @@ def main(argv=None):
     parser.add_argument('--compiler', required=True, type=Path)
     parser.add_argument('--cache-dir', type=Path); parser.add_argument('--report', type=Path)
     parser.add_argument('--timeout', type=float, default=1800); parser.add_argument('--force', action='store_true')
+    parser.add_argument('--jobs', type=int, default=1, help='maximum concurrent independent compiler processes (default: 1)')
+    parser.add_argument('--memory-budget-mib', type=int, help='optional scheduling budget; not an operating-system memory limit')
+    parser.add_argument('--job-memory-mib', type=int, default=512, help='estimated memory per compiler process for scheduling (default: 512 MiB)')
     args = parser.parse_args(argv)
     try:
         if not math.isfinite(args.timeout) or args.timeout <= 0: raise ValueError('timeout must be positive')
+        if not 1 <= args.jobs <= 64: raise ValueError('jobs must be between 1 and 64')
+        if args.job_memory_mib <= 0: raise ValueError('job-memory-mib must be positive')
+        if args.memory_budget_mib is not None and args.memory_budget_mib < args.job_memory_mib:
+            raise ValueError('memory-budget-mib must accommodate at least one job-memory-mib estimate')
+        workers = min(args.jobs, args.memory_budget_mib // args.job_memory_mib) if args.memory_budget_mib is not None else args.jobs
         plan = args.plan.resolve(); compiler = args.compiler.resolve()
         cache = (args.cache_dir or plan.parent/'.newpage-batch').resolve()
         report = (args.report or cache/'batch-report.json').resolve()
         if not compiler.is_file(): raise ValueError('compiler does not exist')
         jobs = load_plan(plan, compiler, cache, report)
+        workers = min(workers, len(jobs))
+        if workers > 1:
+            # A cold job has no dependency graph yet. Parallel jobs must declare
+            # complete input roots which cannot contain another job's outputs.
+            for job in jobs:
+                if not job['complete_search_roots'] or not job['watch_roots']:
+                    raise ValueError('parallel jobs require complete_search_roots and watch_roots: ' + job['id'])
+                if any(inside(root, other['output']) or inside(other['output'], root)
+                       for root in job['watch_roots'] for other in jobs):
+                    raise ValueError('parallel input roots must be separate from every output directory: ' + job['id'])
+                if directory_identity(job['watch_roots'], [])['symlinks']:
+                    raise ValueError('parallel input roots must not contain symbolic links or junctions: ' + job['id'])
         excluded = [cache, report, *(j['output'] for j in jobs)]
         rows = []; inputs = [plan, compiler, *(j['qc'] for j in jobs)]
         with Publication(inputs) as publication:
@@ -235,6 +257,7 @@ def main(argv=None):
             # creation must not cause an otherwise stable first build to miss.
             for job in jobs: job['output'].mkdir(parents=True, exist_ok=True)
             cache.mkdir(parents=True, exist_ok=True)
+            prepared = []
             for job in jobs:
                 name = hashlib.sha256(job['id'].encode()).hexdigest()+'.json'; destination = cache/name
                 different_paths([report], [destination]); publication.reserve(destination)
@@ -244,6 +267,10 @@ def main(argv=None):
                     except ValueError: pass
                     if not isinstance(previous, dict): previous = {}
                 work = publication.work/hashlib.sha256(job['id'].encode()).hexdigest(); work.mkdir()
+                prepared.append((job, destination, previous, work))
+
+            def execute(item):
+                job, destination, previous, work = item
                 try:
                     row, state = build_job(job, compiler, excluded, previous, work, args.timeout, args.force)
                 except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
@@ -251,6 +278,13 @@ def main(argv=None):
                                diagnostics=[dict(schema=1, success=False, diagnostics=[dict(code='NPB1001', severity='error', stage='batch',
                                                   source=str(job['qc']), line=None, message=str(error))])])
                     state = dict(schema=SCHEMA, cacheable=False)
+                return job, destination, work, row, state
+
+            # Workers own only their job directory and native subprocess. All
+            # journal/lock updates and cache publication stay on this thread.
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                results = list(pool.map(execute, prepared))
+            for job, destination, work, row, state in results:
                 inputs.extend(Path(entry['path']) for entry in state.get('dependencies', []))
                 inputs.extend(Path(entry['path']) for entry in state.get('outputs', []))
                 rows.append(row)
@@ -262,6 +296,10 @@ def main(argv=None):
             publication.inputs = tuple(inputs)
             different_paths(inputs, [entry['destination'] for entry in publication.entries.values()])
             summary = dict(schema=SCHEMA, checked_at=datetime.now(timezone.utc).isoformat(), plan=str(plan),
+                           scheduling=dict(requested_jobs=args.jobs, effective_jobs=workers,
+                                           memory_budget_mib=args.memory_budget_mib,
+                                           estimated_job_memory_mib=args.job_memory_mib,
+                                           memory_limit_enforced=False),
                            success=all(row['success'] for row in rows), jobs=rows,
                            counts={status:sum(row['status']==status for row in rows) for status in ('built','skipped','failed')})
             staged = publication.work/'batch-report.json'; staged.write_text(json.dumps(summary, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')

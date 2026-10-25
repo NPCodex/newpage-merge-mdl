@@ -1,19 +1,22 @@
 # 当前验证入口
 
-当前开发源码为 **v1.2.38**；本节不表示已经发布或全部验收完成。固定 33 项的实施、
-定向测试和剩余条件见 [实施台账](tests/reports/v1.2.38-improvements.md)。游戏与平台
-按独立能力记录在 [验收矩阵](GAME_PLATFORM_MATRIX.md) 及其
-[JSON](tests/reports/game-platform-matrix.json)。
+当前源码为 **v1.3.0**，六项改进的实现、定向验证和限制见
+[实施台账](tests/reports/v1.3.0-work.md)。专项证据包括
+[碰撞修复与性能](tests/reports/v1.3.0-collision.md)、
+[重载目标选择](tests/reports/v1.3.0-reload.md)、
+[报告/并行批次/诊断](tests/reports/v1.3.0-workflow-performance.md)、
+[C4D 骨骼导入](tests/reports/v1.3.0-c4d.md)及
+[USD 分层](tests/reports/v1.3.0-usd-layers.md)。
 
-本轮已保存的专项报告包括 [导入/缓存/烘焙/USD](tests/reports/v1.2.38-import-validation.md)、
-[AG2 第一人称资源](tests/reports/ag2-firstperson-v1238.md)、
-[真实 Blender 人形映射](tests/reports/v1.2.38-blender-vmd.md) 和
-[开发性能测量](tests/reports/v1.2.38-performance.md)。这些证据不代替尚未完成的真实
-C4D 作者场景、生成第一人称游戏表现、最终双平台包或两次干净构建复现验收。
+游戏与平台按独立能力记录在 [验收矩阵](GAME_PLATFORM_MATRIX.md) 及其
+[JSON](tests/reports/game-platform-matrix.json)。本地开发程序的散列与测试不冒充
+发行包身份。正式发布须经过双平台完整包验证、Linux GCC/Clang、运行基线、符号、
+sanitizer 和复现门禁；具体运行结果与下载散列见
+[对应 Release](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.3.0)。
 
-[v1.2.37 修复记录](tests/reports/toolkit-fixes-20261020.md) 包含 Windows/Linux 包、
-Plum 与历史 SAS 实机证据。下列章节均保留它们当时的版本和条件，旧的“未实现”描述
-应结合当前台账/使用指南阅读，旧测试数量不能当作本轮通过数量。
+[v1.2.38 台账](tests/reports/v1.2.38-improvements.md)和
+[v1.2.37 修复记录](tests/reports/toolkit-fixes-20261020.md)保留历史证据。
+下列章节均保留原版本和条件；旧的“未实现”须结合当前指南阅读，旧测试不能当作本轮通过。
 
 # v1.2.36 历史验证记录
 

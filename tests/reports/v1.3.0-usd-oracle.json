@@ -1,0 +1,1037 @@
+[
+  {
+    "test": "test_usd_sublayer_only_root_accepts_empty_crate_tokenvector",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        3.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        3.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_sublayers_strength_nested_overrides_and_dependencies",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        20.0
+      ],
+      [
+        0.0,
+        1.0,
+        20.0
+      ],
+      [
+        1.0,
+        0.0,
+        20.0
+      ],
+      [
+        5.0,
+        0.0,
+        0.0
+      ],
+      [
+        5.0,
+        3.0,
+        0.0
+      ],
+      [
+        9.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        20.0
+      ],
+      [
+        0.0,
+        1.0,
+        20.0
+      ],
+      [
+        1.0,
+        0.0,
+        20.0
+      ],
+      [
+        5.0,
+        0.0,
+        0.0
+      ],
+      [
+        5.0,
+        3.0,
+        0.0
+      ],
+      [
+        9.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_sublayer_assets_keep_authoring_directory_and_internal_stack",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        2.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.0,
+        1.0,
+        0.0
+      ],
+      [
+        5.0,
+        0.0,
+        0.0
+      ],
+      [
+        10.0,
+        0.0,
+        0.0
+      ],
+      [
+        10.0,
+        1.0,
+        0.0
+      ],
+      [
+        13.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        2.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.0,
+        1.0,
+        0.0
+      ],
+      [
+        5.0,
+        0.0,
+        0.0
+      ],
+      [
+        10.0,
+        0.0,
+        0.0
+      ],
+      [
+        10.0,
+        1.0,
+        0.0
+      ],
+      [
+        13.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_sublayer_explicit_reference_override_and_reset_transform",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        5.0,
+        0.0,
+        0.0
+      ],
+      [
+        5.0,
+        1.0,
+        0.0
+      ],
+      [
+        9.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        5.0,
+        0.0,
+        0.0
+      ],
+      [
+        5.0,
+        1.0,
+        0.0
+      ],
+      [
+        9.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_nested_references_keep_instances_local_children_and_dependencies",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        2.0,
+        3.0,
+        4.0
+      ],
+      [
+        2.0,
+        3.0,
+        6.0
+      ],
+      [
+        2.0,
+        4.0,
+        4.0
+      ],
+      [
+        2.0,
+        4.0,
+        6.0
+      ],
+      [
+        3.0,
+        3.0,
+        4.0
+      ],
+      [
+        3.0,
+        3.0,
+        6.0
+      ],
+      [
+        10.0,
+        3.0,
+        4.0
+      ],
+      [
+        12.0,
+        3.0,
+        4.0
+      ],
+      [
+        12.0,
+        6.0,
+        4.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        2.0,
+        3.0,
+        4.0
+      ],
+      [
+        2.0,
+        3.0,
+        6.0
+      ],
+      [
+        2.0,
+        4.0,
+        4.0
+      ],
+      [
+        2.0,
+        4.0,
+        6.0
+      ],
+      [
+        3.0,
+        3.0,
+        4.0
+      ],
+      [
+        3.0,
+        3.0,
+        6.0
+      ],
+      [
+        10.0,
+        3.0,
+        4.0
+      ],
+      [
+        12.0,
+        3.0,
+        4.0
+      ],
+      [
+        12.0,
+        6.0,
+        4.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_variant_selection_and_internal_reference_transform",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        2.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.0,
+        1.0,
+        0.0
+      ],
+      [
+        5.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        2.0,
+        0.0,
+        0.0
+      ],
+      [
+        2.0,
+        1.0,
+        0.0
+      ],
+      [
+        5.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "internal_reference",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        8.0,
+        0.0,
+        0.0
+      ],
+      [
+        8.0,
+        1.0,
+        0.0
+      ],
+      [
+        9.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        8.0,
+        0.0,
+        0.0
+      ],
+      [
+        8.0,
+        1.0,
+        0.0
+      ],
+      [
+        9.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_variant_set_authored_order_controls_strength",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        2.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        2.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_reference_active_and_extended_variant_selection",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        10.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        10.0
+      ],
+      [
+        1.0,
+        0.0,
+        10.0
+      ],
+      [
+        3.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        10.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        10.0
+      ],
+      [
+        1.0,
+        0.0,
+        10.0
+      ],
+      [
+        3.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "reference_reactivation",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        10.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        10.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        10.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        10.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        10.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        10.0
+      ]
+    ]
+  },
+  {
+    "test": "reference_inherited_inactive",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        10.0
+      ],
+      [
+        0.0,
+        1.0,
+        10.0
+      ],
+      [
+        1.0,
+        0.0,
+        10.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        10.0
+      ],
+      [
+        0.0,
+        1.0,
+        10.0
+      ],
+      [
+        1.0,
+        0.0,
+        10.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_add_references_expand_undefined_prototypes_once",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        4.0,
+        0.0,
+        0.0
+      ],
+      [
+        4.0,
+        1.0,
+        0.0
+      ],
+      [
+        5.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        4.0,
+        0.0,
+        0.0
+      ],
+      [
+        4.0,
+        1.0,
+        0.0
+      ],
+      [
+        5.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_instanceable_references_ignore_direct_local_child_opinions",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        2.0,
+        3.0,
+        4.0
+      ],
+      [
+        2.0,
+        4.0,
+        4.0
+      ],
+      [
+        3.0,
+        3.0,
+        4.0
+      ],
+      [
+        10.0,
+        3.0,
+        4.0
+      ],
+      [
+        12.0,
+        3.0,
+        4.0
+      ],
+      [
+        12.0,
+        6.0,
+        4.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        2.0,
+        3.0,
+        4.0
+      ],
+      [
+        2.0,
+        4.0,
+        4.0
+      ],
+      [
+        3.0,
+        3.0,
+        4.0
+      ],
+      [
+        10.0,
+        3.0,
+        4.0
+      ],
+      [
+        12.0,
+        3.0,
+        4.0
+      ],
+      [
+        12.0,
+        6.0,
+        4.0
+      ]
+    ]
+  },
+  {
+    "test": "test_usd_reference_reset_transform_stack_is_world_relative",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        5.0,
+        0.0,
+        0.0
+      ],
+      [
+        5.0,
+        1.0,
+        0.0
+      ],
+      [
+        6.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        5.0,
+        0.0,
+        0.0
+      ],
+      [
+        5.0,
+        1.0,
+        0.0
+      ],
+      [
+        6.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "inherited_instanceable_inherited",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ]
+    ]
+  },
+  {
+    "test": "inherited_instanceable_false",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        2.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        2.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        2.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        2.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        2.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        2.0
+      ]
+    ]
+  },
+  {
+    "test": "inherited_instanceable_true",
+    "openusd_version": [
+      0,
+      26,
+      8
+    ],
+    "match": true,
+    "authored_usdc_match": true,
+    "flattened_usdc_match": true,
+    "expected_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "actual_world_vertices": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0
+      ]
+    ]
+  }
+]

@@ -36,6 +36,7 @@
 - `-OutDir` 指定输出根目录，`$modelname` 决定模型路径；它不替代 `-game`。编译支持 `.qc` / `.pulseqc`，资源和 VMT/VTF 材质需自行准备。
 - 参数优先级：`gameinfo < cfg/commandline.cfg < 显式命令行`；`-nodefaultargs` 禁用前两者。CE/Neko 差异通过显式兼容选项选择。
 - `$DisableCache` 使后续模型源重新加载；`$qccompatibility neko` 可选择 Neko 的多材质组元数据和 BodyGroup 状态上限。适用范围见 [兼容说明](COMPATIBILITY.md#nekomdl-240-compatibility)。
+- Windows 可用 `-reloadpid <游戏进程PID>` 指定重载通知目标；多个游戏窗口且未指定时会拒绝自动选择。需要游戏扩展实际支持重载，发送成功不等于模型已刷新。
 - 先在隔离目录输出并在目标游戏验证，再整套替换匹配的 MDL/VVD/VTX/PHY/ANI。不要混用旧伴随文件；中断后保留 `.npmdl-*` 恢复文件，按诊断处理。
 - 反编译器、AG2 及 VMD/L4D 支持持久恢复和同目标并发保护；中断后保留诊断指出的日志、暂存文件及备份，重跑同一任务恢复。外部修改冲突须先检查；各工具的文件位置见 [安装指南](INSTALL.md)。
 - 最终骨预算、每顶点权重和其他格式/引擎限制仍有效。CSGO/MCV 扩展 VTX 依赖正确 AppID，FE 布料限 CSGO；SubD 建议使用默认离线烘焙，已测 CSGO legacy 原生 SubD 路径会崩溃。
@@ -91,6 +92,8 @@
 调用方先生成请求，执行命令并检查退出码（成功为 `0`），再读取响应。两种协议不同：简化返回索引及误差，凸分解返回各凸块点云，调用方需重新构造凸包。字段布局见 [simplify 实现](subtools/meshtool/mesh_simplify.cpp) 与 [decompose 实现](subtools/meshtool/convex_decompose.cpp)。
 
 处理普通 OBJ/GLB 可用 `python tools/mesh_workflow.py simplify input.obj --output lod.obj --ratio 0.5`。几何导出、误差摘要、材质收集和批量增量编译见 [作者工作流](AUTHORING_WORKFLOWS.md)。
+
+独立模型批次可用 `tools/incremental_build.py models.json --compiler NewPageMergeMDL.exe --jobs 4`；需声明完整输入搜索根。可选内存预算用于估算并发数，不是进程内存硬上限。
 
 ### ag2proportions：CS2 AnimGraph2 比例适配（实验性）
 

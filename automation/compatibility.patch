@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 1f5c9a1..b390921 100644
+index 1f5c9a1..fe8f036 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,12 +1,71 @@
@@ -11,7 +11,7 @@ index 1f5c9a1..b390921 100644
 +# Distributed tools share the NewPageMergeMDL project version.
 +# Upstream TOOL_VERSION declarations remain as merge context only.
 +# C is enabled only for vendored dependencies; toolkit code is C++.
-+project(NewPageMergeMDL VERSION 1.2.39 LANGUAGES CXX C)
++project(NewPageMergeMDL VERSION 1.3.0 LANGUAGES CXX C)
  
 -# LTO (-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON) measured ~6% faster compiles
 -# with byte-identical output, but made an incremental build 4x slower. Left off;
@@ -31015,10 +31015,10 @@ index 0000000..5dd2f8a
 +#endif // INCLUDED_AI_BLEND_TESSELLATOR_H
 diff --git a/libs/assimp/code/AssetLib/C4D/C4DImporter.cpp b/libs/assimp/code/AssetLib/C4D/C4DImporter.cpp
 new file mode 100644
-index 0000000..d21517a
+index 0000000..d297765
 --- /dev/null
 +++ b/libs/assimp/code/AssetLib/C4D/C4DImporter.cpp
-@@ -0,0 +1,685 @@
+@@ -0,0 +1,943 @@
 +/*
 +Open Asset Import Library (assimp)
 +----------------------------------------------------------------------
@@ -31073,6 +31073,7 @@ index 0000000..d21517a
 +#include <memory>
 +#include <cmath>
 +#include <limits>
++#include <functional>
 +#include <assimp/IOSystem.hpp>
 +#include <assimp/scene.h>
 +#include <assimp/ai_assert.h>
@@ -31092,6 +31093,17 @@ index 0000000..d21517a
 +    cinestring.GetCString(result.data, AI_MAXLEN - 1);
 +    result.length = static_cast<ai_uint32>(cinestring.GetLength());
 +    return result;
++}
++
++aiMatrix4x4 aiMatrixFrom(const cineware::Matrix& m) {
++    return aiMatrix4x4(m.v1.x,m.v2.x,m.v3.x,m.off.x,
++        m.v1.y,m.v2.y,m.v3.y,m.off.y,m.v1.z,m.v2.z,m.v3.z,m.off.z,0,0,0,1);
++}
++
++bool finiteMatrix(const aiMatrix4x4& m) {
++    for(unsigned int r=0;r<4;++r) for(unsigned int c=0;c<4;++c)
++        if(!std::isfinite(m[r][c])) return false;
++    return true;
 +}
 +
 +}
@@ -31185,9 +31197,14 @@ index 0000000..d21517a
 +    material_mapping.clear();
 +    visitedObjects.clear();
 +    cacheNodeId = 0;
++    document = doc;
++    sourceObjects.clear();
++    sourceNodes.clear();
 +    try {
++        PrepareRig(doc);
 +        ReadMaterials(doc->GetFirstMaterial());
 +        RecurseHierarchy(doc->GetFirstObject(), pScene->mRootNode);
++        ReadAnimation(pScene);
 +    } catch(...) {
 +        for(aiMesh* mesh : meshes) {
 +            delete mesh;
@@ -31196,9 +31213,11 @@ index 0000000..d21517a
 +        meshes.clear();
 +        materials.clear();
 +        BaseDocument::Free(doc);
++        document = nullptr;
 +        throw;
 +    }
 +    BaseDocument::Free(doc);
++    document = nullptr;
 +
 +    // copy meshes over
 +    pScene->mNumMeshes = static_cast<unsigned int>(meshes.size());
@@ -31224,6 +31243,245 @@ index 0000000..d21517a
 +    pScene->mNumMaterials = static_cast<unsigned int>(materials.size());
 +    pScene->mMaterials = new aiMaterial*[pScene->mNumMaterials]();
 +    std::copy(materials.begin(), materials.end(), pScene->mMaterials);
++}
++
++// ------------------------------------------------------------------------------------------------
++void C4DImporter::PrepareRig(BaseDocument* doc) {
++    rigScene = false;
++    std::set<BaseObject*> seen;
++    std::function<void(BaseObject*, unsigned int)> collect = [&](BaseObject* op, unsigned int depth) {
++        if(depth > 256) ThrowException("C4D source hierarchy exceeds 256 levels");
++        for(;op;op=op->GetNext()) {
++            if(!seen.insert(op).second || seen.size()>1000000)
++                ThrowException("invalid C4D source hierarchy");
++            sourceObjects.push_back(op);
++            rigScene |= op->GetFirstCTrack()!=nullptr || op->GetTag(Tweights)!=nullptr;
++            collect(op->GetDown(),depth+1);
++        }
++    };
++    collect(doc->GetFirstObject(),0);
++    if(!rigScene) return;
++    auto* takes=doc->GetTakeData();
++    if(takes && takes->GetMainTake() && (takes->GetMainTake()->GetDown() ||
++       takes->GetCurrentTake()!=takes->GetMainTake()))
++        ThrowException("C4D rig takes/overrides are unsupported; bake the selected take to FBX/glTF");
++    std::set<std::string> names;
++    unsigned int skins=0;
++    for(BaseObject* op:sourceObjects) {
++        const auto name=aiStringFrom(op->GetName());
++        if(!name.length || name.length>=AI_MAXLEN-1 || std::string(name.C_Str())=="<C4DRoot>" ||
++           !names.insert(name.C_Str()).second)
++            ThrowException("C4D rigs require unique, nonempty object names: ",name.C_Str());
++        if(op->GetLayerObject() || op->GetNBit(NBIT_NOANIM) || op->GetNBit(NBIT_SOLO_ANIM) ||
++           op->GetDataInstance()->GetBool(ID_BASEOBJECT_QUATERNION_ROTATION))
++            ThrowException("C4D rig layer/disabled/solo/quaternion animation is unsupported: ",name.C_Str());
++        const Int32 type=op->GetType();
++        if(type!=Onull && type!=Ojoint && type!=Opolygon && type!=Oskin)
++            ThrowException("C4D rig contains unsupported generator/deformer/plugin: ",name.C_Str());
++        if(op->GetCache() || (op->GetDeformCache() && !op->GetTag(Tweights)))
++            ThrowException("C4D rig contains an unsupported evaluated cache: ",name.C_Str());
++        for(auto* tag=op->GetFirstTag();tag;tag=tag->GetNext()) {
++            const Int32 t=tag->GetType();
++            if(tag->GetFirstCTrack() || (t!=Tweights && t!=Tphong && t!=Tuvw &&
++               t!=Tnormal && t!=Ttangent && t!=Ttexture && t!=Tpolygonselection &&
++               t!=Tpoint && t!=Tpolygon))
++                ThrowException("C4D rig tag/constraint/expression is unsupported: ",name.C_Str()," tag ",t);
++        }
++        if(op->GetTag(Tweights)) {
++            // glTF's shared skin export cannot represent different geometry bind
++            // matrices for the same joint. Keep this first implementation bounded.
++            if(type!=Opolygon || ++skins>1 || op->GetTag(Tweights,1))
++                ThrowException("C4D skin requires one polygon object and one weight tag per document");
++            BaseObject* skin=op->GetDown();
++            if(!skin || skin->GetNext() || skin->GetType()!=Oskin || skin->GetDown())
++                ThrowException("C4D weighted mesh requires exactly one direct Skin deformer child");
++        }
++        if(type==Oskin) {
++            auto* bc=op->GetDataInstance();
++            if(!op->GetUp() || !op->GetUp()->GetTag(Tweights) || op->GetFirstCTrack() ||
++               !op->GetDeformMode() ||
++               bc->GetInt32(ID_CA_SKIN_OBJECT_TYPE)!=ID_CA_SKIN_OBJECT_TYPE_LINEAR ||
++               bc->GetInt32(ID_CA_SKIN_OBJECT_COORD)!=ID_CA_SKIN_OBJECT_COORD_JOINTS ||
++               bc->GetInt32(ID_CA_SKIN_OBJECT_TRANSFORM)!=ID_CA_SKIN_OBJECT_TRANSFORM_OBJECT ||
++               bc->GetInt32(ID_CA_SKIN_OBJECT_SCALING)!=ID_CA_SKIN_OBJECT_SCALING_NONE)
++                ThrowException("C4D Skin supports only linear joint coordinates/object transform/no bone scaling");
++        }
++    }
++}
++
++void C4DImporter::ReadSkin(BaseObject* object, aiMesh* mesh,
++    const std::vector<unsigned int>& sourcePoints) {
++    auto* tag=object->GetTag(Tweights);
++    if(!tag) return;
++    auto* weights=dynamic_cast<WeightTagData*>(tag->GetNodeData());
++    if(!weights || weights->GetJointCount()<=0 || weights->GetJointCount()>1024)
++        ThrowException("C4D skin has missing/invalid joint weights");
++    const Int32 pointCount=static_cast<PolygonObject*>(object)->GetPointCount();
++    if(static_cast<uint64_t>(pointCount)*weights->GetJointCount()>100000000)
++        ThrowException("C4D skin exceeds 100000000 point/joint weight budget");
++    const aiMatrix4x4 geom=aiMatrixFrom(weights->GetGeomMg());
++    if(!finiteMatrix(geom) || std::fabs(geom.Determinant())<1e-12)
++        ThrowException("C4D skin has invalid geometry bind matrix");
++    if(!geom.Equal(aiMatrixFrom(object->GetMg()),1e-4f))
++        ThrowException("C4D skinned mesh transform must remain at its geometry bind transform");
++    for(BaseObject* ancestor=object;ancestor;ancestor=ancestor->GetUp())
++        if(ancestor->GetFirstCTrack())
++            ThrowException("C4D skinned mesh/parent transform animation is unsupported; animate its joints");
++    std::vector<double> totals(pointCount,0);
++    std::vector<unsigned int> influences(pointCount,0);
++    std::vector<std::unique_ptr<aiBone>> bones;
++    std::set<BaseObject*> joints;
++    for(Int32 j=0;j<weights->GetJointCount();++j) {
++        BaseObject* joint=weights->GetJoint(j,document);
++        if(!joint || joint->GetType()!=Ojoint || !joints.insert(joint).second ||
++           std::find(sourceObjects.begin(),sourceObjects.end(),joint)==sourceObjects.end())
++            ThrowException("C4D skin has a missing, duplicate or non-joint link");
++        std::unique_ptr<aiBone> bone(new aiBone());
++        bone->mName=aiStringFrom(joint->GetName());
++        const JointRestState rest=weights->GetJointRestState(j);
++        const aiMatrix4x4 bind=aiMatrixFrom(rest.m_oMg), inverse=aiMatrixFrom(rest.m_oMi);
++        if(!finiteMatrix(bind) || !finiteMatrix(inverse) || std::fabs(bind.Determinant())<1e-12 ||
++           !(bind*inverse).Equal(aiMatrix4x4(),1e-4f))
++            ThrowException("C4D skin has invalid joint bind matrix: ",bone->mName.C_Str());
++        bone->mOffsetMatrix=inverse*geom;
++        std::vector<float> map(pointCount,0);
++        const Int32 count=weights->GetWeightCount(j);
++        if(count<0 || count>pointCount) ThrowException("C4D skin weight count exceeds point count");
++        // Cineware 22 GetIndexWeight repeats one entry on a 2027 document.
++        // The point-addressed accessor reads its quantized map correctly.
++        for(Int32 point=0;point<pointCount;++point) {
++            const Float weight=weights->GetWeight(j,point);
++            if(!std::isfinite(weight) || weight<0 || weight>1.00001)
++                ThrowException("C4D skin has invalid point weight");
++            if(!weight) continue;
++            map[point]=static_cast<float>(weight);totals[point]+=weight;++influences[point];
++        }
++        std::vector<aiVertexWeight> corners;
++        for(unsigned int c=0;c<sourcePoints.size();++c)
++            if(map[sourcePoints[c]]>0) corners.emplace_back(c,map[sourcePoints[c]]);
++        if(corners.empty()) continue;
++        bone->mNumWeights=static_cast<unsigned int>(corners.size());
++        bone->mWeights=new aiVertexWeight[corners.size()];
++        std::copy(corners.begin(),corners.end(),bone->mWeights);
++        bones.push_back(std::move(bone));
++    }
++    for(unsigned int point:sourcePoints)
++        if(std::fabs(totals[point]-1)>1e-4 || influences[point]>4)
++            ThrowException("C4D skin requires normalized weights and at most four joints per point");
++    // Weight storage is quantized (e.g. authored 0.5 reads as 0.500008).
++    // Normalize only after enforcing the narrow sum tolerance above.
++    for(auto& bone:bones) for(unsigned int i=0;i<bone->mNumWeights;++i)
++        bone->mWeights[i].mWeight/=static_cast<float>(totals[sourcePoints[bone->mWeights[i].mVertexId]]);
++    mesh->mNumBones=static_cast<unsigned int>(bones.size());
++    mesh->mBones=new aiBone*[bones.size()]();
++    for(size_t i=0;i<bones.size();++i) mesh->mBones[i]=bones[i].release();
++}
++
++void C4DImporter::ReadAnimation(aiScene* scene) {
++    if(!rigScene) return;
++    struct Track { CTrack* source; Int32 component,axis; };
++    struct Channels { BaseObject* object; std::vector<Track> tracks; };
++    std::vector<Channels> objects;
++    std::set<double> times;
++    const Int32 fps=document->GetFps();
++    if(fps<=0 || fps>240) ThrowException("C4D animation frame rate must be in 1..240");
++    for(BaseObject* op:sourceObjects) {
++        if(!op->GetFirstCTrack()) continue;
++        Channels channels{op,{}};
++        std::set<std::pair<Int32,Int32>> used;
++        for(auto* track=op->GetFirstCTrack();track;track=track->GetNext()) {
++            const DescID& id=track->GetDescriptionID();
++            if(id.GetDepth()!=2 || track->GetTrackCategory()!=CTRACK_CATEGORY_VALUE ||
++               (id[0].id!=ID_BASEOBJECT_REL_POSITION && id[0].id!=ID_BASEOBJECT_REL_ROTATION &&
++                id[0].id!=ID_BASEOBJECT_REL_SCALE) || id[1].id<VECTOR_X || id[1].id>VECTOR_Z ||
++               track->GetTimeTrack(document) || track->GetBefore()!=CLOOP_CONSTANT ||
++               track->GetAfter()!=CLOOP_CONSTANT || !used.emplace(id[0].id,id[1].id).second)
++                ThrowException("animated C4D object has unsupported track/layer/time remapping: ",
++                    aiStringFrom(op->GetName()).C_Str());
++            if(track->GetBit(BIT_ANIM_OFF) || track->GetBit(BIT_ANIM_SOLO) ||
++               track->GetBit(BIT_ANIM_CONSTANTVELOCITY) || track->GetLayerObject())
++                ThrowException("C4D muted/solo/layer/constant velocity tracks are unsupported");
++            auto* curve=track->GetCurve(CCURVE_CURVE,false);
++            if(!curve || curve->GetKeyCount()<=0 || curve->GetKeyCount()>100000)
++                ThrowException("C4D animation curve has invalid key count");
++            double previous=-std::numeric_limits<double>::infinity();
++            for(Int32 i=0;i<curve->GetKeyCount();++i) {
++                auto* key=curve->GetKey(i);const double time=key->GetTime().Get();
++                if(!std::isfinite(time) || time<=previous || !std::isfinite(key->GetValue()) ||
++                   key->GetNBit(NBIT_CKEY_MUTE) ||
++                   key->GetInterpolation()!=CINTERPOLATION_LINEAR)
++                    ThrowException("animated C4D object supports only finite, ordered linear TRS keys: ",
++                        aiStringFrom(op->GetName()).C_Str());
++                times.insert(time);previous=time;
++            }
++            channels.tracks.push_back({track,id[0].id,id[1].id-VECTOR_X});
++        }
++        objects.push_back(std::move(channels));
++    }
++    if(objects.empty()) return;
++    const double start=*times.begin(),end=*times.rbegin();
++    if(std::fabs(start)>1000000 || std::fabs(end)>1000000 ||
++       end-start>3600 || (end-start)*fps>100000 || times.size()>100000)
++        ThrowException("C4D animation exceeds one hour/100000 sample budget");
++    for(int f=0;f<=static_cast<int>(std::ceil((end-start)*fps));++f)
++        times.insert(std::min(end,start+static_cast<double>(f)/fps));
++    if(times.size()*objects.size()>1000000)
++        ThrowException("C4D animation exceeds 1000000 node sample budget");
++    float previousSample=-1;
++    for(double time:times) {
++        const float encoded=static_cast<float>(time-start);
++        if(encoded<=previousSample)
++            ThrowException("C4D animation key times are too close for GLB float timestamps");
++        previousSample=encoded;
++    }
++    std::unique_ptr<aiAnimation> animation(new aiAnimation());
++    animation->mName=aiString("C4D_Timeline");animation->mTicksPerSecond=fps;
++    animation->mDuration=(end-start)*fps;
++    animation->mNumChannels=static_cast<unsigned int>(objects.size());
++    animation->mChannels=new aiNodeAnim*[objects.size()]();
++    for(size_t index=0;index<objects.size();++index) {
++        auto& item=objects[index];BaseObject* op=item.object;
++        auto* channel=animation->mChannels[index]=new aiNodeAnim();
++        channel->mNodeName=aiStringFrom(op->GetName());
++        channel->mNumPositionKeys=channel->mNumRotationKeys=channel->mNumScalingKeys=static_cast<unsigned int>(times.size());
++        channel->mPositionKeys=new aiVectorKey[times.size()];
++        channel->mRotationKeys=new aiQuatKey[times.size()];
++        channel->mScalingKeys=new aiVectorKey[times.size()];
++        const Vector pos=op->GetRelPos(),rot=op->GetRelRot(),scale=op->GetRelScale();
++        unsigned int i=0;
++        for(double time:times) {
++            Vector p=pos,r=rot,s=scale;
++            for(auto& track:item.tracks) {
++                Vector& value=track.component==ID_BASEOBJECT_REL_POSITION?p:
++                    (track.component==ID_BASEOBJECT_REL_ROTATION?r:s);
++                const Float sample=track.source->GetCurve()->GetValue(BaseTime(time));
++                if(track.axis==0)value.x=sample;else if(track.axis==1)value.y=sample;else value.z=sample;
++            }
++            op->SetRelPos(p);op->SetRelRot(r);op->SetRelScale(s);
++            const auto matrix=aiMatrixFrom(op->GetMl());
++            op->SetRelPos(pos);op->SetRelRot(rot);op->SetRelScale(scale);
++            aiVector3D outScale,outPos;aiQuaternion outRot;
++            matrix.Decompose(outScale,outRot,outPos);
++            aiMatrix4x4 recomposed(outRot.GetMatrix());
++            for(unsigned int row=0;row<3;++row) {
++                recomposed[row][0]*=outScale.x;recomposed[row][1]*=outScale.y;recomposed[row][2]*=outScale.z;
++            }
++            recomposed.a4=outPos.x;recomposed.b4=outPos.y;recomposed.c4=outPos.z;
++            if(!finiteMatrix(matrix) || std::fabs(matrix.Determinant())<1e-10 ||
++               !matrix.Equal(recomposed,1e-4f))
++                ThrowException("C4D animated transform contains shear, singular scale or non-finite values");
++            const double tick=(time-start)*fps;
++            channel->mPositionKeys[i]=aiVectorKey(tick,outPos);
++            channel->mScalingKeys[i]=aiVectorKey(tick,outScale);
++            if(i && (channel->mRotationKeys[i-1].mValue.w*outRot.w+
++               channel->mRotationKeys[i-1].mValue.x*outRot.x+channel->mRotationKeys[i-1].mValue.y*outRot.y+
++               channel->mRotationKeys[i-1].mValue.z*outRot.z)<0)
++                outRot=aiQuaternion(-outRot.w,-outRot.x,-outRot.y,-outRot.z);
++            channel->mRotationKeys[i++]=aiQuatKey(tick,outRot);
++            if(i==1) sourceNodes.at(op)->mTransformation=matrix;
++        }
++    }
++    scene->mNumAnimations=1;scene->mAnimations=new aiAnimation*[1]{animation.release()};
 +}
 +
 +// ------------------------------------------------------------------------------------------------
@@ -31340,21 +31598,13 @@ index 0000000..d21517a
 +            ThrowException("object/cache hierarchy exceeds 1000000 objects");
 +        const Int32 type = object->GetType();
 +        const auto name = aiStringFrom(object->GetName());
-+        // This bridge exports a static evaluated snapshot. Reject sources whose
-+        // animation or skin would otherwise disappear in a successful GLB.
-+        if (object->GetFirstCTrack())
-+            ThrowException("animated C4D object is not supported by the static bridge: ", name.C_Str(),
-+                "; bake/export skeletal animation as FBX or glTF in Cinema 4D");
-+        if (object->GetTag(Tweights))
-+            ThrowException("C4D skin weights are not supported by the static bridge: ", name.C_Str(),
-+                "; export the rig and animation as FBX or glTF in Cinema 4D");
-+
 +        const Matrix& ml = object->GetMl();
 +        std::unique_ptr<aiNode> owned(new aiNode());
 +        aiNode* const nd = owned.get();
 +        nd->mParent = parent;
 +        nd->mName = cache ? aiString(std::string(parent->mName.C_Str()) + "__cache_" +
 +            std::to_string(++cacheNodeId)) : name;
++        if (!cache) sourceNodes[object] = nd;
 +        nd->mTransformation.a1 = ml.v1.x; nd->mTransformation.b1 = ml.v1.y; nd->mTransformation.c1 = ml.v1.z;
 +        nd->mTransformation.a2 = ml.v2.x; nd->mTransformation.b2 = ml.v2.y; nd->mTransformation.c2 = ml.v2.z;
 +        nd->mTransformation.a3 = ml.v3.x; nd->mTransformation.b3 = ml.v3.y; nd->mTransformation.c3 = ml.v3.z;
@@ -31371,9 +31621,12 @@ index 0000000..d21517a
 +        // can be a sibling list. Never emit the underlying polygon twice.
 +        BaseObject* evaluated = object->GetDeformCache();
 +        if (!evaluated) evaluated = object->GetCache();
++        // A skin's saved cache is already deformed. Export its original points
++        // and weight tag, otherwise the skin would be applied twice.
++        if (object->GetTag(Tweights)) evaluated = nullptr;
 +        if (evaluated) {
 +            RecurseHierarchy(evaluated, nd, owners, depth + 1, false, true);
-+        } else if (type == Opolygon && !object->GetBit(BIT_CONTROLOBJECT)) {
++        } else if (type == Opolygon && (!object->GetBit(BIT_CONTROLOBJECT) || object->GetTag(Tweights))) {
 +            std::unique_ptr<aiMesh> mesh(ReadMesh(object));
 +            if (mesh) {
 +                const auto assignments = ResolveMaterials(static_cast<PolygonObject*>(object), owners);
@@ -31401,7 +31654,7 @@ index 0000000..d21517a
 +                }
 +            }
 +        } else if (!consumed && !object->GetBit(BIT_CONTROLOBJECT) &&
-+                   type != Onull && type != Ocamera && type != Olight && type != Ojoint) {
++                   type != Onull && type != Ocamera && type != Olight && type != Ojoint && type != Oskin) {
 +            ThrowException("missing saved polygon cache or unsupported C4D object/plugin: ",
 +                name.C_Str(), " (type ", type, "); save the evaluated scene for Cineware with its plugins installed, "
 +                "or make the object editable in Cinema 4D");
@@ -31486,6 +31739,8 @@ index 0000000..d21517a
 +    aiVector3D* verts = mesh->mVertices = new aiVector3D[mesh->mNumVertices];
 +    aiVector3D* normals, *uvs, *tangents, *bitangents;
 +    unsigned int n = 0;
++    std::vector<unsigned int> sourcePoints;
++    sourcePoints.reserve(vcount);
 +
 +    // check if there are normals, tangents or UVW coordinates
 +    BaseTag* tag = object->GetTag(Tnormal);
@@ -31557,6 +31812,8 @@ index 0000000..d21517a
 +        face->mIndices = new unsigned int[face->mNumIndices];
 +        for(unsigned int j = 0; j < face->mNumIndices; ++j) {
 +            face->mIndices[j] = n++;
++            const Int32 corners[] = {polys[i].a,polys[i].b,polys[i].c,polys[i].d};
++            sourcePoints.push_back(static_cast<unsigned int>(corners[j]));
 +        }
 +
 +        // copy normals
@@ -31664,6 +31921,7 @@ index 0000000..d21517a
 +        }
 +    }
 +
++    ReadSkin(object, mesh.get(), sourcePoints);
 +    return mesh.release();
 +}
 +
@@ -31706,10 +31964,10 @@ index 0000000..d21517a
 +#endif // ASSIMP_BUILD_NO_C4D_IMPORTER
 diff --git a/libs/assimp/code/AssetLib/C4D/C4DImporter.h b/libs/assimp/code/AssetLib/C4D/C4DImporter.h
 new file mode 100644
-index 0000000..a46ef86
+index 0000000..4c4d857
 --- /dev/null
 +++ b/libs/assimp/code/AssetLib/C4D/C4DImporter.h
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,126 @@
 +/*
 +Open Asset Import Library (assimp)
 +----------------------------------------------------------------------
@@ -31775,6 +32033,7 @@ index 0000000..a46ef86
 +    class PolygonObject;
 +    class BaseMaterial;
 +    class BaseShader;
++    class BaseDocument;
 +}
 +
 +namespace Assimp {
@@ -31809,6 +32068,10 @@ index 0000000..a46ef86
 +        std::vector<cineware::BaseObject*> materialOwners = {},
 +        unsigned int depth = 0, bool consumed = false, bool cache = false);
 +    aiMesh* ReadMesh(cineware::BaseObject* object);
++    void PrepareRig(cineware::BaseDocument* doc);
++    void ReadSkin(cineware::BaseObject* object, aiMesh* mesh,
++        const std::vector<unsigned int>& sourcePoints);
++    void ReadAnimation(aiScene* scene);
 +    std::vector<unsigned int> ResolveMaterials(cineware::PolygonObject* obj,
 +        const std::vector<cineware::BaseObject*>& owners);
 +
@@ -31821,6 +32084,10 @@ index 0000000..a46ef86
 +    MaterialMap material_mapping;
 +    std::set<cineware::BaseObject*> visitedObjects;
 +    unsigned int cacheNodeId = 0;
++    cineware::BaseDocument* document = nullptr;
++    bool rigScene = false;
++    std::vector<cineware::BaseObject*> sourceObjects;
++    std::map<cineware::BaseObject*, aiNode*> sourceNodes;
 +
 +}; // !class C4DImporter
 +
@@ -148099,10 +148366,10 @@ index 0000000..f104b95
 +#endif // AI_AC3DIMPORTER_H_INC
 diff --git a/libs/assimp/code/AssetLib/USD/USDComposition.h b/libs/assimp/code/AssetLib/USD/USDComposition.h
 new file mode 100644
-index 0000000..aa9ecbc
+index 0000000..fe129b3
 --- /dev/null
 +++ b/libs/assimp/code/AssetLib/USD/USDComposition.h
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,298 @@
 +/* Targeted, strict static USD composition for the maintained importer.
 + * SPDX-License-Identifier: BSD-3-Clause
 + * Unsupported arcs fail explicitly instead of importing a partial scene. */
@@ -148126,6 +148393,7 @@ index 0000000..aa9ecbc
 +    using Selections=std::map<std::string,std::string>;
 +    IOSystem& io;
 +    std::map<std::string,Layer> layers;
++    std::set<std::string> loadingLayers;
 +    std::set<std::string> active;
 +    size_t expanded=0;
 +    std::string warnings;
@@ -148136,9 +148404,103 @@ index 0000000..aa9ecbc
 +        const auto canonical=std::filesystem::weakly_canonical(absolute,ec);
 +        return (ec?absolute.lexically_normal():canonical).u8string();
 +    }
++    // Resolve external assets in the authoring layer before layering changes
++    // the traversal context. Internal references still address the final stack.
++    static void ResolveAssets(Prim& prim,const std::string& file,size_t depth=0) {
++        if(depth>=64)throw DeadlyImportError("USD layer exceeds 64 prim depth at ",file,"/",prim.name());
++        auto resolve=[&](tinyusdz::value::AssetPath& asset) {
++            const auto authored=asset.GetAssetPath();
++            if(!authored.empty())asset=tinyusdz::value::AssetPath(Canonical((std::filesystem::u8path(file).parent_path()/std::filesystem::u8path(authored)).u8string()));
++        };
++        if(prim.metas().references)for(auto& reference:prim.metas().references.value().second)resolve(reference.asset_path);
++        for(auto& entry:prim.props())if(entry.second.is_attribute()) {
++            auto& attribute=entry.second.attribute();
++            if(auto asset=attribute.get_value<tinyusdz::value::AssetPath>()) {
++                resolve(asset.value());attribute.set_value(asset.value());
++            } else if(auto assets=attribute.get_value<std::vector<tinyusdz::value::AssetPath>>()) {
++                for(auto& asset:assets.value())resolve(asset);
++                attribute.set_value(assets.value());
++            }
++        }
++        for(auto& child:prim.children())ResolveAssets(child,file,depth+1);
++        for(auto& set:prim.variantSets())for(auto& variant:set.second.variantSet)ResolveAssets(variant.second,file,depth+1);
++    }
++    static void CheckStaticLayer(const Prim& prim,const std::string& file) {
++        const auto& meta=prim.metas();
++        if(meta.variantSets || meta.variants || !prim.variantSets().empty())
++            throw DeadlyImportError("USD subLayers with variant opinions are not supported; flatten this stack: ",file,"/",prim.name());
++        if(meta.payload || meta.inherits || meta.specializes || meta.clips)
++            throw DeadlyImportError("USD unsupported payload/inherits/specializes/value-clips in subLayers: ",file,"/",prim.name());
++        if(prim.typeName()=="Skeleton" || prim.typeName()=="SkelRoot" || prim.typeName()=="SkelAnimation")
++            throw DeadlyImportError("USD skeletal subLayers are not supported; flatten this stack: ",file,"/",prim.name());
++        for(const auto& entry:prim.props())if(entry.second.is_attribute() && entry.second.get_attribute().has_timesamples())
++            throw DeadlyImportError("USD animated subLayers are not supported; flatten or bake this stack: ",file,"/",prim.name(),".",entry.first);
++        for(const auto& child:prim.children())CheckStaticLayer(child,file);
++    }
++    static void InheritAttribute(tinyusdz::Attribute& strong,const tinyusdz::Attribute& weak) {
++        // Declarations without a default do not erase a weaker authored value.
++        if(!strong.has_value() && !strong.has_blocked() && !strong.has_connections() && !strong.has_timesamples())
++            strong.get_var()=weak.get_var();
++        auto& s=strong.metas();const auto& w=weak.metas();
++        auto fill=[](auto& dst,const auto& src){if(!dst)dst=src;};
++        fill(s.interpolation,w.interpolation);fill(s.elementSize,w.elementSize);fill(s.hidden,w.hidden);
++        fill(s.comment,w.comment);fill(s.weight,w.weight);fill(s.connectability,w.connectability);
++        fill(s.outputName,w.outputName);fill(s.renderType,w.renderType);fill(s.displayName,w.displayName);
++        fill(s.bindMaterialAs,w.bindMaterialAs);
++        // Dictionary metadata needs field-wise composition, outside this bounded
++        // static value merger. Never discard a weaker dictionary silently.
++        if((s.customData && w.customData) || (s.sdrMetadata && w.sdrMetadata))
++            throw DeadlyImportError("USD layered attribute dictionary metadata requires flattening");
++        fill(s.customData,w.customData);fill(s.sdrMetadata,w.sdrMetadata);
++        for(const auto& entry:w.meta)s.meta.emplace(entry);
++        if(s.stringData.empty())s.stringData=w.stringData;
++    }
++    static void InheritLayer(Prim& strong,const Prim& weak) {
++        if(strong.specifier()==tinyusdz::Specifier::Over)strong.specifier()=weak.specifier();
++        if(strong.typeName().empty() || strong.typeName()=="Model")strong.typeName()=weak.typeName();
++        auto weakMeta=weak.metas();
++        if(strong.metas().apiSchemas && weakMeta.apiSchemas)
++            throw DeadlyImportError("USD layered API schema lists require flattening: ",strong.name());
++        if(strong.metas().references && weakMeta.references) {
++            using Qual=tinyusdz::ListEditQual;
++            const auto& refs=strong.metas().references.value();
++            if(refs.first!=Qual::ResetToExplicit && refs.first!=Qual::Prepend && refs.first!=Qual::Append && refs.first!=Qual::Add)
++                throw DeadlyImportError("USD unsupported layered reference list edit: ",strong.name());
++            if(refs.first==Qual::ResetToExplicit)weakMeta.references.reset();
++            else if(!refs.second.empty() && !weakMeta.references.value().second.empty())
++                throw DeadlyImportError("USD multiple layered reference list opinions require flattening: ",strong.name());
++            else if(refs.second.empty())strong.metas().references.reset();
++        }
++        strong.metas().update_from(weakMeta,false);
++        // tinyusdz's dictionary updater merges two authored dictionaries, but
++        // omits a weak-only dictionary when override_authored is false.
++        if(!strong.metas().assetInfo)strong.metas().assetInfo=weakMeta.assetInfo;
++        if(!strong.metas().customData)strong.metas().customData=weakMeta.customData;
++        if(!strong.metas().sdrMetadata)strong.metas().sdrMetadata=weakMeta.sdrMetadata;
++        for(const auto& property:weak.props()) {
++            auto inserted=strong.props().emplace(property);
++            if(inserted.second)continue;
++            auto& current=inserted.first->second;
++            if(!current.is_attribute() || !property.second.is_attribute() ||
++               current.attribute().has_connections() || property.second.get_attribute().has_connections() ||
++               current.value_type_name()!=property.second.value_type_name())
++                throw DeadlyImportError("USD layered relationship/connection/type overrides require flattening: ",strong.name(),".",property.first);
++            InheritAttribute(current.attribute(),property.second.get_attribute());
++            if(current.attribute().has_value() || current.attribute().has_blocked())
++                current.set_property_type(tinyusdz::Property::Type::Attrib);
++        }
++        for(const auto& child:weak.children()) {
++            auto found=std::find_if(strong.children().begin(),strong.children().end(),[&](const auto& current){return current.name()==child.name();});
++            if(found==strong.children().end())strong.children().push_back(child);else InheritLayer(*found,child);
++        }
++    }
 +    const Layer& Read(const std::string& path) {
 +        auto found=layers.find(path);if(found!=layers.end())return found->second;
-+        if(layers.size()>=128)throw DeadlyImportError("USD composition exceeds 128 source layers");
++        if(loadingLayers.count(path))throw DeadlyImportError("USD cyclic subLayers at ",path);
++        if(loadingLayers.size()>=64)throw DeadlyImportError("USD subLayers exceed 64 layer depth at ",path);
++        if(layers.size()+loadingLayers.size()>=128)throw DeadlyImportError("USD composition exceeds 128 source layers");
++        loadingLayers.insert(path);
++        struct LeaveLayer {std::set<std::string>& active;std::string path;~LeaveLayer(){active.erase(path);}} leave{loadingLayers,path};
 +        auto close=[&](IOStream* stream){io.Close(stream);};
 +        std::unique_ptr<IOStream,decltype(close)> stream(io.Open(path,"rb"),close);
 +        if(!stream)throw DeadlyImportError("USD referenced asset not found: ",path);
@@ -148149,9 +148511,27 @@ index 0000000..aa9ecbc
 +        if(!tinyusdz::LoadLayerFromMemory(bytes.data(),bytes.size(),path,&layer,&warn,&error))
 +            throw DeadlyImportError("USD layer parse failed: ",path,": ",error);
 +        warnings+=warn;
-+        // The bundled library does not fully implement sublayer strengths and
-+        // offsets; do not silently flatten those arcs with incorrect ordering.
-+        if(!layer.metas().subLayers.empty())throw DeadlyImportError("USD subLayers composition is not supported; flatten subLayers before import: ",path);
++        for(auto& entry:layer.primspecs())ResolveAssets(entry.second,path);
++        // Root opinions are strongest, followed by subLayers in authored order.
++        // Stage metadata (including defaultPrim and upAxis) belongs to the root
++        // layer and does not inherit from a sublayer, matching OpenUSD.
++        if(!layer.metas().subLayers.empty()) {
++            for(const auto& entry:layer.primspecs())CheckStaticLayer(entry.second,path);
++            for(const auto& sub:layer.metas().subLayers) {
++                if(sub.layerOffset._offset!=0 || sub.layerOffset._scale!=1)
++                    throw DeadlyImportError("USD subLayer time offsets are not supported: ",path);
++                const auto asset=sub.assetPath.GetAssetPath();
++                if(asset.empty())throw DeadlyImportError("USD empty subLayer asset path: ",path);
++                const auto file=Canonical((std::filesystem::u8path(path).parent_path()/std::filesystem::u8path(asset)).u8string());
++                const auto& weaker=Read(file);
++                for(const auto& entry:weaker.primspecs()) {
++                    CheckStaticLayer(entry.second,file);
++                    auto inserted=layer.primspecs().emplace(entry);
++                    if(!inserted.second)InheritLayer(inserted.first->second,entry.second);
++                }
++            }
++            layer.metas().subLayers.clear();
++        }
 +        return layers.emplace(path,std::move(layer)).first->second;
 +    }
 +    // Merge the weaker referenced/variant opinions while preserving local
@@ -594234,10 +594614,10 @@ index 0000000..5741ca5
 +} // namespace pulse::cli
 diff --git a/libs/diagnostics.h b/libs/diagnostics.h
 new file mode 100644
-index 0000000..a0b6437
+index 0000000..ae6c007
 --- /dev/null
 +++ b/libs/diagnostics.h
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,108 @@
 +#pragma once
 +#include <cstdio>
 +#include <string>
@@ -594269,8 +594649,32 @@ index 0000000..a0b6437
 +    if (category == "out of memory") return "NP9001";
 +    return "NP9000";
 +}
++// Decode only the loader's explicit quoted path + repeated path:line prefix.
++// This keeps the QC call site while exposing the actual malformed source line;
++// arbitrary numbers or words elsewhere in a message never become locations.
++inline std::pair<std::string, unsigned> LoadedSourceLocation(const std::string& message) {
++    const std::string marker = "cannot load \"";
++    const auto start = message.find(marker);
++    if (start == std::string::npos) return {{}, 0};
++    const auto begin = start + marker.size(), end = message.find("\": ", begin);
++    if (end == std::string::npos) return {{}, 0};
++    const auto path = message.substr(begin, end - begin);
++    if (path.empty()) return {{}, 0};
++    const auto repeated = end + 3;
++    if (message.compare(repeated, path.size() + 1, path + ":") != 0) return {{}, 0};
++    size_t at = repeated + path.size() + 1;
++    const size_t digits = at;
++    unsigned line = 0;
++    for (; at < message.size() && message[at] >= '0' && message[at] <= '9'; ++at) {
++        const unsigned digit = unsigned(message[at] - '0');
++        if (line > (2147483647u - digit) / 10u) return {{}, 0};
++        line = line * 10u + digit;
++    }
++    if (at == digits || !line || message.compare(at, 2, ": ") != 0) return {{}, 0};
++    return {path, line};
++}
 +inline void Error(const char* category, const char* stage, const std::string& message) {
-+    if (enabled) entries.push_back({Code(category), "error", stage, message});
++    if (enabled) entries.push_back({LoadedSourceLocation(message).second ? "NP1101" : Code(category), "error", stage, message});
 +}
 +inline void Warning(const char* code, const char* stage, const std::string& message) {
 +    if (enabled) entries.push_back({code, "warning", stage, message});
@@ -594304,10 +594708,19 @@ index 0000000..a0b6437
 +        if (!first) text += ',';
 +        first = false;
 +        const auto location = Location(e.message);
++        const auto loaded = LoadedSourceLocation(e.message);
 +        text += "{\"code\":" + Json(e.code) + ",\"severity\":" + Json(e.severity) +
 +            ",\"stage\":" + Json(e.stage) + ",\"source\":" + Json(location.first) +
 +            ",\"line\":" + (location.second ? std::to_string(location.second) : "null") +
-+            ",\"message\":" + Json(e.message) + "}";
++            ",\"message\":" + Json(e.message) + ",\"related_locations\":[";
++        if (loaded.second) text += "{\"source\":" + Json(loaded.first) + ",\"line\":" + std::to_string(loaded.second) + "}";
++        text += "],\"hint\":";
++        if (loaded.second) text += Json("Correct the named field at the related source line, or re-export that source file; the primary location is the QC command that loaded it.");
++        else if (e.code == "NP1200") text += Json("Use -game with the actual target game directory containing gameinfo.txt; check its mounted search paths.");
++        else if (e.code == "NP1401") text += Json("Keep the recovery journal and backups. Resolve the reported external file conflict before retrying the same output.");
++        else if (e.code == "NP1402") text += Json("Choose a writable report path separate from source files, their dependencies and all model output files.");
++        else text += "null";
++        text += "}";
 +    }
 +    text += "]}\n";
 +    std::fputs(text.c_str(), stdout);
@@ -601353,10 +601766,10 @@ index 0000000..5696816
 +#endif
 diff --git a/libs/persistentoutput.h b/libs/persistentoutput.h
 new file mode 100644
-index 0000000..f2789ba
+index 0000000..77486bf
 --- /dev/null
 +++ b/libs/persistentoutput.h
-@@ -0,0 +1,501 @@
+@@ -0,0 +1,522 @@
 +// Shared exception/crash recovery for a known set of files or one directory.
 +// Readers may observe publication in progress; flushes cannot guarantee survival
 +// of every hardware/power failure. Recovery refuses changed destinations/backups.
@@ -601622,7 +602035,9 @@ index 0000000..f2789ba
 +
 +class Transaction {
 +public:
-+    Transaction(const fs::path& primary, const std::vector<Target>& allowed) {
++    enum class Workspace { Create, None };
++    Transaction(const fs::path& primary, const std::vector<Target>& allowed,
++                Workspace workspace = Workspace::Create) : workspace_(workspace) {
 +        using namespace detail;
 +        const auto target = Destination(primary);
 +        const auto leaf = Key(target.filename());
@@ -601657,9 +602072,11 @@ index 0000000..f2789ba
 +            old_[name] = old;
 +        }
 +        nonce_ = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-+        WriteJournal(); // durable zero-entry intent owns only the work directory
++        // An in-memory report owns no scratch files until Commit writes its
++        // complete intent. It needs the same lock/snapshot but no empty intent.
++        if (workspace_ == Workspace::Create) WriteJournal();
 +        active_ = true;
-+        fs::create_directory(work_); SyncDirectory(location_);
++        if (workspace_ == Workspace::Create) { fs::create_directory(work_); SyncDirectory(location_); }
 +        TestPoint("begin", 0);
 +    }
 +    ~Transaction() {
@@ -601669,10 +602086,19 @@ index 0000000..f2789ba
 +    }
 +    Transaction(const Transaction&) = delete;
 +    Transaction& operator=(const Transaction&) = delete;
-+    const fs::path& StageRoot() const { return work_; }
++    const fs::path& StageRoot() const {
++        if (workspace_ != Workspace::Create) throw std::runtime_error("transaction has no scratch workspace");
++        return work_;
++    }
 +    const fs::path& JournalDirectory() const { return location_; }
 +    void Replace(const fs::path& staged, const fs::path& destination, bool createOnly = false) {
 +        Add(staged, destination, false, createOnly);
++    }
++    void ReplaceText(std::string text, const fs::path& destination) {
++        Add({}, destination, false, false);
++        auto& entry = entries_.back();
++        if (entry.directory) { entries_.pop_back(); throw std::runtime_error("text output must be a file"); }
++        entry.inMemory = true; entry.text = std::move(text);
 +    }
 +    void Remove(const fs::path& destination) { Add({}, destination, true, false); }
 +    void Commit() {
@@ -601681,12 +602107,17 @@ index 0000000..f2789ba
 +        try {
 +            for (auto& e : entries_) {
 +                CheckOriginal(e);
-+                if (!e.remove) e.fresh = Fingerprint(e.source, e.directory);
++                if (e.inMemory) { e.fresh = {}; Hash(e.fresh, e.text); }
++                else if (!e.remove) e.fresh = Fingerprint(e.source, e.directory);
 +            }
 +            WriteJournal(); TestPoint("journal", 0);
 +            for (size_t i = 0; i < entries_.size(); ++i) {
 +                auto& e = entries_[i]; CheckParents(e.path.parent_path()); fs::create_directories(e.path.parent_path());
-+                if (!e.remove) { Copy(e.source, e.stage, e.directory); Match(e.stage, e.directory, e.fresh); }
++                if (!e.remove) {
++                    if (e.inMemory) Write(e.stage, e.text);
++                    else Copy(e.source, e.stage, e.directory);
++                    Match(e.stage, e.directory, e.fresh);
++                }
 +                TestPoint("prepared", i);
 +            }
 +            Marker("ready"); TestPoint("ready", 0);
@@ -601717,6 +602148,8 @@ index 0000000..f2789ba
 +    struct Entry {
 +        fs::path source, path, stage, backup, stageTrash, backupTrash;
 +        bool directory = false, remove = false;
++        bool inMemory = false;
++        std::string text;
 +        Snapshot old;
 +        detail::Digest fresh;
 +    };
@@ -601727,6 +602160,7 @@ index 0000000..f2789ba
 +    std::vector<Entry> entries_;
 +    std::string nonce_;
 +    bool active_ = false;
++    Workspace workspace_;
 +    void Derive(Entry& e, size_t index) const {
 +        const std::string suffix = ".newpage-txn-" + nonce_ + "-" + std::to_string(index);
 +        e.stage = e.path; e.stage += suffix + ".stage";
@@ -602119,10 +602553,10 @@ index 0000000..26f4398
 +   limitations under the License.
 diff --git a/libs/tinyusdz/SOURCE.md b/libs/tinyusdz/SOURCE.md
 new file mode 100644
-index 0000000..6d18ff2
+index 0000000..08d64aa
 --- /dev/null
 +++ b/libs/tinyusdz/SOURCE.md
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,13 @@
 +# tinyusdz
 +
 +Pinned upstream: https://github.com/lighttransport/tinyusdz/tree/6050eef932f7d2788656d63297aa488fb0961ed1
@@ -602135,6 +602569,7 @@ index 0000000..6d18ff2
 +`THIRD_PARTY_NOTICES.md` retains the binary redistribution notices for the compiled dependencies, including MIT/BSD notices embedded only in headers. Binary packages contain these notices instead of the development source and images; the USD importer is compiled into Assimp and needs no tinyusdz files at runtime. The full source remains here and in automatic releases' embedded source archive.
 +Local portability modification: files using standard iterator adaptors explicitly include `<iterator>` instead of relying on transitive includes (`tydra/render-data.cc`, `value-pprint.cc`, and affected embedded headers). This is required by the LLVM/libc++ toolchain.
 +`io-util.hh` uses the compiler-defined `_WIN32` for `MMapFileHandle`'s Windows field. The upstream `WIN32` check depended on whether `windows.h` had been included first, causing incompatible struct layouts and invalid mapped-file pointers with LLVM/MinGW.
++`crate-reader.cc` accepts an empty `TokenVector` without attempting a zero-byte read, which the stream API reports as false. This permits valid USDC roots containing only subLayers. Nonempty vector reads retain their existing checks; self-authored text/binary fixtures and an OpenUSD comparison cover the fix.
 diff --git a/libs/tinyusdz/THIRD_PARTY_NOTICES.md b/libs/tinyusdz/THIRD_PARTY_NOTICES.md
 new file mode 100644
 index 0000000..9bb95cc
@@ -645477,10 +645912,10 @@ index 0000000..a52cf6f
 +} // namespace tinyusdz
 diff --git a/libs/tinyusdz/src/crate-reader.cc b/libs/tinyusdz/src/crate-reader.cc
 new file mode 100644
-index 0000000..024e86b
+index 0000000..1568b17
 --- /dev/null
 +++ b/libs/tinyusdz/src/crate-reader.cc
-@@ -0,0 +1,6406 @@
+@@ -0,0 +1,6409 @@
 +// SPDX-License-Identifier: Apache 2.0
 +// Copyright 2022-2022 Syoyo Fujita.
 +// Copyright 2023-Present Light Transport Entertainment Inc.
@@ -649597,7 +650032,10 @@ index 0000000..024e86b
 +      CHECK_MEMORY_USAGE(n * sizeof(crate::Index));
 +
 +      std::vector<crate::Index> indices(static_cast<size_t>(n));
-+      if (!_sr->read(static_cast<size_t>(n) * sizeof(crate::Index),
++      // Empty TokenVectors are valid (for example primChildren on a root
++      // layer that only declares subLayers). A zero-byte read returns zero,
++      // which must not be interpreted as a truncated value.
++      if (n && !_sr->read(static_cast<size_t>(n) * sizeof(crate::Index),
 +                     static_cast<size_t>(n) * sizeof(crate::Index),
 +                     reinterpret_cast<uint8_t *>(indices.data()))) {
 +        PUSH_ERROR("Failed to read TokenVector value.");
@@ -1117095,7 +1117533,7 @@ index 0000000..f747c53
 +}
 +#endif
 diff --git a/mdlcompiler/compile.cpp b/mdlcompiler/compile.cpp
-index 9a1bbcf..ce3aa45 100644
+index 9a1bbcf..505a6b5 100644
 --- a/mdlcompiler/compile.cpp
 +++ b/mdlcompiler/compile.cpp
 @@ -1,9 +1,13 @@
@@ -1117112,7 +1117550,15 @@ index 9a1bbcf..ce3aa45 100644
  
  #include <algorithm>
  #include <atomic>
-@@ -19,6 +23,7 @@
+@@ -12,6 +16,7 @@
+ #include <cfloat>
+ #include <chrono>
+ #include <cmath>
++#include <cstdint>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+@@ -19,6 +24,7 @@
  #include <thread>
  #include <unordered_map>
  #include <unordered_set>
@@ -1117120,7 +1117566,7 @@ index 9a1bbcf..ce3aa45 100644
  #include <utility>
  
  #include "dmxloader.h"
-@@ -300,7 +305,7 @@ void TranslateAnimations(const Ctx& ctx, const src::Source* pSource,
+@@ -300,7 +306,7 @@ void TranslateAnimations(const Ctx& ctx, const src::Source* pSource,
                  pm::AngleMatrix(m.bones[k].rot, m.bones[k].pos, destBoneToWorld[k]);
              }
          } else {
@@ -1117129,7 +1117575,7 @@ index 9a1bbcf..ce3aa45 100644
              destBoneToWorld[k] =
                  pm::ConcatTransforms(srcBoneToWorld[q], m.bones[k].srcRealign);
          }
-@@ -325,6 +330,9 @@ bool BoneIsBonemerge(const Ctx& ctx, const char* pname) {
+@@ -325,6 +331,9 @@ bool BoneIsBonemerge(const Ctx& ctx, const char* pname) {
  // tests bonename alone. A driver that nothing else keeps alive collapses out
  // and MapProceduralBones then errors on the dangling control bone.
  bool BoneIsProcedural(const Ctx& ctx, const char* pname) {
@@ -1117139,7 +1117585,7 @@ index 9a1bbcf..ce3aa45 100644
      for (const JiggleBone& jb : ctx.out->jigglebones)
          if (_stricmp(jb.bonename.c_str(), pname) == 0)
              return true;
-@@ -334,6 +342,8 @@ bool BoneIsProcedural(const Ctx& ctx, const char* pname) {
+@@ -334,6 +343,8 @@ bool BoneIsProcedural(const Ctx& ctx, const char* pname) {
      for (const AimAtBone& ab : ctx.out->aimatbones)
          if (ProcBoneNameMatches(ab.bonename, pname, ab.strictName))
              return true;
@@ -1117148,7 +1117594,7 @@ index 9a1bbcf..ce3aa45 100644
      return false;
  }
  
-@@ -354,6 +364,28 @@ bool BoneIsProceduralControl(const Ctx& ctx, const char* pname) {
+@@ -354,6 +365,28 @@ bool BoneIsProceduralControl(const Ctx& ctx, const char* pname) {
  // BoneHasAttachments.)
  bool BoneIsProceduralDependency(const Ctx& ctx, const char* pname) {
      const CompiledModel& m = *ctx.out;
@@ -1117177,7 +1117623,7 @@ index 9a1bbcf..ce3aa45 100644
      for (const AimAtBone& ab : ctx.out->aimatbones) {
          if (FindProcBone(m, ab.bonename, ab.strictName) == -1)
              continue;
-@@ -375,6 +407,14 @@ bool BoneIsFlexDriver(const Ctx& ctx, const char* pname) {
+@@ -375,6 +408,14 @@ bool BoneIsFlexDriver(const Ctx& ctx, const char* pname) {
      return false;
  }
  
@@ -1117192,7 +1117638,7 @@ index 9a1bbcf..ce3aa45 100644
  bool BoneIsDoNotCollapse(const Ctx& ctx, const char* pname) {
      for (const BoneMarkup& bm : ctx.in->bonemarkups)
          if (bm.doNotCollapse && _stricmp(bm.name.c_str(), pname) == 0)
-@@ -385,30 +425,33 @@ bool BoneIsDoNotCollapse(const Ctx& ctx, const char* pname) {
+@@ -385,30 +426,33 @@ bool BoneIsDoNotCollapse(const Ctx& ctx, const char* pname) {
  // $alwayscollapse names this bone and $donotcollapse does not, which wins
  // (reference BoneIsAlwaysCollapse). Overrules bone_cull_type 2 (none).
  bool BoneIsAlwaysCollapse(const Ctx& ctx, const char* pname) {
@@ -1117234,7 +1117680,7 @@ index 9a1bbcf..ce3aa45 100644
              return true;
      }
      // either side of a collision pair names a body too
-@@ -918,6 +961,8 @@ void MapJiggleBones(Ctx& ctx) {
+@@ -918,6 +962,8 @@ void MapJiggleBones(Ctx& ctx) {
              continue;
          }
          ctx.out->bones[jbs[i].bone].flags |= BONE_ALWAYS_PROCEDURAL;
@@ -1117243,7 +1117689,7 @@ index 9a1bbcf..ce3aa45 100644
  
          std::printf("Marking bone \"%s\" procedural: jiggle\n", jbs[i].bonename.c_str());
      }
-@@ -973,6 +1018,153 @@ void CullUnskinnedJiggleBones(Ctx& ctx) {
+@@ -973,6 +1019,153 @@ void CullUnskinnedJiggleBones(Ctx& ctx) {
  // The reference does NOT push aimvector/upvector/basepos through srcRealign
  // (its post-realign pass only re-validates), so neither do we.
  // ---------------------------------------------------------------------------
@@ -1117397,7 +1117843,7 @@ index 9a1bbcf..ce3aa45 100644
  bool MapAimAtBones(Ctx& ctx, std::string* err) {
      std::vector<AimAtBone>& abs = ctx.out->aimatbones;
  
-@@ -1107,6 +1299,16 @@ bool MapProceduralBones(Ctx& ctx, std::string* err) {
+@@ -1107,6 +1300,16 @@ bool MapProceduralBones(Ctx& ctx, std::string* err) {
          pm::AngleQuaternion(ctx.out->bones[pb.helper].rot, bindQuat);
          const Vector3& bindPos = ctx.out->bones[pb.helper].pos;
          for (ProceduralBoneTrigger& tr : pb.triggers) {
@@ -1117414,7 +1117860,7 @@ index 9a1bbcf..ce3aa45 100644
              if (tr.absolutePose)
                  continue;
              Quaternion remapped;
-@@ -1222,20 +1424,29 @@ bool RemapProceduralBones(Ctx& ctx, std::string* err) {
+@@ -1222,20 +1425,29 @@ bool RemapProceduralBones(Ctx& ctx, std::string* err) {
  }
  
  // ---------------------------------------------------------------------------
@@ -1117447,7 +1117893,7 @@ index 9a1bbcf..ce3aa45 100644
      }
  
      for (auto& sp : ctx.in->sources) {
-@@ -1315,9 +1526,44 @@ void TagUsedBones(Ctx& ctx) {
+@@ -1315,9 +1527,44 @@ void TagUsedBones(Ctx& ctx) {
              }
          }
  
@@ -1117492,7 +1117938,7 @@ index 9a1bbcf..ce3aa45 100644
          // tag bonerefs as the union of the boneflags of all their children
          for (int k = 0; k < psource->numbones; k++) {
              int nFlags = psource->boneflags[k];
-@@ -1363,6 +1609,19 @@ void TagUsedBones(Ctx& ctx) {
+@@ -1363,6 +1610,19 @@ void TagUsedBones(Ctx& ctx) {
                  break;
              }
          };
@@ -1117512,7 +1117958,7 @@ index 9a1bbcf..ce3aa45 100644
          // (these live on `out` by now - Compile moves them off the input before
          // the bone passes, same as BoneIsProcedural reads them)
          for (const JiggleBone& jb : ctx.out->jigglebones)
-@@ -1384,6 +1643,20 @@ void TagUsedBones(Ctx& ctx) {
+@@ -1384,6 +1644,20 @@ void TagUsedBones(Ctx& ctx) {
              if (!isAttachment)
                  keepProceduralBone(ab.aimname);
          }
@@ -1117533,7 +1117979,7 @@ index 9a1bbcf..ce3aa45 100644
      }
  }
  
-@@ -1395,29 +1668,22 @@ void TagUsedBones(Ctx& ctx) {
+@@ -1395,29 +1669,22 @@ void TagUsedBones(Ctx& ctx) {
  void InsertPredefinedBones(Ctx& ctx, bool bUnlocked) {
      CompiledModel& m = *ctx.out;
  
@@ -1117571,7 +1118017,7 @@ index 9a1bbcf..ce3aa45 100644
          }
          m.bones[k].bDontCollapse = true;
          m.bones[k].srcRealign = ib.srcRealign;
-@@ -1432,6 +1698,64 @@ void InsertPredefinedBones(Ctx& ctx, bool bUnlocked) {
+@@ -1432,6 +1699,64 @@ void InsertPredefinedBones(Ctx& ctx, bool bUnlocked) {
  }
  
  // ---------------------------------------------------------------------------
@@ -1117636,7 +1118082,7 @@ index 9a1bbcf..ce3aa45 100644
  // EnforceHierarchy: $hierarchy relinks a bone's parent. It runs after
  // boneToPose is built and RebuildLocalPose re-derives the locals afterwards, so
  // the bone keeps its world placement and only the parent changes. The table is
-@@ -1456,30 +1780,7 @@ bool EnforceHierarchy(Ctx& ctx, std::string* err) {
+@@ -1456,30 +1781,7 @@ bool EnforceHierarchy(Ctx& ctx, std::string* err) {
          m.bones[k].parent = j;
      }
  
@@ -1117668,7 +1118114,7 @@ index 9a1bbcf..ce3aa45 100644
  }
  
  // ---------------------------------------------------------------------------
-@@ -1562,6 +1863,9 @@ bool BuildGlobalBonetable(Ctx& ctx, std::string* err) {
+@@ -1562,6 +1864,9 @@ bool BuildGlobalBonetable(Ctx& ctx, std::string* err) {
  
      InsertPredefinedBones(ctx, true);
  
@@ -1117678,7 +1118124,7 @@ index 9a1bbcf..ce3aa45 100644
      // BuildGlobalBoneToPose
      for (size_t k = 0; k < m.bones.size(); k++) {
          if (m.bones[k].parent == -1)
-@@ -1644,7 +1948,6 @@ bool BoneHasChildren(const CompiledModel& m, int k) {
+@@ -1644,7 +1949,6 @@ bool BoneHasChildren(const CompiledModel& m, int k) {
  // grandparent's space before k goes away.
  void ResolveProceduralParentCollapse(Ctx& ctx, int k) {
      CompiledModel& m = *ctx.out;
@@ -1117686,7 +1118132,7 @@ index 9a1bbcf..ce3aa45 100644
      const std::string newparent =
          m.bones[k].parent >= 0 ? m.bones[m.bones[k].parent].name : std::string();
  
-@@ -1664,7 +1967,10 @@ void ResolveProceduralParentCollapse(Ctx& ctx, int k) {
+@@ -1664,7 +1968,10 @@ void ResolveProceduralParentCollapse(Ctx& ctx, int k) {
      auto isAuthoredParent = [&](const std::string& named, const std::string& child,
                                  bool strict) {
          if (!named.empty())
@@ -1117698,7 +1118144,7 @@ index 9a1bbcf..ce3aa45 100644
          const int c = FindProcBone(m, child, strict);
          return c >= 0 && m.bones[c].parent == k;
      };
-@@ -1721,11 +2027,18 @@ void CollapseBones(Ctx& ctx) {
+@@ -1721,11 +2028,18 @@ void CollapseBones(Ctx& ctx) {
      do {
          collapsedAny = false;
          for (int k = 0; k < static_cast<int>(m.bones.size()); k++) {
@@ -1117721,7 +1118167,7 @@ index 9a1bbcf..ce3aa45 100644
  
              // "none" keeps every bone the script authored. Non-skeletal bones
              // (mesh dags, defaultRoot) are exempt - exporter noise, not part of
-@@ -1735,7 +2048,7 @@ void CollapseBones(Ctx& ctx) {
+@@ -1735,7 +2049,7 @@ void CollapseBones(Ctx& ctx) {
  
              // "leaf only" never reparents: an unreferenced bone that still has
              // children stays where it is.
@@ -1117730,7 +1118176,7 @@ index 9a1bbcf..ce3aa45 100644
                  continue;
  
              // BoneShouldCollapse. $donotcollapse is checked first so it wins
-@@ -1743,6 +2056,7 @@ void CollapseBones(Ctx& ctx) {
+@@ -1743,6 +2057,7 @@ void CollapseBones(Ctx& ctx) {
              if (!always &&
                 (BoneIsDoNotCollapse(ctx, m.bones[k].name.c_str()) ||
                  BoneHasAnimation(ctx, m.bones[k].name.c_str()) ||
@@ -1117738,7 +1118184,7 @@ index 9a1bbcf..ce3aa45 100644
                  BoneIsIK(ctx, m.bones[k].name.c_str()) ||
                  BoneHasAttachments(ctx, m.bones[k].name.c_str()) ||
                  BoneHasHitbox(ctx, m.bones[k].name.c_str()) ||
-@@ -2097,6 +2411,10 @@ bool PushAnimSrcRealignOverride(Ctx& ctx, const Anim& panim, std::vector<SrcReal
+@@ -2097,6 +2412,10 @@ bool PushAnimSrcRealignOverride(Ctx& ctx, const Anim& panim, std::vector<SrcReal
      BoneEditState& st = ctx.boneEdits;
      saved.clear();
  
@@ -1117749,7 +1118195,7 @@ index 9a1bbcf..ce3aa45 100644
      if (st.applied.empty())
          return false;
      if (!panim.ignoreTransformPosition && !panim.ignoreTransformAngles &&
-@@ -2137,12 +2455,10 @@ void PopAnimSrcRealignOverride(Ctx& ctx, const std::vector<SrcRealignSave>& save
+@@ -2137,12 +2456,10 @@ void PopAnimSrcRealignOverride(Ctx& ctx, const std::vector<SrcRealignSave>& save
          ctx.out->bones[s.bone].srcRealign = s.saved;
  }
  
@@ -1117766,7 +1118212,7 @@ index 9a1bbcf..ce3aa45 100644
  //
  // With realign_bones set, every bone whose parent has exactly one child is
  // additionally rotated so its X axis aims at that child.
-@@ -2150,6 +2466,9 @@ void PopAnimSrcRealignOverride(Ctx& ctx, const std::vector<SrcRealignSave>& save
+@@ -2150,6 +2467,9 @@ void PopAnimSrcRealignOverride(Ctx& ctx, const std::vector<SrcRealignSave>& save
  // srcRealign survives verbatim.
  bool RealignBones(Ctx& ctx, std::string* err) {
      CompiledModel& m = *ctx.out;
@@ -1117776,7 +1118222,7 @@ index 9a1bbcf..ce3aa45 100644
      size_t numbones = m.bones.size();
  
      std::vector<int> childbone(numbones, -1);
-@@ -2248,7 +2567,19 @@ bool RealignBones(Ctx& ctx, std::string* err) {
+@@ -2248,7 +2568,19 @@ bool RealignBones(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -1117797,7 +1118243,7 @@ index 9a1bbcf..ce3aa45 100644
  
      // build realignment transforms
      for (size_t k = 0; k < numbones; k++) {
-@@ -2375,7 +2706,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
+@@ -2375,7 +2707,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
          size_t matches = 0;
          for (size_t mi = 0; mi < m.models.size() && texture >= 0; ++mi) {
              source::Source* ps = m.models[mi].source;
@@ -1117806,7 +1118252,7 @@ index 9a1bbcf..ce3aa45 100644
              for (int i = 0; i < ps->nummeshes; ++i) {
                  if (ps->meshindex[i] != texture)
                      continue;
-@@ -2415,7 +2746,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
+@@ -2415,7 +2747,7 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
              return false;
          }
  
@@ -1117815,7 +1118261,7 @@ index 9a1bbcf..ce3aa45 100644
          Vector3 tmp = {eye.org.x * scale, eye.org.y * scale, eye.org.z * scale};
  
          // `center`: sit on the bbox center of the verts wearing the eyeball's
-@@ -2441,9 +2772,9 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
+@@ -2441,9 +2773,9 @@ bool SetupEyeballs(Ctx& ctx, std::string* err) {
              }
          }
  
@@ -1117827,7 +1118273,7 @@ index 9a1bbcf..ce3aa45 100644
  
          ctx.eyeAbsZSum += std::fabs(tmp.z);
          ctx.eyeAbsZCount++;
-@@ -2713,6 +3044,31 @@ void RemapVertices(Ctx& ctx) {
+@@ -2713,6 +3045,31 @@ void RemapVertices(Ctx& ctx) {
              pm::VectorNormalize(ndest);
              dstVertex.normal = ndest;
          }
@@ -1117859,7 +1118305,7 @@ index 9a1bbcf..ce3aa45 100644
      }
  }
  
-@@ -3074,34 +3430,46 @@ void ExpandLodBoneCollapses(Ctx& ctx) {
+@@ -3074,34 +3431,46 @@ void ExpandLodBoneCollapses(Ctx& ctx) {
                  collapseToParent(pb.helper);
              for (const AimAtBone& ab : m.aimatbones)
                  collapseToParent(ab.bone);
@@ -1117924,7 +1118370,7 @@ index 9a1bbcf..ce3aa45 100644
  }
  
  // $jointcontents (reference GetContents). Resolved against
-@@ -3318,10 +3686,61 @@ const src::SrcMesh* FindMeshByMaterial(const src::Source* pSrc, int nMaterialID)
+@@ -3318,10 +3687,61 @@ const src::SrcMesh* FindMeshByMaterial(const src::Source* pSrc, int nMaterialID)
      return nullptr;
  }
  
@@ -1117986,7 +1118432,7 @@ index 9a1bbcf..ce3aa45 100644
  
      model.meshVertIndexMaps.assign(nNumLODs, {});
      for (int lodID = 0; lodID < nNumLODs; lodID++)
-@@ -3363,6 +3782,10 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
+@@ -3363,6 +3783,10 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
              lv.position = sv.position;
              lv.normal = sv.normal;
              lv.texcoord = sv.texcoord;
@@ -1117997,7 +1118443,7 @@ index 9a1bbcf..ce3aa45 100644
              lv.tangentS = sv.tangentS;
              lv.lodFlag = 1 << 0;
              const int id = AddDictVertex(model.vertices, lv);
-@@ -3403,6 +3826,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
+@@ -3403,6 +3827,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
          if (anyLowerLod)
              dictIndex.Build(model.vertices, pVertexDictMesh->vertexoffset,
                              pVertexDictMesh->vertexoffset + pVertexDictMesh->numvertices);
@@ -1118007,7 +1118453,7 @@ index 9a1bbcf..ce3aa45 100644
  
          for (int lodID = 1; lodID < nNumLODs; ++lodID) {
              const src::Source* pCurrLod = model.lodSources[lodID];
-@@ -3417,6 +3843,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
+@@ -3417,6 +3844,9 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
  
              std::vector<int> boneMap;
              BuildBoneLodMapping(m, m.scriptLods[lodID], boneMap);
@@ -1118017,7 +1118463,7 @@ index 9a1bbcf..ce3aa45 100644
  
              for (int v = 0; v < pCurrMesh->numvertices; ++v) {
                  const int nSrcID = pCurrMesh->vertexoffset + v;
-@@ -3427,9 +3856,26 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
+@@ -3427,9 +3857,26 @@ void UnifyModelLods(Ctx& ctx, Model& model) {
                  lv.position = sv.position;
                  lv.normal = sv.normal;
                  lv.texcoord = sv.texcoord;
@@ -1118044,7 +1118490,7 @@ index 9a1bbcf..ce3aa45 100644
                  RemapBoneWeights(boneMap, lv.boneweight);
                  CollapseBoneWeights(lv.boneweight);
                  SortBoneWeightByWeight(lv.boneweight);
-@@ -3506,11 +3952,94 @@ std::vector<src::SrcFace> BuildLodFaceList(const Model& model, int lodID,
+@@ -3506,11 +3953,94 @@ std::vector<src::SrcFace> BuildLodFaceList(const Model& model, int lodID,
      return faces;
  }
  
@@ -1118140,7 +1118586,7 @@ index 9a1bbcf..ce3aa45 100644
      std::vector<std::vector<src::SrcFace>> lodFaces;
  };
  
-@@ -3523,27 +4052,31 @@ struct MeshBucket {
+@@ -3523,27 +4053,31 @@ struct MeshBucket {
  // land on both sides of a cut is duplicated into both; those few duplicates are
  // the entire cost of the split.
  std::vector<MeshBucket> PartitionMesh(int numvertices,
@@ -1118181,7 +1118627,7 @@ index 9a1bbcf..ce3aa45 100644
              if (s < 0) {
                  s = static_cast<int>(b.verts.size());
                  b.verts.push_back(static_cast<int>(v));
-@@ -3562,7 +4095,7 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
+@@ -3562,7 +4096,7 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
      if (!lodFaces.empty()) {
          size_t cur = 0;
          for (const src::SrcFace& f : lodFaces[0]) {
@@ -1118190,7 +1118636,7 @@ index 9a1bbcf..ce3aa45 100644
                  addBucket();
                  cur = buckets.size() - 1;
              }
-@@ -3594,28 +4127,20 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
+@@ -3594,28 +4128,20 @@ std::vector<MeshBucket> PartitionMesh(int numvertices,
      // Verts no triangle names still have to reach the .vvd: the buckets are what
      // Model::vertices becomes, and dropping entries would renumber every flex
      // delta behind them for no gain.
@@ -1118226,7 +1118672,7 @@ index 9a1bbcf..ce3aa45 100644
          dst->verts.push_back(v);
      }
  
-@@ -3692,13 +4217,13 @@ void BuildOutputMeshes(Ctx& ctx) {
+@@ -3692,13 +4218,13 @@ void BuildOutputMeshes(Ctx& ctx) {
                  model.outMeshes.push_back(std::move(om));
              };
  
@@ -1118242,7 +1118688,7 @@ index 9a1bbcf..ce3aa45 100644
              for (MeshBucket& bucket : buckets)
                  emit(static_cast<int>(bucket.verts.size()), bucket.verts.data(),
                       std::move(bucket.lodFaces));
-@@ -3717,7 +4242,7 @@ void BuildOutputMeshes(Ctx& ctx) {
+@@ -3717,7 +4243,7 @@ void BuildOutputMeshes(Ctx& ctx) {
              }
              std::printf("Splitting material \"%s\": %d vertices exceeds the %d a mesh can "
                          "index, using %d meshes (%s), %d vertices duplicated\n",
@@ -1118251,7 +1118697,7 @@ index 9a1bbcf..ce3aa45 100644
                          static_cast<int>(buckets.size()), pieces.c_str(),
                          total - range.numvertices);
          }
-@@ -3758,6 +4283,102 @@ void BuildOutputMeshes(Ctx& ctx) {
+@@ -3758,6 +4284,102 @@ void BuildOutputMeshes(Ctx& ctx) {
      }
  }
  
@@ -1118354,7 +1118800,7 @@ index 9a1bbcf..ce3aa45 100644
  // ---------------------------------------------------------------------------
  // Collision model (reference ProcessSingleBody / CreateCollide /
  // BuildConvexListForFaceList)
-@@ -3801,19 +4422,62 @@ Vector3 ApplyShapeFraming(const ShapeFraming& f, Vector3 p) {
+@@ -3801,19 +4423,62 @@ Vector3 ApplyShapeFraming(const ShapeFraming& f, Vector3 p) {
      return {p.x + f.offset.x, p.y + f.offset.y, p.z + f.offset.z};
  }
  
@@ -1118420,7 +1118866,232 @@ index 9a1bbcf..ce3aa45 100644
  }
  
  // IsApproximatelyPlanar. A hull thinner than the epsilon is not a solid -
-@@ -4224,8 +4888,14 @@ void AssignPhysicsBones(CompiledModel& m) {
+@@ -3853,26 +4518,83 @@ bool IsApproximatelyPlanar(const std::vector<phys::Vec3>& verts, float epsilon)
+     return true;
+ }
+ 
+-// BuildVertWeldTable: fold vertices that share a position and a roughly
+-// matching normal onto their first occurrence, so island flood-fill sees the
+-// mesh as connected across duplicated seam verts.
++struct WeldCell {
++    std::int64_t x, y, z;
++    bool operator==(const WeldCell& other) const {
++        return x == other.x && y == other.y && z == other.z;
++    }
++};
++
++struct WeldCellHash {
++    size_t operator()(const WeldCell& cell) const {
++        size_t h = std::hash<std::int64_t>{}(cell.x);
++        for (auto v : {cell.y, cell.z})
++            h ^= std::hash<std::int64_t>{}(v) + size_t{0x9e3779b9} + (h << 6) + (h >> 2);
++        return h;
++    }
++};
++
++// Preserve the reference's FIRST matching predecessor, including predecessors
++// already welded away. Resolve that predecessor to its canonical vertex: a
++// tolerance chain must not expose a removed intermediate vertex to island
++// grouping. Nearby candidates come from a grid, but the original float distance
++// and strict normal-dot tests still decide each match.
+ void BuildVertWeldTable(const src::Source* ps, float posEpsilon, float normalEpsilon,
+                         std::vector<int>& weldTable) {
+     const int n = static_cast<int>(ps->vertex.size());
+     weldTable.assign(n, 0);
++    // Twice the tolerance leaves room for subtraction rounding at a cell edge.
++    // The floor also covers squared-distance underflow with a zero epsilon.
++    const double cellWidth = std::max(2.0 * static_cast<double>(posEpsilon), 1e-6);
++    std::vector<WeldCell> cells(n);
++    bool useGrid = posEpsilon >= 0 && std::isfinite(posEpsilon);
++    for (int i = 0; useGrid && i < n; ++i) {
++        const auto& p = ps->vertex[i].position;
++        const double x = std::floor(p.x / cellWidth);
++        const double y = std::floor(p.y / cellWidth);
++        const double z = std::floor(p.z / cellWidth);
++        // Beyond this range doubles cannot distinguish adjacent cells. Keep
++        // the exact legacy search for such extreme coordinate/tolerance ratios.
++        constexpr double kSafeCell = 4503599627370494.0;
++        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
++            std::fabs(x) > kSafeCell || std::fabs(y) > kSafeCell || std::fabs(z) > kSafeCell) {
++            useGrid = false;
++            break;
++        }
++        cells[i] = {static_cast<std::int64_t>(x), static_cast<std::int64_t>(y),
++                    static_cast<std::int64_t>(z)};
++    }
++    std::unordered_map<WeldCell, std::vector<int>, WeldCellHash> grid;
++    if (useGrid) grid.reserve(n);
+     for (int i = 0; i < n; i++) {
+         weldTable[i] = i;
+-        for (int j = 0; j < i; j++) {
++        int first = i;
++        auto matches = [&](int j) {
+             Vector3 d{ps->vertex[j].position.x - ps->vertex[i].position.x,
+                       ps->vertex[j].position.y - ps->vertex[i].position.y,
+                       ps->vertex[j].position.z - ps->vertex[i].position.z};
+-            float dist = VectorLength(d);
+-            float normalDist = DotProduct(ps->vertex[j].normal, ps->vertex[i].normal);
+-            if (dist <= posEpsilon && normalDist > normalEpsilon) {
+-                weldTable[i] = j;
+-                break;
++            return VectorLength(d) <= posEpsilon &&
++                   DotProduct(ps->vertex[j].normal, ps->vertex[i].normal) > normalEpsilon;
++        };
++        if (useGrid) {
++            const WeldCell cell = cells[i];
++            for (int x = -1; x <= 1; ++x)
++                for (int y = -1; y <= 1; ++y)
++                    for (int z = -1; z <= 1; ++z) {
++                        const auto found = grid.find({cell.x + x, cell.y + y, cell.z + z});
++                        if (found == grid.end()) continue;
++                        for (int j : found->second) {
++                            if (j >= first) break; // bucket indices are ascending
++                            if (matches(j)) { first = j; break; }
++                        }
++                    }
++            grid[cell].push_back(i);
++        } else {
++            for (int j = 0; j < i; ++j) {
++                if (matches(j)) { first = j; break; }
+             }
+         }
++        weldTable[i] = weldTable[first];
+     }
+ }
+ 
+@@ -3893,88 +4615,67 @@ void CollectSourceFaces(const src::Source* ps, std::vector<SrcTri>& out) {
+     }
+ }
+ 
+-// BuildConvexListByVertID: bucket vertices by their label, in first-seen
+-// order. A label outside [0, totalSourceFaces] is a vertex no face reached.
+-void BucketByVertID(std::vector<int>& vertID, int totalSourceFaces,
+-                    std::vector<std::vector<int>>& groupsOut) {
+-    const int numVerts = static_cast<int>(vertID.size());
+-    for (int i = 0; i < numVerts; i++) {
+-        if (vertID[i] < 0 || vertID[i] > totalSourceFaces)
+-            continue;
+-        const int id = vertID[i];
+-        std::vector<int> group;
+-        for (int j = i; j < numVerts; j++) {
+-            if (vertID[j] == id) {
+-                group.push_back(j);
+-                vertID[j] = -1;
+-            }
+-        }
+-        groupsOut.push_back(std::move(group));
+-    }
+-}
+-
+-// BuildConvexListForFaceList: label every vertex with the lowest face id
+-// reachable through shared (welded) vertices, iterating to a fixpoint, then
+-// bucket. Each bucket is a disjoint mesh island and becomes its own convex
+-// piece.
++// BuildConvexListForFaceList: join face vertices after welding, then collect
++// connected components in source-vertex order. This preserves the old hull and
++// vertex ordering without repeated whole-mesh label propagation or rescans.
+ //
+ // This is NOT convex decomposition - it splits geometry that is already
+ // physically separate. Genuine concave-solid decomposition is not implemented.
+ //
+-// `faces` may be a subset of the source (the ragdoll path passes one bone's
+-// faces), but the sentinel is keyed to the source's TOTAL face count, exactly
+-// as the reference keys it to pmodel->numfaces.
+-void BuildIslandsForFaces(const src::Source* ps, const std::vector<SrcTri>& faces,
+-                          int totalSourceFaces, float posEpsilon, float normalEpsilon,
++// `faces` may be a subset of the source (one ragdoll bone); untouched vertices
++// remain absent even when the source-wide weld table is reused by other bones.
++void BuildIslandsForFaces(const std::vector<int>& weldTable, const std::vector<SrcTri>& faces,
+                           std::vector<std::vector<int>>& islandsOut) {
+     islandsOut.clear();
+-    const int numVerts = static_cast<int>(ps->vertex.size());
++    const int numVerts = static_cast<int>(weldTable.size());
+     if (numVerts == 0 || faces.empty())
+         return;
+-
+-    std::vector<int> weldTable;
+-    BuildVertWeldTable(ps, posEpsilon, normalEpsilon, weldTable);
+-
+-    // a welded-away vertex gets -1 and is skipped; everything else starts above
+-    // every face id so the first pass can only lower it
+-    std::vector<int> vertID(numVerts);
+-    for (int i = 0; i < numVerts; i++)
+-        vertID[i] = (weldTable[i] != i) ? -1 : totalSourceFaces + 1;
+-
+-    const int numFaces = static_cast<int>(faces.size());
+-    int marked = 0;
+-    do {
+-        marked = 0;
+-        for (int i = 0; i < numFaces; i++) {
+-            int a = weldTable[faces[i].a];
+-            int b = weldTable[faces[i].b];
+-            int c = weldTable[faces[i].c];
+-            int newid = i;
+-            if (vertID[a] < newid) newid = vertID[a];
+-            if (vertID[b] < newid) newid = vertID[b];
+-            if (vertID[c] < newid) newid = vertID[c];
+-            if (vertID[a] != newid) { vertID[a] = newid; marked++; }
+-            if (vertID[b] != newid) { vertID[b] = newid; marked++; }
+-            if (vertID[c] != newid) { vertID[c] = newid; marked++; }
++    std::vector<int> parent(numVerts, -1), rank(numVerts, 0);
++    auto root = [&](int v) {
++        int r = v;
++        while (parent[r] != r) r = parent[r];
++        while (parent[v] != v) {
++            const int next = parent[v]; parent[v] = r; v = next;
++        }
++        return r;
++    };
++    auto join = [&](int a, int b) {
++        a = root(a); b = root(b);
++        if (a == b) return;
++        if (rank[a] < rank[b]) std::swap(a, b);
++        parent[b] = a;
++        if (rank[a] == rank[b]) ++rank[a];
++    };
++    for (const SrcTri& face : faces) {
++        const int a = weldTable[face.a], b = weldTable[face.b], c = weldTable[face.c];
++        for (int v : {a, b, c}) if (parent[v] < 0) parent[v] = v;
++        join(a, b); join(a, c);
++    }
++    std::vector<int> groupForRoot(numVerts, -1);
++    for (int i = 0; i < numVerts; ++i) {
++        if (parent[i] < 0) continue;
++        int& group = groupForRoot[root(i)];
++        if (group < 0) {
++            group = static_cast<int>(islandsOut.size());
++            islandsOut.emplace_back();
+         }
+-    } while (marked != 0);
+-
+-    BucketByVertID(vertID, totalSourceFaces, islandsOut);
++        islandsOut[group].push_back(i);
++    }
+ }
+ 
+ // BuildSingleConvexForFaceList: every vertex the face list touches goes
+ // into one group - one hull for the whole set, no island split.
+ void BuildSingleGroupForFaces(const src::Source* ps, const std::vector<SrcTri>& faces,
+-                              int totalSourceFaces,
+                               std::vector<std::vector<int>>& groupsOut) {
+     groupsOut.clear();
+-    std::vector<int> vertID(ps->vertex.size(), -1);
++    std::vector<bool> used(ps->vertex.size(), false);
+     for (const SrcTri& f : faces) {
+-        vertID[f.a] = 1;
+-        vertID[f.b] = 1;
+-        vertID[f.c] = 1;
++        used[f.a] = used[f.b] = used[f.c] = true;
+     }
+-    BucketByVertID(vertID, totalSourceFaces, groupsOut);
++    std::vector<int> group;
++    for (int i = 0; i < static_cast<int>(used.size()); ++i)
++        if (used[i]) group.push_back(i);
++    if (!group.empty()) groupsOut.push_back(std::move(group));
+ }
+ 
+ // Turn vertex groups into convex hulls. Shared by the single-body and ragdoll
+@@ -4224,8 +4925,14 @@ void AssignPhysicsBones(CompiledModel& m) {
          b.physicsbone = -1;
      for (size_t i = 0; i < m.physSolids.size(); i++) {
          int bi = m.FindBone(m.physSolids[i].name.c_str());
@@ -1118436,7 +1119107,7 @@ index 9a1bbcf..ce3aa45 100644
      }
      for (size_t i = 0; i < m.bones.size(); i++) {
          if (m.bones[i].physicsbone >= 0)
-@@ -4559,8 +5229,29 @@ bool ConvexesFromGenerated(const GeneratedShape& gen, const matrix3x4* poseToBon
+@@ -4559,14 +5266,44 @@ bool ConvexesFromGenerated(const GeneratedShape& gen, const matrix3x4* poseToBon
      return true;
  }
  
@@ -1118466,7 +1119137,22 @@ index 9a1bbcf..ce3aa45 100644
      CompiledModel& m = *ctx.out;
      const CompileInput& in = *ctx.in;
  
-@@ -4656,6 +5347,18 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+     std::vector<RagdollBody> bodies;
+     bool anyConcave = false;
+     int maxConvexPieces = 0;
++    // Raw source positions/normals and tolerances are unchanged between bones
++    // and shapes here. Build once per source, not once per ragdoll body.
++    std::unordered_map<const src::Source*, std::vector<int>> weldTables;
++    auto weldForSource = [&](const src::Source* ps) -> const std::vector<int>& {
++        auto entry = weldTables.emplace(ps, std::vector<int>{});
++        if (entry.second)
++            BuildVertWeldTable(ps, in.physWeldPosition, in.physWeldNormal, entry.first->second);
++        return entry.first->second;
++    };
+ 
+     auto freeBodies = [&bodies]() {
+         for (RagdollBody& b : bodies)
+@@ -4656,6 +5393,18 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
              bonemap[idx] = parent;
          }
  
@@ -1118485,7 +1119171,7 @@ index 9a1bbcf..ce3aa45 100644
          std::vector<SrcTri> allFaces;
          CollectSourceFaces(ps, allFaces);
          const int totalSourceFaces = static_cast<int>(allFaces.size());
-@@ -4708,6 +5411,7 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4708,22 +5457,23 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
              for (size_t i = 0; i < ps->vertex.size(); i++) {
                  Vector3 p = haveGlobal ? ps->globalVertices[i].position : ps->vertex[i].position;
                  p = ApplyShapeFraming(framing, p);
@@ -1118493,8 +1119179,16 @@ index 9a1bbcf..ce3aa45 100644
                  Vector3 local = pm::VectorITransform(p, boneToPose);
                  boneVerts.push_back({local.x, local.y, local.z});
              }
-@@ -4721,9 +5425,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
-                 BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
+ 
+             std::vector<std::vector<int>> groups;
+             if (shape.concave) {
+-                BuildIslandsForFaces(ps, faceList, totalSourceFaces, in.physWeldPosition,
+-                                     in.physWeldNormal, groups);
++                BuildIslandsForFaces(weldForSource(ps), faceList, groups);
+             }
+             if (groups.empty())
+-                BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
++                BuildSingleGroupForFaces(ps, faceList, groups);
  
              std::vector<phys::Convex*> convexes;
 -            if (!BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(), shape.remove2d,
@@ -1118507,7 +1119201,18 @@ index 9a1bbcf..ce3aa45 100644
                  for (phys::Convex* c : convexes)
                      phys::ConvexFree(c);
                  freeBodies();
-@@ -4816,10 +5521,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4807,19 +5557,18 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+ 
+             std::vector<std::vector<int>> groups;
+             if (shape.concave) {
+-                BuildIslandsForFaces(ps, faceList, totalSourceFaces, in.physWeldPosition,
+-                                     in.physWeldNormal, groups);
++                BuildIslandsForFaces(weldForSource(ps), faceList, groups);
+             }
+             if (groups.empty())
+-                BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
++                BuildSingleGroupForFaces(ps, faceList, groups);
+ 
              std::vector<phys::Convex*> convexes;
              // gameData is the 1-based global bone, which is how vphysics maps a
              // hull back to the bone it drives (0 is reserved for a single body).
@@ -1118522,7 +1119227,16 @@ index 9a1bbcf..ce3aa45 100644
                  for (phys::Convex* c : convexes)
                      phys::ConvexFree(c);
                  freeBodies();
-@@ -4961,6 +5666,17 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4834,7 +5583,7 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+                     phys::ConvexFree(convex);
+                 convexes.clear();
+                 groups.clear();
+-                BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
++                BuildSingleGroupForFaces(ps, faceList, groups);
+                 if (!BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(), shape.remove2d,
+                                             static_cast<unsigned int>(globalBone) + 1,
+                                             convexes, err)) {
+@@ -4961,6 +5710,17 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
          std::printf("WARNING: $rootbone \"%s\" has no collision body - the hull meant for it "
                      "is weighted to some other bone\n", in.physRootBone.c_str());
      }
@@ -1118540,7 +1119254,7 @@ index 9a1bbcf..ce3aa45 100644
      for (const PhysicsJoint& j : in.physJoints) {
          int gb = FindGlobalBone(m, j.bonename);
          if (gb < 0) {
-@@ -4970,6 +5686,7 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4970,6 +5730,7 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
          }
          std::string name = m.bones[gb].name;
          int idx = FindSolidByName(m.physSolids, name);
@@ -1118548,7 +1119262,7 @@ index 9a1bbcf..ce3aa45 100644
          if (idx < 0) {
              // the bone collapsed or was skipped - the constraint slides up to
              // whichever ancestor kept a body, as the reference does
-@@ -4994,6 +5711,8 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
+@@ -4994,6 +5755,8 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
              return false;
          }
          for (const PhysicsJointAxis& a : j.axes) {
@@ -1118557,7 +1119271,7 @@ index 9a1bbcf..ce3aa45 100644
              switch (a.type) {
              case 1: // limit
                  solid.axisMin[a.axis] = a.min;
-@@ -5152,12 +5871,24 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5152,12 +5915,23 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -1118566,7 +1119280,6 @@ index 9a1bbcf..ce3aa45 100644
 +        src::Source weldSource;
 +        std::vector<phys::Vec3> vertices;
 +        std::vector<SrcTri> faces;
-+        int totalSourceFaces = 0;
 +    };
 +    std::vector<PreparedCollisionShape> prepared;
 +    std::map<int, size_t> concaveGroups;
@@ -1118587,7 +1119300,7 @@ index 9a1bbcf..ce3aa45 100644
              if (err) *err = "physics shape \"" + shape.name + "\" has no vertices";
              freeConvexes();
              return false;
-@@ -5166,15 +5897,14 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5166,15 +5940,13 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
          // import_type 2 keeps only the geometry on parent_bone. Type 1 reskins
          // everything onto one bone, which is already what a single body is, so
          // it needs no filtering here.
@@ -1118595,7 +1119308,6 @@ index 9a1bbcf..ce3aa45 100644
 -        CollectSourceFaces(shape.source, faces);
 -        const int totalSourceFaces = static_cast<int>(faces.size());
 +        CollectSourceFaces(shape.source, item.faces);
-+        item.totalSourceFaces = static_cast<int>(item.faces.size());
          if (shape.importType == PhysicsImportType::OneBoneOnly) {
 -            if (!FilterFacesToBone(m, shape, faces, err)) {
 +            if (!FilterFacesToBone(m, shape, item.faces, err)) {
@@ -1118607,7 +1119319,7 @@ index 9a1bbcf..ce3aa45 100644
                  if (err) *err = "physics shape \"" + shape.name +
                                  "\" has import_type 2 but no geometry on bone \"" +
                                  shape.parentBone + "\"";
-@@ -5182,6 +5912,36 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5182,6 +5954,34 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
                  return false;
              }
          }
@@ -1118629,7 +1119341,6 @@ index 9a1bbcf..ce3aa45 100644
 +                    item.weldSource.vertex.begin(), item.weldSource.vertex.end());
 +                for (const auto& face : item.faces)
 +                    merged.faces.push_back({face.a + base, face.b + base, face.c + base});
-+                merged.totalSourceFaces += item.totalSourceFaces;
 +                continue;
 +            }
 +        }
@@ -1118640,11 +1119351,10 @@ index 9a1bbcf..ce3aa45 100644
 +        const PhysicsShape& shape = *item.shape;
 +        const auto& shapeVerts = item.vertices;
 +        const auto& faces = item.faces;
-+        const int totalSourceFaces = item.totalSourceFaces;
  
          std::vector<bool> used(shapeVerts.size(), false);
          for (const SrcTri& f : faces) {
-@@ -5196,11 +5956,46 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5196,12 +5996,48 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
          anyConcave = anyConcave || shape.concave;
          maxConvexPieces = std::max(maxConvexPieces, shape.maxConvex);
  
@@ -1118688,11 +1119398,14 @@ index 9a1bbcf..ce3aa45 100644
          std::vector<std::vector<int>> islands;
          if (shape.concave) {
 -            BuildIslandsForFaces(shape.source, faces, totalSourceFaces,
-+            BuildIslandsForFaces(&item.weldSource, faces, totalSourceFaces,
-                                  in.physWeldPosition, in.physWeldNormal, islands);
+-                                 in.physWeldPosition, in.physWeldNormal, islands);
++            std::vector<int> weldTable;
++            BuildVertWeldTable(&item.weldSource, in.physWeldPosition, in.physWeldNormal, weldTable);
++            BuildIslandsForFaces(weldTable, faces, islands);
          }
          if (islands.empty()) {
-@@ -5216,6 +6011,7 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+             islands.emplace_back();
+@@ -5216,6 +6052,7 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
              freeConvexes();
              return false;
          }
@@ -1118700,7 +1119413,7 @@ index 9a1bbcf..ce3aa45 100644
      }
  
      if (static_cast<int>(convexes.size()) > maxConvexPieces) {
-@@ -5306,9 +6102,8 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
+@@ -5306,9 +6143,8 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
      m.physSolids.push_back(std::move(solid));
      m.bones[physBone].physicsbone = 0; // single body is always physics bone 0
  
@@ -1118712,7 +1119425,7 @@ index 9a1bbcf..ce3aa45 100644
      m.physTotalMass = in.physAutoMass ? -1.0f : in.physMass;
      m.physName = in.physName;
      m.physConcave = in.physBuildMode == PhysicsBuildMode::Auto
-@@ -5442,6 +6237,17 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
+@@ -5442,6 +6278,17 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
          // srcRealign deltas back for the affected bones while it converts
          std::vector<SrcRealignSave> savedRealign;
          const bool overrode = PushAnimSrcRealignOverride(ctx, panim, savedRealign);
@@ -1118730,7 +1119443,7 @@ index 9a1bbcf..ce3aa45 100644
  
          int n = panim.startframe - pSourceAnim->startframe;
          for (int j = 0; j < panim.numframes; j++) {
-@@ -5456,6 +6262,208 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
+@@ -5456,6 +6303,208 @@ bool RemapAnimations(Ctx& ctx, std::string* err) {
      return true;
  }
  
@@ -1118939,7 +1119652,7 @@ index 9a1bbcf..ce3aa45 100644
  // ---------------------------------------------------------------------------
  // buildAnimationWeights: resolve each weightlist to
  // per-global-bone weight/posweight arrays. List 0 is the implicit default
-@@ -6337,9 +7345,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6337,9 +7386,10 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
              }
              case AnimCmd::Match: {
                  // processMatch: rotate every frame by the
@@ -1118952,7 +1119665,7 @@ index 9a1bbcf..ce3aa45 100644
                  std::vector<Quaternion> deltaQ(m.bones.size());
                  for (size_t k = 0; k < m.bones.size(); k++) {
                      Quaternion qd, qs;
-@@ -6349,11 +7358,43 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6349,11 +7399,43 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
                  }
                  for (int j = 0; j < panim.numframes; j++) {
                      for (size_t k = 0; k < m.bones.size(); k++) {
@@ -1118998,7 +1119711,7 @@ index 9a1bbcf..ce3aa45 100644
                      }
                  }
                  break;
-@@ -6935,6 +7976,11 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
+@@ -6935,6 +8017,11 @@ bool ProcessAnimations(Ctx& ctx, const std::vector<WeightList>& weightlists, std
                      }
                  }
  
@@ -1119010,7 +1119723,7 @@ index 9a1bbcf..ce3aa45 100644
                  int numerror = rule.end - rule.start + 1;
                  if (rule.end >= panim.numframes)
                      numerror += 2;
-@@ -7216,68 +8262,56 @@ void CompressAnimations(Ctx& ctx) {
+@@ -7216,68 +8303,56 @@ void CompressAnimations(Ctx& ctx) {
      CompiledModel& m = *ctx.out;
      int numbones = static_cast<int>(m.bones.size());
  
@@ -1119124,7 +1119837,7 @@ index 9a1bbcf..ce3aa45 100644
  
      // reduce animations
      for (Anim& panim : m.anims) {
-@@ -7530,8 +8564,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
+@@ -7530,8 +8605,8 @@ bool SetupHitBoxes(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -1119135,7 +1119848,7 @@ index 9a1bbcf..ce3aa45 100644
          int j = m.bones[k].parent;
          if (j != -1) {
              const Vector3& p = m.bones[k].pos;
-@@ -8709,7 +9743,9 @@ void CompressIKErrors(Ctx& ctx) {
+@@ -8709,7 +9784,9 @@ void CompressIKErrors(Ctx& ctx) {
  // CalcSequenceBoundingBoxes
  void CalcSequenceBoundingBoxes(Ctx& ctx) {
      CompiledModel& m = *ctx.out;
@@ -1119146,7 +1119859,7 @@ index 9a1bbcf..ce3aa45 100644
  
      // SetupFullBoneRenderBounds: bone vertex bounds + hitboxes
      std::vector<Vector3> boundsMin(m.bones.size()), boundsMax(m.bones.size());
-@@ -8745,6 +9781,28 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8745,6 +9822,28 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
          }
      }
  
@@ -1119175,7 +1119888,7 @@ index 9a1bbcf..ce3aa45 100644
      // Seam/LOD copies skin to the same bits, and VecMin/VecMax keep the
      // accumulator on a tie, so dropping later duplicates leaves the boxes exact.
      struct SkinVert {
-@@ -8786,10 +9844,27 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8786,10 +9885,27 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
          }
      }
  
@@ -1119205,7 +1119918,7 @@ index 9a1bbcf..ce3aa45 100644
  
          std::vector<matrix3x4> bonetransform;
          std::vector<matrix3x4> posetransform(legacy ? m.bones.size() : 0);
-@@ -8801,9 +9876,12 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8801,9 +9917,12 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
              }
  
              // include hitboxes / bone render bounds
@@ -1119219,7 +1119932,7 @@ index 9a1bbcf..ce3aa45 100644
                  bmin = VecMin(tmpMin, bmin);
                  bmax = VecMax(tmpMax, bmax);
              }
-@@ -8817,6 +9895,12 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8817,6 +9936,12 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
                      pos.y += v.weight[mm] * tmp.y;
                      pos.z += v.weight[mm] * tmp.z;
                  }
@@ -1119232,7 +1119945,7 @@ index 9a1bbcf..ce3aa45 100644
                  bmin = VecMin(pos, bmin);
                  bmax = VecMax(pos, bmax);
              }
-@@ -8849,21 +9933,38 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
+@@ -8849,21 +9974,38 @@ void CalcSequenceBoundingBoxes(Ctx& ctx) {
      for (Anim& panim : m.anims) {
          Vector3& bmin = panim.bmin;
          Vector3& bmax = panim.bmax;
@@ -1119279,7 +1119992,7 @@ index 9a1bbcf..ce3aa45 100644
          for (int a : seq.animIndices) {
              if (a < 0) continue;
              bmin = VecMin(m.anims[a].bmin, bmin);
-@@ -9119,6 +10220,13 @@ struct FlexSortEntry {
+@@ -9119,6 +10261,13 @@ struct FlexSortEntry {
      int sourceOrder;
  };
  
@@ -1119293,7 +1120006,7 @@ index 9a1bbcf..ce3aa45 100644
  int FlexKeysSortFunc(const void* pv1, const void* pv2) {
      const FlexSortEntry* k1 = static_cast<const FlexSortEntry*>(pv1);
      const FlexSortEntry* k2 = static_cast<const FlexSortEntry*>(pv2);
-@@ -9160,7 +10268,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9160,7 +10309,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
          FlexKey* pFlexKey = sorted[i].key;
          src::Source* pVSource = pFlexKey->source;
          src::SrcMorphAnim* pVSourceAnim =
@@ -1119302,7 +1120015,7 @@ index 9a1bbcf..ce3aa45 100644
          if (!pVSourceAnim)
              continue;
  
-@@ -9186,7 +10294,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9186,7 +10335,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
      }
  
      // remap each key's deltas onto its model's vertices (original key order)
@@ -1119311,7 +1120024,7 @@ index 9a1bbcf..ce3aa45 100644
      int nSkippedUnmapped = 0;
      size_t nMaxModelVerts = 0;
      for (const Model& model : m.models)
-@@ -9197,7 +10305,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9197,7 +10346,7 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
      std::vector<uint8_t> pDoesMove(nMaxModelVerts, 0);
  
      for (FlexKey& key : m.flexkeys) {
@@ -1119320,7 +1120033,7 @@ index 9a1bbcf..ce3aa45 100644
          if (!pVSourceAnim)
              continue;
          auto it = morphMaps.find(pVSourceAnim);
-@@ -9265,18 +10373,12 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
+@@ -9265,18 +10414,12 @@ bool RemapVertexAnimations(Ctx& ctx, std::string* err) {
          }
      }
  
@@ -1119344,7 +1120057,7 @@ index 9a1bbcf..ce3aa45 100644
  
      if (nSkippedUnmapped > 0) {
          std::fprintf(stderr, 
-@@ -9398,7 +10500,7 @@ void CullDuplicateFlex(Ctx& ctx) {
+@@ -9398,7 +10541,7 @@ void CullDuplicateFlex(Ctx& ctx) {
      std::vector<FlexController> kept;
      for (size_t c = 0; c < m.flexcontrollers.size(); ++c) {
          int survivor = -1;
@@ -1119353,7 +1120066,7 @@ index 9a1bbcf..ce3aa45 100644
              if (_stricmp(kept[k].name.c_str(), m.flexcontrollers[c].name.c_str()) == 0) {
                  survivor = static_cast<int>(k);
                  break;
-@@ -9506,7 +10608,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
+@@ -9506,7 +10649,7 @@ void CullUnreferencedDeltas(Ctx& ctx) {
      std::vector<FlexKey> kept;
      kept.reserve(m.flexkeys.size());
      for (FlexKey& key : m.flexkeys) {
@@ -1119362,7 +1120075,7 @@ index 9a1bbcf..ce3aa45 100644
              (key.flexdesc >= 0 && key.flexdesc < static_cast<int>(usedDesc.size()) &&
               usedDesc[key.flexdesc]) ||
              (key.flexpair > 0 && key.flexpair < static_cast<int>(usedDesc.size()) &&
-@@ -9845,6 +10947,7 @@ static std::string AnimSignature(const Anim& a) {
+@@ -9845,6 +10988,7 @@ static std::string AnimSignature(const Anim& a) {
      SigVal(s, a.looprestartpercent);
      SigVal(s, a.isBindPose);
      SigVal(s, a.noAutoIK);
@@ -1119370,7 +1120083,7 @@ index 9a1bbcf..ce3aa45 100644
      SigVal(s, a.ignoreTransformAngles);
      SigVal(s, a.ignoreTransformPosition);
      SigVal(s, a.motionrollback);
-@@ -9884,6 +10987,7 @@ static std::string AnimSignature(const Anim& a) {
+@@ -9884,6 +11028,7 @@ static std::string AnimSignature(const Anim& a) {
          SigVal(s, c.copyEndFrame);
          SigVal(s, c.fadeIn);
          SigVal(s, c.fadeOut);
@@ -1119378,7 +1120091,7 @@ index 9a1bbcf..ce3aa45 100644
          SigVal(s, c.copyPos);
          SigVal(s, c.copyRot);
          SigStr(s, c.xform.bone);
-@@ -10348,7 +11452,224 @@ bool ConvertIkRule(const CompileInput& input, const CompileInput::InIkRule& ir,
+@@ -10348,7 +11493,224 @@ bool ConvertIkRule(const CompileInput& input, const CompileInput::InIkRule& ir,
      return true;
  }
  
@@ -1119603,7 +1120316,7 @@ index 9a1bbcf..ce3aa45 100644
      Ctx ctx;
      ctx.in = &input;
      ctx.out = &out;
-@@ -10363,6 +11684,19 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10363,6 +11725,19 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                    : RadianEuler{0.0f, 0.0f, static_cast<float>(kPiD / 2.0)};
  
      out.outname = input.outname;
@@ -1119623,7 +1120336,7 @@ index 9a1bbcf..ce3aa45 100644
      out.forceWriteVertexData = input.forceWriteVertexData;
      out.mats = &input.mats;
      // gamedatalist. CompiledModel already defaults surfaceprop to "default";
-@@ -10371,6 +11705,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10371,6 +11746,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          out.surfaceprop = input.surfaceprop;
      out.contents = input.contents;
      out.keyvalues = input.keyvalues;
@@ -1119632,7 +1120345,7 @@ index 9a1bbcf..ce3aa45 100644
      out.includeModels = input.includeModels;
      // $animblocksize. `nostall` is folded into the per-animation flag here so
      // the writer only ever reads Anim::isFirstSectionLocal.
-@@ -10381,6 +11717,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10381,6 +11758,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      out.zeroFramesHighres = input.zeroFramesHighres;
      out.minZeroFramePosDelta = input.minZeroFramePosDelta;
      out.boneSaveFrames = input.boneSaveFrames;
@@ -1119640,7 +1120353,7 @@ index 9a1bbcf..ce3aa45 100644
      out.bbox[0] = input.bbox[0];
      out.bbox[1] = input.bbox[1];
      out.bboxset = input.bboxSet;
-@@ -10436,11 +11773,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10436,11 +11814,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      out.jigglebones = std::move(input.jigglebones);
      out.proceduralbones = std::move(input.proceduralbones);
      out.aimatbones = std::move(input.aimatbones);
@@ -1119657,7 +1120370,7 @@ index 9a1bbcf..ce3aa45 100644
          CompileInput::InAnim a;
          a.name = "@reference";
          a.bindpose = true;
-@@ -10453,12 +11794,38 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10453,12 +11835,38 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      }
  
      // ---- build models/bodyparts + anims/sequences from the script input ----
@@ -1119699,7 +1120412,7 @@ index 9a1bbcf..ce3aa45 100644
          for (const auto& im : bp.models) {
              Model model;
              model.name = im.source ? im.name : "blank";
-@@ -10494,10 +11861,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10494,10 +11902,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             ch.first + "\" (" + std::to_string(nummodels) + " choices)";
                  return false;
              }
@@ -1119719,7 +1120432,7 @@ index 9a1bbcf..ce3aa45 100644
          }
          out.bodygrouppresets.push_back(std::move(preset));
      }
-@@ -10520,6 +11894,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10520,6 +11935,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          a.fudgeloop = ia.fudgeloop;
          a.noAutoIK = ia.noAutoIK;
          a.nocull = ia.nocull;
@@ -1119727,7 +1120440,7 @@ index 9a1bbcf..ce3aa45 100644
          a.ignoreTransformAngles = ia.ignoreTransformAngles;
          a.ignoreTransformPosition = ia.ignoreTransformPosition;
          a.motiontype = ia.motiontype;
-@@ -10575,6 +11950,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10575,6 +11991,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  if (!clip) clip = &ia.source->anims[0];
              }
              a.animationname = clip->name;
@@ -1119735,7 +1120448,7 @@ index 9a1bbcf..ce3aa45 100644
              if (a.startframe < clip->startframe) a.startframe = clip->startframe;
              if (a.endframe > clip->endframe) a.endframe = clip->endframe;
          } else {
-@@ -10756,6 +12132,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10756,6 +12173,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  cmd.forceRot = ic.forceRot;
                  break;
              case InCmd::RefMotion:
@@ -1119743,7 +1120456,7 @@ index 9a1bbcf..ce3aa45 100644
              case InCmd::AppendAnim:
              case InCmd::WorldspaceBlend:
              case InCmd::MatchBlend:
-@@ -10767,7 +12144,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10767,7 +12185,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                                      "\" in " + a.name;
                      return false;
                  }
@@ -1119757,7 +1120470,7 @@ index 9a1bbcf..ce3aa45 100644
                             : (ic.kind == InCmd::Match)      ? AnimCmd::Match
                             : (ic.kind == InCmd::MatchBlend) ? AnimCmd::MatchBlend
                             : (ic.kind == InCmd::WorldspaceBlend)
-@@ -10775,6 +12158,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -10775,6 +12199,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                             : (ic.kind == InCmd::RefMotion) ? AnimCmd::RefMotion
                                                             : AnimCmd::AppendAnim;
                  cmd.matchPre = ic.matchPre;
@@ -1119775,7 +1120488,7 @@ index 9a1bbcf..ce3aa45 100644
                  cmd.matchPost = ic.matchPost;
                  cmd.worldLoops = ic.worldLoops;
                  cmd.motiontype = ic.motiontype;
-@@ -11098,6 +12492,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11098,6 +12533,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
              out.gflags |= STUDIOHDR_FLAGS_USE_SHADOWLOD_MATERIALS;
      }
      { PULSE_TIME_PASS("LoadLodSources"); LoadLodSources(ctx); }
@@ -1119789,7 +1120502,7 @@ index 9a1bbcf..ce3aa45 100644
  
      // ---- bone pipeline (RemapBones) ----
      // $setbindpose / $setflex bake into the rest mesh first, so an archetype
-@@ -11138,6 +12539,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11138,6 +12580,15 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      PruneFlexDriverBones(ctx);
      CullUnskinnedJiggleBones(ctx);
  
@@ -1119805,7 +1120518,7 @@ index 9a1bbcf..ce3aa45 100644
      { PULSE_TIME_PASS("TagUsedBones"); TagUsedBones(ctx); }
      {
          PULSE_TIME_PASS("BuildGlobalBonetable");
-@@ -11179,6 +12589,10 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11179,6 +12630,10 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // loader filled in script order, to pick attachment-vs-bone targeting.
      if (!MapAimAtBones(ctx, err))
          return false;
@@ -1119816,7 +1120529,7 @@ index 9a1bbcf..ce3aa45 100644
  
      // ik chains/locks link against the final bone table BEFORE RealignBones
      // (reference: RemapBones -> LinkIKChains -> LinkIKLocks ->
-@@ -11193,7 +12607,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11193,7 +12648,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      if (!ApplyBoneTransformEdits(ctx, err))
          return false;
  
@@ -1119825,7 +1120538,7 @@ index 9a1bbcf..ce3aa45 100644
        if (!RealignBones(ctx, err)) return false; }
  
      // Push the animconstraint triggers/poses through the realign. The reference
-@@ -11202,6 +12616,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11202,6 +12657,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // straight after the realign that produced them.
      if (!RemapProceduralBones(ctx, err))
          return false;
@@ -1119834,7 +1120547,7 @@ index 9a1bbcf..ce3aa45 100644
      if (input.stopAfterProcedural)
          return true;
  
-@@ -11214,9 +12630,26 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11214,9 +12671,26 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // resulting replacebone chains are flattened before any vertex is remapped
      // (reference: after RealignBones)
      ExpandLodBoneCollapses(ctx);
@@ -1119862,7 +1120575,7 @@ index 9a1bbcf..ce3aa45 100644
      if (!input.bboxMeshes.empty()) {
          out.bbox[0] = out.bbox[1] = input.bboxMeshes.front()->globalVertices.front().position;
          for (const src::Source* mesh : input.bboxMeshes) {
-@@ -11243,10 +12676,12 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11243,10 +12717,12 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // the model bounds.
      { PULSE_TIME_PASS("BuildCollisionModel");
        if (!BuildCollisionModel(ctx, err)) return false; }
@@ -1119875,7 +1120588,7 @@ index 9a1bbcf..ce3aa45 100644
  
      std::vector<WeightList> weightlists;
      BuildAnimationWeights(ctx, weightlists);
-@@ -11309,7 +12744,9 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11309,7 +12785,9 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      // (RemapVertexAnimations, GenerateVertexAveragedAttachments, CullFlex) has
      // to have had its say first. What follows only ever takes min/max over all
      // vertices, which duplication cannot change.
@@ -1119886,7 +1120599,7 @@ index 9a1bbcf..ce3aa45 100644
  
      { PULSE_TIME_PASS("SetupHitBoxes"); if (!SetupHitBoxes(ctx, err)) return false; }
      { PULSE_TIME_PASS("CompressAnimations"); CompressAnimations(ctx); }
-@@ -11467,16 +12904,41 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11467,16 +12945,41 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      if (out.cdtextures.empty())
          out.cdtextures.push_back("models/" + out.outname + "/");
  
@@ -1119929,7 +1120642,7 @@ index 9a1bbcf..ce3aa45 100644
                  if (tex.material >= 0 && MaterialNameMatches(tex.name, r.from)) {
                      from = tex.material;
                      relative = tex.relative;
-@@ -11484,11 +12946,14 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11484,11 +12987,14 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                  }
              }
              if (from < 0) {
@@ -1119949,7 +1120662,7 @@ index 9a1bbcf..ce3aa45 100644
              }
              // the replacement inherits the relative-path flag of what it
              // replaces, so both resolve against the same cdmaterials rule
-@@ -11550,24 +13015,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11550,24 +13056,13 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
      {
          src::MaterialTable& mats = input.mats;
          const int numPreCull = static_cast<int>(mats.materialToTexture.size());
@@ -1119976,7 +1120689,7 @@ index 9a1bbcf..ce3aa45 100644
          // $texturegroup: both ends of every replacement, including family 0's
          for (const auto& pairs : families)
              for (const auto& p : pairs) {
-@@ -11628,7 +13082,20 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11628,7 +13123,20 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          return false;
      }
      out.numskinref = nummaterials;
@@ -1119998,7 +1120711,7 @@ index 9a1bbcf..ce3aa45 100644
      out.skinref.assign(out.numskinfamilies, std::vector<int16_t>(nummaterials));
      for (auto& row : out.skinref)
          for (int j = 0; j < nummaterials; j++)
-@@ -11637,6 +13104,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11637,6 +13145,17 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
          for (const auto& p : families[f])
              out.skinref[f + 1][p.first] = static_cast<int16_t>(p.second);
  
@@ -1120016,7 +1120729,7 @@ index 9a1bbcf..ce3aa45 100644
      // $renamebone, last of everything: the bone name plus every string still
      // resolved by name at write time - $bonesaveframe, and the .phy text tail
      // (solid, parent, rootname, jointmerge).
-@@ -11647,7 +13125,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11647,7 +13166,8 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                          rename.first.c_str());
              continue;
          }
@@ -1120026,7 +1120739,7 @@ index 9a1bbcf..ce3aa45 100644
              if (err)
                  *err = "$renamebone: \"" + rename.second + "\" is already a bone of "
                         "this model";
-@@ -11669,6 +13148,60 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
+@@ -11669,6 +13189,60 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
              swap(merge.first);
              swap(merge.second);
          }
@@ -1123630,10 +1124343,10 @@ index 0000000..bfc2bc3
 +                                       bool animationsOnly=false,bool nativeNodeNames=false);
 +}
 diff --git a/mdlcompiler/main.cpp b/mdlcompiler/main.cpp
-index 9fbf204..ae062b4 100644
+index 9fbf204..5f59924 100644
 --- a/mdlcompiler/main.cpp
 +++ b/mdlcompiler/main.cpp
-@@ -4,6 +4,10 @@
+@@ -4,8 +4,13 @@
  //   mdlcompiler <file.pulseqc> [-game <dir>] [-pause]
  
  #include <cctype>
@@ -1123643,8 +1124356,11 @@ index 9fbf204..ae062b4 100644
 +#include <iomanip>
  #include <chrono>
  #include <cstdio>
++#include <cstdint>
  #include <cstdlib>
-@@ -22,6 +26,19 @@
+ #include <cstring>
+ #include <exception>
+@@ -22,6 +27,19 @@
  #include "pulselimits.h"
  #include "qcloader.h"
  #include "writer.h"
@@ -1123664,7 +1124380,7 @@ index 9fbf204..ae062b4 100644
  
  #ifdef _WIN32
  #include <fcntl.h>
-@@ -35,23 +52,37 @@ using pulse::fatal::Fail;
+@@ -35,23 +53,39 @@ using pulse::fatal::Fail;
  static const char*& g_stage = pulse::fatal::g_stage;
  
  static void PrintHeader() {
@@ -1123706,10 +1124422,12 @@ index 9fbf204..ae062b4 100644
 +    std::printf("  -DontDestroy CE alias for default error-output preservation (no cleanup)\n");
 +    std::printf("  -nvtristrip / -usenvtristrip  use the legacy NvTriStrip backend\n");
 +    std::printf("  -reloadhlmv  notify HLMV and an L4N-compatible game after writing (Windows)\n");
++    std::printf("  -reloadpid <PID> select the game's process; implies -reloadhlmv (Windows)\n");
++    std::printf("                automatic game reload requires exactly one Valve001 window\n");
      std::printf("                dx80 is only written when the vtx format is 0\n");
      std::printf("  -includesearchdir <dir>\n");
      std::printf("                extra fallback dir for $include, searched after any\n");
-@@ -64,6 +95,9 @@ static int Usage() {
+@@ -64,6 +98,9 @@ static int Usage() {
      std::printf("                define a .pulseqc script variable ($name$) before the\n");
      std::printf("                script runs; repeatable. The script cannot override it\n");
      std::printf("  -striplods    ignore all $lod and $shadowlod commands\n");
@@ -1123719,7 +1124437,7 @@ index 9fbf204..ae062b4 100644
      std::printf("  -forcewritevertexdata\n");
      std::printf("                save .vvd/.vtx even when the model has no geometry;\n");
      std::printf("                same as $forcewritevertexdata in the script\n");
-@@ -84,6 +118,13 @@ static int Usage() {
+@@ -84,6 +121,13 @@ static int Usage() {
      std::printf("                @dep <script|include|source> <fnv1a-64 hex> <absolute path>\n");
      std::printf("  -pause        wait for a keypress before exiting (drag-and-drop runs)\n");
      std::printf("  -perfmetrics  print wall time in ms for each stage of the compile\n");
@@ -1123733,7 +1124451,88 @@ index 9fbf204..ae062b4 100644
      return 1;
  }
  
-@@ -196,11 +237,63 @@ static int RunCompile(int argc, char** argv) {
+@@ -191,16 +235,144 @@ static std::string ReadStdin() {
+     return text;
+ }
+ 
++// A PID narrows the window search, but cannot prove that a Source game has the
++// L4N extension installed. Even a successful delivery is not a reload receipt.
++#ifdef _WIN32
++static void NotifyReloadGame(const std::string& title, std::uint32_t selectedPid) {
++    struct Window { HWND handle; DWORD pid; };
++    std::vector<Window> windows;
++    const auto visit = [](HWND window, LPARAM context) -> BOOL {
++        char name[64]{};
++        if (GetClassNameA(window, name, sizeof(name)) && std::strcmp(name, "Valve001") == 0) {
++            DWORD pid = 0;
++            if (GetWindowThreadProcessId(window, &pid) && pid)
++                reinterpret_cast<std::vector<Window>*>(context)->push_back({window, pid});
++        }
++        return TRUE;
++    };
++    SetLastError(ERROR_SUCCESS);
++    if (!EnumWindows(visit, reinterpret_cast<LPARAM>(&windows)) && GetLastError() != ERROR_SUCCESS) {
++        std::printf("Skipped L4N reload request: could not enumerate game windows (Windows error %lu).\n", GetLastError());
++        return;
++    }
++    if (selectedPid) {
++        windows.erase(std::remove_if(windows.begin(), windows.end(), [selectedPid](const Window& window) {
++            return window.pid != selectedPid;
++        }), windows.end());
++    }
++    if (windows.empty()) {
++        if (selectedPid)
++            std::printf("Skipped L4N reload request: no Valve001 window for PID %lu on this desktop.\n", static_cast<unsigned long>(selectedPid));
++        else
++            std::printf("Skipped L4N reload request: no Valve001 window on this desktop.\n");
++        return;
++    }
++    if (windows.size() != 1) {
++        std::sort(windows.begin(), windows.end(), [](const Window& a, const Window& b) { return a.pid < b.pid; });
++        std::printf("Skipped L4N reload request: ambiguous target (%zu Valve001 windows; PIDs", windows.size());
++        DWORD previous = 0;
++        for (const auto& window : windows) if (window.pid != previous) {
++            std::printf(" %lu", window.pid);
++            previous = window.pid;
++        }
++        std::printf("). %s\n", selectedPid ? "The selected process must have exactly one game window." : "Use -reloadpid <PID> to select one game process.");
++        return;
++    }
++    const bool unsafe = std::any_of(title.begin(), title.end(), [](unsigned char c) {
++        return c < 0x20 || c == ';' || c == '"';
++    });
++    if (unsafe) {
++        std::printf("Skipped L4N reload request: model path contains console control characters.\n");
++        return;
++    }
++    const auto& game = windows.front();
++    DWORD currentPid = 0;
++    if (!GetWindowThreadProcessId(game.handle, &currentPid) || currentPid != game.pid) {
++        std::printf("Skipped L4N reload request: selected game window closed or changed.\n");
++        return;
++    }
++    const std::string request = "l4n_reload_model " + title + "\n";
++    COPYDATASTRUCT data{};
++    data.cbData = static_cast<DWORD>(request.size() + 1);
++    data.lpData = const_cast<char*>(request.c_str());
++    DWORD_PTR receiverResult = 0;
++    SetLastError(ERROR_SUCCESS);
++    if (SendMessageTimeoutA(game.handle, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data),
++                            SMTO_ABORTIFHUNG | SMTO_BLOCK | SMTO_ERRORONEXIT, 1000, &receiverResult)) {
++        std::printf("Delivered L4N-compatible model reload request to PID %lu (receiver result %llu); game reload is not verified.\n",
++                    game.pid, static_cast<unsigned long long>(receiverResult));
++    } else {
++        const DWORD error = GetLastError();
++        if (error == ERROR_TIMEOUT || error == ERROR_SUCCESS)
++            std::printf("L4N reload request to PID %lu timed out or the receiver became unavailable (1 s limit).\n", game.pid);
++        else
++            std::printf("L4N reload request to PID %lu could not be delivered (Windows error %lu).\n", game.pid, error);
++    }
++}
++#endif
++
+ static int RunCompile(int argc, char** argv) {
+     if (argc < 2)
          return Usage();
  
      g_stage = "command line";
@@ -1123743,7 +1124542,7 @@ index 9fbf204..ae062b4 100644
 +    bool noDefaultArgs=false;
 +    const std::vector<std::string> oneValue={"-game","-outdir","-steamdir","-modelname","-includeanimprefix",
 +        "-eyeballscale","-maxbones","-outputbuffersize","-mdloutputbuffersize","-anioutputbuffersize",
-+        "-includesearchdir","-filesearchdir","-tempcontent","-vtxformat","-minlod","-alwayscollapsebyprefix","-perfjson","-dependencyjson"};
++        "-includesearchdir","-filesearchdir","-tempcontent","-vtxformat","-minlod","-alwayscollapsebyprefix","-perfjson","-dependencyjson","-reloadpid"};
 +    auto isDefinition = [](const std::string& key, const char* raw) {
 +        return raw[0] == '-' && raw[1] == 'D' && raw[2] &&
 +            key != "-dontdestroy" && key != "-defaqscale" && key != "-defvar" && key != "-definebones" &&
@@ -1123797,13 +1124596,14 @@ index 9fbf204..ae062b4 100644
      int launchMinLod = -1;
      bool stripLods = false;
      bool forceWriteVertexData = false;
-@@ -211,81 +304,154 @@ static int RunCompile(int argc, char** argv) {
+@@ -211,81 +383,166 @@ static int RunCompile(int argc, char** argv) {
      bool dumpProcedural = false;
      bool scriptFromStdin = false;
      bool dumpDependencies = false;
 +    bool cullAnims = false;
 +    bool mostlyOpaque = false;
 +    bool reloadHlmv=false;
++    std::uint32_t reloadPid=0;
 +    std::string cePrelude;
 +    std::vector<std::string> collapsePrefixes;
      pulse::loader::ScriptVars defvars;
@@ -1123916,6 +1124716,17 @@ index 9fbf204..ae062b4 100644
 +            cePrelude += "$UseLegacyStripify\n";
 +        } else if (option == "-reloadhlmv") {
 +            reloadHlmv=true;
++        } else if (option == "-reloadpid") {
++            const std::string value = argv[++i];
++            std::uint64_t parsed = 0;
++            for (const unsigned char c : value) {
++                if (c < '0' || c > '9' || (parsed = parsed * 10 + c - '0') > UINT32_MAX)
++                    return Fail("bad option", "-reloadpid needs a decimal process ID from 1 to 4294967295");
++            }
++            if (!parsed)
++                return Fail("bad option", "-reloadpid needs a decimal process ID from 1 to 4294967295");
++            reloadPid = static_cast<std::uint32_t>(parsed);
++            reloadHlmv=true;
 +        } else if (option == "-playbeep") {
 +            // Completion tone is emitted by main(), including compile failures.
 +        } else if (option == "-noremap") {
@@ -1123980,7 +1124791,7 @@ index 9fbf204..ae062b4 100644
          } else if (!script || pulse::loader::IsQcScriptPath(argv[i])) {
              // an ignored option may have eaten a value we now see as
              // positional, so a real script extension always wins
-@@ -294,6 +460,9 @@ static int RunCompile(int argc, char** argv) {
+@@ -294,6 +551,9 @@ static int RunCompile(int argc, char** argv) {
      }
      if (!script)
          return Usage();
@@ -1123990,7 +1124801,7 @@ index 9fbf204..ae062b4 100644
  
      std::printf("Compiling: %s\n", script);
  
-@@ -311,17 +480,32 @@ static int RunCompile(int argc, char** argv) {
+@@ -311,17 +571,32 @@ static int RunCompile(int argc, char** argv) {
                      std::string(script) + ": only .pulseqc/.qc compile scripts are supported");
  
      std::string err;
@@ -1124023,7 +1124834,7 @@ index 9fbf204..ae062b4 100644
      if (forceWriteVertexData)
          input.forceWriteVertexData = true;
      if (stripLods)
-@@ -336,8 +520,20 @@ static int RunCompile(int argc, char** argv) {
+@@ -336,8 +611,20 @@ static int RunCompile(int argc, char** argv) {
                              ? modelname.substr(0, dot)
                              : modelname;
      }
@@ -1124044,7 +1124855,7 @@ index 9fbf204..ae062b4 100644
      if (noDx80)
          input.noDx80 = true;
      input.stopAfterProcedural = dumpProcedural;
-@@ -366,7 +562,35 @@ static int RunCompile(int argc, char** argv) {
+@@ -366,7 +653,35 @@ static int RunCompile(int argc, char** argv) {
          return 0;
      }
  
@@ -1124080,7 +1124891,7 @@ index 9fbf204..ae062b4 100644
          g_stage = "write";
          // dx80 only ships with the legacy archetype; Alien Swarm+ (archetype 1)
          // dropped DirectX 8, and $nodx80 / -nodx80 opt out explicitly.
-@@ -377,8 +601,70 @@ static int RunCompile(int argc, char** argv) {
+@@ -377,8 +692,48 @@ static int RunCompile(int argc, char** argv) {
      }
      if (dumpDependencies)
          pulse::dependencies::Print();
@@ -1124117,29 +1124928,7 @@ index 9fbf204..ae062b4 100644
 +#ifdef _WIN32
 +        std::string title="models\\"+model.outname+".mdl";
 +        std::replace(title.begin(),title.end(),'/','\\');
-+        // Neko 2.4 also sends the extension's console request to the game.
-+        // Bound synchronous COPYDATA delivery: a hung receiver must not hold
-+        // up a successfully written model. Delivery does not certify reload.
-+        HWND game = FindWindowA("Valve001", nullptr);
-+        if (game) {
-+            const bool unsafe = std::any_of(title.begin(), title.end(), [](unsigned char c) {
-+                return c < 0x20 || c == ';' || c == '"';
-+            });
-+            if (unsafe) {
-+                std::printf("Skipped L4N reload request: model path contains console control characters.\n");
-+            } else {
-+                const std::string request = "l4n_reload_model " + title + "\n";
-+                COPYDATASTRUCT data{};
-+                data.cbData = static_cast<DWORD>(request.size() + 1);
-+                data.lpData = const_cast<char*>(request.c_str());
-+                DWORD_PTR receiverResult = 0;
-+                if (SendMessageTimeoutA(game, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data),
-+                                        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &receiverResult))
-+                    std::printf("Sent L4N-compatible model reload request.\n");
-+                else
-+                    std::printf("L4N reload request timed out or could not be delivered.\n");
-+            }
-+        }
++        NotifyReloadGame(title, reloadPid);
 +        HWND viewer=FindWindowExA(nullptr,nullptr,"mx_class",title.c_str());
 +        if(!viewer) viewer=FindWindowExA(nullptr,nullptr,"mx_class",nullptr);
 +        if(viewer && PostMessageA(viewer,WM_COMMAND,1017,0)) std::printf("Notified HLMV to reload\n");
@@ -1124151,7 +1124940,7 @@ index 9fbf204..ae062b4 100644
  
      // lodFlag is a bit per LOD. The pool is shared, so a decimated LOD adds no
      // verts to it - only a replacemodel LOD does. Per-LOD = verts it draws.
-@@ -403,6 +689,36 @@ static int RunCompile(int argc, char** argv) {
+@@ -403,6 +758,36 @@ static int RunCompile(int argc, char** argv) {
          pulse::perf::Record("total", "whole compile", ms(t0, tWrite));
          pulse::perf::Report();
      }
@@ -1124188,7 +1124977,7 @@ index 9fbf204..ae062b4 100644
      return 0;
  }
  
-@@ -416,6 +732,10 @@ int main(int argc, char** argv) {
+@@ -416,6 +801,10 @@ int main(int argc, char** argv) {
      // -dumpcommands takes no script and runs before the banner: the output is
      // read by tools, so stdout carries the command list and nothing else.
      for (int i = 1; i < argc; ++i) {
@@ -1124199,7 +1124988,7 @@ index 9fbf204..ae062b4 100644
          if (std::strcmp(argv[i], "-dumpcommands") == 0) {
              pulse::loader::PrintCommandNames();
              return 0;
-@@ -424,6 +744,15 @@ int main(int argc, char** argv) {
+@@ -424,6 +813,15 @@ int main(int argc, char** argv) {
  
      PrintHeader();
  
@@ -1124215,7 +1125004,7 @@ index 9fbf204..ae062b4 100644
      // a leak past a stage's own error path still gets named in the footer
      int rc;
      try {
-@@ -435,6 +764,15 @@ int main(int argc, char** argv) {
+@@ -435,6 +833,15 @@ int main(int argc, char** argv) {
      } catch (...) {
          rc = Fail("internal error", "unknown C++ exception");
      }
@@ -1127431,10 +1128220,10 @@ index ddac291..c924181 100644
  
 diff --git a/mdlcompiler/reportoutput.h b/mdlcompiler/reportoutput.h
 new file mode 100644
-index 0000000..707a1de
+index 0000000..e26d345
 --- /dev/null
 +++ b/mdlcompiler/reportoutput.h
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,55 @@
 +#pragma once
 +#include "dependencies.h"
 +#include "pathcompat.h"
@@ -1127477,20 +1128266,12 @@ index 0000000..707a1de
 +           const std::vector<std::filesystem::path>& outputs) : path_(destination) {
 +        Validate(path_, outputs);
 +        transaction_ = std::make_unique<output::Transaction>(path_,
-+            std::vector<output::Target>{{path_, false}});
++            std::vector<output::Target>{{path_, false}}, output::Transaction::Workspace::None);
 +    }
 +    void Write(const std::string& text) {
-+        const auto staged = transaction_->StageRoot() / "report.json";
-+        // This is only Commit's copy source, never a recovery target. Commit
-+        // copies and flushes the publication stage before its durable ready
-+        // marker. Flushing this scratch copy as well doubles data sync work
-+        // without strengthening recovery. Still check both writing and close.
-+        FILE* file = output::detail::Open(staged, true);
-+        if (!file) throw std::runtime_error("cannot write staged report: " + staged.u8string());
-+        bool complete = std::fwrite(text.data(), 1, text.size(), file) == text.size();
-+        if (std::fclose(file)) complete = false;
-+        if (!complete) throw std::runtime_error("cannot finish staged report: " + staged.u8string());
-+        transaction_->Replace(staged, path_);
++        // Serialize directly into the journal-owned publication stage. Before
++        // that intent is durable, report contents exist only in memory.
++        transaction_->ReplaceText(text, path_);
 +        transaction_->Commit();
 +    }
 +private:

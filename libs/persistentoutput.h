@@ -263,7 +263,9 @@ struct Lock {
 
 class Transaction {
 public:
-    Transaction(const fs::path& primary, const std::vector<Target>& allowed) {
+    enum class Workspace { Create, None };
+    Transaction(const fs::path& primary, const std::vector<Target>& allowed,
+                Workspace workspace = Workspace::Create) : workspace_(workspace) {
         using namespace detail;
         const auto target = Destination(primary);
         const auto leaf = Key(target.filename());
@@ -298,9 +300,11 @@ public:
             old_[name] = old;
         }
         nonce_ = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-        WriteJournal(); // durable zero-entry intent owns only the work directory
+        // An in-memory report owns no scratch files until Commit writes its
+        // complete intent. It needs the same lock/snapshot but no empty intent.
+        if (workspace_ == Workspace::Create) WriteJournal();
         active_ = true;
-        fs::create_directory(work_); SyncDirectory(location_);
+        if (workspace_ == Workspace::Create) { fs::create_directory(work_); SyncDirectory(location_); }
         TestPoint("begin", 0);
     }
     ~Transaction() {
@@ -310,10 +314,19 @@ public:
     }
     Transaction(const Transaction&) = delete;
     Transaction& operator=(const Transaction&) = delete;
-    const fs::path& StageRoot() const { return work_; }
+    const fs::path& StageRoot() const {
+        if (workspace_ != Workspace::Create) throw std::runtime_error("transaction has no scratch workspace");
+        return work_;
+    }
     const fs::path& JournalDirectory() const { return location_; }
     void Replace(const fs::path& staged, const fs::path& destination, bool createOnly = false) {
         Add(staged, destination, false, createOnly);
+    }
+    void ReplaceText(std::string text, const fs::path& destination) {
+        Add({}, destination, false, false);
+        auto& entry = entries_.back();
+        if (entry.directory) { entries_.pop_back(); throw std::runtime_error("text output must be a file"); }
+        entry.inMemory = true; entry.text = std::move(text);
     }
     void Remove(const fs::path& destination) { Add({}, destination, true, false); }
     void Commit() {
@@ -322,12 +335,17 @@ public:
         try {
             for (auto& e : entries_) {
                 CheckOriginal(e);
-                if (!e.remove) e.fresh = Fingerprint(e.source, e.directory);
+                if (e.inMemory) { e.fresh = {}; Hash(e.fresh, e.text); }
+                else if (!e.remove) e.fresh = Fingerprint(e.source, e.directory);
             }
             WriteJournal(); TestPoint("journal", 0);
             for (size_t i = 0; i < entries_.size(); ++i) {
                 auto& e = entries_[i]; CheckParents(e.path.parent_path()); fs::create_directories(e.path.parent_path());
-                if (!e.remove) { Copy(e.source, e.stage, e.directory); Match(e.stage, e.directory, e.fresh); }
+                if (!e.remove) {
+                    if (e.inMemory) Write(e.stage, e.text);
+                    else Copy(e.source, e.stage, e.directory);
+                    Match(e.stage, e.directory, e.fresh);
+                }
                 TestPoint("prepared", i);
             }
             Marker("ready"); TestPoint("ready", 0);
@@ -358,6 +376,8 @@ private:
     struct Entry {
         fs::path source, path, stage, backup, stageTrash, backupTrash;
         bool directory = false, remove = false;
+        bool inMemory = false;
+        std::string text;
         Snapshot old;
         detail::Digest fresh;
     };
@@ -368,6 +388,7 @@ private:
     std::vector<Entry> entries_;
     std::string nonce_;
     bool active_ = false;
+    Workspace workspace_;
     void Derive(Entry& e, size_t index) const {
         const std::string suffix = ".newpage-txn-" + nonce_ + "-" + std::to_string(index);
         e.stage = e.path; e.stage += suffix + ".stage";

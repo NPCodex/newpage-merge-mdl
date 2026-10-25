@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <chrono>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -83,6 +84,8 @@ static int Usage() {
     std::printf("  -DontDestroy CE alias for default error-output preservation (no cleanup)\n");
     std::printf("  -nvtristrip / -usenvtristrip  use the legacy NvTriStrip backend\n");
     std::printf("  -reloadhlmv  notify HLMV and an L4N-compatible game after writing (Windows)\n");
+    std::printf("  -reloadpid <PID> select the game's process; implies -reloadhlmv (Windows)\n");
+    std::printf("                automatic game reload requires exactly one Valve001 window\n");
     std::printf("                dx80 is only written when the vtx format is 0\n");
     std::printf("  -includesearchdir <dir>\n");
     std::printf("                extra fallback dir for $include, searched after any\n");
@@ -232,6 +235,82 @@ static std::string ReadStdin() {
     return text;
 }
 
+// A PID narrows the window search, but cannot prove that a Source game has the
+// L4N extension installed. Even a successful delivery is not a reload receipt.
+#ifdef _WIN32
+static void NotifyReloadGame(const std::string& title, std::uint32_t selectedPid) {
+    struct Window { HWND handle; DWORD pid; };
+    std::vector<Window> windows;
+    const auto visit = [](HWND window, LPARAM context) -> BOOL {
+        char name[64]{};
+        if (GetClassNameA(window, name, sizeof(name)) && std::strcmp(name, "Valve001") == 0) {
+            DWORD pid = 0;
+            if (GetWindowThreadProcessId(window, &pid) && pid)
+                reinterpret_cast<std::vector<Window>*>(context)->push_back({window, pid});
+        }
+        return TRUE;
+    };
+    SetLastError(ERROR_SUCCESS);
+    if (!EnumWindows(visit, reinterpret_cast<LPARAM>(&windows)) && GetLastError() != ERROR_SUCCESS) {
+        std::printf("Skipped L4N reload request: could not enumerate game windows (Windows error %lu).\n", GetLastError());
+        return;
+    }
+    if (selectedPid) {
+        windows.erase(std::remove_if(windows.begin(), windows.end(), [selectedPid](const Window& window) {
+            return window.pid != selectedPid;
+        }), windows.end());
+    }
+    if (windows.empty()) {
+        if (selectedPid)
+            std::printf("Skipped L4N reload request: no Valve001 window for PID %lu on this desktop.\n", static_cast<unsigned long>(selectedPid));
+        else
+            std::printf("Skipped L4N reload request: no Valve001 window on this desktop.\n");
+        return;
+    }
+    if (windows.size() != 1) {
+        std::sort(windows.begin(), windows.end(), [](const Window& a, const Window& b) { return a.pid < b.pid; });
+        std::printf("Skipped L4N reload request: ambiguous target (%zu Valve001 windows; PIDs", windows.size());
+        DWORD previous = 0;
+        for (const auto& window : windows) if (window.pid != previous) {
+            std::printf(" %lu", window.pid);
+            previous = window.pid;
+        }
+        std::printf("). %s\n", selectedPid ? "The selected process must have exactly one game window." : "Use -reloadpid <PID> to select one game process.");
+        return;
+    }
+    const bool unsafe = std::any_of(title.begin(), title.end(), [](unsigned char c) {
+        return c < 0x20 || c == ';' || c == '"';
+    });
+    if (unsafe) {
+        std::printf("Skipped L4N reload request: model path contains console control characters.\n");
+        return;
+    }
+    const auto& game = windows.front();
+    DWORD currentPid = 0;
+    if (!GetWindowThreadProcessId(game.handle, &currentPid) || currentPid != game.pid) {
+        std::printf("Skipped L4N reload request: selected game window closed or changed.\n");
+        return;
+    }
+    const std::string request = "l4n_reload_model " + title + "\n";
+    COPYDATASTRUCT data{};
+    data.cbData = static_cast<DWORD>(request.size() + 1);
+    data.lpData = const_cast<char*>(request.c_str());
+    DWORD_PTR receiverResult = 0;
+    SetLastError(ERROR_SUCCESS);
+    if (SendMessageTimeoutA(game.handle, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data),
+                            SMTO_ABORTIFHUNG | SMTO_BLOCK | SMTO_ERRORONEXIT, 1000, &receiverResult)) {
+        std::printf("Delivered L4N-compatible model reload request to PID %lu (receiver result %llu); game reload is not verified.\n",
+                    game.pid, static_cast<unsigned long long>(receiverResult));
+    } else {
+        const DWORD error = GetLastError();
+        if (error == ERROR_TIMEOUT || error == ERROR_SUCCESS)
+            std::printf("L4N reload request to PID %lu timed out or the receiver became unavailable (1 s limit).\n", game.pid);
+        else
+            std::printf("L4N reload request to PID %lu could not be delivered (Windows error %lu).\n", game.pid, error);
+    }
+}
+#endif
+
 static int RunCompile(int argc, char** argv) {
     if (argc < 2)
         return Usage();
@@ -243,7 +322,7 @@ static int RunCompile(int argc, char** argv) {
     bool noDefaultArgs=false;
     const std::vector<std::string> oneValue={"-game","-outdir","-steamdir","-modelname","-includeanimprefix",
         "-eyeballscale","-maxbones","-outputbuffersize","-mdloutputbuffersize","-anioutputbuffersize",
-        "-includesearchdir","-filesearchdir","-tempcontent","-vtxformat","-minlod","-alwayscollapsebyprefix","-perfjson","-dependencyjson"};
+        "-includesearchdir","-filesearchdir","-tempcontent","-vtxformat","-minlod","-alwayscollapsebyprefix","-perfjson","-dependencyjson","-reloadpid"};
     auto isDefinition = [](const std::string& key, const char* raw) {
         return raw[0] == '-' && raw[1] == 'D' && raw[2] &&
             key != "-dontdestroy" && key != "-defaqscale" && key != "-defvar" && key != "-definebones" &&
@@ -307,6 +386,7 @@ static int RunCompile(int argc, char** argv) {
     bool cullAnims = false;
     bool mostlyOpaque = false;
     bool reloadHlmv=false;
+    std::uint32_t reloadPid=0;
     std::string cePrelude;
     std::vector<std::string> collapsePrefixes;
     pulse::loader::ScriptVars defvars;
@@ -401,6 +481,17 @@ static int RunCompile(int argc, char** argv) {
         } else if (option=="-nvtristrip" || option=="-usenvtristrip") {
             cePrelude += "$UseLegacyStripify\n";
         } else if (option == "-reloadhlmv") {
+            reloadHlmv=true;
+        } else if (option == "-reloadpid") {
+            const std::string value = argv[++i];
+            std::uint64_t parsed = 0;
+            for (const unsigned char c : value) {
+                if (c < '0' || c > '9' || (parsed = parsed * 10 + c - '0') > UINT32_MAX)
+                    return Fail("bad option", "-reloadpid needs a decimal process ID from 1 to 4294967295");
+            }
+            if (!parsed)
+                return Fail("bad option", "-reloadpid needs a decimal process ID from 1 to 4294967295");
+            reloadPid = static_cast<std::uint32_t>(parsed);
             reloadHlmv=true;
         } else if (option == "-playbeep") {
             // Completion tone is emitted by main(), including compile failures.
@@ -634,29 +725,7 @@ static int RunCompile(int argc, char** argv) {
 #ifdef _WIN32
         std::string title="models\\"+model.outname+".mdl";
         std::replace(title.begin(),title.end(),'/','\\');
-        // Neko 2.4 also sends the extension's console request to the game.
-        // Bound synchronous COPYDATA delivery: a hung receiver must not hold
-        // up a successfully written model. Delivery does not certify reload.
-        HWND game = FindWindowA("Valve001", nullptr);
-        if (game) {
-            const bool unsafe = std::any_of(title.begin(), title.end(), [](unsigned char c) {
-                return c < 0x20 || c == ';' || c == '"';
-            });
-            if (unsafe) {
-                std::printf("Skipped L4N reload request: model path contains console control characters.\n");
-            } else {
-                const std::string request = "l4n_reload_model " + title + "\n";
-                COPYDATASTRUCT data{};
-                data.cbData = static_cast<DWORD>(request.size() + 1);
-                data.lpData = const_cast<char*>(request.c_str());
-                DWORD_PTR receiverResult = 0;
-                if (SendMessageTimeoutA(game, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data),
-                                        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &receiverResult))
-                    std::printf("Sent L4N-compatible model reload request.\n");
-                else
-                    std::printf("L4N reload request timed out or could not be delivered.\n");
-            }
-        }
+        NotifyReloadGame(title, reloadPid);
         HWND viewer=FindWindowExA(nullptr,nullptr,"mx_class",title.c_str());
         if(!viewer) viewer=FindWindowExA(nullptr,nullptr,"mx_class",nullptr);
         if(viewer && PostMessageA(viewer,WM_COMMAND,1017,0)) std::printf("Notified HLMV to reload\n");

@@ -4114,7 +4114,10 @@ bool CrateReader::UnpackValueRep(const crate::ValueRep &rep,
       CHECK_MEMORY_USAGE(n * sizeof(crate::Index));
 
       std::vector<crate::Index> indices(static_cast<size_t>(n));
-      if (!_sr->read(static_cast<size_t>(n) * sizeof(crate::Index),
+      // Empty TokenVectors are valid (for example primChildren on a root
+      // layer that only declares subLayers). A zero-byte read returns zero,
+      // which must not be interpreted as a truncated value.
+      if (n && !_sr->read(static_cast<size_t>(n) * sizeof(crate::Index),
                      static_cast<size_t>(n) * sizeof(crate::Index),
                      reinterpret_cast<uint8_t *>(indices.data()))) {
         PUSH_ERROR("Failed to read TokenVector value.");

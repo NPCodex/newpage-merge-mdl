@@ -21,6 +21,7 @@ FIXTURE = Path(__file__).parent / 'fixtures/cineware-static.c4d'
 MATERIAL_FIXTURE = Path(__file__).parent / 'fixtures/cineware-materials.c4d'
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools/c4d_bridge'))
 from compare_application import compare as compare_application
+from compare_application import compare_skin, glb as read_skin_glb, trs_matrix, multiply, point, IDENTITY
 
 
 def read_glb(path):
@@ -173,24 +174,128 @@ class C4dBridge(unittest.TestCase):
         for actual, expected in zip(doc['materials'][0]['pbrMetallicRoughness']['baseColorFactor'], (.2, .4, .8, 1)):
             self.assertAlmostEqual(actual, expected, places=6)
 
-    def test_cinema4d_2027_animated_skin_is_explicitly_rejected(self):
+    def test_cinema4d_2027_animated_skin_matches_preserved_application_poses(self):
         source = FIXTURE.parent / 'cineware-app-animated-skin-2027.c4d'
         output = self.root / 'application-skin.glb'
-        text = self.run_process([HELPER, source.resolve(), output], success=False)
-        self.assertIn('animated C4D object is not supported', text)
-        self.assertFalse(output.exists())
-        self.compile()
-        original = self.outputs()
-        self.compile(source=source.resolve(), success=False)
-        self.assertEqual(self.outputs(), original)
+        self.run_process([HELPER, source.resolve(), output])
+        comparison = compare_skin(FIXTURE.parent/'cineware-app-animated-skin-2027-reference.json', output)
+        self.assertTrue(comparison['success'])
+        self.assertLess(comparison['max_world_position_error_m'], 2e-6)
+        self.compile(source=source.resolve())
+        self.assertTrue(self.outputs())
+
+    def test_cinema4d_skin_and_timeline_reach_compiled_mdl_vvd(self):
+        from validate_outputs import validate
+        source=(FIXTURE.parent/'cineware-app-animated-skin-2027.c4d').resolve()
+        qc=self.root/'animated.qc'
+        qc.write_text('$modelname animated\n$body body "'+source.as_posix()+'"\n'
+                      '$sequence imported "'+source.as_posix()+'" fps 30\n',encoding='utf-8')
+        self.run_process([COMPILER,qc,'-game',self.root])
+        model=self.root/'models/animated.mdl';validate(model)
+        data=model.read_bytes();count,start=struct.unpack_from('<2i',data,156)
+        names=[]
+        for i in range(count):
+            record=start+i*216;offset=record+struct.unpack_from('<i',data,record)[0]
+            names.append(data[offset:data.index(b'\0',offset)].decode())
+        self.assertTrue({'SkinRoot','SkinTip'}.issubset(names))
+        count,start=struct.unpack_from('<2i',data,180)
+        self.assertEqual(count,1)
+        self.assertEqual(struct.unpack_from('<i',data,start+16)[0],31)
+        self.assertAlmostEqual(struct.unpack_from('<f',data,start+8)[0],30)
+        vvd=(self.root/'models/animated.vvd').read_bytes()
+        count=struct.unpack_from('<i',vvd,16)[0];start=struct.unpack_from('<i',vvd,56)[0]
+        self.assertEqual(count,6)
+        blended=0
+        for i in range(count):
+            record=start+i*48
+            if vvd[record+15]==2:
+                weights=struct.unpack_from('<2f',vvd,record)
+                for weight in weights:self.assertAlmostEqual(weight,.5,places=6)
+                blended+=1
+        self.assertEqual(blended,2)
+
+    def test_skin_bind_transforms_material_parts_uv_seams_and_sampled_trs(self):
+        source = FIXTURE.parent/'cineware-rig.c4d'
+        output = self.root/'rig.glb'
+        self.run_process([HELPER, source.resolve(), output])
+        doc, accessor = read_skin_glb(output)
+        skin, animation = doc['skins'][0], doc['animations'][0]
+        self.assertEqual({doc['nodes'][i]['name'] for i in skin['joints']}, {'RigRoot', 'RigTip'})
+        binds = accessor(skin['inverseBindMatrices'])
+        meshnode = next(n for n in doc['nodes'] if n.get('name') == 'RigStrip')
+        primitives = doc['meshes'][meshnode['mesh']]['primitives']
+        self.assertEqual(len(primitives), 2)
+        self.assertEqual({doc['materials'][p['material']]['name'] for p in primitives}, {'RigRed', 'RigBlue'})
+        for frame in (0, 15, 30):
+            overrides, worlds = {}, {}
+            for channel in animation['channels']:
+                sampler = animation['samplers'][channel['sampler']]
+                times = accessor(sampler['input']); values = accessor(sampler['output'])
+                index = next(i for i, t in enumerate(times) if abs(t[0]-frame/30)<1e-6)
+                overrides.setdefault(channel['target']['node'], {})[channel['target']['path']] = values[index]
+            def visit(index, parent):
+                n = doc['nodes'][index]
+                values = dict(translation=n.get('translation', [0,0,0]), rotation=n.get('rotation', [0,0,0,1]), scale=n.get('scale', [1,1,1]))
+                values.update(overrides.get(index, {}))
+                matrix = trs_matrix(**values) if index in overrides else n.get('matrix', trs_matrix(**values))
+                worlds[index] = multiply(parent, matrix)
+                for child in n.get('children', []): visit(child, worlds[index])
+            for index in doc['scenes'][0]['nodes']: visit(index, IDENTITY)
+            vertices = 0
+            for primitive in primitives:
+                attrs = primitive['attributes']; material=doc['materials'][primitive['material']]['name']
+                for vertex, uv, joints, weights in zip(*(accessor(attrs[k]) for k in ('POSITION','TEXCOORD_0','JOINTS_0','WEIGHTS_0'))):
+                    x,y,z = vertex; upper = 0 if y==0 else .5 if y==100 else 1
+                    t=frame/30; angle=.4*t; sx=1+.2*t
+                    lower=[500+x+50*t,130+y,60]
+                    tip=[350+50*t+math.cos(angle)*sx*(150+x)+math.sin(angle)*(y-20),
+                         150-math.sin(angle)*sx*(150+x)+math.cos(angle)*(y-20),60]
+                    expected=[(1-upper)*a+upper*b for a,b in zip(lower,tip)]
+                    expected=[expected[0]*.01,expected[1]*.01,-expected[2]*.01]
+                    actual=[0.,0.,0.]
+                    for joint, weight in zip(joints,weights):
+                        if weight:
+                            p=point(multiply(worlds[skin['joints'][joint]],binds[joint]),vertex)
+                            actual=[a+weight*b for a,b in zip(actual,p)]
+                    for a,b in zip(actual,expected): self.assertAlmostEqual(a,b,places=5)
+                    self.assertAlmostEqual(uv[0], (x+40)/80+(.25 if material=='RigBlue' else 0), places=6)
+                    self.assertAlmostEqual(uv[1], (y-(100 if material=='RigBlue' else 0))/100, places=6)
+                    vertices+=1
+            self.assertEqual(vertices,8) # shared positions stay split across materials/UVs
+
+    def test_unsupported_rig_modes_weights_bind_matrices_and_tracks_preserve_output(self):
+        self.compile(); original=self.outputs()
+        for mode, diagnostic in {
+            'badweights': 'normalized weights', 'dualquat': 'only linear joint',
+            'spline': 'linear TRS keys', 'constraint': 'tag/constraint/expression',
+            'duplicate': 'unique, nonempty object names', 'bind': 'invalid joint bind matrix',
+            'muted': 'muted/solo/layer/constant velocity',
+            'rootname': 'unique, nonempty object names',
+        }.items():
+            with self.subTest(mode=mode):
+                source=FIXTURE.parent/('cineware-rig-'+mode+'.c4d')
+                output=self.root/(mode+'.glb')
+                text=self.run_process([HELPER,source.resolve(),output],success=False)
+                self.assertIn(diagnostic,text);self.assertFalse(output.exists())
+                self.compile(source=source.resolve(),success=False)
+                self.assertEqual(self.outputs(),original)
+
+    def test_cinema4d_animated_scale_requires_explicit_vertex_baking(self):
+        source=(FIXTURE.parent/'cineware-rig.c4d').resolve()
+        text=self.compile(source=source,success=False)
+        self.assertIn('animated scene scaling must be baked',text)
+        self.compile(source=source,selection='BakeSceneAnimation C4D_Timeline SceneSampleRate 30')
+        report=json.loads((self.root/'models/c4d.vertexanim.json').read_text(encoding='utf-8'))['clips'][0]
+        self.assertEqual(len(report['times']),31)
+        self.assertAlmostEqual(report['times'][-1],1)
 
     def test_missing_cache_animation_skin_and_corrupt_geometry_fail_without_output(self):
         expected = {
             'missing-cache': 'missing saved polygon cache or unsupported C4D object/plugin',
             'invalid-index': 'polygon point index out of range',
             'short-uv': 'UV tag count does not match polygon count',
-            'skin': 'skin weights are not supported',
-            'animated': 'animated C4D object is not supported',
+            'skin': 'exactly one direct Skin deformer child',
+            'animated': 'linear TRS keys',
         }
         self.compile()
         original = self.outputs()

@@ -81,7 +81,63 @@ bool WriteRejectedFixture(const char* output, const char* mode) {
     BaseDocument::Free(doc);return ok;
 }
 
+// Independently authored SDK contract: nonidentity mesh/joint bind transforms,
+// two material parts and a UV discontinuity on the shared strip edge.
+bool WriteRigFixture(const char* output, const char* mode) {
+    auto* doc=BaseDocument::Alloc();if(!doc)return false;
+    doc->SetFps(30);
+    auto* parent=BaseObject::Alloc(Onull);parent->SetName("RigParent");
+    parent->SetRelPos(Vector(300,100,50));doc->InsertObject(parent,nullptr);
+    auto* mesh=PolygonObject::Alloc(6,2);mesh->SetName("RigStrip");doc->InsertObject(mesh,parent);
+    mesh->SetRelPos(Vector(200,30,10));
+    for(int i=0;i<6;++i)mesh->GetPointW()[i]=Vector(i%2?40:-40,(i/2)*100,0);
+    mesh->GetPolygonW()[0]=CPolygon(0,1,3,2);mesh->GetPolygonW()[1]=CPolygon(2,3,5,4);
+    auto* uv=static_cast<UVWTag*>(mesh->MakeTag(Tuvw));uv->Resize(2);
+    for(int i=0;i<2;++i){UVWStruct v;v.a=Vector(i*.25,0,0);v.b=Vector(1+i*.25,0,0);
+        v.c=Vector(1+i*.25,1,0);v.d=Vector(i*.25,1,0);UVWTag::Set(uv->GetDataAddressW(),i,v);}
+    BaseTag* last=uv;
+    for(int i=0;i<2;++i){auto* mat=Material::Alloc();mat->SetName(i?"RigBlue":"RigRed");doc->InsertMaterial(mat);
+        auto* select=static_cast<SelectionTag*>(mesh->MakeTag(Tpolygonselection,last));last=select;
+        select->SetName(i?"upper":"lower");select->GetBaseSelect()->Select(i);
+        auto* texture=static_cast<TextureTag*>(mesh->MakeTag(Ttexture,last));last=texture;
+        texture->SetMaterial(mat);texture->GetDataInstance()->SetString(TEXTURETAG_RESTRICTION,i?"upper":"lower");}
+    auto* root=BaseObject::Alloc(Ojoint);root->SetName("RigRoot");root->SetRelPos(Vector(50,-50,0));doc->InsertObject(root,parent);
+    auto* tip=BaseObject::Alloc(Ojoint);tip->SetName("RigTip");tip->SetRelPos(Vector(0,100,0));doc->InsertObject(tip,root);
+    auto* tag=mesh->MakeTag(Tweights,last);auto* weights=static_cast<WeightTagData*>(tag->GetNodeData());
+    weights->AddJoint(root);weights->AddJoint(tip);
+    for(int i=0;i<6;++i){const Float w=i<2?0:(i<4?.5:1);weights->SetWeight(0,i,1-w);weights->SetWeight(1,i,w);}
+    weights->SetGeomMg(mesh->GetMg());weights->CalculateBoneStates(NOTOK);
+    auto* skin=BaseObject::Alloc(Oskin);skin->SetName("RigSkin");doc->InsertObject(skin,mesh);
+    auto* bc=skin->GetDataInstance();bc->SetInt32(ID_CA_SKIN_OBJECT_TYPE,ID_CA_SKIN_OBJECT_TYPE_LINEAR);
+    bc->SetInt32(ID_CA_SKIN_OBJECT_COORD,ID_CA_SKIN_OBJECT_COORD_JOINTS);
+    bc->SetInt32(ID_CA_SKIN_OBJECT_TRANSFORM,ID_CA_SKIN_OBJECT_TRANSFORM_OBJECT);
+    bc->SetInt32(ID_CA_SKIN_OBJECT_SCALING,ID_CA_SKIN_OBJECT_SCALING_NONE);
+    auto track=[&](BaseObject* op,Int32 component,Int32 axis,Float a,Float b){
+        auto* t=CTrack::Alloc(op,DescID(DescLevel(component,DTYPE_VECTOR,0),DescLevel(axis,DTYPE_REAL,0)),"RigTrack");
+        op->InsertTrackSorted(t);auto* curve=t->GetCurve();
+        auto* first=curve->AddKey(BaseTime(0));first->SetValue(curve,a);first->SetInterpolation(curve,CINTERPOLATION_LINEAR);
+        auto* second=curve->AddKey(BaseTime(1));second->SetValue(curve,b);second->SetInterpolation(curve,CINTERPOLATION_LINEAR);
+        return t;
+    };
+    track(root,ID_BASEOBJECT_REL_POSITION,VECTOR_X,50,100);
+    auto* rotation=track(tip,ID_BASEOBJECT_REL_ROTATION,VECTOR_Z,0,.4);
+    track(tip,ID_BASEOBJECT_REL_SCALE,VECTOR_X,1,1.2);
+    if(!std::strcmp(mode,"rig-badweights"))weights->SetWeight(0,0,.2);
+    else if(!std::strcmp(mode,"rig-dualquat"))bc->SetInt32(ID_CA_SKIN_OBJECT_TYPE,ID_CA_SKIN_OBJECT_TYPE_QUAT);
+    else if(!std::strcmp(mode,"rig-spline"))rotation->GetCurve()->GetKey(0)->SetInterpolation(rotation->GetCurve(),CINTERPOLATION_SPLINE);
+    else if(!std::strcmp(mode,"rig-constraint"))root->MakeTag(Tikexpression);
+    else if(!std::strcmp(mode,"rig-duplicate"))tip->SetName("RigRoot");
+    else if(!std::strcmp(mode,"rig-rootname"))tip->SetName("<C4DRoot>");
+    else if(!std::strcmp(mode,"rig-muted"))rotation->SetBit(BIT_ANIM_OFF);
+    else if(!std::strcmp(mode,"rig-bind")){auto rest=weights->GetJointRestState(1);rest.m_oMg.v1=Vector(0);weights->SetJointRestState(1,rest);}
+    else if(std::strcmp(mode,"rig")){BaseDocument::Free(doc);return false;}
+    const bool ok=SaveDocument(doc,Filename(output),SAVEDOCUMENTFLAGS_0);BaseDocument::Free(doc);return ok;
+}
+
 int main(int argc,char** argv) {
+    if(argc==3 && std::strncmp(argv[2],"rig",3)==0) {
+        const bool ok=WriteRigFixture(argv[1],argv[2]);std::printf("rig fixture %s\n",ok?"written":"failed");return ok?0:1;
+    }
     if(argc==3 && std::strcmp(argv[2],"materials")==0) {
         const bool ok=WriteMaterialFixture(argv[1]);std::printf("material fixture %s\n",ok?"written":"failed");return ok?0:1;
     }

@@ -16,6 +16,7 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -4517,26 +4518,83 @@ bool IsApproximatelyPlanar(const std::vector<phys::Vec3>& verts, float epsilon) 
     return true;
 }
 
-// BuildVertWeldTable: fold vertices that share a position and a roughly
-// matching normal onto their first occurrence, so island flood-fill sees the
-// mesh as connected across duplicated seam verts.
+struct WeldCell {
+    std::int64_t x, y, z;
+    bool operator==(const WeldCell& other) const {
+        return x == other.x && y == other.y && z == other.z;
+    }
+};
+
+struct WeldCellHash {
+    size_t operator()(const WeldCell& cell) const {
+        size_t h = std::hash<std::int64_t>{}(cell.x);
+        for (auto v : {cell.y, cell.z})
+            h ^= std::hash<std::int64_t>{}(v) + size_t{0x9e3779b9} + (h << 6) + (h >> 2);
+        return h;
+    }
+};
+
+// Preserve the reference's FIRST matching predecessor, including predecessors
+// already welded away. Resolve that predecessor to its canonical vertex: a
+// tolerance chain must not expose a removed intermediate vertex to island
+// grouping. Nearby candidates come from a grid, but the original float distance
+// and strict normal-dot tests still decide each match.
 void BuildVertWeldTable(const src::Source* ps, float posEpsilon, float normalEpsilon,
                         std::vector<int>& weldTable) {
     const int n = static_cast<int>(ps->vertex.size());
     weldTable.assign(n, 0);
+    // Twice the tolerance leaves room for subtraction rounding at a cell edge.
+    // The floor also covers squared-distance underflow with a zero epsilon.
+    const double cellWidth = std::max(2.0 * static_cast<double>(posEpsilon), 1e-6);
+    std::vector<WeldCell> cells(n);
+    bool useGrid = posEpsilon >= 0 && std::isfinite(posEpsilon);
+    for (int i = 0; useGrid && i < n; ++i) {
+        const auto& p = ps->vertex[i].position;
+        const double x = std::floor(p.x / cellWidth);
+        const double y = std::floor(p.y / cellWidth);
+        const double z = std::floor(p.z / cellWidth);
+        // Beyond this range doubles cannot distinguish adjacent cells. Keep
+        // the exact legacy search for such extreme coordinate/tolerance ratios.
+        constexpr double kSafeCell = 4503599627370494.0;
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
+            std::fabs(x) > kSafeCell || std::fabs(y) > kSafeCell || std::fabs(z) > kSafeCell) {
+            useGrid = false;
+            break;
+        }
+        cells[i] = {static_cast<std::int64_t>(x), static_cast<std::int64_t>(y),
+                    static_cast<std::int64_t>(z)};
+    }
+    std::unordered_map<WeldCell, std::vector<int>, WeldCellHash> grid;
+    if (useGrid) grid.reserve(n);
     for (int i = 0; i < n; i++) {
         weldTable[i] = i;
-        for (int j = 0; j < i; j++) {
+        int first = i;
+        auto matches = [&](int j) {
             Vector3 d{ps->vertex[j].position.x - ps->vertex[i].position.x,
                       ps->vertex[j].position.y - ps->vertex[i].position.y,
                       ps->vertex[j].position.z - ps->vertex[i].position.z};
-            float dist = VectorLength(d);
-            float normalDist = DotProduct(ps->vertex[j].normal, ps->vertex[i].normal);
-            if (dist <= posEpsilon && normalDist > normalEpsilon) {
-                weldTable[i] = j;
-                break;
+            return VectorLength(d) <= posEpsilon &&
+                   DotProduct(ps->vertex[j].normal, ps->vertex[i].normal) > normalEpsilon;
+        };
+        if (useGrid) {
+            const WeldCell cell = cells[i];
+            for (int x = -1; x <= 1; ++x)
+                for (int y = -1; y <= 1; ++y)
+                    for (int z = -1; z <= 1; ++z) {
+                        const auto found = grid.find({cell.x + x, cell.y + y, cell.z + z});
+                        if (found == grid.end()) continue;
+                        for (int j : found->second) {
+                            if (j >= first) break; // bucket indices are ascending
+                            if (matches(j)) { first = j; break; }
+                        }
+                    }
+            grid[cell].push_back(i);
+        } else {
+            for (int j = 0; j < i; ++j) {
+                if (matches(j)) { first = j; break; }
             }
         }
+        weldTable[i] = weldTable[first];
     }
 }
 
@@ -4557,88 +4615,67 @@ void CollectSourceFaces(const src::Source* ps, std::vector<SrcTri>& out) {
     }
 }
 
-// BuildConvexListByVertID: bucket vertices by their label, in first-seen
-// order. A label outside [0, totalSourceFaces] is a vertex no face reached.
-void BucketByVertID(std::vector<int>& vertID, int totalSourceFaces,
-                    std::vector<std::vector<int>>& groupsOut) {
-    const int numVerts = static_cast<int>(vertID.size());
-    for (int i = 0; i < numVerts; i++) {
-        if (vertID[i] < 0 || vertID[i] > totalSourceFaces)
-            continue;
-        const int id = vertID[i];
-        std::vector<int> group;
-        for (int j = i; j < numVerts; j++) {
-            if (vertID[j] == id) {
-                group.push_back(j);
-                vertID[j] = -1;
-            }
-        }
-        groupsOut.push_back(std::move(group));
-    }
-}
-
-// BuildConvexListForFaceList: label every vertex with the lowest face id
-// reachable through shared (welded) vertices, iterating to a fixpoint, then
-// bucket. Each bucket is a disjoint mesh island and becomes its own convex
-// piece.
+// BuildConvexListForFaceList: join face vertices after welding, then collect
+// connected components in source-vertex order. This preserves the old hull and
+// vertex ordering without repeated whole-mesh label propagation or rescans.
 //
 // This is NOT convex decomposition - it splits geometry that is already
 // physically separate. Genuine concave-solid decomposition is not implemented.
 //
-// `faces` may be a subset of the source (the ragdoll path passes one bone's
-// faces), but the sentinel is keyed to the source's TOTAL face count, exactly
-// as the reference keys it to pmodel->numfaces.
-void BuildIslandsForFaces(const src::Source* ps, const std::vector<SrcTri>& faces,
-                          int totalSourceFaces, float posEpsilon, float normalEpsilon,
+// `faces` may be a subset of the source (one ragdoll bone); untouched vertices
+// remain absent even when the source-wide weld table is reused by other bones.
+void BuildIslandsForFaces(const std::vector<int>& weldTable, const std::vector<SrcTri>& faces,
                           std::vector<std::vector<int>>& islandsOut) {
     islandsOut.clear();
-    const int numVerts = static_cast<int>(ps->vertex.size());
+    const int numVerts = static_cast<int>(weldTable.size());
     if (numVerts == 0 || faces.empty())
         return;
-
-    std::vector<int> weldTable;
-    BuildVertWeldTable(ps, posEpsilon, normalEpsilon, weldTable);
-
-    // a welded-away vertex gets -1 and is skipped; everything else starts above
-    // every face id so the first pass can only lower it
-    std::vector<int> vertID(numVerts);
-    for (int i = 0; i < numVerts; i++)
-        vertID[i] = (weldTable[i] != i) ? -1 : totalSourceFaces + 1;
-
-    const int numFaces = static_cast<int>(faces.size());
-    int marked = 0;
-    do {
-        marked = 0;
-        for (int i = 0; i < numFaces; i++) {
-            int a = weldTable[faces[i].a];
-            int b = weldTable[faces[i].b];
-            int c = weldTable[faces[i].c];
-            int newid = i;
-            if (vertID[a] < newid) newid = vertID[a];
-            if (vertID[b] < newid) newid = vertID[b];
-            if (vertID[c] < newid) newid = vertID[c];
-            if (vertID[a] != newid) { vertID[a] = newid; marked++; }
-            if (vertID[b] != newid) { vertID[b] = newid; marked++; }
-            if (vertID[c] != newid) { vertID[c] = newid; marked++; }
+    std::vector<int> parent(numVerts, -1), rank(numVerts, 0);
+    auto root = [&](int v) {
+        int r = v;
+        while (parent[r] != r) r = parent[r];
+        while (parent[v] != v) {
+            const int next = parent[v]; parent[v] = r; v = next;
         }
-    } while (marked != 0);
-
-    BucketByVertID(vertID, totalSourceFaces, islandsOut);
+        return r;
+    };
+    auto join = [&](int a, int b) {
+        a = root(a); b = root(b);
+        if (a == b) return;
+        if (rank[a] < rank[b]) std::swap(a, b);
+        parent[b] = a;
+        if (rank[a] == rank[b]) ++rank[a];
+    };
+    for (const SrcTri& face : faces) {
+        const int a = weldTable[face.a], b = weldTable[face.b], c = weldTable[face.c];
+        for (int v : {a, b, c}) if (parent[v] < 0) parent[v] = v;
+        join(a, b); join(a, c);
+    }
+    std::vector<int> groupForRoot(numVerts, -1);
+    for (int i = 0; i < numVerts; ++i) {
+        if (parent[i] < 0) continue;
+        int& group = groupForRoot[root(i)];
+        if (group < 0) {
+            group = static_cast<int>(islandsOut.size());
+            islandsOut.emplace_back();
+        }
+        islandsOut[group].push_back(i);
+    }
 }
 
 // BuildSingleConvexForFaceList: every vertex the face list touches goes
 // into one group - one hull for the whole set, no island split.
 void BuildSingleGroupForFaces(const src::Source* ps, const std::vector<SrcTri>& faces,
-                              int totalSourceFaces,
                               std::vector<std::vector<int>>& groupsOut) {
     groupsOut.clear();
-    std::vector<int> vertID(ps->vertex.size(), -1);
+    std::vector<bool> used(ps->vertex.size(), false);
     for (const SrcTri& f : faces) {
-        vertID[f.a] = 1;
-        vertID[f.b] = 1;
-        vertID[f.c] = 1;
+        used[f.a] = used[f.b] = used[f.c] = true;
     }
-    BucketByVertID(vertID, totalSourceFaces, groupsOut);
+    std::vector<int> group;
+    for (int i = 0; i < static_cast<int>(used.size()); ++i)
+        if (used[i]) group.push_back(i);
+    if (!group.empty()) groupsOut.push_back(std::move(group));
 }
 
 // Turn vertex groups into convex hulls. Shared by the single-body and ragdoll
@@ -5258,6 +5295,15 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
     std::vector<RagdollBody> bodies;
     bool anyConcave = false;
     int maxConvexPieces = 0;
+    // Raw source positions/normals and tolerances are unchanged between bones
+    // and shapes here. Build once per source, not once per ragdoll body.
+    std::unordered_map<const src::Source*, std::vector<int>> weldTables;
+    auto weldForSource = [&](const src::Source* ps) -> const std::vector<int>& {
+        auto entry = weldTables.emplace(ps, std::vector<int>{});
+        if (entry.second)
+            BuildVertWeldTable(ps, in.physWeldPosition, in.physWeldNormal, entry.first->second);
+        return entry.first->second;
+    };
 
     auto freeBodies = [&bodies]() {
         for (RagdollBody& b : bodies)
@@ -5418,11 +5464,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
 
             std::vector<std::vector<int>> groups;
             if (shape.concave) {
-                BuildIslandsForFaces(ps, faceList, totalSourceFaces, in.physWeldPosition,
-                                     in.physWeldNormal, groups);
+                BuildIslandsForFaces(weldForSource(ps), faceList, groups);
             }
             if (groups.empty())
-                BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
+                BuildSingleGroupForFaces(ps, faceList, groups);
 
             std::vector<phys::Convex*> convexes;
             if (!(in.physDecomposeConcave
@@ -5512,11 +5557,10 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
 
             std::vector<std::vector<int>> groups;
             if (shape.concave) {
-                BuildIslandsForFaces(ps, faceList, totalSourceFaces, in.physWeldPosition,
-                                     in.physWeldNormal, groups);
+                BuildIslandsForFaces(weldForSource(ps), faceList, groups);
             }
             if (groups.empty())
-                BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
+                BuildSingleGroupForFaces(ps, faceList, groups);
 
             std::vector<phys::Convex*> convexes;
             // gameData is the 1-based global bone, which is how vphysics maps a
@@ -5539,7 +5583,7 @@ bool BuildRagdollCollision(Ctx& ctx, const std::vector<GeneratedShape>& generate
                     phys::ConvexFree(convex);
                 convexes.clear();
                 groups.clear();
-                BuildSingleGroupForFaces(ps, faceList, totalSourceFaces, groups);
+                BuildSingleGroupForFaces(ps, faceList, groups);
                 if (!BuildConvexesForGroups(groups, boneVerts, shape.name.c_str(), shape.remove2d,
                                             static_cast<unsigned int>(globalBone) + 1,
                                             convexes, err)) {
@@ -5876,7 +5920,6 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         src::Source weldSource;
         std::vector<phys::Vec3> vertices;
         std::vector<SrcTri> faces;
-        int totalSourceFaces = 0;
     };
     std::vector<PreparedCollisionShape> prepared;
     std::map<int, size_t> concaveGroups;
@@ -5898,7 +5941,6 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         // everything onto one bone, which is already what a single body is, so
         // it needs no filtering here.
         CollectSourceFaces(shape.source, item.faces);
-        item.totalSourceFaces = static_cast<int>(item.faces.size());
         if (shape.importType == PhysicsImportType::OneBoneOnly) {
             if (!FilterFacesToBone(m, shape, item.faces, err)) {
                 freeConvexes();
@@ -5930,7 +5972,6 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
                     item.weldSource.vertex.begin(), item.weldSource.vertex.end());
                 for (const auto& face : item.faces)
                     merged.faces.push_back({face.a + base, face.b + base, face.c + base});
-                merged.totalSourceFaces += item.totalSourceFaces;
                 continue;
             }
         }
@@ -5941,7 +5982,6 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         const PhysicsShape& shape = *item.shape;
         const auto& shapeVerts = item.vertices;
         const auto& faces = item.faces;
-        const int totalSourceFaces = item.totalSourceFaces;
 
         std::vector<bool> used(shapeVerts.size(), false);
         for (const SrcTri& f : faces) {
@@ -5995,8 +6035,9 @@ bool BuildCollisionModel(Ctx& ctx, std::string* err) {
         // the whole shape
         std::vector<std::vector<int>> islands;
         if (shape.concave) {
-            BuildIslandsForFaces(&item.weldSource, faces, totalSourceFaces,
-                                 in.physWeldPosition, in.physWeldNormal, islands);
+            std::vector<int> weldTable;
+            BuildVertWeldTable(&item.weldSource, in.physWeldPosition, in.physWeldNormal, weldTable);
+            BuildIslandsForFaces(weldTable, faces, islands);
         }
         if (islands.empty()) {
             islands.emplace_back();

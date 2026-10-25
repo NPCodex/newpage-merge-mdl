@@ -4,7 +4,111 @@ import struct
 
 
 class PhysicsExtraCases:
-    def extra_boxes(self, name, boxes):
+    def test_collision_tolerance_chain_preserves_island(self):
+        # Three closed boxes have a corresponding vertex at 0, .75 and 1.5.
+        # With epsilon 1, the last cube first matches the middle cube, whose
+        # vertices already weld to the first. The distant cube keeps the old
+        # all-geometry fallback from hiding a lost connected component.
+        self.extra_boxes('chain.smd', [(0, 0, 0, 10, 10, 10),
+                                      (.75, 0, 0, 10.75, 10, 10),
+                                      (1.5, 0, 0, 21.5, 20, 20),
+                                      (50, 0, 0, 60, 10, 10)])
+        self.scene_qc('$modelname chain\n$origin 0 0 0 -90\n$body m chain.smd\n'
+                      '$collisionmodel chain.smd { $mass 10 $concave $weldposition 1 }\n')
+        _, hulls, volumes = self.extra_phy_hulls('chain')
+        self.assertEqual(len(hulls), 2)
+        bounds = sorted((round(min(p[0] for p in h), 3),
+                         round(max(p[0] for p in h), 3)) for h in hulls)
+        self.assertEqual(bounds, [(0, 21.5), (50, 60)])
+        # Independently author the intended first-representative geometry:
+        # remove the fully redundant middle box and move the third origin to 0.
+        self.extra_boxes('expected.smd', [(0, 0, 0, 10, 10, 10),
+                                         (1.5, 0, 0, 21.5, 20, 20),
+                                         (50, 0, 0, 60, 10, 10)])
+        self.write('expected.smd', (self.root / 'expected.smd').read_text().replace(
+            '0 1.5 0 0 0 0 1 0 0', '0 0 0 0 0 0 1 0 0'))
+        self.scene_qc('$modelname expected\n$origin 0 0 0 -90\n$body m expected.smd\n'
+                      '$collisionmodel expected.smd { $mass 10 $concave }\n')
+        _, reference, reference_volumes = self.extra_phy_hulls('expected')
+        self.assertEqual(len(reference), len(hulls))
+        self.extra_points_equal([p for h in hulls for p in h], [p for h in reference for p in h])
+        self.assertAlmostEqual(sum(abs(v) for v in volumes),
+                               sum(abs(v) for v in reference_volumes), places=3)
+
+    def test_collision_normal_chain_preserves_extended_hull(self):
+        self.extra_boxes('normal.smd', [(0, 0, 0, 10, 10, 10),
+                                       (0, 0, 0, 10, 10, 10),
+                                       (0, 0, 0, 20, 20, 20),
+                                       (50, 0, 0, 60, 10, 10)],
+                         normals=[(math.sin(math.radians(a)), 0, math.cos(math.radians(a)))
+                                  for a in (0, 20, 40, 0)])
+        self.scene_qc('$modelname normal\n$origin 0 0 0 -90\n$body m normal.smd\n'
+                      '$collisionmodel normal.smd { $mass 10 $concave $weldnormal .9 }\n')
+        _, hulls, volumes = self.extra_phy_hulls('normal')
+        self.assertEqual(len(hulls), 2)
+        self.assertAlmostEqual(sum(abs(v) for v in volumes), 9000, places=2)
+        self.assertEqual(sorted(round(max(p[0] for p in h), 3) for h in hulls), [20, 60])
+
+    def test_collision_weld_chooses_first_match_across_grid_cells(self):
+        self.extra_boxes('first.smd', [(.6, 0, 0, 10.6, 10, 10),
+                                      (-.6, 0, 0, 9.4, 10, 10),
+                                      (.1, 0, 0, 20.1, 20, 20)])
+        self.scene_qc('$modelname first\n$origin 0 0 0 -90\n$body m first.smd\n'
+                      '$collisionmodel first.smd { $mass 10 $concave $weldposition .75 }\n')
+        _, hulls, _ = self.extra_phy_hulls('first')
+        self.assertEqual(len(hulls), 2)
+        bounds = sorted((round(min(p[0] for p in h), 3),
+                         round(max(p[0] for p in h), 3)) for h in hulls)
+        # The later large box is closer to the first box (.5 versus .7), but
+        # reverse those distances below: FIRST source occurrence still wins.
+        self.assertEqual(bounds, [(-.6, 9.4), (.1, 20.1)])
+        text = (self.root / 'first.smd').read_text().replace('0 0.1 ', '0 -0.1 ')
+        self.write('first.smd', text)
+        self.scene_qc('$modelname first\n$origin 0 0 0 -90\n$body m first.smd\n'
+                      '$collisionmodel first.smd { $mass 10 $concave $weldposition .75 }\n')
+        _, hulls, _ = self.extra_phy_hulls('first')
+        bounds = sorted((round(min(p[0] for p in h), 3),
+                         round(max(p[0] for p in h), 3)) for h in hulls)
+        self.assertEqual(bounds, [(-.6, 9.4), (-.1, 20.1)])
+
+    def test_collision_chain_ragdoll_keeps_per_bone_islands(self):
+        self.extra_boxes('ragchain.smd', [(0, 0, 0, 10, 10, 10),
+                                         (.75, 0, 0, 10.75, 10, 10),
+                                         (1.5, 0, 0, 21.5, 20, 20),
+                                         (50, 0, 0, 60, 10, 10)])
+        text = (self.root / 'ragchain.smd').read_text().replace(
+            '0 "root" -1\n', '0 "root" -1\n1 "limb" 0\n').replace(
+            'time 0\n0 0 0 0 0 0 0\n', 'time 0\n0 0 0 0 0 0 0\n1 0 0 0 0 0 0\n')
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            fields = line.split()
+            if len(fields) == 9 and float(fields[1]) >= 50:
+                fields[0] = '1'
+                lines[i] = ' '.join(fields)
+        self.write('ragchain.smd', '\n'.join(lines) + '\n')
+        self.scene_qc('$modelname ragchain\n$origin 0 0 0 -90\n$bonecullmethod none\n'
+                      '$body m ragchain.smd\n$collisionjoints ragchain.smd '
+                      '{ $mass 10 $rootbone root $concaveperjoint $weldposition 1 }\n')
+        _, root_hulls, _ = self.extra_phy_hulls('ragchain', expected_solids=2)
+        _, limb_hulls, _ = self.extra_phy_hulls('ragchain', solid=1, expected_solids=2)
+        self.assertEqual(len(root_hulls), 1)
+        self.assertEqual(len(limb_hulls), 1)
+        self.assertAlmostEqual(max(p[0] for p in root_hulls[0]), 21.5, places=3)
+        self.assertAlmostEqual(min(p[0] for p in limb_hulls[0]), 50, places=3)
+
+    def test_collision_weld_zero_and_exact_tolerance_boundaries(self):
+        self.extra_boxes('boundary.smd', [(0, 0, 0, 10, 10, 10),
+                                         (1, 0, 0, 11, 10, 10)])
+        for epsilon, normal, expected in [(0, .999, 2), (.999, .999, 2),
+                                          (1, .999, 1), (1, 1, 2), (1, 1.01, 2)]:
+            with self.subTest(epsilon=epsilon, normal=normal):
+                self.scene_qc('$modelname boundary\n$origin 0 0 0 -90\n$body m boundary.smd\n'
+                              '$collisionmodel boundary.smd { $mass 10 $concave '
+                              f'$weldposition {epsilon} $weldnormal {normal} }}\n')
+                _, hulls, _ = self.extra_phy_hulls('boundary')
+                self.assertEqual(len(hulls), expected)
+
+    def extra_boxes(self, name, boxes, normals=None):
         text = ('version 1\nnodes\n0 "root" -1\nend\nskeleton\ntime 0\n'
                 '0 0 0 0 0 0 0\nend\ntriangles\n')
         corners = []
@@ -12,7 +116,8 @@ class PhysicsExtraCases:
         triangles = [(0, 2, 1), (0, 3, 2), (4, 5, 6), (4, 6, 7),
                      (0, 1, 5), (0, 5, 4), (3, 7, 6), (3, 6, 2),
                      (0, 4, 7), (0, 7, 3), (1, 2, 6), (1, 6, 5)]
-        for x0, y0, z0, x1, y1, z1 in boxes:
+        for box_index, (x0, y0, z0, x1, y1, z1) in enumerate(boxes):
+            nx, ny, nz = (0, 0, 1) if normals is None else normals[box_index]
             vertices = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
                         (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
             corners.extend(vertices)
@@ -20,14 +125,17 @@ class PhysicsExtraCases:
                 text += 'material\n'
                 for index in triangle:
                     x, y, z = vertices[index]
-                    text += f'0 {x} {y} {z} 0 0 1 0 0\n'
+                    text += f'0 {x} {y} {z} {nx} {ny} {nz} 0 0\n'
         self.write(name, text + 'end\n')
         return corners
 
-    def extra_phy_hulls(self, name):
+    def extra_phy_hulls(self, name, solid=0, expected_solids=1):
         data = (self.root / f'models/{name}.phy').read_bytes()
-        self.assertEqual(struct.unpack_from('<i', data, 8)[0], 1)
-        surface = 20 + 28
+        self.assertEqual(struct.unpack_from('<i', data, 8)[0], expected_solids)
+        cursor = struct.unpack_from('<i', data, 0)[0]
+        for _ in range(solid):
+            cursor += 4 + struct.unpack_from('<i', data, cursor)[0]
+        surface = cursor + 4 + 28
         ledge = surface + 48
         tree = surface + struct.unpack_from('<i', data, surface + 32)[0]
         hulls, volumes = [], []

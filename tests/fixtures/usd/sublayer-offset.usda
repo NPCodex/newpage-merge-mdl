@@ -1,0 +1,5 @@
+#usda 1.0
+(
+    subLayers = [@good.usda@ (offset = 1)]
+)
+def Xform "OffsetFixture" {}

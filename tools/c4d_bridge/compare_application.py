@@ -47,7 +47,7 @@ def glb(path):
     def accessor(index):
         item = doc['accessors'][index]
         view = doc['bufferViews'][item['bufferView']]
-        count = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4}[item['type']]
+        count = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT4': 16}[item['type']]
         fmt = '<' + str(count) + {5121: 'B', 5123: 'H', 5125: 'I', 5126: 'f'}[item['componentType']]
         start = view.get('byteOffset', 0) + item.get('byteOffset', 0)
         return [struct.unpack_from(fmt, binary, start + i * view.get('byteStride', struct.calcsize(fmt)))
@@ -196,6 +196,100 @@ def assess_skin(reference):
     return {'application_version': authored['version'], 'fps': authored['fps'], 'frames': frames,
             'max_position_error_cm': maximum, 'tolerance_cm': .0002,
             'scope': 'Assessment of authored bind/weight model; skeletal import remains unsupported'}
+
+
+def trs_matrix(translation, rotation, scale):
+    x, y, z, w = rotation
+    return [(1-2*(y*y+z*z))*scale[0], (2*(x*y+z*w))*scale[0], (2*(x*z-y*w))*scale[0], 0,
+            (2*(x*y-z*w))*scale[1], (1-2*(x*x+z*z))*scale[1], (2*(y*z+x*w))*scale[1], 0,
+            (2*(x*z+y*w))*scale[2], (2*(y*z-x*w))*scale[2], (1-2*(x*x+y*y))*scale[2], 0,
+            *translation, 1]
+
+
+def compare_skin(reference, converted):
+    """Evaluate the exported skin and compare independent saved C4D poses.
+
+    Weights/inverse binds are read from GLB, not reconstructed from the author's
+    known weight recipe. The reference is an application-authored historical
+    document; running this function does not run Cinema 4D again.
+    """
+    authored = json.loads(reference.read_text(encoding='utf-8'))
+    doc, accessor = glb(converted)
+    if len(doc.get('skins', [])) != 1 or len(doc.get('animations', [])) != 1:
+        raise ValueError('Expected one exported skin and timeline')
+    skin, animation = doc['skins'][0], doc['animations'][0]
+    binds = accessor(skin['inverseBindMatrices'])
+    if len(binds) != len(skin['joints']):
+        raise ValueError('Joint/bind matrix count differs')
+    if {doc['nodes'][j]['name'] for j in skin['joints']} != {'SkinRoot', 'SkinTip'}:
+        raise ValueError('Joint links differ')
+    frames, maximum, maximum_joint = [], 0., 0.
+    for sample in authored['samples']:
+        time = sample['frame'] / authored['fps']
+        overrides = {}
+        for channel in animation['channels']:
+            sampler = animation['samplers'][channel['sampler']]
+            times, values = accessor(sampler['input']), accessor(sampler['output'])
+            # These reference poses are authored keys; do not introduce another
+            # interpolation implementation into the independent comparison.
+            matches = [i for i, value in enumerate(times) if abs(value[0]-time) < 1e-6]
+            if len(matches) != 1:
+                raise ValueError('Expected exactly one exported sample at reference time')
+            overrides.setdefault(channel['target']['node'], {})[channel['target']['path']] = values[matches[0]]
+        worlds = {}
+        def visit(index, parent):
+            node = doc['nodes'][index]
+            if index in overrides:
+                if 'matrix' in node:
+                    raise ValueError('Animated GLB node must use TRS')
+                v = dict(translation=node.get('translation', [0, 0, 0]),
+                         rotation=node.get('rotation', [0, 0, 0, 1]), scale=node.get('scale', [1, 1, 1]))
+                v.update(overrides[index]); local = trs_matrix(**v)
+            else:
+                local = node.get('matrix', trs_matrix(node.get('translation', [0, 0, 0]),
+                    node.get('rotation', [0, 0, 0, 1]), node.get('scale', [1, 1, 1])))
+            worlds[index] = multiply(parent, local)
+            for child in node.get('children', []): visit(child, worlds[index])
+        for root in doc['scenes'][doc.get('scene', 0)]['nodes']: visit(root, IDENTITY)
+        original = {n['name']: n for n in sample['hierarchy']}
+        for joint in skin['joints']:
+            expected = multiply(CONVERSION, from_c4d(original[doc['nodes'][joint]['name']]['world']))
+            maximum_joint = max(maximum_joint, error(worlds[joint], expected))
+        ref = next(n for n in sample['reference'] if n['name'] == 'AnimatedSkin')
+        source = original['AnimatedSkin']
+        expected_world = multiply(CONVERSION, from_c4d(ref['world']))
+        node = next(n for n in doc['nodes'] if n.get('name') == 'AnimatedSkin')
+        if node.get('skin') != 0: raise ValueError('Mesh does not reference exported skin')
+        seen, corner_count, maximum_frame = set(), 0, 0.
+        for primitive in doc['meshes'][node['mesh']]['primitives']:
+            attrs = primitive['attributes']
+            for vertex, uv, joints, weights in zip(*(accessor(attrs[k]) for k in
+                    ('POSITION', 'TEXCOORD_0', 'JOINTS_0', 'WEIGHTS_0'))):
+                matches = [i for i, p in enumerate(source['points']) if error(vertex, p) < 1e-5]
+                if len(matches) != 1: raise ValueError('Bind point differs or evaluated cache was exported')
+                point_index = matches[0]; seen.add(point_index); corner_count += 1
+                valid_uv = [source['uv'][pi][key][:2] for pi, polygon in enumerate(source['polygons'])
+                            for key, index in zip('abcd', polygon) if index == point_index]
+                if not any(error(uv, expected) < 1e-6 for expected in valid_uv):
+                    raise ValueError('Skin split corner lost UV')
+                if abs(sum(weights)-1) > 1e-6: raise ValueError('Skin weights are not normalized')
+                result = [0., 0., 0.]
+                for joint, weight in zip(joints, weights):
+                    if not weight: continue
+                    transform = multiply(worlds[skin['joints'][joint]], binds[joint])
+                    transformed = point(transform, vertex)
+                    result = [a+weight*b for a, b in zip(result, transformed)]
+                maximum_frame = max(maximum_frame, error(result, point(expected_world, ref['points'][point_index])))
+        if len(seen) != len(source['points']) or corner_count != 6:
+            raise ValueError('Missing/duplicated bind points or split corners')
+        if maximum_frame > 2e-6 or maximum_joint > 2e-6:
+            raise ValueError('Exported skin or joint animation differs from C4D evaluated reference')
+        frames.append({'frame': sample['frame'], 'max_world_position_error_m': maximum_frame})
+        maximum = max(maximum, maximum_frame)
+    return {'success': True, 'application_version': authored['version'], 'frames': frames,
+            'max_world_position_error_m': maximum, 'max_joint_matrix_error': maximum_joint,
+            'vertices_checked_per_pose': 6,
+            'scope': 'Imported joints, inverse binds, weights, UV corners and linear timeline vs preserved 2027 application poses'}
 
 
 if __name__ == '__main__':

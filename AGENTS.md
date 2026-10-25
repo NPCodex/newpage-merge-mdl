@@ -25,6 +25,6 @@ CE/StudioMDL++/Neko updates are supplied by the user; automatically integrate
 PulseModel source updates. Reference binaries and user model assets stay outside
 source commits and release packages.
 
-Use C:/Users/Kud/Desktop/gmod/playermodel_f_compile2_hair.qc (Plum) for
-production validation, including its supplied material assets. Do not use Claudia
+Use the user-selected E:/desktop/Medusa models and supplied material assets for
+production validation. The original Plum materials were lost. Do not use Claudia
 for new validation. Keep original inputs unchanged and output paths isolated.

@@ -21,6 +21,7 @@ class StaticUsdComposition {
     using Selections=std::map<std::string,std::string>;
     IOSystem& io;
     std::map<std::string,Layer> layers;
+    std::set<std::string> loadingLayers;
     std::set<std::string> active;
     size_t expanded=0;
     std::string warnings;
@@ -31,9 +32,103 @@ class StaticUsdComposition {
         const auto canonical=std::filesystem::weakly_canonical(absolute,ec);
         return (ec?absolute.lexically_normal():canonical).u8string();
     }
+    // Resolve external assets in the authoring layer before layering changes
+    // the traversal context. Internal references still address the final stack.
+    static void ResolveAssets(Prim& prim,const std::string& file,size_t depth=0) {
+        if(depth>=64)throw DeadlyImportError("USD layer exceeds 64 prim depth at ",file,"/",prim.name());
+        auto resolve=[&](tinyusdz::value::AssetPath& asset) {
+            const auto authored=asset.GetAssetPath();
+            if(!authored.empty())asset=tinyusdz::value::AssetPath(Canonical((std::filesystem::u8path(file).parent_path()/std::filesystem::u8path(authored)).u8string()));
+        };
+        if(prim.metas().references)for(auto& reference:prim.metas().references.value().second)resolve(reference.asset_path);
+        for(auto& entry:prim.props())if(entry.second.is_attribute()) {
+            auto& attribute=entry.second.attribute();
+            if(auto asset=attribute.get_value<tinyusdz::value::AssetPath>()) {
+                resolve(asset.value());attribute.set_value(asset.value());
+            } else if(auto assets=attribute.get_value<std::vector<tinyusdz::value::AssetPath>>()) {
+                for(auto& asset:assets.value())resolve(asset);
+                attribute.set_value(assets.value());
+            }
+        }
+        for(auto& child:prim.children())ResolveAssets(child,file,depth+1);
+        for(auto& set:prim.variantSets())for(auto& variant:set.second.variantSet)ResolveAssets(variant.second,file,depth+1);
+    }
+    static void CheckStaticLayer(const Prim& prim,const std::string& file) {
+        const auto& meta=prim.metas();
+        if(meta.variantSets || meta.variants || !prim.variantSets().empty())
+            throw DeadlyImportError("USD subLayers with variant opinions are not supported; flatten this stack: ",file,"/",prim.name());
+        if(meta.payload || meta.inherits || meta.specializes || meta.clips)
+            throw DeadlyImportError("USD unsupported payload/inherits/specializes/value-clips in subLayers: ",file,"/",prim.name());
+        if(prim.typeName()=="Skeleton" || prim.typeName()=="SkelRoot" || prim.typeName()=="SkelAnimation")
+            throw DeadlyImportError("USD skeletal subLayers are not supported; flatten this stack: ",file,"/",prim.name());
+        for(const auto& entry:prim.props())if(entry.second.is_attribute() && entry.second.get_attribute().has_timesamples())
+            throw DeadlyImportError("USD animated subLayers are not supported; flatten or bake this stack: ",file,"/",prim.name(),".",entry.first);
+        for(const auto& child:prim.children())CheckStaticLayer(child,file);
+    }
+    static void InheritAttribute(tinyusdz::Attribute& strong,const tinyusdz::Attribute& weak) {
+        // Declarations without a default do not erase a weaker authored value.
+        if(!strong.has_value() && !strong.has_blocked() && !strong.has_connections() && !strong.has_timesamples())
+            strong.get_var()=weak.get_var();
+        auto& s=strong.metas();const auto& w=weak.metas();
+        auto fill=[](auto& dst,const auto& src){if(!dst)dst=src;};
+        fill(s.interpolation,w.interpolation);fill(s.elementSize,w.elementSize);fill(s.hidden,w.hidden);
+        fill(s.comment,w.comment);fill(s.weight,w.weight);fill(s.connectability,w.connectability);
+        fill(s.outputName,w.outputName);fill(s.renderType,w.renderType);fill(s.displayName,w.displayName);
+        fill(s.bindMaterialAs,w.bindMaterialAs);
+        // Dictionary metadata needs field-wise composition, outside this bounded
+        // static value merger. Never discard a weaker dictionary silently.
+        if((s.customData && w.customData) || (s.sdrMetadata && w.sdrMetadata))
+            throw DeadlyImportError("USD layered attribute dictionary metadata requires flattening");
+        fill(s.customData,w.customData);fill(s.sdrMetadata,w.sdrMetadata);
+        for(const auto& entry:w.meta)s.meta.emplace(entry);
+        if(s.stringData.empty())s.stringData=w.stringData;
+    }
+    static void InheritLayer(Prim& strong,const Prim& weak) {
+        if(strong.specifier()==tinyusdz::Specifier::Over)strong.specifier()=weak.specifier();
+        if(strong.typeName().empty() || strong.typeName()=="Model")strong.typeName()=weak.typeName();
+        auto weakMeta=weak.metas();
+        if(strong.metas().apiSchemas && weakMeta.apiSchemas)
+            throw DeadlyImportError("USD layered API schema lists require flattening: ",strong.name());
+        if(strong.metas().references && weakMeta.references) {
+            using Qual=tinyusdz::ListEditQual;
+            const auto& refs=strong.metas().references.value();
+            if(refs.first!=Qual::ResetToExplicit && refs.first!=Qual::Prepend && refs.first!=Qual::Append && refs.first!=Qual::Add)
+                throw DeadlyImportError("USD unsupported layered reference list edit: ",strong.name());
+            if(refs.first==Qual::ResetToExplicit)weakMeta.references.reset();
+            else if(!refs.second.empty() && !weakMeta.references.value().second.empty())
+                throw DeadlyImportError("USD multiple layered reference list opinions require flattening: ",strong.name());
+            else if(refs.second.empty())strong.metas().references.reset();
+        }
+        strong.metas().update_from(weakMeta,false);
+        // tinyusdz's dictionary updater merges two authored dictionaries, but
+        // omits a weak-only dictionary when override_authored is false.
+        if(!strong.metas().assetInfo)strong.metas().assetInfo=weakMeta.assetInfo;
+        if(!strong.metas().customData)strong.metas().customData=weakMeta.customData;
+        if(!strong.metas().sdrMetadata)strong.metas().sdrMetadata=weakMeta.sdrMetadata;
+        for(const auto& property:weak.props()) {
+            auto inserted=strong.props().emplace(property);
+            if(inserted.second)continue;
+            auto& current=inserted.first->second;
+            if(!current.is_attribute() || !property.second.is_attribute() ||
+               current.attribute().has_connections() || property.second.get_attribute().has_connections() ||
+               current.value_type_name()!=property.second.value_type_name())
+                throw DeadlyImportError("USD layered relationship/connection/type overrides require flattening: ",strong.name(),".",property.first);
+            InheritAttribute(current.attribute(),property.second.get_attribute());
+            if(current.attribute().has_value() || current.attribute().has_blocked())
+                current.set_property_type(tinyusdz::Property::Type::Attrib);
+        }
+        for(const auto& child:weak.children()) {
+            auto found=std::find_if(strong.children().begin(),strong.children().end(),[&](const auto& current){return current.name()==child.name();});
+            if(found==strong.children().end())strong.children().push_back(child);else InheritLayer(*found,child);
+        }
+    }
     const Layer& Read(const std::string& path) {
         auto found=layers.find(path);if(found!=layers.end())return found->second;
-        if(layers.size()>=128)throw DeadlyImportError("USD composition exceeds 128 source layers");
+        if(loadingLayers.count(path))throw DeadlyImportError("USD cyclic subLayers at ",path);
+        if(loadingLayers.size()>=64)throw DeadlyImportError("USD subLayers exceed 64 layer depth at ",path);
+        if(layers.size()+loadingLayers.size()>=128)throw DeadlyImportError("USD composition exceeds 128 source layers");
+        loadingLayers.insert(path);
+        struct LeaveLayer {std::set<std::string>& active;std::string path;~LeaveLayer(){active.erase(path);}} leave{loadingLayers,path};
         auto close=[&](IOStream* stream){io.Close(stream);};
         std::unique_ptr<IOStream,decltype(close)> stream(io.Open(path,"rb"),close);
         if(!stream)throw DeadlyImportError("USD referenced asset not found: ",path);
@@ -44,9 +139,27 @@ class StaticUsdComposition {
         if(!tinyusdz::LoadLayerFromMemory(bytes.data(),bytes.size(),path,&layer,&warn,&error))
             throw DeadlyImportError("USD layer parse failed: ",path,": ",error);
         warnings+=warn;
-        // The bundled library does not fully implement sublayer strengths and
-        // offsets; do not silently flatten those arcs with incorrect ordering.
-        if(!layer.metas().subLayers.empty())throw DeadlyImportError("USD subLayers composition is not supported; flatten subLayers before import: ",path);
+        for(auto& entry:layer.primspecs())ResolveAssets(entry.second,path);
+        // Root opinions are strongest, followed by subLayers in authored order.
+        // Stage metadata (including defaultPrim and upAxis) belongs to the root
+        // layer and does not inherit from a sublayer, matching OpenUSD.
+        if(!layer.metas().subLayers.empty()) {
+            for(const auto& entry:layer.primspecs())CheckStaticLayer(entry.second,path);
+            for(const auto& sub:layer.metas().subLayers) {
+                if(sub.layerOffset._offset!=0 || sub.layerOffset._scale!=1)
+                    throw DeadlyImportError("USD subLayer time offsets are not supported: ",path);
+                const auto asset=sub.assetPath.GetAssetPath();
+                if(asset.empty())throw DeadlyImportError("USD empty subLayer asset path: ",path);
+                const auto file=Canonical((std::filesystem::u8path(path).parent_path()/std::filesystem::u8path(asset)).u8string());
+                const auto& weaker=Read(file);
+                for(const auto& entry:weaker.primspecs()) {
+                    CheckStaticLayer(entry.second,file);
+                    auto inserted=layer.primspecs().emplace(entry);
+                    if(!inserted.second)InheritLayer(inserted.first->second,entry.second);
+                }
+            }
+            layer.metas().subLayers.clear();
+        }
         return layers.emplace(path,std::move(layer)).first->second;
     }
     // Merge the weaker referenced/variant opinions while preserving local

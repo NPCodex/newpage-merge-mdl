@@ -56,6 +56,9 @@ offline SubD and DMX rig baking have specific authoring requirements. Run
 - `$DisableCache` reloads subsequent model sources. `$qccompatibility neko`
   selects Neko material-group metadata and BodyGroup limits; see the
   [scope and usage](COMPATIBILITY.md#nekomdl-240-compatibility).
+- On Windows, `-reloadpid <game PID>` selects the reload notification target.
+  Automatic selection refuses multiple game windows. A game extension must
+  implement reload; successful message delivery does not prove the model refreshed.
 - Preserve `.npmdl-*` recovery journals, staging files and backups after an
   interrupted compile. The next compile attempts recovery; investigate reported
   conflicts before changing recovery files. Do not target one output set from
@@ -157,6 +160,10 @@ clouds from which the caller constructs convex hulls. Success returns exit code
 For OBJ/GLB input use `python tools/mesh_workflow.py simplify input.obj --output
 lod.obj --ratio 0.5`. See [authoring workflows](AUTHORING_WORKFLOWS.md) for geometry
 exports, error summaries, material collection and incremental batch builds.
+
+Independent model batches can use `tools/incremental_build.py models.json
+--compiler NewPageMergeMDL --jobs 4`, with complete input search roots declared.
+An optional memory budget estimates worker count; it is not a hard process limit.
 
 ### ag2proportions — experimental CS2 AnimGraph2 proportions
 

@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "source": {
-    "release_tag": "v1.2.38",
-    "url": "https://github.com/NPCodex/newpage-merge-mdl/releases/download/v1.2.38/NewPageMergeMDL-C4D-v1.2.38-win64.zip",
-    "api_url": "https://api.github.com/repos/NPCodex/newpage-merge-mdl/releases/assets/665295373",
-    "asset_name": "NewPageMergeMDL-C4D-v1.2.38-win64.zip",
-    "sha256": "fa6c804add64d0398bd91bcda54bd6bb96e06d4e612cc7103b7a2c356831c5af"
+    "release_tag": "v1.3.0",
+    "api_url": "https://api.github.com/repos/NPCodex/newpage-merge-mdl/releases/assets/674431850",
+    "url": "https://github.com/NPCodex/newpage-merge-mdl/releases/download/v1.3.0/NewPageMergeMDL-C4D-v1.3.0-win64.zip",
+    "asset_name": "NewPageMergeMDL-C4D-v1.3.0-win64.zip",
+    "sha256": "98054bc82bf0241785a35f376c448d4ef490bab6792c99fbe3f4039bb5c36f71"
   },
   "files": [
     {
       "member": "NewPageMergeMDL/NewPageMergeMDL-C4D.exe",
       "name": "NewPageMergeMDL-C4D.exe",
-      "sha256": "a635e8038bdb65d5474a26151cda8e9eae6369d53527d69af81a8175cab4ea37"
+      "sha256": "158e0b5993e9fb4c3371d4b9d2a0919a1913d495afa1b66d5aa4d7052efdce19"
     }
   ]
 }

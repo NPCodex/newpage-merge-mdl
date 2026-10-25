@@ -127,6 +127,32 @@ class ReportProtection(unittest.TestCase):
         self.assertEqual(Path(error['source']).name, 'body.qci')
         self.assertEqual(error['line'], 2)
 
+    def test_structured_source_line_keeps_qc_callsite(self):
+        source = self.root / 'mesh.smd'
+        original = '0 1 0 0 0 0 1 1 0'
+        malformed = SMD.replace(original, '0 invalid_position 0 0 0 0 1 1 0')
+        source.write_text(malformed)
+        text = self.run_compiler('-diagnosticsjson', success=False)
+        summary = json.loads(next(line.removeprefix('@diagnostic ') for line in text.splitlines() if line.startswith('@diagnostic ')))
+        error = summary['diagnostics'][0]
+        self.assertEqual(error['code'], 'NP1101')
+        self.assertEqual(Path(error['source']).name, 'body.qci')
+        self.assertEqual(error['line'], 1)
+        related = error['related_locations']
+        self.assertEqual(len(related), 1)
+        self.assertEqual(Path(related[0]['source']), source)
+        self.assertEqual(related[0]['line'], SMD.splitlines().index(original) + 1)
+        self.assertIn('related source line', error['hint'])
+
+    def test_structured_missing_source_does_not_invent_line(self):
+        (self.root / 'body.qci').write_text('$body body "missing 123.smd"\n')
+        text = self.run_compiler('-diagnosticsjson', success=False)
+        summary = json.loads(next(line.removeprefix('@diagnostic ') for line in text.splitlines() if line.startswith('@diagnostic ')))
+        error = summary['diagnostics'][0]
+        self.assertEqual(Path(error['source']).name, 'body.qci')
+        self.assertEqual(error['line'], 1)
+        self.assertEqual(error['related_locations'], [])
+
 
 if __name__ == '__main__':
     unittest.main()

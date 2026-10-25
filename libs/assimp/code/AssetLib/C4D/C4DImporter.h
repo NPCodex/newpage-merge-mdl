@@ -63,6 +63,7 @@ namespace cineware {
     class PolygonObject;
     class BaseMaterial;
     class BaseShader;
+    class BaseDocument;
 }
 
 namespace Assimp {
@@ -97,6 +98,10 @@ private:
         std::vector<cineware::BaseObject*> materialOwners = {},
         unsigned int depth = 0, bool consumed = false, bool cache = false);
     aiMesh* ReadMesh(cineware::BaseObject* object);
+    void PrepareRig(cineware::BaseDocument* doc);
+    void ReadSkin(cineware::BaseObject* object, aiMesh* mesh,
+        const std::vector<unsigned int>& sourcePoints);
+    void ReadAnimation(aiScene* scene);
     std::vector<unsigned int> ResolveMaterials(cineware::PolygonObject* obj,
         const std::vector<cineware::BaseObject*>& owners);
 
@@ -109,6 +114,10 @@ private:
     MaterialMap material_mapping;
     std::set<cineware::BaseObject*> visitedObjects;
     unsigned int cacheNodeId = 0;
+    cineware::BaseDocument* document = nullptr;
+    bool rigScene = false;
+    std::vector<cineware::BaseObject*> sourceObjects;
+    std::map<cineware::BaseObject*, aiNode*> sourceNodes;
 
 }; // !class C4DImporter
 
