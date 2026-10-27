@@ -188,6 +188,7 @@ def main():
             ('ce_morph_normals.py', [str(compiler)]),
             ('cli_framerate_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix))]),
             ('compiler_integrity_test.py', [str(compiler)]),
+            ('studiomdlpp_output_test.py', [str(compiler)]),
             ('decompiler_integrity_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix))]),
             ('decompiler_roundtrip_test.py', [str(compiler), str(compiler.with_name('NewPageMergeMDL-Decompiler'+compiler.suffix)), str(compiler.parent/'subtools'/('l4d_animswap'+compiler.suffix))]),
             ('subtools_integrity_test.py', ['--bin-dir', str(compiler.parent)]),

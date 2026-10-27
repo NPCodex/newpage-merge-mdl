@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。当前源码版本：v1.3.0；[发布状态](https://github.com/NPCodex/newpage-merge-mdl/releases)及范围以对应发布说明为准。
+可用的模型编译功能整合到 NewPageMergeMDL。当前源码版本：v1.3.1；[发布状态](https://github.com/NPCodex/newpage-merge-mdl/releases)及范围以对应发布说明为准。
 
 **每次生产编译都必须将 `-game` 指向目标游戏/模组中包含正确 `gameinfo.txt` 的目录。** `-OutDir` 只设置输出，不替代目标识别或资源挂载；请保留原始输入，并隔离输出进行验证。详细条件见 [编译前必读](README.md#编译前必读)。
 
@@ -76,7 +76,7 @@ AG2 预检工具链，暂存源、compiled 与可选 VMDL/首次备份。AG2 与
 | StudioMDL-CE | 主分支命令指南、changelog 和 banner 为 `0.3.0 (Preview)` 的参考程序；该标识不是正式发布标签。v1.2.29 另以官方 `0.2` 标签（作者标注 unstable）进行物理对照；见 COMPATIBILITY.md 与 VALIDATION.md。 |
 | NekoMDL | 用户提供的中文版 ChangeLog.txt v2.3.0、NewCommands.qci 和参考程序。历史版本条目按当前行为复核，不能假定旧实现仍有效。 |
 | StudioMDL 2013 | [Cra0 原始页面](https://cra0.net/blog/posts/archived/2014/studiomdl-2013/)。2012 libs / 2013 两包的 EXE SHA256 相同，作为同一来源；不同依赖配置单独记录。 |
-| StudioMDL++ | [Tools 页面中 StudioMDL++ 的专属 Changelog](https://ficool2.github.io/HammerPlusPlus-Website/tools.html)，以及用户提供的 Oct 3 2026 参考程序。其他工具的条目不能算作 StudioMDL++ 需求。 |
+| StudioMDL++ | [Tools 页面中 StudioMDL++ 的专属 Changelog](https://ficool2.github.io/HammerPlusPlus-Website/tools.html)，以及用户提供的 Oct 26 2026 / Oct 3 2026 参考程序。其他工具的条目不能算作 StudioMDL++ 需求。 |
 | CSGO Source1 补充移植 | 参考树 `f82112a2388b841d72cb62ca48ab1846dfcc11c8` 的活跃编译与 FE 构造路径；v1.2.22 的 11 个固定功能包见 [完成清单](CSGO_PORTING_SCOPE.md)。其底层能力扩展不计作第六个“五编译器”需求来源。 |
 
 ## PulseModel：保留基础功能 / Preserved foundation
@@ -100,8 +100,16 @@ AG2 预检工具链，暂存源、compiled 与可选 VMDL/首次备份。AG2 与
 
 ## StudioMDL++：按公开模型编译日志核对
 
+Oct 26 2026 更新的逐项状态和有界对照见 [v1.3.1 升级记录](tests/reports/v1.3.1-studiomdlpp.md)。此轮没有扩展游戏运行认证范围。
+
 | 功能组 | 状态 / 当前路径 |
 | --- | --- |
+| 语法位置、include/宏上下文 | 原始文件、行与插入符保留，include EOF 宏错误仍有完整来源链；词法错误同样显示原始行。 |
+| 输出目录 | `-OutDirModels` 对应新版 ++ 的直接模型根目录，相对进程工作目录；现有 `-OutDir` / `$OutDir` 继续 CE 的 QC 相对根目录及 `models/` 子目录规则。 |
+| VRD baseang / scale / 目录 | 新增 `<baseang>` 外层四元数旋转、aim basepos 按导入时 `$scale` 缩放；trigger 缩放已支持。`$PUSHDProcedural 1` 显式启用 `$pushd`/`$cd`，默认继续 CE 查找规则。触发器保持32个上限，修复超过上限重复旋转最后条目。 |
+| 动画块与一维混合 | 未知 `blockname` 警告并保留有效选择/默认动画；未知动画选项仍拒绝。单 blend 参数自动生成 N×1 行，显式 blendwidth 优先。 |
+| 确定性、EOF宏、weightlist容量 | 原有支持已用新旧参考重新核对；重复产物哈希稳定、无结尾换行的宏及257个weightlist通过有界检查。 |
+| 原生动画缩放与 `$retarget` | 未移植扩展输出格式。新版缩放使用额外动画字段/flags，官方要求引擎支持；`$retarget` 仅MVZ，和离线L4D辅助工具不同。现有Source目标不写这些扩展；DMX非单位骨骼缩放显式拒绝，避免静默丢失。 |
 | SMD 读取与编译性能 | 已有快速按行加载及专项优化；修复规则网格顶点在 MSVC 哈希桶的严重碰撞，保持首次出现的顶点顺序。相对 ++ 的整体提速幅度未确认。 |
 | 顶点/材质/网格/动画容量与输出缓冲 | 动态容器与分割已实现，具体格式字段有边界；不是固定 32 MB 分配。 |
 | AppID 资源挂载 | 已实现 resources.cpp：Steam 安装路径、gameinfo 搜索顺序及 VPK。 |

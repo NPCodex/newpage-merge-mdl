@@ -472,7 +472,18 @@ bool EvaluateDmxAnimations(const dmx::Datamodel& dm,const dmx::Element* root,
                     int64_t(f/int(fps))*10000+ticks(float(f%int(fps))/fps) : int64_t(offset);
                 const int64_t time=int64_t(start)+step;if(time<std::numeric_limits<int>::min()||time>std::numeric_limits<int>::max())throw EvalError("animation sample time out of range");
                 graph.frame(int(time));auto& frame=anim.frames[f];frame.resize(out.numbones);
-                for(size_t b=0;b<transforms.size();++b){const V p=graph.read(key(transforms[b],"position"),false),q=graph.read(key(transforms[b],"orientation"),false);if(p.kind!=Kind::V3||q.kind!=Kind::Quat)throw EvalError("bone pose has an invalid value type");finite(p);const auto rotation=normalized({q.v[0],q.v[1],q.v[2],q.v[3]});const auto m=pm::QuaternionMatrix(rotation,{p.v[0],p.v[1],p.v[2]});pm::MatrixAngles(m,frame[b].rot,frame[b].pos);frame[b].pos=mul(frame[b].pos,scale);finite(vectorValue(frame[b].pos));}
+                for(size_t b=0;b<transforms.size();++b){
+                    // Only actual skeleton transforms participate. A material or
+                    // control attribute also named scale is unrelated to bones.
+                    const V s=graph.boneScale(transforms[b]);
+                    if(s.kind==Kind::V3) {
+                        finite(s);
+                        if(std::fabs(s.v[0]-1.0f)>1e-6f||std::fabs(s.v[1]-1.0f)>1e-6f||std::fabs(s.v[2]-1.0f)>1e-6f)
+                            throw EvalError("bone \""+out.localBone[b].name+"\" has unsupported non-unit animated scale at frame "+std::to_string(f)+
+                                "; native bone scale requires a scale-capable engine. Bake the scale into the mesh/rig, or use a supported vertex-animation baking input");
+                    }
+                    const V p=graph.read(key(transforms[b],"position"),false),q=graph.read(key(transforms[b],"orientation"),false);if(p.kind!=Kind::V3||q.kind!=Kind::Quat)throw EvalError("bone pose has an invalid value type");finite(p);const auto rotation=normalized({q.v[0],q.v[1],q.v[2],q.v[3]});const auto m=pm::QuaternionMatrix(rotation,{p.v[0],p.v[1],p.v[2]});pm::MatrixAngles(m,frame[b].rot,frame[b].pos);frame[b].pos=mul(frame[b].pos,scale);finite(vectorValue(frame[b].pos));
+                }
                 graph.checkUnsupported(dm);for(const auto& id:graph.rigIds())if(std::find(anim.bakedRigOperators.begin(),anim.bakedRigOperators.end(),id)==anim.bakedRigOperators.end())anim.bakedRigOperators.push_back(id);
             }
             out.anims.push_back(std::move(anim));

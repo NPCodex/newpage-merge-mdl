@@ -40,8 +40,11 @@ offline SubD and DMX rig baking have specific authoring requirements. Run
   `gameinfo.txt`.** Pass the directory, not that file, the Steam root or `bin`.
   AppID and search paths select target behavior and resources. CSGO legacy and
   Military Conflict: Vietnam require their own game configuration.
-- `-OutDir` changes the output location, not the target game. Start with isolated
-  output and preserve original inputs; `$modelname` determines the model path.
+- `-OutDir` keeps CE semantics: relative to the QC directory, with a `models/`
+  child. `-OutDirModels` uses StudioMDL++ direct-directory semantics: relative to
+  the working directory, without appending `models/`, and takes precedence over
+  `-OutDir` / `$OutDir`. Both only change output, not the target game. Start with
+  isolated output and preserve original inputs; `$modelname` determines the model path.
   Deploy matching MDL/VVD/VTX/PHY/ANI files
   together; stale companion files can prevent loading.
 - Supply the target game's Source VMT/VTF materials and required mounted resources.

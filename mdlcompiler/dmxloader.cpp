@@ -241,7 +241,8 @@ const dmx::Element* FindBaseState(const dmx::Element* model, const char* name) {
     return nullptr;
 }
 
-void LoadBindPose(const dmx::Element* model, float flScale, const BoneMap& boneMap, Source& out) {
+bool LoadBindPose(const dmx::Element* model, float flScale, const BoneMap& boneMap, Source& out,
+                  std::string* err) {
     SourceAnim anim;
     anim.name = "BindPose";
     anim.startframe = 0;
@@ -270,6 +271,20 @@ void LoadBindPose(const dmx::Element* model, float flScale, const BoneMap& boneM
         }
 
         if (transform) {
+            if (const auto* s = DmxVec3(transform, "scale")) {
+                if (!std::isfinite(s->x) || !std::isfinite(s->y) || !std::isfinite(s->z)) {
+                    if (err) *err = "DMX bone \"" + out.localBone[mdlBone].name +
+                        "\" has non-finite bind scale";
+                    return false;
+                }
+                if (std::fabs(s->x - 1.0f) > 1e-6f || std::fabs(s->y - 1.0f) > 1e-6f ||
+                    std::fabs(s->z - 1.0f) > 1e-6f) {
+                    if (err) *err = "DMX bone \"" + out.localBone[mdlBone].name +
+                        "\" has unsupported non-unit bind scale; native bone scale requires a scale-capable engine. "
+                        "Bake the scale into the mesh/rig, or use a supported vertex-animation baking input";
+                    return false;
+                }
+            }
             pm::matrix3x4 m = TransformMatrix(transform);
             SrcBonePose& pose = anim.frames[0][mdlBone];
             pm::MatrixAngles(m, pose.rot, pose.pos);
@@ -293,6 +308,7 @@ void LoadBindPose(const dmx::Element* model, float flScale, const BoneMap& boneM
         else
             out.boneToPose[i] = pm::ConcatTransforms(out.boneToPose[parent], m);
     }
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -2687,7 +2703,7 @@ bool LoadDmxSource(const dmx::Datamodel& dm, Source& out, MaterialTable& mats, f
     out.numbones = LoadSkeleton(skeleton, model, out, boneMap);
     if (!ValidateSourceBoneNames(out, err)) return false;
 
-    LoadBindPose(model, scale, boneMap, out);
+    if (!LoadBindPose(model, scale, boneMap, out, err)) return false;
 
     // geometry (if any mesh dags exist under the model). Skipped whole for an
     // animation reference: geometry is model data and reading it would register

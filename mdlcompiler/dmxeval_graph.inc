@@ -265,6 +265,13 @@ public:
         if(k.attr=="position"||k.attr=="valuePosition")return {Kind::V3,{}};if(k.attr=="orientation"||k.attr=="valueOrientation")return {Kind::Quat,{0,0,0,1}};
         throw EvalError("missing dependency attribute '"+k.e->name+"."+k.attr+"'");
     }
+    V boneScale(const E* e) {
+        const Key k=key(e,"scale");
+        const auto w=writers.find(k);
+        if(!e->Get("scale")&&(w==writers.end()||std::none_of(w->second.begin(),w->second.end(),[&](int n){return active.count(n)!=0;})))
+            return {Kind::V3,{1,1,1}};
+        return read(k,false);
+    }
     std::map<std::string,pm::matrix3x4> rigWorlds() {std::map<std::string,pm::matrix3x4> result;for(int i:active)if(rigClass(nodes[i].e->className))for(const auto& k:nodes[i].out)for(const auto& p:parents)if(p.first->GetElement("transform")==k.e)result[p.first->name]=world(p.first);return result;}
     std::vector<std::string> rigIds()const {std::vector<std::string> result;for(int i:active)if(rigClass(nodes[i].e->className))result.push_back(dmx::GuidToString(nodes[i].e->id));return result;}
     void checkUnsupported(const dmx::Datamodel& dm)const {

@@ -11971,20 +11971,22 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
         a.endframe = (ia.endframe >= 0) ? ia.endframe : lim::kMaxAnimFrames - 1;
         if (ia.source && !ia.source->anims.empty()) {
             src::SourceAnim* clip = nullptr;
-            if (!ia.blockname.empty()) {
-                // `blockname`: an explicitly named clip, and an unknown name is
-                // fatal rather than silently falling back
+            const auto selectBlock = [&](const std::string& name) {
+                // Unknown requests leave the previously selected clip intact;
+                // with no prior selection, the ordinary default is used.
                 for (auto& sa : ia.source->anims)
-                    if (_stricmp(sa.name.c_str(), ia.blockname.c_str()) == 0) {
+                    if (_stricmp(sa.name.c_str(), name.c_str()) == 0) {
                         clip = &sa;
-                        break;
+                        return;
                     }
-                if (!clip) {
-                    if (err)
-                        *err = "unknown blockname \"" + ia.blockname + "\" in " + a.name;
-                    return false;
-                }
-            } else {
+                std::fprintf(stderr,
+                    "WARNING: Requested unknown animation block name %s in %s; keeping %s\n",
+                    name.c_str(), a.name.c_str(), clip ? clip->name.c_str() : "the default clip");
+            };
+            if (!ia.blockRequests.empty())
+                for (const auto& name : ia.blockRequests) selectBlock(name);
+            else if (!ia.blockname.empty()) selectBlock(ia.blockname);
+            if (!clip) {
                 // first non-BindPose animation
                 for (auto& sa : ia.source->anims)
                     if (_stricmp(sa.name.c_str(), "BindPose") != 0) { clip = &sa; break; }
@@ -12357,7 +12359,9 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                     return false;
                 }
                 seq.groupsize[1] = seq.numblends / is.blendwidth;
-            } else if (seq.numblends < 4) {
+            } else if (is.numblendparams == 1 || seq.numblends < 4) {
+                // A single blend parameter describes one row, including
+                // square counts such as 4 or 9. Explicit blendwidth wins.
                 seq.groupsize[0] = seq.numblends;
                 seq.groupsize[1] = 1;
             } else {

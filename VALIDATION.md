@@ -1,6 +1,9 @@
 # 当前验证入口
 
-当前源码为 **v1.3.0**，六项改进的实现、定向验证和限制见
+当前源码为 **v1.3.1**，StudioMDL++ Oct 26 2026 对照、移植与本地验证见
+[升级记录](tests/reports/v1.3.1-studiomdlpp.md)。该记录对应发布前的本地开发构建；发行包的平台验证、工作流及下载校验以 [v1.3.1 发布说明](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.3.1) 为准，本地结果不代表 Linux 或游戏实测。
+
+**v1.3.0** 六项改进的实现、定向验证和限制见
 [实施台账](tests/reports/v1.3.0-work.md)。专项证据包括
 [碰撞修复与性能](tests/reports/v1.3.0-collision.md)、
 [重载目标选择](tests/reports/v1.3.0-reload.md)、
@@ -12,7 +15,7 @@
 [JSON](tests/reports/game-platform-matrix.json)。本地开发程序的散列与测试不冒充
 发行包身份。正式发布须经过双平台完整包验证、Linux GCC/Clang、运行基线、符号、
 sanitizer 和复现门禁；具体运行结果与下载散列见
-[对应 Release](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.3.0)。
+[对应 Release](https://github.com/NPCodex/newpage-merge-mdl/releases)。
 
 [v1.2.38 台账](tests/reports/v1.2.38-improvements.md)和
 [v1.2.37 修复记录](tests/reports/toolkit-fixes-20261020.md)保留历史证据。

@@ -15,7 +15,35 @@ References:
 - https://discord.com/channels/1448719578589827144/1448781234980388864
   (not read directly; the user supplied its changelog)
 
-Current source version: **v1.3.0**. Its [six-area ledger](tests/reports/v1.3.0-work.md) records implementation, acceptance and remaining limits; published packages are listed in [Releases](https://github.com/NPCodex/newpage-merge-mdl/releases). The earlier [33-item ledger](tests/reports/v1.2.38-improvements.md) and all **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) retain their original evidence. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs.
+## StudioMDL++ October 26, 2026 update
+
+v1.3.1 integrates the verified changes applicable to the existing Source targets:
+one-parameter blend grids infer N-by-1 rows; an unknown animation `blockname`
+warns and retains a previous valid selection or the normal default; VRD
+`<baseang>` composes outside rotateaxis/pose/jointorient; aim basepos respects
+the import-time `$scale`. Macro/include diagnostics retain the authored source
+line and include chain, including expansions at include EOF and lexer failures.
+See the [upgrade evidence and boundaries](tests/reports/v1.3.1-studiomdlpp.md).
+
+Use `-OutDirModels <dir>` for the new StudioMDL++ direct model output root,
+resolved against the process working directory without an added `models` child.
+It takes precedence over CE CLI/QC OutDir. Existing `-OutDir` / `$OutDir` remain
+QC-relative roots with `models` appended. Neither option selects the target
+game. Sequence remapping, recovery and reports use the same selected root.
+For StudioMDL++ procedural-file directory behavior, explicitly use
+`$PUSHDProcedural 1`; the default remains the established CE lookup policy.
+
+Native bone-scale animation and MVZ `$retarget` output are **not implemented**.
+The updated reference emits additional animation flags and retarget tables;
+official documentation requires an engine with scaling support and restricts
+`$retarget` to Mann Versus Zombies. This is separate from offline L4D animation
+retargeting. Non-unit Vector3 DMX bone bind/animated scale now fails instead of
+being silently lost; unit/missing bone scale and unrelated material scale remain
+valid. Bake the scale into a suitable source or use the documented scene vertex
+baking workflow. Ordinary SMD trailing scale fields remain rejected. No new
+game/runtime certification is inferred from successful isolated compilation.
+
+Current source version: **v1.3.1**. Its [StudioMDL++ integration report](tests/reports/v1.3.1-studiomdlpp.md) records implementation, validation and remaining limits; published packages are listed in [Releases](https://github.com/NPCodex/newpage-merge-mdl/releases). The historical v1.3.0 [six-area ledger](tests/reports/v1.3.0-work.md), the earlier [33-item ledger](tests/reports/v1.2.38-improvements.md) and all **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) retain their original evidence. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs.
 
 Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Both automatic and maintained packages embed the exact build input at `sources/NewPageMergeMDL-source.zip`; use the packaged manifest source SHA and hashes to identify a replacement build, because its tag may still refer to an earlier revision. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
 

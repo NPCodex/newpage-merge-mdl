@@ -33,7 +33,7 @@
 
 反编译结果写入输出目录下的 `decompiled <版本>/<模型名>/`；`-smdanimation` 将动画导出为 SMD，默认使用 DMX。请保留输入模型所需的 VVD/VTX/ANI 文件；`-nomesh` / `-noanimation` 可明确跳过相应部分。
 
-- `-OutDir` 指定输出根目录，`$modelname` 决定模型路径；它不替代 `-game`。编译支持 `.qc` / `.pulseqc`，资源和 VMT/VTF 材质需自行准备。
+- `-OutDir` 保留 CE 规则：相对 QC 目录，输出到其 `models/` 下。`-OutDirModels` 提供 StudioMDL++ 直接模型目录规则：相对当前工作目录，不追加 `models/`，优先于 `-OutDir` / `$OutDir`。两者都不替代 `-game`；`$modelname` 决定模型路径。编译支持 `.qc` / `.pulseqc`，资源和 VMT/VTF 材质需自行准备。
 - 参数优先级：`gameinfo < cfg/commandline.cfg < 显式命令行`；`-nodefaultargs` 禁用前两者。CE/Neko 差异通过显式兼容选项选择。
 - `$DisableCache` 使后续模型源重新加载；`$qccompatibility neko` 可选择 Neko 的多材质组元数据和 BodyGroup 状态上限。适用范围见 [兼容说明](COMPATIBILITY.md#nekomdl-240-compatibility)。
 - Windows 可用 `-reloadpid <游戏进程PID>` 指定重载通知目标；多个游戏窗口且未指定时会拒绝自动选择。需要游戏扩展实际支持重载，发送成功不等于模型已刷新。

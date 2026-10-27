@@ -78,6 +78,12 @@ constexpr int kStudioAlPose = 0x4000;
 // Tokenizer
 // ---------------------------------------------------------------------------
 
+struct ScriptSource {
+    std::string file;
+    std::string text;
+    std::vector<std::string> parents;
+};
+
 struct Token {
     std::string text;
     int line = 0;
@@ -88,13 +94,44 @@ struct Token {
     bool expanded = false;
     std::string origin;
     std::string macroTrace;
+    // Shared immutable source survives include-region closure and macro
+    // splicing. The offset still points to the authored, unexpanded token.
+    std::shared_ptr<const ScriptSource> source;
+    size_t sourceOffset = 0;
 };
+
+std::string DescribeTokenError(const Token& token, const std::string& fallbackFile,
+                              const std::vector<std::string>& fallbackParents,
+                              const std::string& fallbackMacro, const std::string& msg) {
+    std::string result = (token.source ? token.source->file : fallbackFile) +
+        "(" + std::to_string(token.line) + "): " + msg;
+    if (token.source && token.sourceOffset < token.source->text.size()) {
+        const auto& text = token.source->text;
+        const size_t before = token.sourceOffset == 0 ? std::string::npos :
+            text.rfind('\n', token.sourceOffset - 1);
+        const size_t start = before == std::string::npos ? 0 : before + 1;
+        const size_t after = text.find('\n', token.sourceOffset);
+        std::string excerpt = text.substr(start, after == std::string::npos ? after : after-start);
+        if (!excerpt.empty() && excerpt.back() == '\r') excerpt.pop_back();
+        result += "\n    " + excerpt + "\n    ";
+        for (size_t p=start; p<token.sourceOffset; ++p)
+            result += text[p] == '\t' ? '\t' : ' ';
+        result += '^';
+    }
+    result += token.macroTrace.empty() ? fallbackMacro : token.macroTrace;
+    const auto& parents = token.source ? token.source->parents : fallbackParents;
+    for(auto it=parents.rbegin();it!=parents.rend();++it)
+        result += "\n  included from " + *it;
+    return result;
+}
 
 // keyvalues1 lexing: whitespace-separated words, "quoted strings", `//` `;` `#`
 // line comments (the latter two only at a token start, and `;` also ends a word,
 // as stock does), `/* */` blocks, and braces as standalone tokens.
 bool Tokenize(const std::string& s, const std::string& file,
-              std::vector<Token>& out, std::string* err) {
+              std::vector<Token>& out, std::string* err,
+              const std::vector<std::string>& parents = {}) {
+    auto source = std::make_shared<ScriptSource>(ScriptSource{file, s, parents});
     int line = 1;
     size_t i = 0;
     while (i < s.size()) {
@@ -126,6 +163,8 @@ bool Tokenize(const std::string& s, const std::string& file,
         if (c == '"') {
             Token t;
             t.line = line;
+            t.source = source;
+            t.sourceOffset = i;
             t.quoted = true;
             i++;
             while (i < s.size() && s[i] != '"') {
@@ -134,8 +173,7 @@ bool Tokenize(const std::string& s, const std::string& file,
                 t.text.push_back(s[i++]);
             }
             if (i >= s.size()) {
-                if (err) *err = file + "(" + std::to_string(t.line) +
-                                "): unterminated string";
+                if (err) *err = DescribeTokenError(t, file, {}, {}, "unterminated string");
                 return false;
             }
             i++; // closing quote
@@ -143,12 +181,17 @@ bool Tokenize(const std::string& s, const std::string& file,
             continue;
         }
         if (c == '{' || c == '}') {
-            out.push_back({std::string(1, c), line, false});
+            Token t{std::string(1, c), line, false};
+            t.source = source;
+            t.sourceOffset = i;
+            out.push_back(std::move(t));
             i++;
             continue;
         }
         Token t;
         t.line = line;
+        t.source = source;
+        t.sourceOffset = i;
         while (i < s.size()) {
             const char d = s[i];
             if (std::isspace(static_cast<unsigned char>(d)) || d == '{' || d == '}' ||
@@ -162,7 +205,7 @@ bool Tokenize(const std::string& s, const std::string& file,
     }
     // Neko also accepts line conditionals terminated by $endif. Normalize
     // only those blocks; existing braced conditions retain their token stream.
-    std::vector<Token> normalized; std::vector<int> lineBlocks;
+    std::vector<Token> normalized; std::vector<Token> lineBlocks;
     for(size_t k=0;k<out.size();++k) {
         Token t=out[k]; std::string command=t.text;
         std::transform(command.begin(),command.end(),command.begin(),[](unsigned char c){return char(std::tolower(c));});
@@ -173,19 +216,19 @@ bool Tokenize(const std::string& s, const std::string& file,
             bool braced=false; for(size_t i=k+1;i<end;++i) if(!out[i].quoted && out[i].text=="{") braced=true;
             if(!braced && end<out.size() && !out[end].quoted && out[end].text=="{") braced=true;
             if(!braced) {
-                if(branch && lineBlocks.empty()) { if(err) *err=file+"("+std::to_string(t.line)+"): conditional branch has no matching line $if"; return false; }
-                if(branch) normalized.push_back({"}",t.line,false}); else lineBlocks.push_back(t.line);
+                if(branch && lineBlocks.empty()) { if(err) *err=DescribeTokenError(t,file,{},{},"conditional branch has no matching line $if"); return false; }
+                if(branch) normalized.push_back({"}",t.line,false}); else lineBlocks.push_back(t);
                 for(;k<end;++k) normalized.push_back(out[k]);
                 normalized.push_back({"{",t.line,false}); --k; continue;
             }
         }
         if(!t.quoted && command=="$endif") {
-            if(lineBlocks.empty()) { if(err) *err=file+"("+std::to_string(t.line)+"): unmatched $endif"; return false; }
+            if(lineBlocks.empty()) { if(err) *err=DescribeTokenError(t,file,{},{},"unmatched $endif"); return false; }
             lineBlocks.pop_back(); normalized.push_back({"}",t.line,false}); continue;
         }
         normalized.push_back(t);
     }
-    if(!lineBlocks.empty()) { if(err) *err=file+"("+std::to_string(lineBlocks.back())+"): missing $endif"; return false; }
+    if(!lineBlocks.empty()) { if(err) *err=DescribeTokenError(lineBlocks.back(),file,{},{},"missing $endif"); return false; }
     out=std::move(normalized);
     return true;
 }
@@ -207,6 +250,7 @@ struct Ctx {
     std::string commandFile;
     std::string commandMacro;
     std::vector<std::string> commandParents;
+    Token commandToken;
     std::string rootFile; // `file` for the root script; an $include changes `file`, not this
     std::vector<Token> toks;
     size_t pos = 0;
@@ -344,15 +388,20 @@ struct Ctx {
         return false;
     }
 
-    bool Fail(int line, const std::string& msg) {
+    bool FailAt(const Token& token, const std::string& msg) {
         if (abortErr) return false; // keep the first $include error, not a cascade
-        if (err) {
-            *err = (commandFile.empty()?file:commandFile) + "(" + std::to_string(line) + "): " + msg;
-            *err += commandMacro;
-            for(auto it=commandParents.rbegin();it!=commandParents.rend();++it)
-                *err += "\n  included from " + *it;
-        }
+        if (err) *err = DescribeTokenError(token, commandFile.empty()?file:commandFile,
+                                           commandParents, commandMacro, msg);
         return false;
+    }
+
+    bool Fail(int line, const std::string& msg) {
+        if (pos > 0 && pos <= toks.size() && toks[pos-1].line == line &&
+            toks[pos-1].source == commandToken.source)
+            return FailAt(toks[pos-1], msg);
+        Token where = commandToken;
+        if (where.line != line) { where.line = line; where.source.reset(); }
+        return FailAt(where, msg);
     }
 
     // Next token, or null at end of file.
@@ -382,7 +431,7 @@ struct Ctx {
                 throw std::invalid_argument("expected a finite number");
             value = v;
         } catch (const std::exception&) {
-            return Fail(cmd.line, cmd.text + " expects " + what + ", got \"" + s + "\"");
+            return FailAt(toks[pos-1], cmd.text + " expects " + what + ", got \"" + s + "\"");
         }
         return true;
     }
@@ -398,7 +447,7 @@ struct Ctx {
                 throw std::invalid_argument("trailing characters");
             value = v;
         } catch (const std::exception&) {
-            return Fail(cmd.line, cmd.text + " expects " + what + ", got \"" + s + "\"");
+            return FailAt(toks[pos-1], cmd.text + " expects " + what + ", got \"" + s + "\"");
         }
         return true;
     }
@@ -417,7 +466,7 @@ struct Ctx {
                 throw std::invalid_argument("trailing characters");
             value = v;
         } catch (const std::exception&) {
-            return Fail(cmd.line, cmd.text + " expects " + what + ", got \"" + s + "\"");
+            return FailAt(toks[pos-1], cmd.text + " expects " + what + ", got \"" + s + "\"");
         }
         return true;
     }
@@ -2939,6 +2988,7 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
     if (_stricmp(o.c_str(), "blockname") == 0 || _stricmp(o.c_str(),"pick")==0) {
         if (!c.Want("a source clip name", t, a.blockname))
             return -1;
+        a.blockRequests.push_back(a.blockname);
         return 1;
     }
     if (_stricmp(o.c_str(), "framestart") == 0) {
@@ -3625,6 +3675,11 @@ bool CmdNekoModel(Ctx& c,const Token& cmd) {
 
 bool CmdAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, false); }
 bool CmdBindPoseAnimation(Ctx& c, const Token& cmd) { return CmdAnimationCommon(c, cmd, true); }
+
+bool CmdRetarget(Ctx& c, const Token& cmd) {
+    return c.FailAt(cmd, "$retarget requires the Mann Versus Zombies engine branch and its model format; "
+                         "that target/output format is not supported by this compiler");
+}
 
 // $declareanimation <name>  (studiomdl Cmd_DeclareAnimation): an empty
 // STUDIO_OVERRIDE slot, filled in later by an $includemodel's animation. Must
@@ -6161,6 +6216,8 @@ bool AddTrigger(Ctx& c, const Token& cmd, cm::ProceduralBone& pb, float tolDeg,
                          DegToRad(helperRotDeg.z)}, tr.quat);
     // scaled at parse time, where the reference applies g_currentscale
     tr.pos = {pos.x * c.in.scale, pos.y * c.in.scale, pos.z * c.in.scale};
+    if (!std::isfinite(tr.pos.x) || !std::isfinite(tr.pos.y) || !std::isfinite(tr.pos.z))
+        return c.Fail(cmd.line, "procedural trigger position is non-finite after basepos/$scale");
 
     // hard cap: the .mdl reader walks exactly numtriggers entries. The
     // reference truncates with a warning rather than failing, as does the
@@ -6460,6 +6517,7 @@ bool CmdDriverAimAt(Ctx& c, const Token& cmd) {
 //
 //   <helper>   <bone> <parent> <controlparent> <control>
 //   <basepos>  x y z          added to every LATER trigger position
+//   <baseang>  x y z degrees  pre-rotates every LATER helper pose
 //   <rotateaxis> / <jointorient>  x y z degrees, pre/post-rotate the pose
 //   <trigger>  tol  trigX trigY trigZ  angX angY angZ  posX posY posZ
 //   <display>  ignored - it is modelling-tool decoration
@@ -6560,7 +6618,7 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
     // file-scoped, exactly like Grab_QuatInterpBones' locals: they persist
     // across <helper> lines and apply to every trigger that follows
     pm::Vector3 basepos{};
-    pm::Vector3 rotateaxisDeg{}, jointorientDeg{};
+    pm::Vector3 baseangDeg{}, rotateaxisDeg{}, jointorientDeg{};
 
     std::string line;
     int lineno = 0;
@@ -6593,7 +6651,7 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
             try {
                 size_t used = 0;
                 out = std::stof(tok[i], &used);
-                return used == tok[i].size();
+                return used == tok[i].size() && std::isfinite(out);
             } catch (const std::exception&) { return false; }
         };
         auto vec = [&](size_t i, pm::Vector3& out) {
@@ -6647,10 +6705,16 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
                 return c.Fail(cmd.line, at.text + ": <basepos> expects x y z");
             // inside an aim-at block this is that bone's own base position, not
             // the quatinterp trigger offset
-            if (curAim != static_cast<size_t>(-1))
-                c.in.aimatbones[curAim].basepos = v;
-            else
+            if (curAim != static_cast<size_t>(-1)) {
+                const pm::Vector3 scaled{v.x * c.in.scale, v.y * c.in.scale, v.z * c.in.scale};
+                if (!std::isfinite(scaled.x) || !std::isfinite(scaled.y) || !std::isfinite(scaled.z))
+                    return c.Fail(cmd.line, at.text + ": <basepos> overflows after $scale");
+                c.in.aimatbones[curAim].basepos = scaled;
+            } else
                 basepos = v;
+        } else if (kw == "<baseang>") {
+            if (tok.size() < 4 || !vec(1, baseangDeg))
+                return c.Fail(cmd.line, at.text + ": <baseang> expects finite x y z degrees");
         } else if (kw == "<rotateaxis>") {
             if (tok.size() < 4 || !vec(1, rotateaxisDeg))
                 return c.Fail(cmd.line, at.text + ": <rotateaxis> expects x y z");
@@ -6671,8 +6735,12 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
             // basepos is added before the scale, like the reference's
             // `(basepos + pos) * g_currentscale`
             pos = {basepos.x + pos.x, basepos.y + pos.y, basepos.z + pos.z};
+            const size_t triggersBefore = cur->triggers.size();
             if (!AddTrigger(c, at, *cur, tol, driverRot, helperRot, pos, true))
                 return false;
+            // A capped trigger must not rotate the last accepted pose again.
+            if (cur->triggers.size() == triggersBefore)
+                continue;
 
             // rotateaxis pre-rotates the helper pose, jointorient post-rotates it
             pm::Quaternion& q = cur->triggers.back().quat;
@@ -6688,6 +6756,16 @@ bool CmdProceduralBones(Ctx& c, const Token& cmd) {
                 pm::AngleQuaternion({DegToRad(jointorientDeg.x), DegToRad(jointorientDeg.y),
                                      DegToRad(jointorientDeg.z)}, q1);
                 pm::QuaternionMult(q, q1, q2);
+                q = q2;
+            }
+            // StudioMDL++'s baseang is an outer quaternion rotation, not an
+            // Euler-angle sum: baseang * rotateaxis * pose * jointorient.
+            // It affects orientation only; basepos/position are not rotated.
+            if (baseangDeg.x != 0.0f || baseangDeg.y != 0.0f || baseangDeg.z != 0.0f) {
+                pm::Quaternion q1, q2;
+                pm::AngleQuaternion({DegToRad(baseangDeg.x), DegToRad(baseangDeg.y),
+                                     DegToRad(baseangDeg.z)}, q1);
+                pm::QuaternionMult(q1, q, q2);
                 q = q2;
             }
         } else {
@@ -8942,7 +9020,7 @@ bool ExpandVars(Ctx& c, Token& t,const std::map<std::string,std::string>* contex
         const auto& variables=context?*context:c.variables;
         auto it = variables.find(name);
         if (it == variables.end())
-            return c.Fail(t.line, "unknown variable \"$" + name + "$\" - no "
+            return c.FailAt(t, "unknown variable \"$" + name + "$\" - no "
                                   "$definevariable for it above this line");
         out += it->second;
         i = e + 1;
@@ -8970,6 +9048,8 @@ bool SpliceInclude(Ctx& c) {
     c.commandFile=c.file; c.commandParents.clear();
     for(const auto& frame:c.includeFrames)c.commandParents.push_back(frame.savedFile);
     const Token cmd = c.toks[c.pos]; // the $include token
+    c.commandToken=cmd;
+    c.commandMacro=cmd.macroTrace;
     size_t p = c.pos + 1;
     if (p >= c.toks.size() || (!c.toks[p].quoted && c.toks[p].text[0] == '$'))
         return c.Fail(cmd.line, "$include expects a script path");
@@ -9062,9 +9142,11 @@ bool SpliceInclude(Ctx& c) {
 
     std::printf("$include: Including %s...\n", full.string().c_str());
 
-    const std::string name = full.filename().string();
+    const std::string name = full.string();
     std::vector<Token> toks;
-    if (!Tokenize(text, name, toks, c.err))
+    std::vector<std::string> parents = cmd.source ? cmd.source->parents : c.commandParents;
+    parents.push_back((cmd.source ? cmd.source->file : c.file) + "(" + std::to_string(cmd.line) + ")");
+    if (!Tokenize(text, name, toks, c.err, parents))
         return false;
 
     // drop the $include directive, splice the file in its place, and open a
@@ -9100,6 +9182,9 @@ bool ResolveConditionalHere(Ctx& c) {
     if (!fn)
         return false;
     const Token cmd = c.toks[c.pos]; // copy; the handler consumes from c.pos
+    c.commandToken=cmd;
+    c.commandFile=cmd.source ? cmd.source->file : c.file;
+    c.commandMacro=cmd.macroTrace;
     c.pos++;
     if (!fn(c, cmd))
         c.abortErr = true; // the handler's Fail already recorded the message
@@ -9427,7 +9512,8 @@ bool ExpandMacro(Ctx& c, const Token& cmd, const Ctx::Macro& m) {
         SubstMacroParams(t, m.params, args);
         if(t.origin.empty()) t.origin=m.file;
         t.macroTrace += "\n  expanded " + cmd.text + " at " +
-            (cmd.origin.empty()?c.file:cmd.origin) + "(" + std::to_string(cmd.line) + ")" + cmd.macroTrace;
+            (cmd.source ? cmd.source->file : (cmd.origin.empty()?c.file:cmd.origin)) +
+            "(" + std::to_string(cmd.line) + ")" + cmd.macroTrace;
     }
     c.SpliceAt(c.pos, body);
     return true;
@@ -10269,6 +10355,7 @@ constexpr Command kCommands[] = {
 
     {"$break", CmdBreak},
     {"$assert", CmdAssert},
+    {"$retarget", CmdRetarget},
     {"$qcassert", CmdQcAssert},
     {"$print", CmdPrint},
     {"$msg", CmdPrint},
@@ -10495,14 +10582,16 @@ bool RunCommands(Ctx& c) {
             c.pos = CommandExtent(c);
             continue;
         }
-        if (!ExpandCommandVars(c))
-            return false;
-
         c.commandFile=c.file; c.commandParents.clear();
         for(const auto& frame:c.includeFrames) c.commandParents.push_back(frame.savedFile);
-        const Token cmd = c.toks[c.pos];
+        Token cmd = c.toks[c.pos];
+        c.commandToken=cmd;
+        if(cmd.source) c.commandFile=cmd.source->file;
         if(!cmd.origin.empty()) c.commandFile=cmd.origin;
         c.commandMacro=cmd.macroTrace;
+        if (!ExpandCommandVars(c))
+            return false;
+        cmd=c.toks[c.pos];
         if (cmd.quoted || cmd.text[0] != '$')
             return c.Fail(cmd.line, "expected a $command, got \"" + cmd.text + "\"");
         c.pos++;
@@ -10583,7 +10672,7 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
     c.scriptDir = fs::path(path).parent_path();
     c.curDir = c.scriptDir;
     c.sourceDirStack.push_back(c.scriptDir);
-    c.file = fs::path(path).filename().string();
+    c.file = normalizedPath;
     c.rootFile = c.file;
     c.err = err;
 

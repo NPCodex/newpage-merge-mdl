@@ -1605,6 +1605,10 @@ struct CompileInput {
         // `blockname <name>`: which clip inside the source to sample. "" picks
         // the first non-BindPose clip, the way an untagged animation does.
         std::string blockname;
+        // QC resolves the source after parsing $animation options. Retain
+        // block requests in order so an unknown name leaves a prior valid
+        // selection intact, matching StudioMDL++'s warning-only behavior.
+        std::vector<std::string> blockRequests;
         std::string inputNode;
         float sampleRate=0;
         // per-animation transform, overriding the model-wide one. Consumed by

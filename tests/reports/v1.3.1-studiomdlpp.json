@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "version": "1.3.1",
+  "checked_at": "2026-10-27T04:36:00.384209+00:00",
+  "scope": "Pre-publication local Windows compiler checkpoint at checked_at; this checkpoint does not cover Release packages, Linux runs or new in-game certification. Subsequent distribution validation is recorded in the v1.3.1 Release.",
+  "source_parent": "6d53010ef6f0943eed27c46f65d734b2525469a7",
+  "modified_source_sha256": {
+    "CMakeLists.txt": "c46ed71b5c39d2bf8b893c2641276c7316dd04482933c65a2bc754e64fed239a",
+    "mdlcompiler/compile.cpp": "96fa43a83c36aaef690acc62b4b1a1dfc42e8a929e5144997db5210c2a95844a",
+    "mdlcompiler/compile.h": "55f26e5473035ed72501cbc77f880cfec15143279268f493442f73cc0de8f6a7",
+    "mdlcompiler/dmxeval.cpp": "c9ee804116faaaaf5b1f6abd53770fe652e22057ab1eea3865880c70cc71c7e9",
+    "mdlcompiler/dmxeval_graph.inc": "3415651306866db8d4f1b186e8234a017d510a3eaa5433145506e57396bab53c",
+    "mdlcompiler/dmxloader.cpp": "435122f8c76cba8164c4992c96da7e42f3475201cf2fc8112e6f917b186fec7b",
+    "mdlcompiler/main.cpp": "6a9ce19fe9e5a1331d3f2d98a86d2d7789d62fc8f037df8f30a7b86e741778cf",
+    "mdlcompiler/qcloader.cpp": "86a135f3f22c1b75962882d39d87a6d6e070d4632f5849f3b4c47bf4742fae24",
+    "mdlcompiler/sequence_remap.h": "410f9856325e193bcc359dcf74377db46f3cf63978f071c9afa778c9bb20215d",
+    "mdlcompiler/writemdl.cpp": "b2c65af03269e9d35f893abe51c22c064563d373d23f4dd987b4c014919b488b",
+    "mdlcompiler/writer.h": "29df5f81cb327963ee8561236680229b0d527518f74d0e9d9c02e045b00ff664",
+    "tests/compatibility.py": "19448458f59e0f6f2336b83aa2fa768422eee17ef5541c31c3e89fbbe533db67",
+    "tests/verify_package.py": "ed7bf7d3ec88da5359b030e822db8d97545bdddc57217d3f7b243e3d028b7fae",
+    "tests/studiomdlpp_20261027_parser_cases.py": "7154cb8960abda32ab0dc311494d3d85c807a29516d77987db23f87eb9efd141",
+    "tests/studiomdlpp_20261027_procedural_cases.py": "869abed7ec95969bd035b5640c96b893eee779bb13493dfaa1dce0db780cfee6",
+    "tests/studiomdlpp_output_test.py": "12b7a4de15fc41ef089a24c32f62baa21efc9f9e9c2ede65b757269c7c51dbd0"
+  },
+  "compatibility_overlay_sha256": "bcda29c2b6017a90ef92e761fd3dd3ac3be73e788bacfad4d01baa660d07e29d",
+  "compiler": {
+    "path": "D:\\newpage-merge-mdl\\build-compiler-fixes-20261020\\NewPageMergeMDL\\Release\\NewPageMergeMDL.exe",
+    "artifact": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\studiomdlpp-20261027\\upgraded-v1.3.1\\NewPageMergeMDL.exe",
+    "sha256": "9d3d1d100b56f5cd00987195e3730ba90041435bc64ec4f282cd50cdb8af8c40",
+    "size": 13006848
+  },
+  "references": {
+    "old": {
+      "path": "C:\\Users\\Kud\\Desktop\\CODEMDL\\studiomdl++.exe",
+      "size": 4550656,
+      "sha256": "77791bdd9c0e09b6ae4efbadad9674d9398fc06bee74d3f6598ac2bacd128713",
+      "machine": "0x8664",
+      "pe_timestamp": 1791047207,
+      "imports": [
+        "ADVAPI32.dll",
+        "KERNEL32.dll",
+        "SHLWAPI.dll",
+        "RPCRT4.dll",
+        "USER32.dll"
+      ]
+    },
+    "new": {
+      "path": "C:\\Users\\Kud\\Desktop\\studiomdl++.exe",
+      "size": 3369984,
+      "sha256": "b6c72d3e7298f92e5c5ea825fe9f84c59feabf061ed1c03d4bb7e4cff95d0a4d",
+      "machine": "0x8664",
+      "pe_timestamp": 1793063371,
+      "imports": [
+        "ADVAPI32.dll",
+        "KERNEL32.dll",
+        "SHLWAPI.dll"
+      ]
+    },
+    "project": {
+      "path": "C:\\Users\\Kud\\Desktop\\CODEMDL\\.diagnostics\\release-v130\\win64\\NewPageMergeMDL\\NewPageMergeMDL.exe",
+      "size": 10621952,
+      "sha256": "3d93dfe851ad688f4a2b1948c91334f712038f8b7b79e495313db4e9ca89a0e5",
+      "machine": "0x8664",
+      "pe_timestamp": 3498352186,
+      "imports": [
+        "USER32.dll",
+        "ADVAPI32.dll",
+        "KERNEL32.dll"
+      ]
+    }
+  },
+  "tests": [
+    {
+      "name": "compatibility",
+      "tests": 494,
+      "seconds": 88.189,
+      "passed": true,
+      "log_sha256": "da58716e8cbbe1dca3c16674a6ee1bee23752170e3d2a961d2aa6f007f94dbfa"
+    },
+    {
+      "name": "integrity",
+      "tests": 6,
+      "seconds": 2.442,
+      "passed": true,
+      "log_sha256": "8a55e58f57c37507783b356b260e2269c9e4c2fa99b7cabf0e544135ab76df04"
+    },
+    {
+      "name": "direct-output",
+      "tests": 10,
+      "seconds": 3.601,
+      "passed": true,
+      "log_sha256": "dbf5da39d741678c3a918e9fd8287b66df6e9f40bb1a15428cdde8efca976bcc"
+    },
+    {
+      "name": "perfjson",
+      "tests": 10,
+      "seconds": 2.389,
+      "passed": true,
+      "log_sha256": "4430000942fb8e1249bed2975e51461a80377f02c45821455f49b2f2bb127385"
+    },
+    {
+      "name": "procedural",
+      "tests": 13,
+      "seconds": 4.182,
+      "passed": true,
+      "log_sha256": "41e485080a895bd136ffc014bf061de5eb8b1523582039aeefe204c7865cb628"
+    }
+  ],
+  "production": {
+    "source_file_count": 236,
+    "source_unchanged": true,
+    "gameinfo_unchanged": true,
+    "runs": [
+      {
+        "variant": "expressions",
+        "structure": {
+          "model": "combine_soldier.mdl",
+          "bones": 81,
+          "vertices": 46510
+        },
+        "outputs": {
+          "models/combine_soldier.dx80.vtx": "e52cc79bf0f80733ba1812b790129e5efd23352a6a47c0e59d10c0e6c6bfcaa9",
+          "models/combine_soldier.dx90.vtx": "6fb869e5aa7539bf272f40fc6ceb466fb923229a20e7a91b5c4bec7f87382fc0",
+          "models/combine_soldier.mdl": "c9bcb72d7d3e632314ea1b8ed895aa4eb850c76abb0e554ed8439fa3ac0a93b2",
+          "models/combine_soldier.phy": "1102c89a5d02e8e31e6d363b2054976bcd1e5cf070bfd04c21d760afa252e196",
+          "models/combine_soldier.vvd": "7344a6b01787b4d65c620f92f36a81d25f2b7610d277581c3020a4ed1911faf1"
+        },
+        "v130_byte_identical": true
+      },
+      {
+        "variant": "no_expressions",
+        "structure": {
+          "model": "combine_soldier.mdl",
+          "bones": 81,
+          "vertices": 46510
+        },
+        "outputs": {
+          "models/combine_soldier.dx80.vtx": "ec11e85288f3cce603b9e2c8d8fec5f7aa84974dd97552f5de1f04915757e127",
+          "models/combine_soldier.dx90.vtx": "4e6f98cf11261441f51d04682a7cd5d9d6f8bf47a6a3468575ce3b2dab55f5ce",
+          "models/combine_soldier.mdl": "29094daff7d90f8fbc9e3790b7fd631a3a144fe452e49670254df37e9c3b7be9",
+          "models/combine_soldier.phy": "5cc959238ce927f8a6dca685fa26c333c1f20eaf6a6b6d90963d033db0a03c68",
+          "models/combine_soldier.vvd": "48769a16cd502c34f5a5c6adffccecb488190952fe4e037150f31b277ced4614"
+        },
+        "v130_byte_identical": true
+      }
+    ]
+  },
+  "differential": {
+    "procedural_cases": 18,
+    "matching": 13,
+    "documented_differences": 5,
+    "parser_cases": 20,
+    "output_directory_cases": 18,
+    "determinism_runs": 72
+  },
+  "remaining_limits": [
+    "Native skeletal scale extensions are not emitted; non-unit DMX bone scale fails explicitly.",
+    "MVZ retarget output is unsupported and fails explicitly.",
+    "CE output and procedural lookup defaults are intentionally retained."
+  ]
+}

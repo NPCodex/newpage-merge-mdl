@@ -2898,7 +2898,7 @@ bool FixupBuffers(cm::CompiledModel& m, std::vector<uint8_t>& mdlBuf,
 
 } // namespace
 
-bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legacyVtx,
+bool WriteModelFiles(cm::CompiledModel& m, const std::filesystem::path& modelDirectory, bool legacyVtx,
                      bool writeDx80, std::string* err) {
     // Fail before touching output files if a compile stage produced invalid data.
     auto invalid=[&](const std::string& detail) { if(err) *err="output validation: "+detail; return false; };
@@ -3285,10 +3285,9 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
             vertexAnimation+="]}";
         }vertexAnimation+="]}\n";
     }
-    // save. Reference hardcodes a "models/" root in the disk path (not in the
-    // header name), so $modelname stays prefix-free and the .mdl bytes match.
-    std::filesystem::path base =
-        pulse::FilePath(outDir.empty() ? "." : outDir) / "models";
+    // The caller resolves the output root once, including direct StudioMDL++
+    // output. The model header name stays independent of this filesystem root.
+    const auto& base = modelDirectory;
     auto outputStem = [&](std::string name) {
         return (base / pulse::FilePath(name)).make_preferred();
     };
@@ -3340,7 +3339,7 @@ bool WriteModelFiles(cm::CompiledModel& m, const std::string& outDir, bool legac
     std::string aniPath, phyPath;
 
     if (blockBuf) {
-        // the .ani sits beside the .mdl under the same "models/" root, and its
+        // the .ani sits beside the .mdl under the same output root, and its
         // name is what szanimblocknameindex already recorded
         pblockhdr->length = static_cast<int32_t>(blockBuf->pos);
         aniPath = m.internalName.empty()?announce(".ani"):outputStem(pulse::FilePath(m.internalName).replace_extension().generic_string()).string()+".ani";

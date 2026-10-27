@@ -62,6 +62,8 @@ static int Usage() {
     std::printf("  -game <dir>   mod dir to install into; output goes to\n");
     std::printf("                <dir>\\models\\<modelname>.mdl (defaults to the QC directory)\n");
     std::printf("  -OutDir <dir> CE output root, relative to the QC directory; takes precedence over -game\n");
+    std::printf("  -OutDirModels <dir> StudioMDL++ model output directory, relative to the working directory\n");
+    std::printf("                writes directly into <dir>, without adding models; overrides -OutDir/$OutDir\n");
     std::printf("  -IncludePrefix <include> <prefix> / -IncludeAnimPrefix <prefix>\n");
     std::printf("  -OverrideFlexControllers / -AllowDuplicationFlexControllers / -AddInvStudioFlexes\n");
     std::printf("  -ZeroFlexDecay / -DefaqScale / -IgnoreDMXDefaq / -IgnoreDefaultFlexKey\n");
@@ -320,7 +322,7 @@ static int RunCompile(int argc, char** argv) {
     // follow a -game from a configuration recursively into another gameinfo.
     std::string explicitGame,explicitScript;
     bool noDefaultArgs=false;
-    const std::vector<std::string> oneValue={"-game","-outdir","-steamdir","-modelname","-includeanimprefix",
+    const std::vector<std::string> oneValue={"-game","-outdir","-outdirmodels","-steamdir","-modelname","-includeanimprefix",
         "-eyeballscale","-maxbones","-outputbuffersize","-mdloutputbuffersize","-anioutputbuffersize",
         "-includesearchdir","-filesearchdir","-tempcontent","-vtxformat","-minlod","-alwayscollapsebyprefix","-perfjson","-dependencyjson","-reloadpid"};
     auto isDefinition = [](const std::string& key, const char* raw) {
@@ -366,6 +368,7 @@ static int RunCompile(int argc, char** argv) {
         return Fail("bad option", error);
     const char* script = nullptr;
     std::string outdir;
+    std::string directModelDirectory;
     std::string gameDirectory,steamDirectory;
     std::string perfJson;
     std::string dependencyJson;
@@ -430,13 +433,13 @@ static int RunCompile(int argc, char** argv) {
             }
             cePrelude+="\n"; continue;
         }
-        // -game is studiomdl's name for it: the mod dir the model installs
-        // into. The writer already roots output at <dir>/models, so it is the
-        // same value as -outdir.
-        if ((option == "-game" || option == "-outdir") &&
-            i + 1 < argc) {
+        // -game selects the target/mounts and the default <game>/models output.
+        // The CE -OutDir option was handled above; its root is QC-relative.
+        if (option == "-game" && i + 1 < argc) {
             outdir = argv[++i];
-            if(option == "-game")gameDirectory=outdir;
+            gameDirectory=outdir;
+        } else if (option == "-outdirmodels") {
+            directModelDirectory = argv[++i];
         } else if(option == "-steamdir" && i+1<argc) {
             steamDirectory=argv[++i];
         } else if (option == "-modelname") {
@@ -589,6 +592,11 @@ static int RunCompile(int argc, char** argv) {
         auto selected=pulse::FilePath(input.ce.outputDirectory);
         outdir=(selected.is_absolute() ? selected : scriptDirectory/selected).lexically_normal().string();
     } else if(outdir.empty()) outdir=scriptDirectory.string();
+    // Resolve one shared model root for output, recovery, reports and sequence
+    // remapping. Direct StudioMDL++ output never changes the target game/mounts.
+    const auto outputRoot = directModelDirectory.empty()
+        ? pulse::FilePath(outdir) / "models"
+        : std::filesystem::absolute(pulse::FilePath(directModelDirectory)).lexically_normal();
     auto tLoad = Clock::now();
     input.legacySequenceBounds = legacySequenceBounds;
     if (cullAnims)
@@ -656,7 +664,7 @@ static int RunCompile(int argc, char** argv) {
     std::unique_ptr<pulse::reports::Report> performanceReport, dependencyReport;
     std::vector<std::filesystem::path> protectedOutputs;
     if (!perfJson.empty() || !dependencyJson.empty()) {
-        const auto root = pulse::FilePath(outdir.empty() ? "." : outdir) / "models";
+        const auto& root = outputRoot;
         const auto stem = root / pulse::FilePath(model.outname);
         for (const char* suffix : {".mdl", ".vvd", ".dx90.vtx", ".dx80.vtx", ".phy", ".ani", ".vertexanim.json"})
             protectedOutputs.emplace_back(stem.string() + suffix);
@@ -671,12 +679,11 @@ static int RunCompile(int argc, char** argv) {
     }
 
     if (!verify) {
-        const auto outputRoot=pulse::FilePath(outdir.empty()?".":outdir)/"models";
         const auto outputModel=outputRoot/pulse::FilePath(model.outname+".mdl");
         if(!RecoverOutputFiles(outputModel,outputRoot,&err))return Fail("output recovery error",err);
         if (!noRemap) {
             std::string warning;
-            if (!newpage::PreserveSequenceOrder(model, outdir, warning)) {
+            if (!newpage::PreserveSequenceOrder(model, outputRoot, warning)) {
                 if(input.csgo.errorOnRemapFailure)return Fail("sequence remapping error",warning);
                 std::fprintf(stderr, "warning: %s\n", warning.c_str());
                 pulse::diagnostics::Warning("NP2500", g_stage, warning);
@@ -687,7 +694,7 @@ static int RunCompile(int argc, char** argv) {
         // dropped DirectX 8, and $nodx80 / -nodx80 opt out explicitly.
         const bool legacyVtx = input.vtxArchetype == 0;
         const bool writeDx80 = legacyVtx && !input.noDx80;
-        if (!pulse::writer::WriteModelFiles(model, outdir, legacyVtx, writeDx80, &err))
+        if (!pulse::writer::WriteModelFiles(model, outputRoot, legacyVtx, writeDx80, &err))
             return Fail("write error", err);
     }
     if (dumpDependencies)

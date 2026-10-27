@@ -8,6 +8,7 @@
 #define PULSEMDL_WRITER_H
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -36,9 +37,10 @@ std::vector<uint8_t> BuildVtx(compile::CompiledModel& mdl, std::vector<uint8_t>&
 // checksum must be the one already stamped into the .mdl.
 std::vector<uint8_t> BuildPhy(compile::CompiledModel& mdl, int32_t checksum);
 
-// Write <outDir>/<outname>.mdl/.vvd/.dx90.vtx (+ .phy when there is collision
-// data, + .dx80.vtx when writeDx80). outDir may be empty (cwd).
-bool WriteModelFiles(compile::CompiledModel& mdl, const std::string& outDir, bool legacyVtx,
+// Write directly under the resolved modelDirectory; the caller selects either
+// <game-or-CE-root>/models or the explicit StudioMDL++ model output directory.
+// Includes .mdl/.vvd/.dx90.vtx, optional .phy/.ani and .dx80.vtx when writeDx80.
+bool WriteModelFiles(compile::CompiledModel& mdl, const std::filesystem::path& modelDirectory, bool legacyVtx,
                      bool writeDx80, std::string* err);
 
 } // namespace pulse::writer

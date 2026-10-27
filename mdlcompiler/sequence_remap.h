@@ -21,10 +21,9 @@ inline std::string SequenceNameKey(std::string name) {
 }
 
 inline bool PreserveSequenceOrder(pulse::compile::CompiledModel& model,
-                                  const std::string& outputDirectory, std::string& warning) {
+                                  const std::filesystem::path& modelDirectory, std::string& warning) {
     namespace fm = pulse::format;
-    const auto file = pulse::FilePath(outputDirectory.empty() ? "." : outputDirectory) /
-                      "models" / pulse::FilePath(model.outname + ".mdl");
+    const auto file = modelDirectory / pulse::FilePath(model.outname + ".mdl");
     std::error_code ec;
     if (!std::filesystem::exists(file, ec)) return true;
     auto invalid = [&]() {
