@@ -1128767,10 +1128767,10 @@ index 0000000..e26d345
 +}
 diff --git a/mdlcompiler/resources.cpp b/mdlcompiler/resources.cpp
 new file mode 100644
-index 0000000..ad0172f
+index 0000000..22166c8
 --- /dev/null
 +++ b/mdlcompiler/resources.cpp
-@@ -0,0 +1,395 @@
+@@ -0,0 +1,392 @@
 +#include "resources.h"
 +#include "pathcompat.h"
 +#include "dependencies.h"
@@ -1129055,26 +1129055,23 @@ index 0000000..ad0172f
 + std::error_code ec;
 + auto requested=fs::absolute(path,ec).lexically_normal();
 + if(ec||!state.checkedFileCase.insert(requested).second)return;
-+ HANDLE handle=CreateFileW(requested.c_str(),FILE_READ_ATTRIBUTES,
-+     FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,
-+     FILE_FLAG_BACKUP_SEMANTICS,nullptr);
-+ if(handle==INVALID_HANDLE_VALUE)return;
-+ const DWORD size=GetFinalPathNameByHandleW(handle,nullptr,0,FILE_NAME_NORMALIZED);
-+ std::wstring actual;
-+ if(size) {
-+  actual.resize(size);
-+  const DWORD used=GetFinalPathNameByHandleW(handle,actual.data(),size,FILE_NAME_NORMALIZED);
-+  if(!used||used>=size)actual.clear();else actual.resize(used);
++ fs::path lookup=requested.root_path(),disk=requested.root_path();
++ bool mismatch=false;
++ // Compare individual components. Expanding a DOS 8.3 parent (RUNNER~1 on
++ // hosted Windows) must not hide an unrelated leaf/directory case mismatch.
++ // Non-case aliases are accepted without diagnosing the alias itself.
++ for(const auto& part:requested.relative_path()) {
++  lookup/=part;
++  WIN32_FIND_DATAW data{};
++  HANDLE found=FindFirstFileW(lookup.c_str(),&data);
++  if(found==INVALID_HANDLE_VALUE)return;
++  FindClose(found);
++  disk/=data.cFileName;
++  const auto wanted=part.native();
++  if(wanted!=data.cFileName && CompareStringOrdinal(wanted.c_str(),-1,data.cFileName,-1,TRUE)==CSTR_EQUAL)
++   mismatch=true;
 + }
-+ CloseHandle(handle);
-+ if(actual.empty())return;
-+ if(actual.rfind(L"\\\\?\\UNC\\",0)==0)actual=L"\\\\"+actual.substr(8);
-+ else if(actual.rfind(L"\\\\?\\",0)==0)actual.erase(0,4);
-+ const fs::path disk(actual);
-+ // Ignore drive-letter spelling and non-case changes caused by junctions or
-+ // symlinks. Never turn a successful open into a failed compile for diagnostics.
-+ const auto wanted=requested.relative_path().native(), stored=disk.relative_path().native();
-+ if(wanted!=stored && CompareStringOrdinal(wanted.c_str(),-1,stored.c_str(),-1,TRUE)==CSTR_EQUAL)
++ if(mismatch)
 +  std::fprintf(stderr,"WARNING: file case mismatch: requested \"%s\", on disk \"%s\"; "
 +               "this reference may fail on Linux or a case-sensitive filesystem\n",
 +               requested.u8string().c_str(),disk.u8string().c_str());

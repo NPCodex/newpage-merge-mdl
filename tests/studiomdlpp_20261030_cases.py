@@ -104,3 +104,29 @@ class StudioMdlPp20261030Cases:
                                '$sequence idle models/case.smd\n')
         self.assertEqual(result.count('WARNING: file case mismatch:'), 1, result)
         self.assertIn('Case.SMD', result)
+
+    def test_spp_short_parent_alias_does_not_hide_leaf_case_mismatch(self):
+        if os.name != 'nt':
+            self.skipTest('DOS short aliases are Windows-specific')
+        import ctypes
+        from pathlib import Path
+        parent = self.root / 'Long parent directory for case diagnostic'
+        parent.mkdir()
+        self.write('Long parent directory for case diagnostic/Mesh.SMD',
+                   (self.root / 'mesh.smd').read_text())
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = ctypes.windll.kernel32.GetShortPathNameW(str(parent), buffer, len(buffer))
+        if not length or length >= len(buffer) or '~' not in buffer.value:
+            self.skipTest('DOS short aliases are unavailable on this filesystem')
+        original = self.root
+        try:
+            self.root = Path(buffer.value)
+            result = self.scene_qc('$modelname short_alias\n$body m mesh.smd\n'
+                                   '$sequence idle mesh.smd\n')
+            self.assertEqual(result.count('WARNING: file case mismatch:'), 1, result)
+            self.assertIn('Mesh.SMD', result)
+            result = self.scene_qc('$modelname short_alias\n$body m Mesh.SMD\n'
+                                   '$sequence idle Mesh.SMD\n')
+            self.assertNotIn('file case mismatch:', result)
+        finally:
+            self.root = original

@@ -1,77 +1,70 @@
 {
   "schema": 1,
   "version": "1.3.2",
-  "checked_at": "2026-10-30T04:09:48.025570+00:00",
-  "source_parent": "ce0c28914e131b48db029a8ecb95215945dbd75f",
+  "checked_at": "2026-10-30T04:36:06.511207+00:00",
+  "source_parent": "a769683dc39da9c78be88b208766345a1975d6a7",
   "scope": "Local Windows MSVC compiler and MinGW resource lookup helper; no new game, Linux or full-package validation.",
   "compiler": {
     "path": "D:\\newpage-merge-mdl\\build-compiler-fixes-20261020\\NewPageMergeMDL\\Release\\NewPageMergeMDL.exe",
     "artifact": "D:\\newpage-merge-mdl\\local-build\\studiomdlpp-screenshot-audit\\v1.3.2\\NewPageMergeMDL.exe",
-    "sha256": "6b9ed469052358bfb3b02db89882e2e86d2ece33fe710c0e1d1df1ada77a136a",
-    "size": 13015552
+    "sha256": "4a4014db17dabd8d3d2b944448419ef607d3c85131530307e1ecea20c3d9bfe4",
+    "size": 13015040
   },
   "resource_lookup_helper": {
     "path": "D:\\newpage-merge-mdl\\local-build\\studiomdlpp-screenshot-audit\\resource_lookup.exe",
-    "sha256": "fb75fcf185dc9530858317d9a446a66ab0419e7d49802b089260cf5e988f0704",
+    "sha256": "bbc6aa8fbdc46c71c10ce9ac98347a128e17bcd5e7e4b839d75c88f11ce223fb",
     "toolchain": "llvm-mingw clang++ 23, C++17, O2 static"
   },
   "source_sha256": {
-    "CMakeLists.txt": "6baef83aa377b9c504177b3155d7ef991314d754a7f10343caa5ddf1d195f312",
-    "automation/upstreams.json": "eab42961c8a879c598f05df7e8bfa2f60170af132828021a1deb7a9845bbf948",
-    "mdlcompiler/compile.cpp": "9bd34e58c843ec82a7e3742ac47dff5e28306e6377c40a0cc875c4e39fd1463e",
-    "mdlcompiler/compile.h": "72ba86d7c3e7d07ad31db9b3c884c6fe3708b45a74ed51ac8c98956b8a221f85",
-    "mdlcompiler/qcloader.cpp": "b800fd8b45292fc3f1d0221d5fdcef330e79b415da00d665255bc62bf84d48da",
-    "mdlcompiler/resources.cpp": "6a4cd62b97c8377eda9e57459c4a98e9dd707c08c3252471e4a62b88fbe06798",
-    "mdlcompiler/resources.h": "3f7f7dfe109f0a36aa6d5e9cc9db59fdbc617839d19be4c801b39ebc6681a95e",
-    "tests/compatibility.py": "c36587b18be6b739da74199e7875b8a182dfc57405fb3fe66dbde2c0175cd6c1",
-    "tests/studiomdlpp_20261030_cases.py": "0a056f60a83b66b69c0b72858ed9244524ceb03e52a578b9b2d3d775b86b417a"
+    "mdlcompiler/resources.cpp": "6144a3fdb6b001ae43ba2f1cdac409163641cfab1356aaab0e0a42b0c86803b2",
+    "tests/studiomdlpp_20261030_cases.py": "dcc12db3d3209faa9980775ec04d90c29cc8e4f62efea7054e4db53d545d7fa1"
   },
   "tests": [
     {
       "name": "compatibility",
-      "count": 502,
-      "seconds": 93.659,
+      "count": 503,
+      "seconds": 91.458,
       "passed": true,
-      "log_sha256": "48ce17738f9971693a52bf58d8b7d0ec708c246528fe98eff78b7ae87f6fbe91"
+      "log_sha256": "71e2db743884e1824afeb161a277e79b063df196f6c41d99e9795ad70af4d646"
     },
     {
       "name": "focused",
-      "count": 35,
-      "seconds": 6.169,
+      "count": 36,
+      "seconds": 7.93,
       "passed": true,
-      "log_sha256": "cc4deebaf6c78bbc971068c934520c23f16d078c6c75c8c29a6299a55edb708d"
+      "log_sha256": "df99fecba50173a67ee649e528e161a5c682e53a912508030dd001b037af835e"
     },
     {
       "name": "integrity",
       "count": 6,
-      "seconds": 1.45,
+      "seconds": 1.431,
       "passed": true,
-      "log_sha256": "59a21cffca47069d8905d4ff40492dce522b177730c6912c1ebdb971868293d4"
+      "log_sha256": "6205339c60f47a27e6abfd90b4b0f07fac58d8824cc181cb00283c3c6347de61"
     },
     {
       "name": "output",
       "count": 10,
-      "seconds": 2.041,
+      "seconds": 2.175,
       "passed": true,
-      "log_sha256": "a5a501f0781a75e01954fb4818eabc4360aa8bbf67c9087e01c6e9fd06770196"
+      "log_sha256": "54d670e189f8dc26bf6aacbe7fd7481ff63db9f3393670f85209bfdf3149dee7"
     },
     {
       "name": "perfjson",
       "count": 10,
-      "seconds": 1.378,
+      "seconds": 1.143,
       "passed": true,
-      "log_sha256": "64991d8435bb2551c2cb0812b2d4e23fee0b7bf044dd9e88e7c0f1164b1c6f30"
+      "log_sha256": "df1ef97a97502d2b52c0180bb66fba6ef5a180799563841c1205492decc61761"
     },
     {
       "name": "mounts",
       "count": 10,
-      "seconds": 0.662,
+      "seconds": 0.68,
       "passed": true,
-      "log_sha256": "5ca7929e63d25f71df129dfbc788814d25b543d2783660bbf4b354aa73e99787"
+      "log_sha256": "af5b2f5fd49412211fe1bb42ccbe380ec49d1a1c8fac783985dd6c9cba868b0b"
     }
   ],
-  "compatibility_overlay_sha256": "cea3055397d7a4981d397c69be53d85a7a55d207026279274427413966b188ba",
-  "overlay_check_log_sha256": "beee4177b8b50f8833cf71f05f409b4cb40d7dc95af3a17b3c1c50e822a2450b",
+  "compatibility_overlay_sha256": "3579626f278f950016348871828ecaab23c15828ef8db78d10f19d440c49f66c",
+  "overlay_check_log_sha256": "575ef53e43e3bc79c0ca1e6f75833de0b2ab81bdad94e015eb68995b24e87052",
   "production": {
     "source_file_count": 236,
     "source_unchanged": true,
