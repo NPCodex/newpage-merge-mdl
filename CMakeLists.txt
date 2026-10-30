@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 # Distributed tools share the NewPageMergeMDL project version.
 # Upstream TOOL_VERSION declarations remain as merge context only.
 # C is enabled only for vendored dependencies; toolkit code is C++.
-project(NewPageMergeMDL VERSION 1.3.1 LANGUAGES CXX C)
+project(NewPageMergeMDL VERSION 1.3.2 LANGUAGES CXX C)
 
 option(NEWPAGE_REPRODUCIBLE "Normalize source paths and deterministic executable identity" ON)
 option(NEWPAGE_SEPARATE_SYMBOLS "Produce matching separate native debug symbols" OFF)

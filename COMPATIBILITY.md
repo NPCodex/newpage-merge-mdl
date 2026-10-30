@@ -17,6 +17,12 @@ References:
 
 ## StudioMDL++ October 26, 2026 update
 
+The later user-supplied screenshot was [audited against v1.3.1](tests/reports/2026-10-30-studiomdlpp-screenshot-audit.md).
+**v1.3.2** adds accepted loose-file case mismatch warnings on Windows, zero/near-zero
+bind-segment IK warnings and authored source/caret/macro/include provenance for
+late-resolved QC weightlist errors. See the [implementation and validation boundaries](tests/reports/v1.3.2-studiomdlpp.md).
+These warnings do not change output geometry or enable new engine formats.
+
 v1.3.1 integrates the verified changes applicable to the existing Source targets:
 one-parameter blend grids infer N-by-1 rows; an unknown animation `blockname`
 warns and retains a previous valid selection or the normal default; VRD
@@ -43,7 +49,7 @@ valid. Bake the scale into a suitable source or use the documented scene vertex
 baking workflow. Ordinary SMD trailing scale fields remain rejected. No new
 game/runtime certification is inferred from successful isolated compilation.
 
-Current source version: **v1.3.1**. Its [StudioMDL++ integration report](tests/reports/v1.3.1-studiomdlpp.md) records implementation, validation and remaining limits; published packages are listed in [Releases](https://github.com/NPCodex/newpage-merge-mdl/releases). The historical v1.3.0 [six-area ledger](tests/reports/v1.3.0-work.md), the earlier [33-item ledger](tests/reports/v1.2.38-improvements.md) and all **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) retain their original evidence. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs.
+Current source version: **v1.3.2**. Its [StudioMDL++ follow-up report](tests/reports/v1.3.2-studiomdlpp.md) records implementation, validation and remaining limits; published packages are listed in [Releases](https://github.com/NPCodex/newpage-merge-mdl/releases). The historical v1.3.0 [six-area ledger](tests/reports/v1.3.0-work.md), the earlier [33-item ledger](tests/reports/v1.2.38-improvements.md) and all **A1–A7 and B1–B4** packages in the [fixed CSGO scope](CSGO_PORTING_SCOPE.md) retain their original evidence. Current authoring references are the [cloth guide](CSGO_CLOTH_AUTHORING.md) and [DMX input guide](CSGO_DMX_INPUTS.md). Source-by-source status is in [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Older version sections retain historical implementation and validation states; their superseded restrictions are not current TODOs.
 
 Installation uses one complete ZIP per platform; see [INSTALL.md](INSTALL.md). Both archives include the compiler, decompiler, subtools, separate VRML converter with its corresponding source, scripts, Lua consumers, documentation, licenses, `upstream-manifest.json` and `SHA256SUMS.txt`. Reports remain in `tests/reports/`. Windows also includes the C4D helper. Both automatic and maintained packages embed the exact build input at `sources/NewPageMergeMDL-source.zip`; use the packaged manifest source SHA and hashes to identify a replacement build, because its tag may still refer to an earlier revision. Extract the full archive into a new directory on update. Python preparation scripts require separately installed Python 3; ordinary compilation does not.
 

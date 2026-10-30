@@ -1,6 +1,9 @@
 # 当前验证入口
 
-当前源码为 **v1.3.1**，StudioMDL++ Oct 26 2026 对照、移植与本地验证见
+当前源码为 **v1.3.2**，StudioMDL++ 截图诊断缺口的实现与本地验证见
+[修补记录](tests/reports/v1.3.2-studiomdlpp.md)及[机器记录](tests/reports/v1.3.2-studiomdlpp.json)。本轮仅验证 Windows 主编译器与资源查找辅助测试，没有新增游戏运行、Linux 或完整安装包验证。
+
+**v1.3.1** 的 StudioMDL++ Oct 26 2026 对照、移植与本地验证见
 [升级记录](tests/reports/v1.3.1-studiomdlpp.md)。该记录对应发布前的本地开发构建；发行包的平台验证、工作流及下载校验以 [v1.3.1 发布说明](https://github.com/NPCodex/newpage-merge-mdl/releases/tag/v1.3.1) 为准，本地结果不代表 Linux 或游戏实测。
 
 **v1.3.0** 六项改进的实现、定向验证和限制见

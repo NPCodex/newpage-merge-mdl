@@ -1,7 +1,7 @@
 # 五编译器功能整合清单 / Five-compiler integration checklist
 
 目标：以 PulseModel 为源码基础，将 CE、NekoMDL、StudioMDL 2013、StudioMDL++
-可用的模型编译功能整合到 NewPageMergeMDL。当前源码版本：v1.3.1；[发布状态](https://github.com/NPCodex/newpage-merge-mdl/releases)及范围以对应发布说明为准。
+可用的模型编译功能整合到 NewPageMergeMDL。当前源码版本：v1.3.2；[发布状态](https://github.com/NPCodex/newpage-merge-mdl/releases)及范围以对应发布说明为准。
 
 **每次生产编译都必须将 `-game` 指向目标游戏/模组中包含正确 `gameinfo.txt` 的目录。** `-OutDir` 只设置输出，不替代目标识别或资源挂载；请保留原始输入，并隔离输出进行验证。详细条件见 [编译前必读](README.md#编译前必读)。
 
@@ -102,8 +102,11 @@ AG2 预检工具链，暂存源、compiled 与可选 VMDL/首次备份。AG2 与
 
 Oct 26 2026 更新的逐项状态和有界对照见 [v1.3.1 升级记录](tests/reports/v1.3.1-studiomdlpp.md)。此轮没有扩展游戏运行认证范围。
 
+2026-10-30 按用户新增截图复核全部20项，v1.3.1 的三处诊断缺口见[历史截图核对](tests/reports/2026-10-30-studiomdlpp-screenshot-audit.md)。v1.3.2 已补齐 Windows 松散文件大小写警告、零长度/近零长度 IK 链警告，以及延迟解析 weightlist 错误的源码/宏/include 上下文；范围和本地验证见[修补记录](tests/reports/v1.3.2-studiomdlpp.md)。两项引擎专属扩展仍未实现。
+
 | 功能组 | 状态 / 当前路径 |
 | --- | --- |
+| 文件名大小写、退化IK、延迟weightlist诊断 | v1.3.2 新增 Windows 已成功打开的松散路径大小写警告和零长度/近零长度 IK 链警告；未知 QC weightlist 保留行列、源码插入符及宏/include 来源。详见修补记录，未扩展为全部语义错误诊断或任意 IK 求解检查。 |
 | 语法位置、include/宏上下文 | 原始文件、行与插入符保留，include EOF 宏错误仍有完整来源链；词法错误同样显示原始行。 |
 | 输出目录 | `-OutDirModels` 对应新版 ++ 的直接模型根目录，相对进程工作目录；现有 `-OutDir` / `$OutDir` 继续 CE 的 QC 相对根目录及 `models/` 子目录规则。 |
 | VRD baseang / scale / 目录 | 新增 `<baseang>` 外层四元数旋转、aim basepos 按导入时 `$scale` 缩放；trigger 缩放已支持。`$PUSHDProcedural 1` 显式启用 `$pushd`/`$cd`，默认继续 CE 查找规则。触发器保持32个上限，修复超过上限重复旋转最后条目。 |

@@ -8731,6 +8731,21 @@ bool LinkIKChains(Ctx& ctx, std::string* err) {
         }
         chain.link[0].bone = k;
         m.bones[k].flags |= BONE_USED_BY_ATTACHMENT;
+
+        // A complete ancestor chain can still have no usable limb segment.
+        // Straight, fully extended chains are valid; only vanishing segments
+        // are diagnosed. Warn without changing the authored chain or output.
+        const auto length = [&](int link) {
+            const auto& p = m.bones[chain.link[link].bone].pos;
+            return std::hypot(double(p.x), double(p.y), double(p.z));
+        };
+        const double upper = length(1), lower = length(2);
+        if (upper <= 1e-6 || lower <= 1e-6)
+            std::fprintf(stderr, "WARNING: degenerate IK chain '%s': bones '%s' -> '%s' -> '%s' "
+                         "have zero-length or near-zero segments (%.9g, %.9g model units)\n",
+                         chain.name.c_str(), m.bones[chain.link[0].bone].name.c_str(),
+                         m.bones[chain.link[1].bone].name.c_str(),
+                         m.bones[chain.link[2].bone].name.c_str(), upper, lower);
     }
     return true;
 }
@@ -12036,7 +12051,7 @@ bool Compile(CompileInput& input, CompiledModel& out, std::string* err) {
                     if (_stricmp(input.weightlists[w].name.c_str(), ic.name.c_str()) == 0)
                         wl = static_cast<int>(w) + 1; // +1: resolved list 0 = default
                 if (wl == -1) {
-                    if (err) *err = "unknown weightlist \"" + ic.name + "\" in " + a.name;
+                    if (err) *err = ic.nameDiagnostic.Describe("unknown weightlist \"" + ic.name + "\" in " + a.name);
                     return false;
                 }
                 cmd.kind = AnimCmd::Weights;

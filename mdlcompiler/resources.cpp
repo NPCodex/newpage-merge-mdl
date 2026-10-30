@@ -95,6 +95,7 @@ const KV* Child(const std::vector<KV>& nodes,const std::string& name){for(const 
 struct Entry {uint16_t archive=0;uint32_t crc=0,offset=0,length=0;std::vector<char> preload;};
 struct Mount {fs::path path;bool loaded=false;uint64_t dataStart=0,dataLength=UINT64_MAX;std::map<std::string,Entry> entries;};
 struct State {
+ std::set<fs::path> checkedFileCase;
  std::vector<Mount> mounts,contentMounts;bool contentSearch=false,csgoTarget=false;int targetVtx=-1;fs::path cache,gameDirectory;
  ~State(){if(!cache.empty()){std::error_code ec;auto parent=fs::temp_directory_path(ec).lexically_normal();
   if(!ec&&cache.parent_path()==parent&&cache.filename().string().rfind("newpage-mount-",0)==0)fs::remove_all(cache,ec);}}
@@ -249,6 +250,7 @@ bool LaunchDefaults(const std::string& gameDirectory,const std::string& script,
 }
 bool Initialize(const std::string& gameDirectory,const std::string& steamDirectory,std::string* err) {
  try {
+  state.checkedFileCase.clear();
   state.mounts.clear();state.contentMounts.clear();state.contentSearch=false;state.csgoTarget=false;state.targetVtx=-1;state.gameDirectory.clear();if(gameDirectory.empty())return true;
   state.gameDirectory=fs::absolute(FilePath(gameDirectory));
   fs::path game=fs::absolute(FilePath(gameDirectory));auto kv=ReadKV(game/"gameinfo.txt");if(kv.empty())return true;
@@ -275,13 +277,45 @@ bool Initialize(const std::string& gameDirectory,const std::string& steamDirecto
 int TargetVtxFormat(){return state.targetVtx;}
 bool IsCsgoTarget(){return state.csgoTarget;}
 void EnableContentSearch(){state.contentSearch=true;}
+void WarnFileCaseMismatch(const fs::path& path) {
+#ifdef _WIN32
+ std::error_code ec;
+ auto requested=fs::absolute(path,ec).lexically_normal();
+ if(ec||!state.checkedFileCase.insert(requested).second)return;
+ HANDLE handle=CreateFileW(requested.c_str(),FILE_READ_ATTRIBUTES,
+     FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,
+     FILE_FLAG_BACKUP_SEMANTICS,nullptr);
+ if(handle==INVALID_HANDLE_VALUE)return;
+ const DWORD size=GetFinalPathNameByHandleW(handle,nullptr,0,FILE_NAME_NORMALIZED);
+ std::wstring actual;
+ if(size) {
+  actual.resize(size);
+  const DWORD used=GetFinalPathNameByHandleW(handle,actual.data(),size,FILE_NAME_NORMALIZED);
+  if(!used||used>=size)actual.clear();else actual.resize(used);
+ }
+ CloseHandle(handle);
+ if(actual.empty())return;
+ if(actual.rfind(L"\\\\?\\UNC\\",0)==0)actual=L"\\\\"+actual.substr(8);
+ else if(actual.rfind(L"\\\\?\\",0)==0)actual.erase(0,4);
+ const fs::path disk(actual);
+ // Ignore drive-letter spelling and non-case changes caused by junctions or
+ // symlinks. Never turn a successful open into a failed compile for diagnostics.
+ const auto wanted=requested.relative_path().native(), stored=disk.relative_path().native();
+ if(wanted!=stored && CompareStringOrdinal(wanted.c_str(),-1,stored.c_str(),-1,TRUE)==CSTR_EQUAL)
+  std::fprintf(stderr,"WARNING: file case mismatch: requested \"%s\", on disk \"%s\"; "
+               "this reference may fail on Linux or a case-sensitive filesystem\n",
+               requested.u8string().c_str(),disk.u8string().c_str());
+#else
+ (void)path;
+#endif
+}
 fs::path Find(const fs::path& input) {
  fs::path relative=input;
  if(input.is_absolute()){if(state.cache.empty())return {};relative=input.lexically_relative(state.cache);}
  relative=relative.lexically_normal();if(!SafeRelative(relative))return {};
  std::vector<Mount*> active;for(auto& m:state.mounts)active.push_back(&m);
  if(state.contentSearch)for(auto& m:state.contentMounts)active.push_back(&m);
- for(auto* mount:active){auto& m=*mount;std::error_code ec;if(fs::is_directory(m.path,ec)){auto p=m.path/relative;if(fs::is_regular_file(p,ec))return p;continue;}
+ for(auto* mount:active){auto& m=*mount;std::error_code ec;if(fs::is_directory(m.path,ec)){auto p=m.path/relative;if(fs::is_regular_file(p,ec)){WarnFileCaseMismatch(p);return p;}continue;}
   if(Lower(m.path.extension().string())!=".vpk")continue;Index(m);auto found=m.entries.find(Lower(relative.generic_string()));if(found==m.entries.end())continue;
   if(state.cache.empty()){auto root=fs::temp_directory_path().lexically_normal();state.cache=root/("newpage-mount-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));if(!fs::create_directory(state.cache))throw std::runtime_error("cannot create resource cache");}
   auto output=state.cache/relative;fs::create_directories(output.parent_path());const auto& e=found->second;

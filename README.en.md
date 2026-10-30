@@ -11,6 +11,7 @@ A Source model toolchain based on [PulseModel](https://github.com/ToppiOfficial/
 combining independently implemented features from StudioMDL-CE, NekoMDL,
 StudioMDL 2013 and StudioMDL++. It includes a compiler, decompiler and four subtools.
 See the [feature matrix](FEATURE_MATRIX.md) for supported features and boundaries.
+The supplied StudioMDL++ update screenshot has a [follow-up implementation and validation record](tests/reports/v1.3.2-studiomdlpp.md).
 
 ## Download and install
 

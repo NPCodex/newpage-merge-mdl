@@ -28,6 +28,16 @@ using math::Quaternion;
 using math::RadianEuler;
 using math::matrix3x4;
 
+// Authored QC provenance retained for names resolved after parsing. This data
+// is diagnostic-only: it does not participate in animation signatures/output.
+struct SourceDiagnostic {
+    std::string prefix;
+    std::string context;
+    std::string Describe(const std::string& message) const {
+        return prefix + message + context;
+    }
+};
+
 // attachment type bits. `type` is compile-time
 // only and never written; `flags` goes to disk.
 inline constexpr int kAttachIsAbsolute   = 0x0001; // "absolute" - local is in model space
@@ -1559,6 +1569,7 @@ struct CompileInput {
                 Compress, CounterRotate, ForceBonePosRot, MatchPosition } kind = Weights;
             std::string name;   // Weights: weightlist; Subtract/Align/Match: animation
                                 // CopyPose: an animation OR a sequence
+            SourceDiagnostic nameDiagnostic;
             int frame = 0;      // Subtract: reference frame
             int numframes = 0;  // NumFrames: the length to clip or pad to
             bool presubtract = false;

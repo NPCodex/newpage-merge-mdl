@@ -11,6 +11,8 @@
 
 **[下载与发布说明](https://github.com/NPCodex/newpage-merge-mdl/releases) · [安装指南](INSTALL.md) · [功能清单](FEATURE_MATRIX.md) · [兼容说明](COMPATIBILITY.md)**
 
+StudioMDL++ 新增日志的补齐情况与保留边界见[修补记录](tests/reports/v1.3.2-studiomdlpp.md)。
+
 ## 下载与安装
 
 从 Releases 下载对应平台的完整安装包，解压到新目录并保持目录结构。每个版本实际提供的平台、构建状态与发布说明均以该版本 Release 为准；GitHub 自动生成的 **Source code** 不是安装包。

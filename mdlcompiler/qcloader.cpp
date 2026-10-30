@@ -102,7 +102,8 @@ struct Token {
 
 std::string DescribeTokenError(const Token& token, const std::string& fallbackFile,
                               const std::vector<std::string>& fallbackParents,
-                              const std::string& fallbackMacro, const std::string& msg) {
+                              const std::string& fallbackMacro, const std::string& msg,
+                              bool showColumn = false) {
     std::string result = (token.source ? token.source->file : fallbackFile) +
         "(" + std::to_string(token.line) + "): " + msg;
     if (token.source && token.sourceOffset < token.source->text.size()) {
@@ -110,6 +111,9 @@ std::string DescribeTokenError(const Token& token, const std::string& fallbackFi
         const size_t before = token.sourceOffset == 0 ? std::string::npos :
             text.rfind('\n', token.sourceOffset - 1);
         const size_t start = before == std::string::npos ? 0 : before + 1;
+        if (showColumn)
+            result = token.source->file + "(" + std::to_string(token.line) + "," +
+                std::to_string(token.sourceOffset - start + 1) + "): " + msg;
         const size_t after = text.find('\n', token.sourceOffset);
         std::string excerpt = text.substr(start, after == std::string::npos ? after : after-start);
         if (!excerpt.empty() && excerpt.back() == '\r') excerpt.pop_back();
@@ -395,6 +399,13 @@ struct Ctx {
         return false;
     }
 
+    cm::SourceDiagnostic DiagnosticAt(const Token& token) const {
+        const auto text = DescribeTokenError(token, commandFile.empty()?file:commandFile,
+                                             commandParents, commandMacro, "", true);
+        const auto newline = text.find('\n');
+        return {text.substr(0, newline), newline == std::string::npos ? "" : text.substr(newline)};
+    }
+
     bool Fail(int line, const std::string& msg) {
         if (pos > 0 && pos <= toks.size() && toks[pos-1].line == line &&
             toks[pos-1].source == commandToken.source)
@@ -517,8 +528,10 @@ fs::path FindSourceFile(const Ctx& c, const std::string& filename,
     for (fs::path& p : cands) {
         p = p.lexically_normal().make_preferred();
         std::error_code ec;
-        if (fs::is_regular_file(p, ec))
+        if (fs::is_regular_file(p, ec)) {
+            pulse::resources::WarnFileCaseMismatch(p);
             return p;
+        }
     }
     if (tried) *tried = std::move(cands);
     if(auto mounted=pulse::resources::Find(rel);!mounted.empty())return mounted;
@@ -3060,6 +3073,7 @@ int ApplyAnimOption(Ctx& c, const Token& t, cm::CompileInput::InAnim& a) {
         cmd.kind = cm::CompileInput::InAnim::InCmd::Weights;
         if (!c.Want("a weightlist name", t, cmd.name))
             return -1;
+        cmd.nameDiagnostic = c.DiagnosticAt(c.toks[c.pos-1]);
         a.cmds.push_back(std::move(cmd));
         return 1;
     }
@@ -9131,6 +9145,7 @@ bool SpliceInclude(Ctx& c) {
             return c.Fail(cmd.line, "$include: \"" + rel +
                                     "\" is already open - circular include");
 
+    pulse::resources::WarnFileCaseMismatch(full);
     pulse::dependencies::Note(full.string(), pulse::dependencies::Kind::Include);
     std::ifstream f(full, std::ios::binary);
     if (!f)
@@ -10657,6 +10672,7 @@ bool LoadQcScript(const char* rawPath, cm::CompileInput& out, std::string* err,
     if (scriptText) {
         text = *scriptText;
     } else {
+        pulse::resources::WarnFileCaseMismatch(pulse::FilePath(path));
         std::ifstream f(path, std::ios::binary);
         if (!f) {
             if (err) *err = std::string("cannot open \"") + path + "\"";

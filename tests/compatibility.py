@@ -37,12 +37,13 @@ from compiler_input_cases import CompilerInputCases
 from neko24_cases import Neko24Cases
 from studiomdlpp_20261027_parser_cases import StudioMdlPp20261027ParserCases
 from studiomdlpp_20261027_procedural_cases import StudioMdlppProceduralCases
+from studiomdlpp_20261030_cases import StudioMdlPp20261030Cases
 from validate_outputs import validate
 
 COMPILER = str(Path(sys.argv.pop(1)).resolve())
 
 
-class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,SubdCases,DmxDependencyCases,ProceduralCases,AxisExportCases,CsgoClosureCases,ClothAdvancedCases,ClothScopeCases,DmxScopeCases,ProceduralScopeCases,ClothProjectionCases,IntegrationCapacityCases,IntegrationRigCases,SceneIntegrationCases,IntegrationMeshStatesCases,IntegrationWorkflowCases,IntegrationPolicyCases,IntegrationVrmCases,IntegrationSkinCases,PulseUpdateCases,CompilerInputCases,Neko24Cases,StudioMdlPp20261027ParserCases,StudioMdlppProceduralCases,unittest.TestCase):
+class Compatibility(ExtendedCases,PhysicsMassCases,PhysicsExtraCases,ClothCases,SubdCases,DmxDependencyCases,ProceduralCases,AxisExportCases,CsgoClosureCases,ClothAdvancedCases,ClothScopeCases,DmxScopeCases,ProceduralScopeCases,ClothProjectionCases,IntegrationCapacityCases,IntegrationRigCases,SceneIntegrationCases,IntegrationMeshStatesCases,IntegrationWorkflowCases,IntegrationPolicyCases,IntegrationVrmCases,IntegrationSkinCases,PulseUpdateCases,CompilerInputCases,Neko24Cases,StudioMdlPp20261027ParserCases,StudioMdlppProceduralCases,StudioMdlPp20261030Cases,unittest.TestCase):
     def test_merged_materials_keep_geometry_flexes_and_lods(self):
         import json,copy
         doc=json.loads(scene_bytes());doc['materials'].append({'name':'Second'})

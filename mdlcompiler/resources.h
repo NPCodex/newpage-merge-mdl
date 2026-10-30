@@ -10,6 +10,9 @@ bool LaunchDefaults(const std::string& gameDirectory,const std::string& script,
                     std::vector<std::string>& arguments,std::string* err);
 bool Initialize(const std::string& gameDirectory,const std::string& steamDirectory,std::string* err);
 std::filesystem::path Find(const std::filesystem::path& relative);
+// Diagnose accepted loose-file spelling on case-insensitive Windows volumes.
+// Does not change lookup results or make case-sensitive lookups permissive.
+void WarnFileCaseMismatch(const std::filesystem::path& path);
 void EnableContentSearch();
 int TargetVtxFormat(); // -1 if no recognized target AppID
 bool IsCsgoTarget();
